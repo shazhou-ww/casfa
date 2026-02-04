@@ -83,7 +83,7 @@ function validatePascalString(
 /**
  * Validate multiple Pascal strings starting at offset
  */
-function validatePascalStrings(
+function _validatePascalStrings(
   buffer: Uint8Array,
   offset: number,
   count: number
@@ -153,7 +153,7 @@ function compareBytes(a: Uint8Array, b: Uint8Array): number {
 /**
  * Validate multiple Pascal strings starting at offset (no name extraction)
  */
-function validatePascalStringsNoExtract(
+function _validatePascalStringsNoExtract(
   buffer: Uint8Array,
   offset: number,
   count: number

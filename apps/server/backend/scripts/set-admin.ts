@@ -161,7 +161,7 @@ async function main() {
     if (roles.length === 0) {
       console.log("No users with assigned roles found.");
     } else {
-      console.log("User ID".padEnd(40) + "Role");
+      console.log(`${"User ID".padEnd(40)}Role`);
       console.log("-".repeat(50));
       for (const { userId, role } of roles) {
         console.log(`${userId.padEnd(40)}${role}`);

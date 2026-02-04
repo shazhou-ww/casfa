@@ -159,7 +159,7 @@ describe("Controller", () => {
     });
 
     it("should return null for non-existent key", async () => {
-      const result = await readFile(ctx, "blake3s:" + "a".repeat(32));
+      const result = await readFile(ctx, `blake3s:${"a".repeat(32)}`);
       expect(result).toBeNull();
     });
   });
@@ -283,7 +283,7 @@ describe("Controller", () => {
     });
 
     it("should return null for missing node", async () => {
-      const node = await getNode(ctx, "blake3s:" + "0".repeat(32));
+      const node = await getNode(ctx, `blake3s:${"0".repeat(32)}`);
       expect(node).toBeNull();
     });
   });
@@ -367,7 +367,7 @@ describe("Controller", () => {
     });
 
     it("should return false for non-existing key", async () => {
-      expect(await has(ctx, "blake3s:" + "f".repeat(32))).toBe(false);
+      expect(await has(ctx, `blake3s:${"f".repeat(32)}`)).toBe(false);
     });
   });
 });

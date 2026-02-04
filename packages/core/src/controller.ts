@@ -265,14 +265,14 @@ export const putFileNode = async (
 export const makeDict = async (ctx: CasContext, entries: DictEntry[]): Promise<string> => {
   const children: Uint8Array[] = [];
   const childNames: string[] = [];
-  let totalSize = 0;
+  let _totalSize = 0;
 
   for (const entry of entries) {
     children.push(keyToHashBytes(entry.key));
     childNames.push(entry.name);
     const childNode = await getNode(ctx, entry.key);
     if (childNode) {
-      totalSize += childNode.size;
+      _totalSize += childNode.size;
     }
   }
 

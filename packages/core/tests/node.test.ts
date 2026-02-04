@@ -2,8 +2,7 @@
  * Node encoding/decoding roundtrip tests (v2.1 format)
  */
 import { describe, expect, it } from "bun:test";
-import { FILEINFO_SIZE, HASH_SIZE, HEADER_SIZE, NODE_TYPE } from "../src/constants.ts";
-import { getNodeType } from "../src/header.ts";
+import { FILEINFO_SIZE, HASH_SIZE, HEADER_SIZE } from "../src/constants.ts";
 import {
   decodeNode,
   encodeDictNode,

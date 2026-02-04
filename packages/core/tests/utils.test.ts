@@ -39,7 +39,7 @@ describe("Utils", () => {
     it("should roundtrip unicode string", () => {
       const original = "你好世界 🌍";
       const encoded = encodePascalString(original);
-      const [decoded, consumed] = decodePascalString(encoded, 0);
+      const [decoded, _consumed] = decodePascalString(encoded, 0);
       expect(decoded).toBe(original);
     });
 

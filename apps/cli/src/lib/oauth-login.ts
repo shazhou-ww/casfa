@@ -81,15 +81,15 @@ export async function oauthLogin(options: OAuthLoginOptions): Promise<OAuthLogin
   console.log();
   console.log(chalk.cyan("┌─────────────────────────────────────────────────────┐"));
   console.log(
-    chalk.cyan("│") + "  Opening browser for login...                       " + chalk.cyan("│")
+    `${chalk.cyan("│")}  Opening browser for login...                       ${chalk.cyan("│")}`
   );
   console.log(
-    chalk.cyan("│") + "                                                     " + chalk.cyan("│")
+    `${chalk.cyan("│")}                                                     ${chalk.cyan("│")}`
   );
   console.log(
-    chalk.cyan("│") + "  If browser doesn't open, visit:                    " + chalk.cyan("│")
+    `${chalk.cyan("│")}  If browser doesn't open, visit:                    ${chalk.cyan("│")}`
   );
-  console.log(chalk.cyan("│") + `  ${chalk.dim(authUrl.slice(0, 49))}` + chalk.cyan("│"));
+  console.log(`${chalk.cyan("│")}  ${chalk.dim(authUrl.slice(0, 49))}${chalk.cyan("│")}`);
   console.log(chalk.cyan("└─────────────────────────────────────────────────────┘"));
   console.log();
 
@@ -149,7 +149,7 @@ export async function oauthLogin(options: OAuthLoginOptions): Promise<OAuthLogin
   });
 
   console.log();
-  console.log(chalk.green("✓") + " Login successful!");
+  console.log(`${chalk.green("✓")} Login successful!`);
 
   return { success: true };
 }

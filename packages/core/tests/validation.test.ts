@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { blake3 } from "@noble/hashes/blake3";
-import { FILEINFO_SIZE, HASH_SIZE, HEADER_SIZE, MAGIC } from "../src/constants.ts";
+import { FILEINFO_SIZE, HEADER_SIZE } from "../src/constants.ts";
 import { encodeDictNode, encodeFileNode, encodeSuccessorNode } from "../src/node.ts";
 import type { HashProvider, StorageProvider } from "../src/types.ts";
 import { hashToKey } from "../src/utils.ts";
