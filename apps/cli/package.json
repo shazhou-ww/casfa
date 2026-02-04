@@ -1,0 +1,52 @@
+{
+  "name": "@casfa/cli",
+  "version": "0.0.1",
+  "description": "CLI for CASFA content-addressable storage service",
+  "type": "module",
+  "main": "./src/cli.ts",
+  "types": "./src/cli.ts",
+  "bin": {
+    "casfa": "./src/cli.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/cli.ts",
+      "import": "./src/cli.ts"
+    }
+  },
+  "scripts": {
+    "dev": "bun src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "check": "tsc --noEmit && biome check ."
+  },
+  "dependencies": {
+    "@casfa/core": "workspace:*",
+    "@casfa/client": "workspace:*",
+    "@casfa/protocol": "workspace:*",
+    "@noble/hashes": "^2.0.1",
+    "chalk": "^5.3.0",
+    "cli-table3": "^0.6.5",
+    "commander": "^12.1.0",
+    "enquirer": "^2.4.1",
+    "open": "^10.1.0",
+    "ora": "^8.1.0",
+    "yaml": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0",
+    "typescript": "^5.5.4"
+  },
+  "keywords": [
+    "casfa",
+    "cli",
+    "content-addressable-storage",
+    "cas",
+    "agent"
+  ],
+  "license": "MIT"
+}

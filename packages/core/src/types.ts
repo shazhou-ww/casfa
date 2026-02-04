@@ -1,0 +1,165 @@
+/**
+ * CAS Binary Format Types (v2.1)
+ *
+ * Node types:
+ * - d-node (dict node): directory with sorted children by name
+ * - s-node (successor node): file continuation chunk
+ * - f-node (file node): file top-level node with FileInfo
+ */
+
+/**
+ * Node kind discriminator
+ */
+export type NodeKind = "dict" | "file" | "successor";
+
+/**
+ * Hash provider - injected by platform-specific implementations
+ */
+export type HashProvider = {
+  /**
+   * Compute hash of data (BLAKE3s-128 for CAS\01)
+   * @param data - Input bytes
+   * @returns 16-byte hash as Uint8Array
+   */
+  hash: (data: Uint8Array) => Promise<Uint8Array>;
+};
+
+/**
+ * Storage provider - injected by platform-specific implementations
+ * Server uses S3, Client uses HTTP, tests use in-memory
+ */
+export type StorageProvider = {
+  /**
+   * Store data by key
+   * @param key - CAS key (e.g., "blake3s:...")
+   * @param data - Raw bytes to store
+   */
+  put: (key: string, data: Uint8Array) => Promise<void>;
+
+  /**
+   * Retrieve data by key
+   * @param key - CAS key
+   * @returns Raw bytes or null if not found
+   */
+  get: (key: string) => Promise<Uint8Array | null>;
+
+  /**
+   * Check if key exists
+   * @param key - CAS key
+   * @returns true if key exists
+   */
+  has: (key: string) => Promise<boolean>;
+};
+
+/**
+ * Parsed CAS node header (16 bytes base + optional extensions)
+ *
+ * Layout:
+ * - 0-3:   magic (u32 LE) - 0x01534143
+ * - 4-7:   flags (u32 LE) - see FLAGS constants for bit layout
+ * - 8-11:  size (u32 LE) - payload size
+ * - 12-15: count (u32 LE) - number of children
+ *
+ * Flags layout:
+ * - bits 0-1:   node type
+ * - bits 2-3:   header extension count (n * 16 bytes)
+ * - bits 4-7:   block size (2^n * KB)
+ * - bits 8-15:  hash algorithm (0 = BLAKE3s-128)
+ * - bits 16-31: reserved
+ */
+export type CasHeader = {
+  /** Magic number (0x01534143) */
+  magic: number;
+  /** Flag bits (see FLAGS constants) */
+  flags: number;
+  /** Payload size (not including header and children) */
+  size: number;
+  /** Number of children */
+  count: number;
+};
+
+/**
+ * File info for f-node (64 bytes)
+ * - 0-7:   fileSize (u64 LE) - original file size
+ * - 8-63:  contentType (56 bytes, null-padded ASCII)
+ */
+export type FileInfo = {
+  /** Original file size (full B-Tree file size) */
+  fileSize: number;
+  /** MIME type (max 56 bytes) */
+  contentType: string;
+};
+
+/**
+ * Decoded CAS node
+ */
+export type CasNode = {
+  /** Node type: dict, file, or successor */
+  kind: NodeKind;
+  /** Payload size (bytes in this node's payload section) */
+  size: number;
+  /** File info (f-node only: fileSize + contentType) */
+  fileInfo?: FileInfo;
+  /** Child hashes (16 bytes each) */
+  children?: Uint8Array[];
+  /** Child names (d-node only, sorted by UTF-8 bytes) */
+  childNames?: string[];
+  /** Raw data (f-node and s-node only) */
+  data?: Uint8Array;
+};
+
+/**
+ * File node input for encoding (f-node)
+ */
+export type FileNodeInput = {
+  /** File content type (MIME type, max 56 bytes) */
+  contentType?: string;
+  /** Original file size (for B-Tree root node) */
+  fileSize: number;
+  /** Raw data bytes for this node */
+  data: Uint8Array;
+  /** Child chunk hashes (for B-Tree internal nodes) */
+  children?: Uint8Array[];
+};
+
+/**
+ * Successor node input for encoding (s-node)
+ */
+export type SuccessorNodeInput = {
+  /** Raw data bytes */
+  data: Uint8Array;
+  /** Child chunk hashes (for B-Tree internal nodes) */
+  children?: Uint8Array[];
+};
+
+/**
+ * Dict node input for encoding (d-node)
+ */
+export type DictNodeInput = {
+  /** Child hashes (16 bytes each) */
+  children: Uint8Array[];
+  /** Child names (will be sorted by UTF-8 bytes) */
+  childNames: string[];
+};
+
+/**
+ * B-Tree layout node description
+ */
+export type LayoutNode = {
+  /** Depth of this node (1 = leaf) */
+  depth: number;
+  /** Data bytes stored in this node */
+  dataSize: number;
+  /** Child layouts (empty for leaf nodes) */
+  children: LayoutNode[];
+};
+
+/**
+ * Encoded node result
+ */
+export type EncodedNode = {
+  /** Raw bytes of the encoded node */
+  bytes: Uint8Array;
+  /** BLAKE3s-128 hash of the bytes */
+  hash: Uint8Array;
+};

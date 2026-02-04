@@ -1,0 +1,24 @@
+{
+  "name": "@casfa/core",
+  "version": "0.0.1",
+  "description": "CAS binary format encoding/decoding - self-similar B-Tree node structure",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@noble/hashes": "^1.7.1",
+    "@types/bun": "latest",
+    "typescript": "^5.0.0"
+  },
+  "license": "MIT"
+}
