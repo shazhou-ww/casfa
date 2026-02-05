@@ -75,7 +75,6 @@ export { UpdateUserRoleSchema } from "./admin.ts";
 export type {
   ClientComplete,
   ClientInit,
-  CreateTicket,
   CreateToken,
   Login,
   Refresh,
@@ -86,8 +85,6 @@ export {
   // Client Auth
   ClientCompleteSchema,
   ClientInitSchema,
-  // Ticket
-  CreateTicketSchema,
   // Token
   CreateTokenSchema,
   // OAuth
@@ -102,6 +99,7 @@ export {
 // ============================================================================
 
 export type {
+  CreateTicket,
   CreateTicketResponse,
   ListTicketsQuery,
   TicketCommit,
@@ -111,6 +109,7 @@ export type {
 } from "./ticket.ts";
 export {
   CreateTicketResponseSchema,
+  CreateTicketSchema,
   ListTicketsQuerySchema,
   /** @deprecated Use TicketSubmitSchema instead */
   TicketCommitSchema,
@@ -124,14 +123,18 @@ export {
 // ============================================================================
 
 export type {
+  CreateDelegateToken,
   CreateTokenResponse,
+  DelegateToken,
   ListTokensQuery,
   RevokeTokenResponse,
   TokenDetail,
   TokenListItem,
 } from "./token.ts";
 export {
+  CreateDelegateTokenSchema,
   CreateTokenResponseSchema,
+  DelegateTokenSchema,
   ListTokensQuerySchema,
   RevokeTokenResponseSchema,
   TokenDetailSchema,
@@ -221,8 +224,10 @@ export {
 export type {
   ApproveRequest,
   ApproveRequestResponse,
+  ApproveTokenRequest,
   CreateAuthRequest,
   CreateAuthRequestResponse,
+  CreateTokenRequest,
   DenyRequest,
   DenyRequestResponse,
   ListRequestsQuery,
@@ -232,14 +237,17 @@ export type {
 export {
   ApproveRequestResponseSchema,
   ApproveRequestSchema,
+  ApproveTokenRequestSchema,
   CreateAuthRequestResponseSchema,
   CreateAuthRequestSchema,
+  CreateTokenRequestSchema,
   DenyRequestResponseSchema,
   DenyRequestSchema,
   ListRequestsQuerySchema,
   MAX_REQUEST_NAME_LENGTH,
   PollRequestResponseSchema,
   RequestListItemSchema,
+  TokenRequestIdSchema,
 } from "./request.ts";
 
 // ============================================================================

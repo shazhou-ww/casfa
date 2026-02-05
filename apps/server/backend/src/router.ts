@@ -33,7 +33,7 @@ import {
   CreateDepotSchema,
   UpdateDepotSchema,
   DepotCommitSchema,
-} from "./schemas/index.ts";
+} from "@casfa/protocol";
 import type { Env } from "./types.ts";
 
 // ============================================================================
