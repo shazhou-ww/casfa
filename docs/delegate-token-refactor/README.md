@@ -213,11 +213,12 @@ User (user_hash)
 |------|------|
 | [01-delegate-token.md](./01-delegate-token.md) | Delegate Token 权限模型与二进制编码规范 |
 | [02-cas-uri.md](./02-cas-uri.md) | CAS URI 格式定义与解析规则 |
-| [03-token-issuance.md](./03-token-issuance.md) | Token 签发与转签发流程 |
+| [03-token-issuance.md](./03-token-issuance.md) | Token 签发与转签发流程（含事务保证） |
 | [04-access-control.md](./04-access-control.md) | 访问鉴权规则 |
 | [05-data-model.md](./05-data-model.md) | 数据模型变更与迁移方案 |
 | [06-client-auth-flow.md](./06-client-auth-flow.md) | 客户端授权申请流程 |
 | [07-api-changes.md](./07-api-changes.md) | API 改动清单 |
+| [08-remaining-issues.md](./08-remaining-issues.md) | 剩余问题与待优化项 |
 
 ---
 
@@ -239,14 +240,44 @@ User (user_hash)
 
 ---
 
-## 附录 B: TODO（待后续补充）
+## 附录 B: 客户端 Token 存储安全指南
+
+Delegate Token 完整数据（128 字节）由客户端保管，服务端仅存储 Token ID（hash）。
+客户端需妥善保管 Token，泄露等同于授权泄露。
+
+### B.1 各平台推荐存储方式
+
+| 平台 | 推荐方式 | 说明 |
+|------|----------|------|
+| **浏览器** | `sessionStorage` | 仅当前 tab 可访问，关闭后清除。如需持久化，使用 Web Crypto API 加密后存 `localStorage` |
+| **Node.js CLI** | 系统 keychain | 使用 `keytar` 等库访问系统凭据存储（macOS Keychain, Windows Credential Manager, Linux Secret Service）|
+| **桌面应用** | 系统 keychain | 原生访问操作系统安全存储 |
+| **移动应用** | 安全存储 | iOS Keychain, Android Keystore |
+
+### B.2 不推荐的存储方式
+
+| 方式 | 风险 |
+|------|------|
+| 明文文件 | 任何进程可读，容易泄露 |
+| 环境变量 | 子进程可继承，日志可能记录 |
+| localStorage（未加密）| XSS 攻击可窃取 |
+| 代码硬编码 | 版本控制系统泄露风险 |
+
+### B.3 Token 轮换建议
+
+- 长期 Token（如 Delegate Token）建议定期轮换（如每 30 天）
+- 短期 Token（如 Access Token）在任务完成后尽快撤销
+- 检测到可疑活动时立即撤销所有相关 Token
+
+---
+
+## 附录 C: TODO（待后续补充）
 
 以下章节计划在后续迭代中补充：
 
 - [ ] 安全威胁模型
   - Token 泄露影响范围和应对措施
   - 中间人攻击防护（TLS 强制）
-  - Token 存储最佳实践（客户端侧）
   - 暴力破解防护策略
 
 - [ ] 监控与告警

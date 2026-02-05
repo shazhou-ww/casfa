@@ -80,11 +80,10 @@ Token 签发分为两种类型：
 │     └── 生成随机 salt                                        │
 │                    │                                         │
 │                    ▼                                         │
-│  6. 存储与返回                                               │
+│  6. 存储与返回（使用 DynamoDB 事务保证原子性）               │
 │     ├── 计算 token_id = blake3_128(token_bytes)             │
 │     ├── 预计算 issuerChain = [user_id]                      │
-│     ├── 存储 Token 元数据到数据库（不含完整 token_bytes）   │
-│     ├── 增加关联 set-node 的引用计数                        │
+│     ├── [事务] 存储 Token 元数据 + 增加 set-node 引用计数   │
 │     └── 通过 HTTPS 返回完整 Token 给客户端                  │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
@@ -140,7 +139,46 @@ async function validateUserScope(
 }
 ```
 
-### 2.4 API 定义
+### 2.4 事务保证
+
+Token 创建操作使用 DynamoDB `TransactWriteItems` 确保原子性：
+
+```typescript
+async function createTokenWithTransaction(
+  tokenRecord: DelegateTokenRecord,
+  setNodeId?: string
+): Promise<void> {
+  const transactItems: TransactWriteItem[] = [
+    // 1. 创建 Token 记录
+    {
+      Put: {
+        TableName: TABLE_NAME,
+        Item: tokenRecord,
+        ConditionExpression: "attribute_not_exists(pk)",
+      },
+    },
+  ];
+
+  // 2. 如果有关联的 set-node，增加引用计数
+  if (setNodeId) {
+    transactItems.push({
+      Update: {
+        TableName: TABLE_NAME,
+        Key: { pk: `SETNODE#${setNodeId}`, sk: "METADATA" },
+        UpdateExpression: "ADD refCount :inc",
+        ExpressionAttributeValues: { ":inc": 1 },
+      },
+    });
+  }
+
+  // 事务执行，保证原子性
+  await dynamodb.transactWriteItems({ TransactItems: transactItems });
+}
+```
+
+> **注意**：如果事务失败（如 set-node 不存在），整个操作回滚，Token 不会被创建。
+
+### 2.5 API 定义
 
 ```typescript
 // POST /api/tokens
@@ -202,13 +240,11 @@ type CreateTokenResponse = {
 │     └── 生成随机 salt                                        │
 │                    │                                         │
 │                    ▼                                         │
-│  5. 存储与返回                                               │
+│  5. 存储与返回（使用 DynamoDB 事务保证原子性）               │
 │     ├── 计算 token_id = blake3_128(token_bytes)             │
 │     ├── 验证深度限制 (parent.depth < 15)                    │
 │     ├── 预计算 issuerChain = [...parent.issuerChain, parentTokenId]│
-│     ├── 存储 Token 元数据到数据库（不含完整 token_bytes）   │
-│     ├── 记录父子关系用于追溯和级联撤销                      │
-│     ├── 增加关联 set-node 的引用计数                        │
+│     ├── [事务] 存储 Token 元数据 + 增加 set-node 引用计数   │
 │     └── 通过 HTTPS 返回完整 Token 给客户端                  │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
@@ -474,29 +510,78 @@ type TokenRecord = {
 
 ### 5.3 撤销级联
 
-撤销 Token 时，可选择级联撤销所有子 Token：
+撤销 Token 时，必须级联撤销所有子 Token。
+
+> **事务保证**：撤销操作使用 DynamoDB `TransactWriteItems` 确保原子性。
+> 如果事务失败，整个撤销操作回滚，不会出现部分撤销的状态。
 
 ```typescript
 async function revokeToken(
   tokenId: string,
   revokerId: string
 ): Promise<void> {
-  // 1. 标记当前 Token 为已撤销
-  await markRevoked(tokenId, revokerId);
-
-  // 2. 减少关联 set-node 的引用计数
   const token = await getToken(tokenId);
-  if (token?.scopeSetNodeId) {
-    await decrementSetNodeRefCount(token.scopeSetNodeId);
+  if (!token || token.isRevoked) return;
+
+  // 1. 收集所有需要撤销的 Token（当前 + 所有子孙）
+  const tokensToRevoke = await collectTokenTree(tokenId);
+
+  // 2. 收集所有关联的 set-node ID（用于递减引用计数）
+  const setNodeIds = tokensToRevoke
+    .map(t => t.scopeSetNodeId)
+    .filter((id): id is string => !!id);
+
+  // 3. 使用事务批量撤销（DynamoDB 事务最多 100 项）
+  const transactItems: TransactWriteItem[] = [];
+
+  // 3.1 标记所有 Token 为已撤销
+  for (const t of tokensToRevoke) {
+    transactItems.push({
+      Update: {
+        TableName: TABLE_NAME,
+        Key: { pk: `TOKEN#${t.tokenId}`, sk: "METADATA" },
+        UpdateExpression: "SET isRevoked = :true, revokedAt = :now, revokedBy = :by",
+        ExpressionAttributeValues: {
+          ":true": true,
+          ":now": Date.now(),
+          ":by": revokerId,
+        },
+      },
+    });
   }
 
-  // 3. 级联撤销所有子 Token（必须）
+  // 3.2 递减 set-node 引用计数
+  for (const setNodeId of setNodeIds) {
+    transactItems.push({
+      Update: {
+        TableName: TABLE_NAME,
+        Key: { pk: `SETNODE#${setNodeId}`, sk: "METADATA" },
+        UpdateExpression: "ADD refCount :dec",
+        ExpressionAttributeValues: { ":dec": -1 },
+      },
+    });
+  }
+
+  // 4. 执行事务（分批处理超过 100 项的情况）
+  await executeTransactWriteInBatches(transactItems, 100);
+}
+
+async function collectTokenTree(tokenId: string): Promise<TokenRecord[]> {
+  const result: TokenRecord[] = [];
+  const token = await getToken(tokenId);
+  if (!token) return result;
+
+  result.push(token);
   const children = await queryByIssuer(tokenId);
   for (const child of children) {
-    await revokeToken(child.tokenId, revokerId);
+    result.push(...await collectTokenTree(child.tokenId));
   }
+  return result;
 }
 ```
+
+> **注意**：DynamoDB 事务最多支持 100 个操作项。对于深度较深的 Token 树，
+> 需要分批执行事务。实现时应记录中间状态，确保即使进程中断也能恢复。
 
 ### 5.4 审计日志
 

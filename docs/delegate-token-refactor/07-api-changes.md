@@ -448,14 +448,14 @@ Content-Type: application/octet-stream
 
 **可见范围**：查看该 Token 及其子 Token 创建的 Ticket
 
-**响应格式**：
+**响应格式（pending 状态）**：
 
 ```json
 {
   "ticketId": "ticket:...",
   "title": "Generate thumbnail",
   "status": "pending",
-  "root": "node:...",
+  "root": null,
   "accessTokenId": "dlt1_xxxxx",
   "creatorTokenId": "dlt1_yyyyy",
   "createdAt": 1738497600000
@@ -463,12 +463,17 @@ Content-Type: application/octet-stream
 ```
 
 **字段说明**：
-- `status`：`"pending"`（等待提交）或 `"submitted"`（已提交）
-- `root`：Ticket submit 时设置的输出节点（pending 状态时为 `null`，submitted 状态时为节点 hash）
-- `accessTokenId`：关联的 Access Token ID（submit 后该 Token 自动撤销）
-- `creatorTokenId`：创建此 Ticket 的 Delegate Token ID
 
-**submitted 状态示例**：
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `status` | `string` | `"pending"`（等待提交）或 `"submitted"`（已提交）|
+| `root` | `string \| null` | Ticket submit 时设置的输出节点（pending 时为 `null`，submitted 时为节点 hash）|
+| `accessTokenId` | `string` | 关联的 Access Token ID（submit 后该 Token 自动撤销）|
+| `creatorTokenId` | `string` | 创建此 Ticket 的 Delegate Token ID |
+| `submittedAt` | `number?` | 提交时间戳（仅 submitted 状态时存在）|
+
+**响应格式（submitted 状态）**：
+
 ```json
 {
   "ticketId": "ticket:...",

@@ -98,6 +98,10 @@ type DelegateTokenRecord = {
   expiresAt: number;
   depth: number;        // Token 深度 (0-15)
 
+  // Token 标识信息
+  name?: string;              // Token 名称（用户签发时可提供）
+  description?: string;       // Token 描述
+
   // 签发信息
   issuerId: string;           // 签发者 ID (hex)
   issuerType: "user" | "token";
@@ -139,7 +143,7 @@ type DelegateTokenRecord = {
 | type: "ticket" | tokenType: "access" | Ticket Token 迁移为访问 Token |
 | userId | issuerId (user) | 用户 ID 的 hash |
 | refreshToken | - | 废弃，OAuth 层面处理 |
-| name, description | - | 可移至审计日志或元数据 |
+| name, description | name, description | 保留，用于 Token 标识 |
 | scope (string[]) | scopeSetNodeId | 关联 set-node 表的 ID |
 | commit.quota | - | 字段保留（reserved），当前版本不使用 |
 | commit.accept | - | 暂时废弃，后续可扩展 |
@@ -664,6 +668,8 @@ export type DelegateTokenRecord = {
   realm: string;
   expiresAt: number;
   depth: number;
+  name?: string;              // Token 名称（用户签发时可提供）
+  description?: string;       // Token 描述
   issuerId: string;
   issuerType: "user" | "token";
   parentTokenId?: string;

@@ -315,7 +315,7 @@
 **请求**：
 ```json
 {
-  "clientSecret": "0123456789ABCDEFGHJKMNPQRSTVWXYZ",
+  "clientSecret": "0A1B2C3D4E5F6G7H8J9KMNPQRS",
   "realm": "usr_abc123",
   "name": "Cursor IDE Token",
   "expiresIn": 2592000,
@@ -449,11 +449,27 @@
 
 **密钥派生**：
 
-由于 `clientSecret` 为 128 位，AES-256-GCM 需要 256 位密钥，采用 SHA-256 派生：
+由于 `clientSecret` 为 128 位（Crockford Base32 编码后 26 字符），AES-256-GCM 需要 256 位密钥，采用 SHA-256 派生：
 
 ```typescript
-const key = createHash('sha256').update(clientSecret).digest();
+// clientSecretEncoded 是 Crockford Base32 编码的字符串（26 字符）
+const clientSecretBytes = decodeCrockfordBase32(clientSecretEncoded);  // 16 bytes
+const key = createHash('sha256').update(clientSecretBytes).digest();    // 32 bytes
 ```
+
+**encryptedToken 格式**：
+
+加密后的 Token 使用 Base64 编码，内部结构为：
+
+```
+encryptedToken = Base64(IV[12 bytes] + ciphertext + authTag[16 bytes])
+```
+
+| 部分 | 长度 | 说明 |
+|------|------|------|
+| IV | 12 bytes | AES-GCM 初始化向量（随机生成）|
+| ciphertext | 128 bytes | 加密后的 Token 数据 |
+| authTag | 16 bytes | AES-GCM 认证标签 |
 
 **其他安全措施**：
 
