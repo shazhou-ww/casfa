@@ -354,7 +354,7 @@ describe("Ticket Management", () => {
         { root: outputRoot }
       );
 
-      // Try second submit (should fail)
+      // Try second submit (should fail with 409 Conflict - ticket already submitted)
       const newAccessToken = await ctx.helpers.createAccessToken(token, realm, { canUpload: true });
       const response = await ctx.helpers.accessRequest(
         newAccessToken.tokenBase64,
@@ -363,7 +363,7 @@ describe("Ticket Management", () => {
         { root: testNodeKey(4) }
       );
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(409);
     });
 
     it("should reject missing root", async () => {
@@ -401,8 +401,8 @@ describe("Ticket Management", () => {
         title: "User Direct Ticket",
       });
 
-      // User creates delegate token, then access token from it
-      const delegateToken = await ctx.helpers.createDelegateToken(token, realm);
+      // User creates delegate token with canUpload, then access token from it
+      const delegateToken = await ctx.helpers.createDelegateToken(token, realm, { canUpload: true });
       const delegatedAccessResult = await ctx.helpers.delegateToken(delegateToken.tokenBase64, {
         type: "access",
         scope: [".:"],

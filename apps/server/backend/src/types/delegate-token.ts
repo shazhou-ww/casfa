@@ -170,6 +170,7 @@ export type TokenRequestRecord = {
   requestId: string;
   clientName: string;
   clientSecretHash: string; // Blake3-256 hash of clientSecret
+  displayCode?: string; // 用于用户确认的显示码
 
   // 申请状态
   status: "pending" | "approved" | "rejected" | "expired";

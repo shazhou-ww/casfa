@@ -104,17 +104,26 @@ export const createScopeValidationMiddleware = (
     const verification = await verifyIndexPath(nodeKey, indexPath, scopeRoots, getNodeInRealm);
 
     if (!verification.valid) {
+      // Return 400 for format errors, 403 for scope violations
+      const isFormatError = verification.reason?.includes("Invalid index path format") ||
+                            verification.reason?.includes("Empty index path");
+      const statusCode = isFormatError ? 400 : 403;
+      const errorCode = isFormatError ? "INVALID_INDEX_PATH" : "NODE_NOT_IN_SCOPE";
+      const errorMessage = isFormatError 
+        ? "Invalid X-CAS-Index-Path header format"
+        : "The requested node is not within the authorized scope";
+
       return c.json(
         {
-          error: "NODE_NOT_IN_SCOPE",
-          message: "The requested node is not within the authorized scope",
+          error: errorCode,
+          message: errorMessage,
           details: {
             nodeKey,
             indexPath,
             reason: verification.reason,
           },
         },
-        403
+        statusCode
       );
     }
 

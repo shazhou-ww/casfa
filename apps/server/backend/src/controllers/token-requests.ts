@@ -74,6 +74,7 @@ export const createTokenRequestsController = (
       requestId,
       clientName: body.clientName,
       clientSecretHash: body.clientSecretHash,
+      displayCode,
       expiresIn: Math.floor(REQUEST_TTL_MS / 1000),
     });
 
@@ -190,6 +191,7 @@ export const createTokenRequestsController = (
       requestId,
       status: request.status,
       clientName: request.clientName,
+      displayCode: request.displayCode,
       createdAt: request.createdAt,
       expiresAt: request.expiresAt,
     });
@@ -321,6 +323,7 @@ export const createTokenRequestsController = (
       success: true,
       tokenId,
       expiresAt,
+      encryptedToken, // Include encrypted token in response
     });
   };
 

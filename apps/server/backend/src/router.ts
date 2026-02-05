@@ -166,7 +166,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   tokensRouter.get("/:tokenId", deps.jwtAuthMiddleware, deps.tokens.get);
 
   // Revoke token (JWT auth)
-  tokensRouter.delete("/:tokenId", deps.jwtAuthMiddleware, deps.tokens.revoke);
+  tokensRouter.post("/:tokenId/revoke", deps.jwtAuthMiddleware, deps.tokens.revoke);
 
   // Re-delegate a token (requires delegate token auth)
   tokensRouter.post(

@@ -281,7 +281,7 @@ describe("Token Management", () => {
       expect(data.tokenType).toBe("delegate");
       expect(data.canUpload).toBe(true);
       expect(data.issuerChain).toBeInstanceOf(Array);
-      expect(data.issuerChain[0]).toMatch(/^usr_/); // First element is user ID
+      expect(data.issuerChain[0]).toMatch(/^user:/); // First element is user ID in user:base32 format
     });
 
     it("should return 404 for non-existent token", async () => {
@@ -546,7 +546,7 @@ describe("Token Management", () => {
           }
         );
 
-        if (response.status !== 200) {
+        if (response.status !== 201) {
           // May fail earlier due to other constraints - that's ok for this test
           break;
         }
@@ -564,8 +564,8 @@ describe("Token Management", () => {
         }
       );
 
-      // Should fail at max depth
-      expect(response.status === 400 || response.status === 200).toBe(true);
+      // Should fail at max depth (400) or succeed if we haven't reached max (201)
+      expect(response.status === 400 || response.status === 201).toBe(true);
     });
   });
 });

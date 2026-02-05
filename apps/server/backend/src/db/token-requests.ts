@@ -122,6 +122,7 @@ export const createTokenRequestsDb = (config: TokenRequestsDbConfig): TokenReque
       requestId: input.requestId,
       clientName: input.clientName,
       clientSecretHash: input.clientSecretHash,
+      displayCode: input.displayCode,
 
       // Status
       status: "pending",

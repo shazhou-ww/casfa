@@ -187,12 +187,19 @@ export const createTokensController = (deps: TokensControllerDeps): TokensContro
     const limit = parseInt(c.req.query("limit") ?? "20");
     const cursor = c.req.query("cursor");
     const includeRevoked = c.req.query("includeRevoked") === "true";
+    const typeFilter = c.req.query("type"); // "delegate" or "access"
 
     const realm = `usr_${auth.userId}`;
     const result = await delegateTokensDb.listByRealm(realm, { limit, cursor, includeRevoked });
 
+    // Filter by token type if specified
+    let filteredItems = result.items;
+    if (typeFilter && (typeFilter === "delegate" || typeFilter === "access")) {
+      filteredItems = result.items.filter((t) => t.tokenType === typeFilter);
+    }
+
     return c.json({
-      tokens: result.items.map((t) => ({
+      tokens: filteredItems.map((t) => ({
         tokenId: t.tokenId,
         name: t.name,
         realm: t.realm,

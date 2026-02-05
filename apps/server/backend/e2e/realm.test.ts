@@ -29,10 +29,11 @@ describe("Realm API", () => {
       // Realm API requires Access Token, not User JWT
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
+      // Note: The actual route is /:realmId (not /:realmId/info)
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
         "GET",
-        `/api/realm/${realm}/info`
+        `/api/realm/${realm}`
       );
 
       expect(response.status).toBe(200);
@@ -155,10 +156,11 @@ describe("Realm API", () => {
       // Create access token
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
+      // Note: The actual route is /:realmId (not /:realmId/info)
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
         "GET",
-        `/api/realm/${realm}/info`
+        `/api/realm/${realm}`
       );
 
       expect(response.status).toBe(200);
@@ -171,11 +173,12 @@ describe("Realm API", () => {
       // Create delegate token
       const delegateToken = await ctx.helpers.createDelegateToken(token, realm);
 
+      // Note: The actual route is /:realmId (not /:realmId/info)
       // Delegate token should be rejected for realm API
       const response = await ctx.helpers.delegateRequest(
         delegateToken.tokenBase64,
         "GET",
-        `/api/realm/${realm}/info`
+        `/api/realm/${realm}`
       );
 
       expect(response.status).toBe(403); // ACCESS_TOKEN_REQUIRED
@@ -185,11 +188,12 @@ describe("Realm API", () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
+      // Note: The actual route is /:realmId (not /:realmId/info)
       // User JWT should be rejected for realm API
       const response = await ctx.helpers.authRequest(
         token,
         "GET",
-        `/api/realm/${realm}/info`
+        `/api/realm/${realm}`
       );
 
       expect(response.status).toBe(401); // Invalid token format for realm API

@@ -3,26 +3,28 @@
   "version": "0.0.1",
   "description": "CLI for CASFA content-addressable storage service",
   "type": "module",
-  "main": "./src/cli.ts",
-  "types": "./src/cli.ts",
+  "main": "./dist/cli.js",
+  "types": "./dist/cli.d.ts",
   "bin": {
-    "casfa": "./src/cli.ts"
+    "casfa": "./dist/cli.js"
   },
   "files": [
-    "src"
+    "dist"
   ],
   "exports": {
     ".": {
-      "types": "./src/cli.ts",
-      "import": "./src/cli.ts"
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
     }
   },
   "scripts": {
+    "build": "tsup",
     "dev": "bun src/cli.ts",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "check": "tsc --noEmit && biome check ."
+    "check": "tsc --noEmit && biome check .",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "@casfa/core": "workspace:*",
@@ -48,5 +50,8 @@
     "cas",
     "agent"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT"
 }
