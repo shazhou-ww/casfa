@@ -311,8 +311,9 @@ type DelegateTokenRequest = {
 // 注意：quota 字段当前版本保留，不在 API 中暴露
 
 type DelegateTokenResponse = {
-  tokenId: string;
-  expiresAt: string;
+  tokenId: string;       // dlt1_xxxxx 格式
+  tokenBase64: string;   // 完整 Token 的 Base64 编码，客户端需妥善保管
+  expiresAt: string;     // ISO 8601
 };
 ```
 
