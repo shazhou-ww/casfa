@@ -5,7 +5,59 @@
  */
 
 // =============================================================================
-// New Stateless Client Architecture (Recommended)
+// New Stateful Client (Recommended)
+// =============================================================================
+
+export {
+  type CasfaClient,
+  createStatefulClient,
+  type DepotMethods,
+  type NodeMethods,
+  type OAuthMethods,
+  type TicketMethods,
+  type TokenMethods,
+} from "./stateful-client.ts";
+// Store utilities
+export {
+  createRefreshManager,
+  createTokenSelector,
+  createTokenStore,
+  DEFAULT_EXPIRY_BUFFER_MS,
+  getMaxIssuerId,
+  isAccessTokenFromMaxIssuer,
+  isAccessTokenValid,
+  isDelegateTokenFromCurrentUser,
+  isDelegateTokenValid,
+  isTokenExpiringSoon,
+  isTokenValid,
+  isUserTokenValid,
+  type RefreshManager,
+  shouldReissueAccessToken,
+  shouldReissueDelegateToken,
+  type TokenSelector,
+  type TokenStore,
+} from "./store/index.ts";
+// Stateful client types
+export type {
+  ClientConfig,
+  ClientContext,
+  ClientError,
+  FetchResult as StatefulFetchResult,
+  OnAuthRequiredCallback,
+  OnTokenChangeCallback,
+  TokenStorageProvider,
+} from "./types/client.ts";
+export type {
+  StoredAccessToken,
+  StoredDelegateToken,
+  StoredUserToken,
+  TokenRequirement,
+  TokenState,
+} from "./types/tokens.ts";
+export { emptyTokenState } from "./types/tokens.ts";
+
+// =============================================================================
+// Stateless Client Architecture (Previous generation)
 // =============================================================================
 
 export {
@@ -21,7 +73,7 @@ export {
   type CasfaUserClient,
   type CasfaUserRealmView,
   // Types
-  type ClientConfig,
+  type ClientConfig as StatelessClientConfig,
   type CommitDepotParams,
   type CommitTicketParams,
   type CompleteClientParams,
@@ -29,7 +81,7 @@ export {
   type CreateDepotParams,
   type CreateTicketParams,
   // Main entry point
-  createCasfaClient,
+  createCasfaClient as createStatelessClient,
   createDelegateClient,
   // Individual client factories
   createTicketClient,
@@ -57,13 +109,13 @@ export {
 } from "./clients/index.ts";
 
 // =============================================================================
-// Legacy Client (Deprecated - use createCasfaClient from clients/ instead)
+// Legacy Client (Deprecated)
 // =============================================================================
 
 export {
   type CasfaClient as LegacyCasfaClient,
   type CasfaClientConfig as LegacyCasfaClientConfig,
-  /** @deprecated Use createCasfaClient from clients/ instead */
+  /** @deprecated Use createStatefulClient instead */
   createCasfaClient as createLegacyCasfaClient,
 } from "./client.ts";
 

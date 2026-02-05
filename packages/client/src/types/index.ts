@@ -66,6 +66,16 @@ export type {
   UserAuthCallbacks,
   UserAuthState,
 } from "./auth.ts";
+// New stateful client types
+export type {
+  ClientConfig,
+  ClientContext,
+  ClientError,
+  FetchResult,
+  OnAuthRequiredCallback,
+  OnTokenChangeCallback,
+  TokenStorageProvider,
+} from "./client.ts";
 // Provider types
 export type {
   HashProvider,
@@ -74,3 +84,17 @@ export type {
   StorageProvider,
 } from "./providers.ts";
 export { createWebCryptoHashProvider } from "./providers.ts";
+
+export type {
+  StoredAccessToken,
+  StoredDelegateToken,
+  StoredUserToken,
+  TokenRequirement,
+  TokenState,
+} from "./tokens.ts";
+export {
+  emptyTokenState,
+  getMaxIssuerId,
+  isAccessTokenFromMaxIssuer,
+  isDelegateTokenFromCurrentUser,
+} from "./tokens.ts";

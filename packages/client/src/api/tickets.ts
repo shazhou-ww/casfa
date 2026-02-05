@@ -24,21 +24,25 @@ export type TicketApiContext = {
  * Create a new ticket.
  */
 export type CreateTicketParams = {
-  input?: string[];
-  purpose?: string;
-  writable?: WritableConfig;
-  expiresIn?: number; // seconds
+  /** Ticket title (required) */
+  title: string;
+  /** Expiration time in seconds */
+  expiresIn?: number;
+  /** Whether the associated Access Token can upload nodes */
+  canUpload?: boolean;
+  /** Relative index-path scope (subset of creator's scope) */
+  scope?: string[];
 };
 
 export const createTicket = async (
   ctx: TicketApiContext,
-  params: CreateTicketParams = {}
+  params: CreateTicketParams
 ): Promise<FetchResult<TicketInfo>> => {
   const body: CreateTicket = {
-    input: params.input,
-    purpose: params.purpose,
-    writable: params.writable,
+    title: params.title,
     expiresIn: params.expiresIn,
+    canUpload: params.canUpload,
+    scope: params.scope,
   };
 
   return ctx.fetcher.request<TicketInfo>(`/api/realm/${ctx.realmId}/tickets`, {

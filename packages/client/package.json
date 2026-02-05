@@ -33,6 +33,9 @@
     "check": "tsc --noEmit && biome check ."
   },
   "dependencies": {
+    "@casfa/cas-uri": "workspace:*",
+    "@casfa/client-auth-crypto": "workspace:*",
+    "@casfa/delegate-token": "workspace:*",
     "@casfa/protocol": "workspace:*"
   },
   "peerDependencies": {
