@@ -106,7 +106,7 @@ describe("Ticket Management", () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const accessToken = await ctx.helpers.createAccessToken(token, realm);
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, { canUpload: true });
 
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
@@ -134,7 +134,7 @@ describe("Ticket Management", () => {
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
       const { realm: otherRealm } = await ctx.helpers.createTestUser(userId2, "authorized");
 
-      const accessToken = await ctx.helpers.createAccessToken(token, realm);
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, { canUpload: true });
 
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
@@ -158,7 +158,7 @@ describe("Ticket Management", () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const accessToken = await ctx.helpers.createAccessToken(token, realm);
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, { canUpload: true });
 
       // Create a few tickets
       await ctx.helpers.createTicket(accessToken.tokenBase64, realm, { title: "Task 1" });
@@ -180,7 +180,7 @@ describe("Ticket Management", () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const accessToken = await ctx.helpers.createAccessToken(token, realm);
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, { canUpload: true });
 
       // Create a ticket (status: pending)
       await ctx.helpers.createTicket(accessToken.tokenBase64, realm, { title: "Pending Task" });
@@ -203,7 +203,7 @@ describe("Ticket Management", () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const accessToken = await ctx.helpers.createAccessToken(token, realm);
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, { canUpload: true });
 
       // Create several tickets
       for (let i = 0; i < 5; i++) {
@@ -236,7 +236,7 @@ describe("Ticket Management", () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const accessToken = await ctx.helpers.createAccessToken(token, realm);
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, { canUpload: true });
       const ticket = await ctx.helpers.createTicket(accessToken.tokenBase64, realm, {
         title: "Detail Test",
       });
@@ -252,7 +252,7 @@ describe("Ticket Management", () => {
       expect(data.ticketId).toBe(ticket.ticketId);
       expect(data.title).toBe("Detail Test");
       expect(data.status).toBe("pending");
-      expect(data.issuerChain).toBeInstanceOf(Array);
+      expect(data.creatorIssuerId).toBeDefined();
     });
 
     it("should return 404 for non-existent ticket", async () => {
@@ -370,7 +370,7 @@ describe("Ticket Management", () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const accessToken = await ctx.helpers.createAccessToken(token, realm);
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, { canUpload: true });
       const ticket = await ctx.helpers.createTicket(accessToken.tokenBase64, realm, {
         title: "Missing Root Test",
       });
@@ -395,8 +395,8 @@ describe("Ticket Management", () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // User creates access token
-      const userAccessToken = await ctx.helpers.createAccessToken(token, realm);
+      // User creates access token with canUpload permission
+      const userAccessToken = await ctx.helpers.createAccessToken(token, realm, { canUpload: true });
       const ticket1 = await ctx.helpers.createTicket(userAccessToken.tokenBase64, realm, {
         title: "User Direct Ticket",
       });
@@ -406,6 +406,7 @@ describe("Ticket Management", () => {
       const delegatedAccessResult = await ctx.helpers.delegateToken(delegateToken.tokenBase64, {
         type: "access",
         scope: [".:"],
+        canUpload: true,
       });
       const delegatedAccessToken = delegatedAccessResult as { tokenBase64: string };
 

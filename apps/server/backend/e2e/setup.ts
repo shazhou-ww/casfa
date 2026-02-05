@@ -392,10 +392,11 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
       await db.userRolesDb.setRole(userId, role);
 
       // Create default MAIN depot for the user's realm if it doesn't exist
-      let mainDepot = await db.depotsDb.getByName(realm, "MAIN");
+      // Note: MAIN_DEPOT_NAME is "main" (lowercase), matching db/depots.ts
+      let mainDepot = await db.depotsDb.getByName(realm, "main");
       if (!mainDepot) {
         mainDepot = await db.depotsDb.create(realm, {
-          name: "MAIN",
+          name: "main",
           root: "0".repeat(52), // Empty root hash placeholder
         });
       }
@@ -483,15 +484,15 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
         expiresIn,
         canUpload = false,
         canManageDepot = false,
-        scope,  // Optional - if not provided, will use MAIN depot
+        scope,  // Optional - if not provided, will use main depot
       } = options;
 
-      // If scope not provided, get the MAIN depot for this realm
+      // If scope not provided, get the main depot for this realm
       let finalScope = scope;
       if (!finalScope || finalScope.length === 0) {
-        const mainDepot = await db.depotsDb.getByName(realm, "MAIN");
+        const mainDepot = await db.depotsDb.getByName(realm, "main");
         if (!mainDepot) {
-          throw new Error(`MAIN depot not found for realm ${realm}`);
+          throw new Error(`main depot not found for realm ${realm}`);
         }
         finalScope = [`cas://depot:${mainDepot.depotId}`];
       }
@@ -520,15 +521,15 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
         expiresIn,
         canUpload = false,
         canManageDepot = false,
-        scope,  // Optional - if not provided, will use MAIN depot
+        scope,  // Optional - if not provided, will use main depot
       } = options;
 
-      // If scope not provided, get the MAIN depot for this realm
+      // If scope not provided, get the main depot for this realm
       let finalScope = scope;
       if (!finalScope || finalScope.length === 0) {
-        const mainDepot = await db.depotsDb.getByName(realm, "MAIN");
+        const mainDepot = await db.depotsDb.getByName(realm, "main");
         if (!mainDepot) {
-          throw new Error(`MAIN depot not found for realm ${realm}`);
+          throw new Error(`main depot not found for realm ${realm}`);
         }
         finalScope = [`cas://depot:${mainDepot.depotId}`];
       }

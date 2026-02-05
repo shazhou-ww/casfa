@@ -34,35 +34,18 @@ type TicketsControllerDeps = {
 // Helpers
 // ============================================================================
 
-const deriveTicketStatus = (ticket: TicketRecord): string => {
-  if (ticket.status === "revoked") return "revoked";
-  if (ticket.status === "submitted") return "submitted";
-  if (ticket.status === "expired" || ticket.expiresAt < Date.now()) return "expired";
-  return "issued";
-};
-
-const formatTicketResponse = (ticket: TicketRecord, includeDetails = false) => {
-  const base = {
+const formatTicketResponse = (ticket: TicketRecord) => {
+  return {
     ticketId: ticket.ticketId,
     realm: ticket.realm,
-    status: deriveTicketStatus(ticket),
+    status: ticket.status,
     title: ticket.title,
-    output: ticket.submittedRoot ?? null,
+    root: ticket.root ?? null,
     creatorIssuerId: ticket.creatorIssuerId,
-    canUpload: ticket.canUpload,
+    accessTokenId: ticket.accessTokenId,
     createdAt: ticket.createdAt,
-    expiresAt: ticket.expiresAt,
+    submittedAt: ticket.submittedAt,
   };
-
-  if (includeDetails) {
-    return {
-      ...base,
-      scopeNodeHash: ticket.scopeNodeHash,
-      scopeSetNodeId: ticket.scopeSetNodeId,
-    };
-  }
-
-  return base;
 };
 
 // ============================================================================
@@ -70,7 +53,7 @@ const formatTicketResponse = (ticket: TicketRecord, includeDetails = false) => {
 // ============================================================================
 
 export const createTicketsController = (deps: TicketsControllerDeps): TicketsController => {
-  const { ticketsDb, depotsDb } = deps;
+  const { ticketsDb } = deps;
 
   return {
     create: async (c) => {
@@ -78,14 +61,19 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
       const realmId = c.req.param("realmId");
       const body = await c.req.json();
 
+      // Validate required fields
+      if (!body.title || typeof body.title !== "string" || body.title.trim() === "") {
+        return c.json({ error: "bad_request", message: "title is required" }, 400);
+      }
+
       const ticketId = generateTicketId();
-      
+
       const ticket = await ticketsDb.create({
         ticketId,
         realm: realmId,
         title: body.title,
-        accessTokenId: auth.tokenId, // The Access Token used to create this ticket
-        creatorIssuerId: auth.tokenId, // For issuer chain visibility
+        accessTokenId: auth.tokenId,
+        creatorIssuerId: auth.tokenId,
       });
 
       return c.json(
@@ -101,20 +89,19 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
     },
 
     list: async (c) => {
-      const auth = c.get("auth") as AccessTokenAuthContext;
       const realmId = c.req.param("realmId");
       const limit = Number.parseInt(c.req.query("limit") ?? "100", 10);
       const cursor = c.req.query("cursor");
+      const status = c.req.query("status") as "pending" | "submitted" | undefined;
 
-      // List tickets created by the caller's issuer chain
       const result = await ticketsDb.listByRealm(realmId, {
         limit,
         cursor,
-        creatorIssuerId: auth.tokenId,
+        status,
       });
 
       return c.json({
-        tickets: result.tickets.map((t) => formatTicketResponse(t, false)),
+        tickets: result.items.map((t: TicketRecord) => formatTicketResponse(t)),
         nextCursor: result.nextCursor,
         hasMore: result.hasMore,
       });
@@ -129,7 +116,7 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
         return c.json({ error: "not_found", message: "Ticket not found" }, 404);
       }
 
-      return c.json(formatTicketResponse(ticket, true));
+      return c.json(formatTicketResponse(ticket));
     },
 
     submit: async (c) => {
@@ -137,35 +124,28 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
       const ticketId = c.req.param("ticketId");
       const body = await c.req.json();
 
+      if (!body.root) {
+        return c.json({ error: "bad_request", message: "Missing root in request body" }, 400);
+      }
+
       const ticket = await ticketsDb.get(realmId, ticketId);
       if (!ticket) {
         return c.json({ error: "not_found", message: "Ticket not found" }, 404);
       }
 
-      // Check if already submitted
       if (ticket.status === "submitted") {
         return c.json({ error: "conflict", message: "Ticket already submitted" }, 409);
       }
 
-      // Check if revoked or expired
-      if (ticket.status === "revoked" || ticket.expiresAt < Date.now()) {
-        return c.json({ error: "gone", message: "Ticket is revoked or expired" }, 410);
-      }
-
-      // Check if writable
-      if (!ticket.canUpload) {
-        return c.json({ error: "forbidden", message: "Ticket is read-only" }, 403);
-      }
-
-      const success = await ticketsDb.submit(ticketId, body.output);
-      if (!success) {
+      const updated = await ticketsDb.submit(realmId, ticketId, body.root);
+      if (!updated) {
         return c.json({ error: "conflict", message: "Failed to submit ticket" }, 409);
       }
 
       return c.json({
         success: true,
         status: "submitted",
-        output: body.output,
+        root: body.root,
       });
     },
 
@@ -179,24 +159,19 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
         return c.json({ error: "not_found", message: "Ticket not found" }, 404);
       }
 
-      // Check permission: only creator can revoke
       if (ticket.creatorIssuerId !== auth.tokenId) {
-        // Check if caller is in creator's issuer chain
         const canRevoke = auth.issuerChain.includes(ticket.creatorIssuerId);
         if (!canRevoke) {
           return c.json({ error: "forbidden", message: "Not the ticket creator" }, 403);
         }
       }
 
-      // Revoke by deleting the ticket
       const success = await ticketsDb.delete(realmId, ticketId);
       if (!success) {
         return c.json({ error: "conflict", message: "Failed to revoke ticket" }, 409);
       }
 
-      return c.json({
-        success: true,
-      });
+      return c.json({ success: true });
     },
 
     delete: async (c) => {
@@ -209,9 +184,7 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
         return c.json({ error: "not_found", message: "Ticket not found" }, 404);
       }
 
-      // Check permission: only creator can delete
       if (ticket.creatorIssuerId !== auth.tokenId) {
-        // Check if caller is in creator's issuer chain
         const canDelete = auth.issuerChain.includes(ticket.creatorIssuerId);
         if (!canDelete) {
           return c.json({ error: "forbidden", message: "Not the ticket creator" }, 403);
@@ -219,7 +192,6 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
       }
 
       await ticketsDb.delete(realmId, ticketId);
-
       return c.json({ success: true });
     },
   };

@@ -196,9 +196,3 @@ describe("Realm API", () => {
     });
   });
 });
-      );
-
-      expect(response.status).toBe(200);
-    });
-  });
-});

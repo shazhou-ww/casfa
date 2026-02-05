@@ -110,9 +110,8 @@ export const createTicketsDb = (config: TicketsDbConfig): TicketsDb => {
 
     // Store with realm table key format
     const item = {
-      realm: input.realm,
-      key: toTicketSk(input.ticketId),
       ...record,
+      key: toTicketSk(input.ticketId),
     };
 
     await client.send(
