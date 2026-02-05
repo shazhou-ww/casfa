@@ -256,3 +256,7 @@ User (user_hash)
   - API 路径版本号
   - 破坏性变更通知机制
   - 旧版本 API 退役策略
+
+- [ ] Core Package 扩展
+  - 导出 `EMPTY_SET_NODE_HASH` 常量（空 set-node 的固定 hash 值）
+  - 支持 empty set-node 编码/解码

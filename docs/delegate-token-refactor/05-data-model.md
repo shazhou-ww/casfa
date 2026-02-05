@@ -334,9 +334,10 @@ type TicketRecord = {
 所有权限相关的信息都由关联的 Access Token 承载。
 
 **引用计数**：
-- Ticket 的 `root` 字段增加对应节点的引用计数
+- Ticket submit 时设置 `root` 字段并增加该节点的引用计数（+1）
+- 提交的根节点创建时引用计数为 0，submit 时 +1
 - Ticket 过期不会清理 root 引用（Access Token 过期后 Ticket 数据仍有效）
-- Ticket 被删除时递减 root 的引用计数
+- Ticket 被删除时递减 root 的引用计数（-1）
 
 ---
 
@@ -666,6 +667,7 @@ export type DelegateTokenRecord = {
   issuerId: string;
   issuerType: "user" | "token";
   parentTokenId?: string;
+  issuerChain: string[];  // 预计算的签发链
   canUpload: boolean;
   canManageDepot: boolean;
   isUserIssued: boolean;
@@ -718,6 +720,7 @@ export type TicketRecord = {
   title: string;
   status: "pending" | "submitted";
   submittedAt?: number;
+  root?: string;  // submit 输出节点 hash（用于访问历史输出）
   accessTokenId: string;
   creatorTokenId: string;
   createdAt: number;

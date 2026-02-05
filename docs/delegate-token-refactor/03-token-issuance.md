@@ -155,8 +155,9 @@ type CreateTokenRequest = {
 };
 
 type CreateTokenResponse = {
-  tokenId: string;  // dlt_XXXXX 格式
-  expiresAt: string; // ISO 8601
+  tokenId: string;       // dlt1_xxxxx 格式
+  tokenBase64: string;   // 完整 Token 的 Base64 编码，客户端需妥善保管
+  expiresAt: string;     // ISO 8601
 };
 ```
 
@@ -204,7 +205,7 @@ type CreateTokenResponse = {
 │  5. 存储与返回                                               │
 │     ├── 计算 token_id = blake3_128(token_bytes)             │
 │     ├── 验证深度限制 (parent.depth < 15)                    │
-│     ├── 预计算 issuerChain = [...parent.issuerChain, tokenId]│
+│     ├── 预计算 issuerChain = [...parent.issuerChain, parentTokenId]│
 │     ├── 存储 Token 元数据到数据库（不含完整 token_bytes）   │
 │     ├── 记录父子关系用于追溯和级联撤销                      │
 │     ├── 增加关联 set-node 的引用计数                        │
@@ -538,18 +539,20 @@ const response = await fetch("/api/tokens", {
   }),
 });
 
-const { tokenId } = await response.json();
-// tokenId = "dlt_4XZRT7Y2M5K9BQWP3FNHJC6D"
+const { tokenId, tokenBase64 } = await response.json();
+// tokenId = "dlt1_4xzrt7y2m5k9bqwp3fnhjc6d"
+// tokenBase64 = 完整 Token 的 Base64 编码，客户端需妥善保管
 ```
 
 ### A.2 Agent 转签发访问 Token
 
 ```typescript
 // Agent 使用再授权 Token 签发临时访问 Token
-const response = await fetch("/api/tokens/dlt_4XZRT7Y2M5K9/delegate", {
+// delegateTokenBase64 是保存的完整 Token 的 Base64 编码
+const response = await fetch("/api/tokens/delegate", {
   method: "POST",
   headers: {
-    "Authorization": `Bearer dlt_4XZRT7Y2M5K9BQWP3FNHJC6D`,
+    "Authorization": `Bearer ${delegateTokenBase64}`,
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
@@ -562,17 +565,19 @@ const response = await fetch("/api/tokens/dlt_4XZRT7Y2M5K9/delegate", {
   }),
 });
 
-const { tokenId } = await response.json();
-// tokenId = "dlt_7YNMQ3KP2JDFHW8X9BCRT6VZ"
+const { tokenId, tokenBase64 } = await response.json();
+// tokenId = "dlt1_7ynmq3kp2jdfhw8x9bcrt6vz"
+// tokenBase64 = 完整 Token 的 Base64 编码，客户端需妥善保管
 ```
 
 ### A.3 使用访问 Token 读取数据
 
 ```typescript
 // 使用访问 Token 读取节点
+// accessTokenBase64 是保存的完整 Token 的 Base64 编码
 const response = await fetch("/api/realm/usr_abc123/nodes/ABCD1234", {
   headers: {
-    "Authorization": `Bearer dlt_7YNMQ3KP2JDFHW8X9BCRT6VZ`,
+    "Authorization": `Bearer ${accessTokenBase64}`,
     "X-CAS-Index-Path": "0:1:0",  // 证明节点在 scope 内
   },
 });

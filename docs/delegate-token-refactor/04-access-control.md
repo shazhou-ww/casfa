@@ -55,9 +55,11 @@
 
 ```
 GET /api/realm/{realmId}/nodes/{key}
-Authorization: Bearer dlt_XXXXX
+Authorization: Bearer {base64_encoded_token}
 X-CAS-Index-Path: 0:1:2
 ```
+
+> **说明**：`Authorization` Header 中的值是完整 Token（128 字节）的 Base64 编码。
 
 ### 2.3 验证流程
 
@@ -538,8 +540,10 @@ async function createTicket(
 async function submitTicket(
   accessToken: TokenRecord,
   ticketId: string,
+  rootNodeHash: string,  // 提交的根节点 hash
   ticketsDb: TicketsDb,
-  tokensDb: TokensDb
+  tokensDb: TokensDb,
+  nodesDb: NodesDb
 ): Promise<void> {
   // 1. 获取 Ticket
   const ticket = await ticketsDb.get(ticketId);
@@ -557,13 +561,17 @@ async function submitTicket(
     throw new Error("Ticket already submitted");
   }
 
-  // 4. 更新状态
+  // 4. 增加 root 节点的引用计数（提交的根节点创建时 refCount=0，submit 时 +1）
+  await nodesDb.incrementRefCount(rootNodeHash);
+
+  // 5. 更新状态，设置 root
   await ticketsDb.update(ticketId, {
     status: "submitted",
     submittedAt: Date.now(),
+    root: rootNodeHash,
   });
 
-  // 5. 自动撤销 Access Token（必须）
+  // 6. 自动撤销 Access Token（必须）
   await revokeToken(ticket.accessTokenId, accessToken.tokenId);
 }
 ```
@@ -646,7 +654,13 @@ type DelegateAuthContext = {
 
 ```typescript
 import { createMiddleware } from "hono/factory";
-import { blake3_128, bytesToHex } from "@casfa/core";
+import { blake3_128, bytesToHex, EMPTY_SET_NODE_HASH } from "@casfa/core";
+
+// 判断 scope 是否为空（只写 Token）
+function isEmptyScope(scope: Uint8Array): boolean {
+  const scopeHash = scope.slice(16);  // 后 16 bytes 是 hash
+  return bytesToHex(scopeHash) === bytesToHex(EMPTY_SET_NODE_HASH);
+}
 
 const tokenAuthMiddleware = createMiddleware<{
   Variables: { auth: DelegateAuthContext };
@@ -702,7 +716,7 @@ const tokenAuthMiddleware = createMiddleware<{
     issuerChain: tokenRecord.issuerChain,  // 预计算的 issuer chain
 
     isAccessToken: () => !decoded.flags.isDelegate,
-    canRead: () => !decoded.flags.isDelegate && !decoded.flags.isWriteOnly,
+    canRead: () => !decoded.flags.isDelegate && !isEmptyScope(decoded.scope),
     canWrite: () => !decoded.flags.isDelegate && decoded.flags.canUpload,
     canManageDepot: () => !decoded.flags.isDelegate && decoded.flags.canManageDepot,
   };
@@ -842,7 +856,7 @@ app.post(
 
 | Header | 用途 | 示例 |
 |--------|------|------|
-| `Authorization` | Token 认证 | `Bearer dlt1_xxxxx` |
+| `Authorization` | Token 认证 | `Bearer {base64_encoded_128_bytes}` |
 | `X-CAS-Index-Path` | Scope 证明 | `0:1:2` |
 | `X-CAS-Content-Type` | 节点 MIME 类型 | `application/json` |
 | `X-CAS-Size` | 节点逻辑大小 | `1024` |
