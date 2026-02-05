@@ -10,16 +10,16 @@
  * 6. Save credentials
  */
 
-import type { CasfaAnonymousClient } from "@casfa/client";
+import { api } from "@casfa/client";
 import chalk from "chalk";
 import open from "open";
 import ora from "ora";
-import { setCredentials } from "./credentials";
+import { setUserToken } from "./credentials";
 import { type CallbackError, findAvailablePort, waitForCallback } from "./local-server";
 import { generateCodeChallenge, generateCodeVerifier, generateState } from "./pkce";
 
 export interface OAuthLoginOptions {
-  client: CasfaAnonymousClient;
+  baseUrl: string;
   profileName: string;
   /** Optional timeout in milliseconds (default: 5 minutes) */
   timeoutMs?: number;
@@ -33,15 +33,36 @@ export interface OAuthLoginResult {
 }
 
 /**
+ * Build the authorization URL for OAuth login.
+ */
+function buildAuthUrl(
+  config: api.CognitoConfig,
+  redirectUri: string,
+  codeChallenge: string,
+  state: string
+): string {
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: config.clientId,
+    redirect_uri: redirectUri,
+    scope: "openid email profile",
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+    state,
+  });
+  return `${config.domain}/oauth2/authorize?${params.toString()}`;
+}
+
+/**
  * Perform OAuth 2.0 Authorization Code Flow with PKCE.
  */
 export async function oauthLogin(options: OAuthLoginOptions): Promise<OAuthLoginResult> {
-  const { client, profileName, timeoutMs = 300000, preferredPort = 9876 } = options;
+  const { baseUrl, profileName, timeoutMs = 300000, preferredPort = 9876 } = options;
 
   // Step 1: Get OAuth configuration
   const configSpinner = ora("Fetching OAuth configuration...").start();
 
-  const configResult = await client.oauth.getConfig();
+  const configResult = await api.getOAuthConfig(baseUrl);
   if (!configResult.ok) {
     configSpinner.fail("Failed to get OAuth configuration");
     throw new Error(configResult.error?.message || "Failed to get OAuth configuration");
@@ -70,12 +91,7 @@ export async function oauthLogin(options: OAuthLoginOptions): Promise<OAuthLogin
   const redirectUri = `http://localhost:${port}/callback`;
 
   // Step 4: Build authorization URL
-  const authUrl = client.oauth.buildAuthUrl({
-    config,
-    redirectUri,
-    codeChallenge,
-    state,
-  });
+  const authUrl = buildAuthUrl(config, redirectUri, codeChallenge, state);
 
   // Step 5: Display instructions and open browser
   console.log();
@@ -125,7 +141,7 @@ export async function oauthLogin(options: OAuthLoginOptions): Promise<OAuthLogin
   // Step 7: Exchange authorization code for tokens
   const tokenSpinner = ora("Exchanging authorization code...").start();
 
-  const tokenResult = await client.oauth.exchangeCode({
+  const tokenResult = await api.exchangeCode(baseUrl, {
     code: callbackResult.code,
     redirectUri,
     codeVerifier,
@@ -139,17 +155,31 @@ export async function oauthLogin(options: OAuthLoginOptions): Promise<OAuthLogin
   const tokens = tokenResult.data;
   tokenSpinner.succeed("Tokens received");
 
-  // Step 8: Save credentials
-  // Use id_token instead of access_token because id_token contains user claims (email, etc.)
-  setCredentials(profileName, {
-    type: "oauth",
+  // Step 8: Get user info to extract userId
+  let userId: string | undefined;
+  try {
+    // Use id_token as the access token for user info
+    const userResult = await api.getMe(baseUrl, tokens.id_token);
+    if (userResult.ok) {
+      userId = userResult.data.userId;
+    }
+  } catch {
+    // Ignore errors, userId is optional
+  }
+
+  // Step 9: Save credentials using new format
+  setUserToken(profileName, {
     accessToken: tokens.id_token,
     refreshToken: tokens.refresh_token || "",
+    userId,
     expiresAt: Math.floor(Date.now() / 1000) + tokens.expires_in,
   });
 
   console.log();
   console.log(`${chalk.green("✓")} Login successful!`);
+  if (userId) {
+    console.log(`${chalk.dim("User ID:")} ${userId}`);
+  }
 
-  return { success: true };
+  return { success: true, userId };
 }

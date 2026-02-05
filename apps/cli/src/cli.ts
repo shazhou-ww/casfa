@@ -19,13 +19,27 @@ program
   .version("0.1.0")
   .option("-p, --profile <name>", "use specified profile")
   .option("--base-url <url>", "override service base URL")
-  .option("--token <token>", "use agent token for authentication")
+  .option("--delegate-token <token>", "use delegate token for authentication")
+  .option("--access-token <token>", "use access token directly (bypasses auto-issue)")
+  .option("--token <token>", "DEPRECATED: use --delegate-token instead")
   .option("--ticket <ticket>", "use ticket for authentication")
   .option("--realm <realm-id>", "specify realm ID")
   .option("--no-cache", "disable local cache")
   .option("-f, --format <type>", "output format: text|json|yaml|table", "text")
   .option("-v, --verbose", "verbose output")
   .option("-q, --quiet", "quiet mode");
+
+// Handle deprecated --token option
+program.hook("preAction", (thisCommand) => {
+  const opts = thisCommand.opts();
+  if (opts.token && !opts.delegateToken) {
+    console.warn(
+      "\x1b[33mWarning: --token is deprecated, use --delegate-token instead\x1b[0m"
+    );
+    // Copy token to delegateToken for backward compatibility
+    opts.delegateToken = opts.token;
+  }
+});
 
 // Register all command groups
 registerConfigCommands(program);

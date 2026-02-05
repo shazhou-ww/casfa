@@ -1,117 +1,137 @@
-import type {
-  CasfaAnonymousClient,
-  CasfaDelegateClient,
-  CasfaDelegateRealmView,
-  CasfaTicketClient,
-  CasfaUserClient,
-  CasfaUserRealmView,
-  HashProvider,
+import {
+  type CasfaClient,
+  type TokenState,
+  type TokenStorageProvider,
+  createClient as createCasfaClient,
+  emptyTokenState,
+  api,
 } from "@casfa/client";
-import { createCasfaClient } from "@casfa/client";
-import { blake3 } from "@noble/hashes/blake3.js";
-import { sha256 } from "@noble/hashes/sha2.js";
 import { getProfile, loadConfig } from "./config";
-import { type Credentials, getCredentials, isTokenExpired, setCredentials } from "./credentials";
+import {
+  type Credentials,
+  type DelegateTokenCredential,
+  type UserTokenCredential,
+  getCredentials,
+  isDelegateTokenExpired,
+  isUserTokenExpired,
+  setCredentials,
+} from "./credentials";
 
 // ============================================================================
-// Hash Provider
+// Client Options
 // ============================================================================
-
-const createHashProvider = (): HashProvider => ({
-  sha256: async (data: Uint8Array): Promise<Uint8Array> => {
-    return sha256(data);
-  },
-  blake3: async (data: Uint8Array): Promise<Uint8Array> => {
-    return blake3(data);
-  },
-});
 
 export interface ClientOptions {
   profile?: string;
   baseUrl?: string;
-  token?: string;
+  delegateToken?: string; // New: direct delegate token
+  accessToken?: string; // New: direct access token (bypasses auto-issue)
   ticket?: string;
   realm?: string;
+  /** @deprecated Use delegateToken instead */
+  token?: string; // Legacy: agent token, now treated as delegate token
 }
 
 // ============================================================================
-// Client Types for CLI
+// Resolved Client Types
 // ============================================================================
 
-/** Base client - only public APIs */
-export interface BaseClientResult {
-  type: "base";
-  client: CasfaAnonymousClient;
+/**
+ * Resolved client with context information.
+ */
+export interface ResolvedClient {
+  /** The CASFA client instance */
+  client: CasfaClient;
+  /** Profile name used */
   profile: string;
+  /** Base URL of the server */
   baseUrl: string;
-  realm?: string;
-}
-
-/** User client without realm */
-export interface UserClientResult {
-  type: "user";
-  client: CasfaUserClient;
-  profile: string;
-  baseUrl: string;
-  realm?: string;
-}
-
-/** User client with realm */
-export interface UserRealmResult {
-  type: "user-realm";
-  client: CasfaUserRealmView;
-  profile: string;
-  baseUrl: string;
+  /** Realm ID (if set) */
   realm: string;
+  /** Authentication type */
+  authType: "none" | "user" | "delegate" | "access" | "ticket";
 }
 
-/** Delegate client without realm */
-export interface DelegateClientResult {
-  type: "delegate";
-  client: CasfaDelegateClient;
-  profile: string;
-  baseUrl: string;
-  realm?: string;
+// ============================================================================
+// Token Storage Provider for CLI
+// ============================================================================
+
+/**
+ * Create a TokenStorageProvider that bridges CLI credentials to CasfaClient.
+ */
+function createCliTokenStorage(profileName: string): TokenStorageProvider {
+  return {
+    load: async (): Promise<TokenState | null> => {
+      const cred = getCredentials(profileName);
+      if (!cred) return null;
+
+      const state: TokenState = emptyTokenState();
+
+      if (cred.userToken && !isUserTokenExpired(cred)) {
+        state.user = {
+          accessToken: cred.userToken.accessToken,
+          refreshToken: cred.userToken.refreshToken,
+          userId: cred.userToken.userId || "unknown",
+          expiresAt: cred.userToken.expiresAt * 1000, // Convert to ms
+        };
+      }
+
+      if (cred.delegateToken && !isDelegateTokenExpired(cred)) {
+        state.delegate = {
+          tokenId: cred.delegateToken.tokenId,
+          tokenBase64: cred.delegateToken.token,
+          type: "delegate",
+          issuerId: cred.delegateToken.issuerId || "unknown",
+          expiresAt: cred.delegateToken.expiresAt
+            ? cred.delegateToken.expiresAt * 1000
+            : Date.now() + 86400000,
+          canUpload: cred.delegateToken.canUpload ?? true,
+          canManageDepot: cred.delegateToken.canManageDepot ?? true,
+        };
+      }
+
+      return state;
+    },
+
+    save: async (state: TokenState): Promise<void> => {
+      const cred: Credentials = { version: 2 };
+
+      if (state.user) {
+        cred.userToken = {
+          accessToken: state.user.accessToken,
+          refreshToken: state.user.refreshToken,
+          userId: state.user.userId,
+          expiresAt: Math.floor(state.user.expiresAt / 1000),
+        };
+      }
+
+      if (state.delegate) {
+        cred.delegateToken = {
+          tokenId: state.delegate.tokenId,
+          token: state.delegate.tokenBase64,
+          issuerId: state.delegate.issuerId,
+          expiresAt: Math.floor(state.delegate.expiresAt / 1000),
+          canUpload: state.delegate.canUpload,
+          canManageDepot: state.delegate.canManageDepot,
+        };
+      }
+
+      setCredentials(profileName, cred);
+    },
+
+    clear: async (): Promise<void> => {
+      setCredentials(profileName, { version: 2 });
+    },
+  };
 }
-
-/** Delegate client with realm */
-export interface DelegateRealmResult {
-  type: "delegate-realm";
-  client: CasfaDelegateRealmView;
-  profile: string;
-  baseUrl: string;
-  realm: string;
-}
-
-/** Ticket client (always has realm) */
-export interface TicketClientResult {
-  type: "ticket";
-  client: CasfaTicketClient;
-  profile: string;
-  baseUrl: string;
-  realm: string;
-}
-
-export type ResolvedClient =
-  | BaseClientResult
-  | UserClientResult
-  | UserRealmResult
-  | DelegateClientResult
-  | DelegateRealmResult
-  | TicketClientResult;
-
-export type ResolvedRealmClient = UserRealmResult | DelegateRealmResult | TicketClientResult;
-
-export type ResolvedAuthClient =
-  | UserClientResult
-  | UserRealmResult
-  | DelegateClientResult
-  | DelegateRealmResult;
 
 // ============================================================================
 // Client Creation
 // ============================================================================
 
+/**
+ * Create a CASFA client based on CLI options and stored credentials.
+ */
 export async function createClient(options: ClientOptions): Promise<ResolvedClient> {
   const config = loadConfig();
   const profileName = options.profile || process.env.CASFA_PROFILE || config.currentProfile;
@@ -120,222 +140,207 @@ export async function createClient(options: ClientOptions): Promise<ResolvedClie
   const baseUrl = options.baseUrl || process.env.CASFA_BASE_URL || profile.baseUrl;
   const realm = options.realm || process.env.CASFA_REALM || profile.realm;
 
-  const hashProvider = createHashProvider();
-  const baseClient = createCasfaClient({ baseUrl, hash: hashProvider });
+  if (!realm) {
+    throw new Error(
+      "Realm is required. Set via --realm option, CASFA_REALM env var, or 'casfa config set realm <id>'."
+    );
+  }
 
-  // Priority: CLI options > env vars > stored credentials
-
-  // 1. Ticket auth (most restricted)
+  // Handle legacy --token option
+  const delegateTokenStr =
+    options.delegateToken || options.token || process.env.CASFA_TOKEN;
+  const accessTokenStr = options.accessToken;
   const ticketId = options.ticket || process.env.CASFA_TICKET;
+
+  // Determine auth type and create appropriate client
+  let authType: ResolvedClient["authType"] = "none";
+
+  // Priority: ticket > access token > delegate token > stored credentials
+
   if (ticketId) {
-    if (!realm) {
-      throw new Error("Realm is required when using ticket authentication");
-    }
+    // Ticket authentication - create a minimal client for ticket operations
+    // Note: CasfaClient doesn't directly support ticket auth, we'll handle this separately
+    authType = "ticket";
+    const client = await createCasfaClient({
+      baseUrl,
+      realm,
+    });
+    
+    // For ticket auth, we need to handle it at the API level
+    // Store ticket ID in client state for later use
     return {
-      type: "ticket",
-      client: baseClient.withTicket(ticketId, realm),
+      client,
       profile: profileName,
       baseUrl,
       realm,
+      authType,
     };
   }
 
-  // 2. Agent token
-  const token = options.token || process.env.CASFA_TOKEN;
-  if (token) {
-    const delegateClient = baseClient.withDelegateToken(token);
-    if (realm) {
-      return {
-        type: "delegate-realm",
-        client: delegateClient.withRealm(realm),
-        profile: profileName,
-        baseUrl,
-        realm,
-      };
-    }
+  if (accessTokenStr) {
+    // Direct access token - bypass normal token management
+    authType = "access";
+    const client = await createCasfaClient({
+      baseUrl,
+      realm,
+    });
+    // Set access token directly
+    client.setAccessToken({
+      tokenId: "cli-provided",
+      tokenBase64: accessTokenStr,
+      type: "access",
+      issuerId: "unknown",
+      expiresAt: Date.now() + 3600000, // Assume 1h validity
+      canUpload: true,
+      canManageDepot: true,
+    });
     return {
-      type: "delegate",
-      client: delegateClient,
+      client,
       profile: profileName,
       baseUrl,
+      realm,
+      authType,
     };
   }
 
-  // 3. Stored credentials
-  const credentials = getCredentials(profileName);
-  if (credentials) {
-    if (credentials.type === "token") {
-      const delegateClient = baseClient.withDelegateToken(credentials.token);
-      if (realm) {
-        return {
-          type: "delegate-realm",
-          client: delegateClient.withRealm(realm),
-          profile: profileName,
-          baseUrl,
-          realm,
-        };
-      }
-      return {
-        type: "delegate",
-        client: delegateClient,
-        profile: profileName,
-        baseUrl,
-      };
-    }
-
-    if (credentials.type === "oauth") {
-      // Check if token needs refresh
-      if (isTokenExpired(credentials)) {
-        const refreshed = await refreshToken(baseClient, credentials, profileName);
-        if (refreshed) {
-          const userClient = baseClient.withUserToken(
-            refreshed.accessToken,
-            refreshed.refreshToken
-          );
-          if (realm) {
-            return {
-              type: "user-realm",
-              client: userClient.withRealm(realm),
-              profile: profileName,
-              baseUrl,
-              realm,
-            };
-          }
-          return {
-            type: "user",
-            client: userClient,
-            profile: profileName,
-            baseUrl,
-          };
-        }
-        throw new Error("Token expired and refresh failed. Please run 'casfa auth login'");
-      }
-
-      const userClient = baseClient.withUserToken(
-        credentials.accessToken,
-        credentials.refreshToken
-      );
-      if (realm) {
-        return {
-          type: "user-realm",
-          client: userClient.withRealm(realm),
-          profile: profileName,
-          baseUrl,
-          realm,
-        };
-      }
-      return {
-        type: "user",
-        client: userClient,
-        profile: profileName,
-        baseUrl,
-      };
-    }
+  if (delegateTokenStr) {
+    // Direct delegate token provided
+    authType = "delegate";
+    const client = await createCasfaClient({
+      baseUrl,
+      realm,
+    });
+    client.setDelegateToken({
+      tokenId: "cli-provided",
+      tokenBase64: delegateTokenStr,
+      type: "delegate",
+      issuerId: "unknown",
+      expiresAt: Date.now() + 86400000, // Assume 24h validity
+      canUpload: true,
+      canManageDepot: true,
+    });
+    return {
+      client,
+      profile: profileName,
+      baseUrl,
+      realm,
+      authType,
+    };
   }
 
-  // 4. No auth - base client only
+  // Use stored credentials via TokenStorageProvider
+  const tokenStorage = createCliTokenStorage(profileName);
+  const client = await createCasfaClient({
+    baseUrl,
+    realm,
+    tokenStorage,
+    onAuthRequired: () => {
+      console.error("Authentication required. Run 'casfa auth login' to authenticate.");
+    },
+  });
+
+  // Determine auth type from loaded state
+  const state = client.getState();
+  if (state.user) {
+    authType = "user";
+  } else if (state.delegate) {
+    authType = "delegate";
+  } else if (state.access) {
+    authType = "access";
+  }
+
   return {
-    type: "base",
-    client: baseClient,
+    client,
     profile: profileName,
     baseUrl,
     realm,
+    authType,
   };
 }
 
 // ============================================================================
-// Token Refresh
+// Auth Check Helpers
 // ============================================================================
 
-async function refreshToken(
-  baseClient: CasfaAnonymousClient,
-  credentials: Credentials & { type: "oauth" },
-  profileName: string
-): Promise<{ accessToken: string; refreshToken: string } | null> {
-  try {
-    const result = await baseClient.oauth.refresh({ refreshToken: credentials.refreshToken });
-    if (!result.ok) {
-      return null;
-    }
-    const newCredentials: Credentials = {
-      type: "oauth",
-      accessToken: result.data.access_token,
-      refreshToken: result.data.refresh_token || credentials.refreshToken,
-      expiresAt: Math.floor(Date.now() / 1000) + result.data.expires_in,
-    };
-    setCredentials(profileName, newCredentials);
-    return {
-      accessToken: result.data.access_token,
-      refreshToken: result.data.refresh_token || credentials.refreshToken,
-    };
-  } catch {
-    return null;
+/**
+ * Check if the client is authenticated (has any valid token).
+ */
+export function isAuthenticated(resolved: ResolvedClient): boolean {
+  return resolved.authType !== "none";
+}
+
+/**
+ * Check if the client has user-level authentication.
+ */
+export function isUserAuthenticated(resolved: ResolvedClient): boolean {
+  return resolved.authType === "user";
+}
+
+/**
+ * Require authentication or throw error.
+ */
+export function requireAuth(resolved: ResolvedClient): void {
+  if (!isAuthenticated(resolved)) {
+    throw new Error(
+      "Authentication required. Run 'casfa auth login' or provide --delegate-token option."
+    );
   }
 }
 
-// ============================================================================
-// Type Guards
-// ============================================================================
-
-export function isRealmClient(resolved: ResolvedClient): resolved is ResolvedRealmClient {
-  return (
-    resolved.type === "user-realm" ||
-    resolved.type === "delegate-realm" ||
-    resolved.type === "ticket"
-  );
-}
-
-export function isAuthClient(resolved: ResolvedClient): resolved is ResolvedAuthClient {
-  return (
-    resolved.type === "user" ||
-    resolved.type === "user-realm" ||
-    resolved.type === "delegate" ||
-    resolved.type === "delegate-realm"
-  );
-}
-
-export function isUserClient(
-  resolved: ResolvedClient
-): resolved is UserClientResult | UserRealmResult {
-  return resolved.type === "user" || resolved.type === "user-realm";
-}
-
-// ============================================================================
-// Assertions
-// ============================================================================
-
-export function requireAuth(resolved: ResolvedClient): asserts resolved is ResolvedAuthClient {
-  if (resolved.type === "base") {
-    throw new Error("Authentication required. Run 'casfa auth login' or provide --token option.");
-  }
-  if (resolved.type === "ticket") {
-    throw new Error("This operation is not available with ticket authentication.");
-  }
-}
-
-export function requireUserAuth(
-  resolved: ResolvedClient
-): asserts resolved is UserClientResult | UserRealmResult {
-  if (resolved.type !== "user" && resolved.type !== "user-realm") {
+/**
+ * Require user authentication or throw error.
+ */
+export function requireUserAuth(resolved: ResolvedClient): void {
+  if (!isUserAuthenticated(resolved)) {
     throw new Error("User authentication required. Run 'casfa auth login'.");
   }
 }
 
-export function requireRealm(resolved: ResolvedClient): asserts resolved is ResolvedRealmClient {
-  if (!isRealmClient(resolved)) {
+/**
+ * Require realm to be set (always required in new design).
+ */
+export function requireRealm(resolved: ResolvedClient): void {
+  if (!resolved.realm) {
     throw new Error(
       "Realm is required. Set via --realm option, CASFA_REALM env var, or 'casfa config set realm <id>'."
     );
   }
 }
 
-export function requireRealmAuth(
-  resolved: ResolvedClient
-): asserts resolved is UserRealmResult | DelegateRealmResult {
+/**
+ * Require realm and authentication.
+ */
+export function requireRealmAuth(resolved: ResolvedClient): void {
+  requireRealm(resolved);
   requireAuth(resolved);
-  if (resolved.type !== "user-realm" && resolved.type !== "delegate-realm") {
-    throw new Error(
-      "Realm is required. Set via --realm option, CASFA_REALM env var, or 'casfa config set realm <id>'."
-    );
-  }
+}
+
+// ============================================================================
+// Legacy Type Guards (for backward compatibility)
+// ============================================================================
+
+/** @deprecated Use isAuthenticated instead */
+export function isRealmClient(resolved: ResolvedClient): boolean {
+  return !!resolved.realm;
+}
+
+/** @deprecated Use isAuthenticated instead */
+export function isAuthClient(resolved: ResolvedClient): boolean {
+  return isAuthenticated(resolved);
+}
+
+/** @deprecated Use isUserAuthenticated instead */
+export function isUserClient(resolved: ResolvedClient): boolean {
+  return isUserAuthenticated(resolved);
+}
+
+// ============================================================================
+// API Helpers for Ticket Auth
+// ============================================================================
+
+/**
+ * Get the ticket ID from client options.
+ */
+export function getTicketId(options: ClientOptions): string | undefined {
+  return options.ticket || process.env.CASFA_TICKET;
 }

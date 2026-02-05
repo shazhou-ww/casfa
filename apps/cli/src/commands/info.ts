@@ -1,4 +1,4 @@
-import { createCasfaClient } from "@casfa/client";
+import { api } from "@casfa/client";
 import type { Command } from "commander";
 import { getProfile, loadConfig } from "../lib/config";
 import { createFormatter, formatSize } from "../lib/output";
@@ -12,14 +12,13 @@ export function registerInfoCommand(program: Command): void {
       const formatter = createFormatter(opts);
 
       try {
-        // For info, we just need the base client to get service info
+        // For info, we just need to call the info API directly
         const config = loadConfig();
         const profileName = opts.profile || config.currentProfile;
         const profile = getProfile(config, profileName);
         const baseUrl = opts.baseUrl || profile.baseUrl;
 
-        const baseClient = createCasfaClient({ baseUrl });
-        const result = await baseClient.getInfo();
+        const result = await api.fetchServiceInfo(baseUrl);
 
         if (!result.ok) {
           formatter.error(`Failed to get service info: ${result.error.message}`);
