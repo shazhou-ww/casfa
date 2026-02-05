@@ -56,8 +56,6 @@ export const ServiceFeaturesSchema = z.object({
   jwtAuth: z.boolean(),
   /** Whether OAuth login is enabled (FEATURE_OAUTH_LOGIN) */
   oauthLogin: z.boolean(),
-  /** Whether AWP (Agent Web Portal) auth is enabled (FEATURE_AWP_AUTH) */
-  awpAuth: z.boolean(),
 });
 export type ServiceFeatures = z.infer<typeof ServiceFeaturesSchema>;
 

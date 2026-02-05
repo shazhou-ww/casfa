@@ -6,8 +6,7 @@ import type { Context } from "hono";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "Content-Type,Authorization,X-AWP-Pubkey,X-AWP-Timestamp,X-AWP-Signature",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization",
   "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 };
 

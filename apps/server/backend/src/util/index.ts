@@ -2,7 +2,7 @@
  * Utility exports
  */
 
-// Legacy client ID utilities (deprecated - for AWP auth)
+// Legacy client ID utilities (deprecated)
 export {
   computeClientId,
   computeTokenId as computeLegacyTokenId,

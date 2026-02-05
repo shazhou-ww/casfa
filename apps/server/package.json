@@ -33,7 +33,6 @@
     "check": "tsc --noEmit && biome check ."
   },
   "dependencies": {
-    "@casfa/auth": "workspace:*",
     "@casfa/core": "workspace:*",
     "@casfa/storage-core": "workspace:*",
     "@casfa/storage-fs": "workspace:*",

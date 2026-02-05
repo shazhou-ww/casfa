@@ -95,8 +95,6 @@ export type FeaturesConfig = {
   jwtAuth: boolean;
   /** Enable OAuth login flow (Cognito) */
   oauthLogin: boolean;
-  /** Enable AWP (Agent Web Portal) client authentication */
-  awpAuth: boolean;
 };
 
 /**
@@ -106,12 +104,10 @@ export type FeaturesConfig = {
  * Environment variables:
  * - FEATURE_JWT_AUTH=false to disable JWT auth
  * - FEATURE_OAUTH_LOGIN=false to disable OAuth login
- * - FEATURE_AWP_AUTH=false to disable AWP auth
  */
 export const loadFeaturesConfig = (): FeaturesConfig => ({
   jwtAuth: process.env.FEATURE_JWT_AUTH !== "false",
   oauthLogin: process.env.FEATURE_OAUTH_LOGIN !== "false",
-  awpAuth: process.env.FEATURE_AWP_AUTH !== "false",
 });
 
 // ============================================================================

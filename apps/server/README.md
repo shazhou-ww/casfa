@@ -177,7 +177,6 @@ apps/casfa-v2/
 |------|--------|------|
 | `FEATURE_JWT_AUTH` | true | 启用 JWT Bearer Token 认证 |
 | `FEATURE_OAUTH_LOGIN` | true | 启用 OAuth 登录流程 |
-| `FEATURE_AWP_AUTH` | true | 启用 AWP 客户端认证 |
 
 设置为 `false` 可禁用功能（如维护模式）：
 
@@ -212,8 +211,7 @@ FEATURE_OAUTH_LOGIN=false  # 禁用 OAuth 登录
   },
   "features": {
     "jwtAuth": true,
-    "oauthLogin": true,
-    "awpAuth": true
+    "oauthLogin": true
   }
 }
 ```

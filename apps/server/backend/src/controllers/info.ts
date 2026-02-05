@@ -58,7 +58,6 @@ export const createInfoController = (deps: InfoControllerDeps): InfoController =
     features: {
       jwtAuth: featuresConfig.jwtAuth,
       oauthLogin: featuresConfig.oauthLogin,
-      awpAuth: featuresConfig.awpAuth,
     },
   };
 

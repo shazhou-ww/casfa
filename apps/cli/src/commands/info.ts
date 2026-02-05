@@ -45,7 +45,6 @@ export function registerInfoCommand(program: Command): void {
             "Features:",
             `  JWT Auth:     ${info.features.jwtAuth ? "✓" : "✗"}`,
             `  OAuth Login:  ${info.features.oauthLogin ? "✓" : "✗"}`,
-            `  AWP Auth:     ${info.features.awpAuth ? "✓" : "✗"}`,
           ];
           return lines.join("\n");
         });

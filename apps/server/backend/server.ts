@@ -74,7 +74,7 @@ const createJwtVerifier = () => {
   if (config.cognito.userPoolId) {
     return createCognitoJwtVerifier(config.cognito);
   }
-  // No JWT verification (only stored tokens and AWP auth)
+  // No JWT verification (stored tokens only)
   return undefined;
 };
 
