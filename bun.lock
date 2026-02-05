@@ -87,6 +87,9 @@
       "name": "@casfa/client",
       "version": "0.0.1",
       "dependencies": {
+        "@casfa/cas-uri": "workspace:*",
+        "@casfa/client-auth-crypto": "workspace:*",
+        "@casfa/delegate-token": "workspace:*",
         "@casfa/protocol": "workspace:*",
       },
       "devDependencies": {
