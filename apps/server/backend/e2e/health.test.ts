@@ -1,7 +1,7 @@
 /**
  * E2E Tests: Health Check and Service Info
  *
- * Tests using casfa-client-v2 SDK for public endpoints.
+ * Tests for public endpoints that don't require authentication.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -19,26 +19,27 @@ describe("Health Check", () => {
     ctx.cleanup();
   });
 
-  it("should return healthy status via raw fetch", async () => {
+  it("should return healthy status", async () => {
     const response = await fetch(`${ctx.baseUrl}/api/health`);
 
     expect(response.status).toBe(200);
 
-    const data = (await response.json()) as { status: string };
+    const data = ((await response.json()) as any) as { status: string };
     expect(data.status).toBe("ok");
   });
 
-  it("should return service info via SDK anonymous client", async () => {
-    const anonymousClient = ctx.helpers.getAnonymousClient();
+  it("should return service info", async () => {
+    const response = await fetch(`${ctx.baseUrl}/api/info`);
 
-    const result = await anonymousClient.getInfo();
+    expect(response.status).toBe(200);
 
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      const data = result.data as any;
-      // Service info has either 'name' or 'service' property depending on server version
-      expect(data.service ?? data.name).toBeDefined();
-      expect(data.version).toBeDefined();
-    }
+    const data = ((await response.json()) as any) as {
+      service?: string;
+      name?: string;
+      version?: string;
+    };
+    // Service info has either 'name' or 'service' property depending on server version
+    expect(data.service ?? data.name).toBeDefined();
+    expect(data.version).toBeDefined();
   });
 });

@@ -87,6 +87,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     ticketsDb,
     scopeSetNodesDb,
     tokenRequestsDb,
+    tokenAuditDb,
     ownershipDb,
     depotsDb,
     refCountDb,
@@ -152,6 +153,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   const tokens = createTokensController({
     delegateTokensDb,
     scopeSetNodesDb,
+    tokenAuditDb,
     depotsDb,
   });
   const tokenRequests = createTokenRequestsController({

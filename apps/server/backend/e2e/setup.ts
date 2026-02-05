@@ -1,5 +1,5 @@
 /**
- * E2E Test Setup
+ * E2E Test Setup (v2 - Delegate Token API)
  *
  * Shared setup and utilities for e2e tests.
  *
@@ -11,20 +11,15 @@
  * - DYNAMODB_ENDPOINT: http://localhost:8700
  * - STORAGE_TYPE: memory
  * - MOCK_JWT_SECRET: test-secret-key-for-e2e
+ * - CAS_NODE_LIMIT: 1024 (1KB for testing file chunking)
+ *
+ * Token Hierarchy:
+ * - User JWT: OAuth login token, highest authority
+ * - Delegate Token: Re-delegation token, can issue child tokens
+ * - Access Token: Data access token, used for CAS operations
  */
 
 import { rmSync } from "node:fs";
-// casfa-client SDK
-import {
-  type CasfaAnonymousClient,
-  type CasfaDelegateClient,
-  type CasfaTicketClient,
-  type CasfaUserClient,
-  createCasfaClient,
-  createDelegateClient,
-  createTicketClient,
-  createUserClient,
-} from "@casfa/client";
 import type { StorageProvider } from "@casfa/storage-core";
 import { createFsStorage } from "@casfa/storage-fs";
 import { createMemoryStorage } from "@casfa/storage-memory";
@@ -33,30 +28,30 @@ import { createApp, createNodeHashProvider, type DbInstances } from "../src/app.
 import { createMockJwt } from "../src/auth/index.ts";
 import { createMockJwtVerifier } from "../src/auth/jwt-verifier.ts";
 import { type AppConfig, loadConfig } from "../src/config.ts";
-// DB factories
+// DB factories - aligned with bootstrap.ts DbInstances
 import {
-  createAwpPendingDb,
-  createAwpPubkeysDb,
-  createClientPendingDb,
-  createClientPubkeysDb,
+  createDelegateTokensDb,
+  createTicketsDb,
+  createScopeSetNodesDb,
+  createTokenRequestsDb,
+  createTokenAuditDb,
   createDepotsDb,
   createOwnershipDb,
   createRefCountDb,
-  createTokensDb,
   createUsageDb,
   createUserRolesDb,
 } from "../src/db/index.ts";
-// Auth service
-import { type AuthService, createAuthService } from "../src/services/auth.ts";
 
 // ============================================================================
 // Test Utilities
 // ============================================================================
 
 import { hexToNodeKey } from "@casfa/protocol";
+import { randomUUID } from "node:crypto";
+import { uuidToUserId } from "../src/util/encoding.ts";
 
-/** Generate a unique test ID */
-export const uniqueId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+/** Generate a unique test ID (UUID format like Cognito) */
+export const uniqueId = () => randomUUID();
 
 /**
  * Generate a test node key from a simple numeric value
@@ -80,6 +75,8 @@ const TEST_CONFIG = {
   MOCK_JWT_SECRET: "test-secret-key-for-e2e",
   DYNAMODB_MAX_RETRIES: 5,
   DYNAMODB_RETRY_DELAY_MS: 1000,
+  // Minimal node limit for testing file chunking (1KB)
+  NODE_LIMIT: "1024",
 };
 
 /**
@@ -121,6 +118,8 @@ export const setupTestEnv = async () => {
   process.env.DYNAMODB_ENDPOINT ??= TEST_CONFIG.DYNAMODB_ENDPOINT;
   process.env.STORAGE_TYPE ??= TEST_CONFIG.STORAGE_TYPE;
   process.env.MOCK_JWT_SECRET ??= TEST_CONFIG.MOCK_JWT_SECRET;
+  // Set minimal node limit for testing chunking
+  process.env.CAS_NODE_LIMIT ??= TEST_CONFIG.NODE_LIMIT;
 
   if (process.env.STORAGE_TYPE === "fs") {
     process.env.STORAGE_FS_PATH ??= TEST_CONFIG.STORAGE_FS_PATH;
@@ -152,85 +151,160 @@ export type TestServer = {
   config: AppConfig;
   db: DbInstances;
   storage: StorageProvider;
-  authService: AuthService;
   helpers: TestHelpers;
   stop: () => void;
 };
 
-/** Agent Token creation result */
-export type AgentTokenResult = {
-  id: string;
-  token: string;
-  name: string;
+/** Delegate Token creation result */
+export type DelegateTokenResult = {
+  tokenId: string;
+  tokenBase64: string;
   expiresAt: number;
 };
 
-/** Ticket creation result */
+/** Access Token creation result */
+export type AccessTokenResult = {
+  tokenId: string;
+  tokenBase64: string;
+  expiresAt: number;
+};
+
+/** Ticket creation result (Access Token creates Ticket) */
 export type TicketResult = {
   ticketId: string;
-  realm: string;
-  input?: string[];
-  writable: boolean;
+  title: string;
+  status: "pending" | "submitted";
   expiresAt: number;
+};
+
+/** Client Auth Request result */
+export type ClientAuthRequestResult = {
+  requestId: string;
+  displayCode: string;
+  authorizeUrl: string;
+  expiresAt: number;
+  pollInterval: number;
+  /** The client secret used to create the request (for test use) */
+  clientSecret: string;
+  /** The hash of clientSecret (for verification) */
+  clientSecretHash: string;
 };
 
 export type TestHelpers = {
-  /** Create a mock JWT token for a user */
-  createUserToken: (userId: string, options?: { exp?: number }) => string;
-  /** Create an authorized user with a token */
+  // ========================================================================
+  // User JWT Helpers
+  // ========================================================================
+
+  /** Create a mock JWT token for a user (userUuid is the Cognito-style UUID) */
+  createUserToken: (userUuid: string, options?: { exp?: number }) => string;
+
+  /** Create an authorized user with a JWT token */
   createTestUser: (
-    userId: string,
+    userUuid: string,
     role?: "admin" | "authorized"
   ) => Promise<{
-    userId: string;
+    userId: string;      // user:base32 format (internal format)
+    userUuid: string;    // UUID format (JWT sub claim)
     token: string;
     realm: string;
+    mainDepotId: string; // The depot ID to use in scope URIs
   }>;
-  /** Make an authenticated request */
+
+  // ========================================================================
+  // Request Helpers
+  // ========================================================================
+
+  /** Make an authenticated request with User JWT (Bearer token) */
   authRequest: (token: string, method: string, path: string, body?: unknown) => Promise<Response>;
-  /** Create an Agent Token for a user */
-  createAgentToken: (
-    token: string,
-    options?: { name?: string; description?: string; expiresIn?: number }
-  ) => Promise<AgentTokenResult>;
-  /** Create a Ticket for a realm */
+
+  /** Make a request with Delegate Token authentication (Base64) */
+  delegateRequest: (
+    delegateTokenBase64: string,
+    method: string,
+    path: string,
+    body?: unknown
+  ) => Promise<Response>;
+
+  /** Make a request with Access Token authentication (Base64) */
+  accessRequest: (
+    accessTokenBase64: string,
+    method: string,
+    path: string,
+    body?: unknown,
+    extraHeaders?: Record<string, string>
+  ) => Promise<Response>;
+
+  // ========================================================================
+  // Token Management Helpers (User JWT required)
+  // ========================================================================
+
+  /** Create a Delegate Token (User JWT → Delegate Token) */
+  createDelegateToken: (
+    userToken: string,
+    realm: string,
+    options: {
+      name?: string;
+      expiresIn?: number;
+      canUpload?: boolean;
+      canManageDepot?: boolean;
+      scope: string[];  // Required - use mainDepotId from createTestUser
+    }
+  ) => Promise<DelegateTokenResult>;
+
+  /** Create an Access Token (User JWT → Access Token) */
+  createAccessToken: (
+    userToken: string,
+    realm: string,
+    options: {
+      name?: string;
+      expiresIn?: number;
+      canUpload?: boolean;
+      canManageDepot?: boolean;
+      scope: string[];  // Required - use mainDepotId from createTestUser
+    }
+  ) => Promise<AccessTokenResult>;
+
+  // ========================================================================
+  // Token Delegation Helpers (Delegate Token required)
+  // ========================================================================
+
+  /** Delegate a new token from a Delegate Token */
+  delegateToken: (
+    parentTokenBase64: string,
+    options: {
+      type: "delegate" | "access";
+      expiresIn?: number;
+      canUpload?: boolean;
+      canManageDepot?: boolean;
+      scope?: string[];
+    }
+  ) => Promise<DelegateTokenResult | AccessTokenResult>;
+
+  // ========================================================================
+  // Ticket Helpers (Access Token required)
+  // ========================================================================
+
+  /** Create a Ticket (Access Token creates Ticket) */
   createTicket: (
-    token: string,
+    accessTokenBase64: string,
     realm: string,
     options?: {
-      input?: string[];
-      purpose?: string;
-      writable?: { quota?: number; accept?: string[] };
+      title?: string;
       expiresIn?: number;
     }
   ) => Promise<TicketResult>;
-  /** Make a request with Ticket authentication */
-  ticketRequest: (
-    ticketId: string,
-    method: string,
-    path: string,
-    body?: unknown
-  ) => Promise<Response>;
-  /** Make a request with Agent Token authentication */
-  agentRequest: (
-    agentToken: string,
-    method: string,
-    path: string,
-    body?: unknown
-  ) => Promise<Response>;
 
   // ========================================================================
-  // SDK Client Factory Methods
+  // Client Auth Helpers
   // ========================================================================
 
-  /** Create an anonymous SDK client (no authentication) */
-  getAnonymousClient: () => CasfaAnonymousClient;
-  /** Create a user-authenticated SDK client */
-  getUserClient: (token: string) => CasfaUserClient;
-  /** Create an agent-authenticated SDK client (delegate) */
-  getDelegateClient: (agentToken: string) => CasfaDelegateClient;
-  /** Create a ticket-authenticated SDK client */
-  getTicketClient: (ticketId: string, realmId: string) => CasfaTicketClient;
+  /** Initiate a client auth request (no auth required) */
+  createClientAuthRequest: (options?: {
+    clientName?: string;
+    description?: string;
+    /** Optional: provide your own clientSecret (will generate hash). If not provided, generates a random one */
+    clientSecret?: string;
+  }) => Promise<ClientAuthRequestResult>;
 };
 
 // ============================================================================
@@ -254,18 +328,18 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
   const storageType = process.env.STORAGE_TYPE ?? TEST_CONFIG.STORAGE_TYPE;
   const storageFsPath = process.env.STORAGE_FS_PATH ?? TEST_CONFIG.STORAGE_FS_PATH;
 
-  // Create DB instances (uses DYNAMODB_ENDPOINT)
+  // Create DB instances (aligned with DbInstances from bootstrap.ts)
   const db: DbInstances = {
-    tokensDb: createTokensDb({ tableName: config.db.tokensTable }),
+    delegateTokensDb: createDelegateTokensDb({ tableName: config.db.tokensTable }),
+    ticketsDb: createTicketsDb({ tableName: config.db.casRealmTable }),
+    scopeSetNodesDb: createScopeSetNodesDb({ tableName: config.db.tokensTable }),
+    tokenRequestsDb: createTokenRequestsDb({ tableName: config.db.tokensTable }),
+    tokenAuditDb: createTokenAuditDb({ tableName: config.db.tokensTable }),
     ownershipDb: createOwnershipDb({ tableName: config.db.casRealmTable }),
     depotsDb: createDepotsDb({ tableName: config.db.casRealmTable }),
     refCountDb: createRefCountDb({ tableName: config.db.refCountTable }),
     usageDb: createUsageDb({ tableName: config.db.usageTable }),
     userRolesDb: createUserRolesDb({ tableName: config.db.tokensTable }),
-    awpPendingDb: createAwpPendingDb({ tableName: config.db.tokensTable }),
-    awpPubkeysDb: createAwpPubkeysDb({ tableName: config.db.tokensTable }),
-    clientPendingDb: createClientPendingDb({ tableName: config.db.tokensTable }),
-    clientPubkeysDb: createClientPubkeysDb({ tableName: config.db.tokensTable }),
   };
 
   // Create storage
@@ -277,13 +351,6 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
   // Create JWT verifier
   const jwtVerifier = createMockJwtVerifier(mockJwtSecret);
 
-  // Create auth service
-  const authService = createAuthService({
-    tokensDb: db.tokensDb,
-    userRolesDb: db.userRolesDb,
-    cognitoConfig: config.cognito,
-  });
-
   // Create hash provider
   const hashProvider = createNodeHashProvider();
 
@@ -292,7 +359,6 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
     config,
     db,
     storage,
-    authService,
     hashProvider,
     jwtVerifier,
   });
@@ -308,24 +374,47 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
 
   // Test helpers
   const helpers: TestHelpers = {
+    // ========================================================================
+    // User JWT Helpers
+    // ========================================================================
+
     createUserToken: (userId: string, options?: { exp?: number }) => {
       const exp = options?.exp ?? Math.floor(Date.now() / 1000) + 3600; // 1 hour default
       return createMockJwt(mockJwtSecret, { sub: userId, exp });
     },
 
-    createTestUser: async (userId: string, role: "admin" | "authorized" = "authorized") => {
-      // Set user role in database
+    createTestUser: async (userUuid: string, role: "admin" | "authorized" = "authorized") => {
+      // Convert UUID to user:base32 format (like the real JWT verifier does)
+      const userId = uuidToUserId(userUuid);
+      const realm = `usr_${userId}`;
+
+      // Set user role in database (uses user:base32 format)
       await db.userRolesDb.setRole(userId, role);
 
-      // Create JWT token
-      const token = helpers.createUserToken(userId);
+      // Create default MAIN depot for the user's realm if it doesn't exist
+      let mainDepot = await db.depotsDb.getByName(realm, "MAIN");
+      if (!mainDepot) {
+        mainDepot = await db.depotsDb.create(realm, {
+          name: "MAIN",
+          root: "0".repeat(52), // Empty root hash placeholder
+        });
+      }
+
+      // Create JWT token (sub is UUID, like Cognito)
+      const token = helpers.createUserToken(userUuid);
 
       return {
-        userId,
+        userId,    // user:base32 format (what the system uses internally)
+        userUuid,  // UUID format (what's in the JWT sub claim)
         token,
-        realm: `usr_${userId}`,
+        realm,
+        mainDepotId: mainDepot.depotId,  // The actual depot ID to use in scope
       };
     },
+
+    // ========================================================================
+    // Request Helpers
+    // ========================================================================
 
     authRequest: async (token: string, method: string, path: string, body?: unknown) => {
       const headers: Record<string, string> = {
@@ -342,79 +431,203 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
       return app.fetch(request);
     },
 
-    createAgentToken: async (token: string, options = {}) => {
-      const { name = "Test Agent Token", description, expiresIn } = options;
-      const response = await helpers.authRequest(token, "POST", "/api/auth/tokens", {
+    delegateRequest: async (
+      delegateTokenBase64: string,
+      method: string,
+      path: string,
+      body?: unknown
+    ) => {
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${delegateTokenBase64}`,
+      };
+      if (body !== undefined) {
+        headers["Content-Type"] = "application/json";
+      }
+      const request = new Request(`${url}${path}`, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      return app.fetch(request);
+    },
+
+    accessRequest: async (
+      accessTokenBase64: string,
+      method: string,
+      path: string,
+      body?: unknown,
+      extraHeaders?: Record<string, string>
+    ) => {
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${accessTokenBase64}`,
+        ...extraHeaders,
+      };
+      if (body !== undefined) {
+        headers["Content-Type"] = "application/json";
+      }
+      const request = new Request(`${url}${path}`, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      return app.fetch(request);
+    },
+
+    // ========================================================================
+    // Token Management Helpers (User JWT required)
+    // ========================================================================
+
+    createDelegateToken: async (userToken, realm, options = {}) => {
+      const {
+        name = "Test Delegate Token",
+        expiresIn,
+        canUpload = false,
+        canManageDepot = false,
+        scope,  // Must be provided by caller with actual depot ID
+      } = options;
+
+      if (!scope || scope.length === 0) {
+        throw new Error("scope is required - use mainDepotId from createTestUser to build scope URI");
+      }
+
+      const response = await helpers.authRequest(userToken, "POST", "/api/tokens", {
+        realm,
         name,
-        description,
+        type: "delegate",
         expiresIn,
+        canUpload,
+        canManageDepot,
+        scope,
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to create agent token: ${response.status}`);
+        const error = await response.text();
+        throw new Error(`Failed to create delegate token: ${response.status} - ${error}`);
       }
 
-      const data = (await response.json()) as AgentTokenResult;
-      return data;
+      return (await response.json()) as DelegateTokenResult;
     },
 
-    createTicket: async (token: string, realm: string, options = {}) => {
-      const { input, purpose, writable, expiresIn } = options;
-      const response = await helpers.authRequest(token, "POST", `/api/realm/${realm}/tickets`, {
-        input,
-        purpose,
-        writable,
+    createAccessToken: async (userToken, realm, options = {}) => {
+      const {
+        name = "Test Access Token",
         expiresIn,
+        canUpload = false,
+        canManageDepot = false,
+        scope,  // Must be provided by caller with actual depot ID
+      } = options;
+
+      if (!scope || scope.length === 0) {
+        throw new Error("scope is required - use mainDepotId from createTestUser to build scope URI");
+      }
+
+      const response = await helpers.authRequest(userToken, "POST", "/api/tokens", {
+        realm,
+        name,
+        type: "access",
+        expiresIn,
+        canUpload,
+        canManageDepot,
+        scope,
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to create ticket: ${response.status}`);
+        const error = await response.text();
+        throw new Error(`Failed to create access token: ${response.status} - ${error}`);
       }
 
-      const data = (await response.json()) as TicketResult;
-      return data;
+      return (await response.json()) as AccessTokenResult;
     },
 
-    ticketRequest: async (ticketId: string, method: string, path: string, body?: unknown) => {
-      const headers: Record<string, string> = {
-        Authorization: `Ticket ${ticketId}`,
-      };
-      if (body !== undefined) {
-        headers["Content-Type"] = "application/json";
+    // ========================================================================
+    // Token Delegation Helpers (Delegate Token required)
+    // ========================================================================
+
+    delegateToken: async (parentTokenBase64, options) => {
+      const { type, expiresIn, canUpload = false, canManageDepot = false, scope } = options;
+
+      const response = await helpers.delegateRequest(
+        parentTokenBase64,
+        "POST",
+        "/api/tokens/delegate",
+        {
+          type,
+          expiresIn,
+          canUpload,
+          canManageDepot,
+          scope,
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Failed to delegate token: ${response.status} - ${error}`);
       }
-      const request = new Request(`${url}${path}`, {
-        method,
-        headers,
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+
+      return (await response.json()) as DelegateTokenResult | AccessTokenResult;
+    },
+
+    // ========================================================================
+    // Ticket Helpers (Access Token required)
+    // ========================================================================
+
+    createTicket: async (accessTokenBase64, realm, options = {}) => {
+      const { title = "Test Ticket", expiresIn } = options;
+
+      const response = await helpers.accessRequest(
+        accessTokenBase64,
+        "POST",
+        `/api/realm/${realm}/tickets`,
+        {
+          title,
+          expiresIn,
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Failed to create ticket: ${response.status} - ${error}`);
+      }
+
+      return (await response.json()) as TicketResult;
+    },
+
+    // ========================================================================
+    // Client Auth Helpers
+    // ========================================================================
+
+    createClientAuthRequest: async (options = {}) => {
+      const { clientName = "Test Client", description, clientSecret: providedSecret } = options;
+
+      // Generate a client secret if not provided (32 bytes = 64 hex chars)
+      const clientSecret = providedSecret ?? Array.from({ length: 32 }, () => Math.floor(Math.random() * 256).toString(16).padStart(2, "0")).join("");
+
+      // Hash the client secret using SHA-256 (produces 64 hex chars)
+      const encoder = new TextEncoder();
+      const data = encoder.encode(clientSecret);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+      const clientSecretHash = Array.from(new Uint8Array(hashBuffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      const response = await fetch(`${url}/api/tokens/requests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientName, description, clientSecretHash }),
       });
-      return app.fetch(request);
-    },
 
-    agentRequest: async (agentToken: string, method: string, path: string, body?: unknown) => {
-      const headers: Record<string, string> = {
-        Authorization: `Agent ${agentToken}`,
-      };
-      if (body !== undefined) {
-        headers["Content-Type"] = "application/json";
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Failed to create client auth request: ${response.status} - ${error}`);
       }
-      const request = new Request(`${url}${path}`, {
-        method,
-        headers,
-        body: body !== undefined ? JSON.stringify(body) : undefined,
-      });
-      return app.fetch(request);
+
+      const result = (await response.json()) as Omit<ClientAuthRequestResult, "clientSecret" | "clientSecretHash">;
+      return {
+        ...result,
+        clientSecret,
+        clientSecretHash,
+      };
     },
-
-    // SDK Client Factory Methods
-    getAnonymousClient: () => createCasfaClient({ baseUrl: url }),
-
-    getUserClient: (token: string) => createUserClient({ baseUrl: url, accessToken: token }),
-
-    getDelegateClient: (agentToken: string) =>
-      createDelegateClient({ baseUrl: url, authType: "token", token: agentToken }),
-
-    getTicketClient: (ticketId: string, realmId: string) =>
-      createTicketClient({ baseUrl: url, ticketId, realmId }),
   };
 
   const stop = () => {
@@ -435,7 +648,6 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
     config,
     db,
     storage,
-    authService,
     helpers,
     stop,
   };
@@ -544,7 +756,45 @@ export const createAuthFetcher = (baseUrl: string, token: string) => {
 };
 
 // ============================================================================
-// Re-export SDK Types for Test Convenience
+// Node Tree Test Helpers
 // ============================================================================
 
-export type { CasfaAnonymousClient, CasfaUserClient, CasfaDelegateClient, CasfaTicketClient };
+/**
+ * Build the X-CAS-Index-Path header value
+ * Index-path format: colon-separated child indices from scope root
+ * Example: "0:1:2" means root -> child[0] -> child[1] -> child[2]
+ */
+export const buildIndexPath = (...indices: number[]): string => {
+  return indices.join(":");
+};
+
+/**
+ * A simple test node structure for building test trees
+ */
+export type TestNodeData = {
+  key: string;
+  data: Uint8Array;
+  kind: "dict" | "file" | "successor" | "set";
+};
+
+/**
+ * Build a minimal CAS file node for testing
+ * Note: This is a simplified version - real implementation would use @casfa/core
+ */
+export const buildTestFileData = (content: string): Uint8Array => {
+  return new TextEncoder().encode(content);
+};
+
+/**
+ * Generate a deterministic test hash from content
+ * For testing purposes only - real hashes would use BLAKE3s-128
+ */
+export const testHashFromContent = (content: string): string => {
+  const bytes = new TextEncoder().encode(content);
+  const hashHex = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .padStart(32, "0")
+    .slice(0, 32);
+  return hexToNodeKey(hashHex);
+};

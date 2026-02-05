@@ -1,7 +1,7 @@
 /**
  * E2E Tests: Admin API
  *
- * Tests for admin user management endpoints using casfa-client-v2 SDK:
+ * Tests for admin user management endpoints:
  * - GET /api/admin/users
  * - PATCH /api/admin/users/:userId
  */
@@ -24,31 +24,22 @@ describe("Admin API", () => {
   describe("GET /api/admin/users", () => {
     it("should list all users for admin", async () => {
       const adminId = `admin-${uniqueId()}`;
-      const { token } = await ctx.helpers.createTestUser(adminId, "admin");
-      const userClient = ctx.helpers.getUserClient(token);
+      const { token, mainDepotId } = await ctx.helpers.createTestUser(adminId, "admin");
 
-      const result = await userClient.admin.listUsers();
+      const response = await ctx.helpers.authRequest(token, "GET", "/api/admin/users");
 
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        // Server returns { users: [...] }, SDK type expects { items: [...] }
-        const data = result.data as any;
-        const items = data.items ?? data.users;
-        expect(items).toBeInstanceOf(Array);
-      }
+      expect(response.status).toBe(200);
+      const data = ((await response.json()) as any) as { users: unknown[] };
+      expect(data.users).toBeInstanceOf(Array);
     });
 
     it("should reject non-admin users", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+      const userId = uniqueId();
+      const { token, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const result = await userClient.admin.listUsers();
+      const response = await ctx.helpers.authRequest(token, "GET", "/api/admin/users");
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.status).toBe(403);
-      }
+      expect(response.status).toBe(403);
     });
 
     it("should reject unauthenticated requests", async () => {
@@ -58,91 +49,64 @@ describe("Admin API", () => {
   });
 
   describe("PATCH /api/admin/users/:userId", () => {
-    it("should update user role to authorized", async () => {
+    it("should update user role", async () => {
       const adminId = `admin-${uniqueId()}`;
-      const targetUserId = `target-${uniqueId()}`;
+      const userId = uniqueId();
       const { token: adminToken } = await ctx.helpers.createTestUser(adminId, "admin");
-      const userClient = ctx.helpers.getUserClient(adminToken);
+      await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Create target user as unauthorized first
-      await ctx.db.userRolesDb.setRole(targetUserId, "unauthorized");
+      const response = await ctx.helpers.authRequest(
+        adminToken,
+        "PATCH",
+        `/api/admin/users/${userId}`,
+        { role: "admin" }
+      );
 
-      const result = await userClient.admin.updateUserRole(`user:${targetUserId}`, {
-        role: "authorized",
-      });
-
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.data.role).toBe("authorized");
-      }
+      expect(response.status).toBe(200);
+      const data = ((await response.json()) as any) as { role: string };
+      expect(data.role).toBe("admin");
     });
 
-    it("should update user role to admin", async () => {
-      const adminId = `admin-${uniqueId()}`;
-      const targetUserId = `target-${uniqueId()}`;
-      const { token: adminToken } = await ctx.helpers.createTestUser(adminId, "admin");
-      await ctx.helpers.createTestUser(targetUserId, "authorized");
-      const userClient = ctx.helpers.getUserClient(adminToken);
+    it("should reject non-admin users", async () => {
+      const userId1 = `user1-${uniqueId()}`;
+      const userId2 = `user2-${uniqueId()}`;
+      const { token, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
+      await ctx.helpers.createTestUser(userId2, "authorized");
 
-      const result = await userClient.admin.updateUserRole(`user:${targetUserId}`, {
-        role: "admin",
-      });
+      const response = await ctx.helpers.authRequest(
+        token,
+        "PATCH",
+        `/api/admin/users/${userId2}`,
+        { role: "admin" }
+      );
 
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.data.role).toBe("admin");
-      }
+      expect(response.status).toBe(403);
     });
 
-    it("should revoke user access by setting role to unauthorized", async () => {
+    it("should reject invalid role value", async () => {
       const adminId = `admin-${uniqueId()}`;
-      const targetUserId = `target-${uniqueId()}`;
+      const userId = uniqueId();
       const { token: adminToken } = await ctx.helpers.createTestUser(adminId, "admin");
-      await ctx.helpers.createTestUser(targetUserId, "authorized");
-      const userClient = ctx.helpers.getUserClient(adminToken);
+      await ctx.helpers.createTestUser(userId, "authorized");
 
-      const result = await userClient.admin.updateUserRole(`user:${targetUserId}`, {
-        role: "unauthorized",
-      });
-
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.data.role).toBe("unauthorized");
-      }
-    });
-
-    it("should reject invalid role", async () => {
-      const adminId = `admin-${uniqueId()}`;
-      const targetUserId = `target-${uniqueId()}`;
-      const { token: adminToken } = await ctx.helpers.createTestUser(adminId, "admin");
-
-      // Use raw fetch to test invalid role
-      const response = await fetch(`${ctx.baseUrl}/api/admin/users/user:${targetUserId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${adminToken}`,
-        },
-        body: JSON.stringify({ role: "invalid_role" }),
-      });
+      const response = await ctx.helpers.authRequest(
+        adminToken,
+        "PATCH",
+        `/api/admin/users/${userId}`,
+        { role: "superuser" } // Invalid role
+      );
 
       expect(response.status).toBe(400);
     });
 
-    it("should reject non-admin users", async () => {
-      const userId = `user-${uniqueId()}`;
-      const targetUserId = `target-${uniqueId()}`;
-      const { token } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
-
-      const result = await userClient.admin.updateUserRole(`user:${targetUserId}`, {
-        role: "authorized",
+    it("should reject unauthenticated requests", async () => {
+      const response = await fetch(`${ctx.baseUrl}/api/admin/users/test`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: "admin" }),
       });
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.status).toBe(403);
-      }
+      expect(response.status).toBe(401);
     });
   });
 });

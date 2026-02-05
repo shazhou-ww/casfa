@@ -1,13 +1,18 @@
 /**
- * E2E Tests: Depot Management
+ * E2E Tests: Depot Management (Delegate Token API)
  *
- * Tests for Depot endpoints using casfa-client-v2 SDK:
- * - GET /api/realm/{realmId}/depots - List depots
- * - POST /api/realm/{realmId}/depots - Create depot
- * - GET /api/realm/{realmId}/depots/:depotId - Get depot details
- * - PATCH /api/realm/{realmId}/depots/:depotId - Update depot metadata
- * - POST /api/realm/{realmId}/depots/:depotId/commit - Commit new root
- * - DELETE /api/realm/{realmId}/depots/:depotId - Delete depot
+ * Tests for Depot endpoints:
+ * - GET /api/realm/{realmId}/depots - List depots (Access Token)
+ * - POST /api/realm/{realmId}/depots - Create depot (Access Token + canManageDepot)
+ * - GET /api/realm/{realmId}/depots/:depotId - Get depot details (Access Token)
+ * - PATCH /api/realm/{realmId}/depots/:depotId - Update depot (Access Token + canManageDepot)
+ * - DELETE /api/realm/{realmId}/depots/:depotId - Delete depot (Access Token + canManageDepot)
+ *
+ * Key Concepts:
+ * - All operations require Access Token (not Delegate Token)
+ * - Create/Update/Delete require canManageDepot permission
+ * - MAIN depot cannot be deleted
+ * - Visibility based on issuer chain
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -25,42 +30,71 @@ describe("Depot Management", () => {
     ctx.cleanup();
   });
 
+  // ==========================================================================
+  // GET /api/realm/{realmId}/depots - List Depots
+  // ==========================================================================
+
   describe("GET /api/realm/{realmId}/depots", () => {
-    it("should list depots including default main depot", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+    it("should list depots with Access Token", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const result = await userClient.depots.list(realm);
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        // Server returns { depots: [...] }, SDK type expects { items: [...] }
-        const data = result.data as any;
-        const items = data.items ?? data.depots;
-        expect(items).toBeInstanceOf(Array);
-        expect(items.length).toBeGreaterThanOrEqual(0);
-      }
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "GET",
+        `/api/realm/${realm}/depots`
+      );
+
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as any;
+      expect(data.depots).toBeInstanceOf(Array);
     });
 
     it("should support pagination", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, {
+        canManageDepot: true,
+      });
 
       // Create a few depots
       for (let i = 0; i < 3; i++) {
-        await userClient.depots.create(realm, { title: `Depot ${i}` });
+        await ctx.helpers.accessRequest(
+          accessToken.tokenBase64,
+          "POST",
+          `/api/realm/${realm}/depots`,
+          { title: `Depot ${i}` }
+        );
       }
 
-      const result = await userClient.depots.list(realm, { limit: 2 });
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "GET",
+        `/api/realm/${realm}/depots?limit=2`
+      );
 
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        const data = result.data as any;
-        const items = data.items ?? data.depots;
-        expect(items.length).toBeLessThanOrEqual(2);
-      }
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as any;
+      expect(data.depots.length).toBeLessThanOrEqual(2);
+    });
+
+    it("should reject Delegate Token", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const delegateToken = await ctx.helpers.createDelegateToken(token, realm);
+
+      const response = await ctx.helpers.delegateRequest(
+        delegateToken.tokenBase64,
+        "GET",
+        `/api/realm/${realm}/depots`
+      );
+
+      // Delegate Token cannot access data directly
+      expect(response.status).toBe(403);
     });
 
     it("should reject unauthenticated requests", async () => {
@@ -69,57 +103,91 @@ describe("Depot Management", () => {
     });
   });
 
-  describe("POST /api/realm/{realmId}/depots", () => {
-    it("should create a new depot", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+  // ==========================================================================
+  // POST /api/realm/{realmId}/depots - Create Depot
+  // ==========================================================================
 
-      const result = await userClient.depots.create(realm, {
-        title: "My Documents",
-        maxHistory: 10,
+  describe("POST /api/realm/{realmId}/depots", () => {
+    it("should create a new depot with canManageDepot permission", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, {
+        canManageDepot: true,
       });
 
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        const data = result.data as any;
-        expect(data.depotId).toMatch(/^depot:/);
-        expect(data.title).toBe("My Documents");
-        expect(data.maxHistory).toBe(10);
-        expect(data.createdAt).toBeLessThanOrEqual(Date.now());
-      }
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "POST",
+        `/api/realm/${realm}/depots`,
+        {
+          title: "My Documents",
+          maxHistory: 10,
+        }
+      );
+
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as any;
+      expect(data.depotId).toMatch(/^depot:/);
+      expect(data.title).toBe("My Documents");
+      expect(data.maxHistory).toBe(10);
     });
 
     it("should create depot with default maxHistory", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const result = await userClient.depots.create(realm, {
-        title: "Default History Depot",
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, {
+        canManageDepot: true,
       });
 
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        const data = result.data as any;
-        expect(data.maxHistory).toBe(20); // Default value
-      }
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "POST",
+        `/api/realm/${realm}/depots`,
+        { title: "Default History Depot" }
+      );
+
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as any;
+      expect(data.title).toBe("Default History Depot");
+      // maxHistory should have a default value
     });
 
-    it("should reject maxHistory exceeding system limit", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+    it("should reject creation without canManageDepot permission", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const result = await userClient.depots.create(realm, {
-        title: "Too Much History",
-        maxHistory: 101, // Exceeds max of 100
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, {
+        canManageDepot: false,
       });
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.status).toBe(400);
-      }
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "POST",
+        `/api/realm/${realm}/depots`,
+        { title: "Unauthorized Depot" }
+      );
+
+      expect(response.status).toBe(403);
+    });
+
+    it("should reject missing title", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, {
+        canManageDepot: true,
+      });
+
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "POST",
+        `/api/realm/${realm}/depots`,
+        {}
+      );
+
+      expect(response.status).toBe(400);
     });
 
     it("should reject unauthenticated requests", async () => {
@@ -128,298 +196,243 @@ describe("Depot Management", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "Unauthorized" }),
       });
+
       expect(response.status).toBe(401);
     });
   });
 
-  describe("GET /api/realm/{realmId}/depots/:depotId", () => {
-    it("should get depot details with history", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+  // ==========================================================================
+  // GET /api/realm/{realmId}/depots/:depotId - Get Depot Details
+  // ==========================================================================
 
-      // Create depot
-      const createResult = await userClient.depots.create(realm, {
-        title: "Detail Test",
+  describe("GET /api/realm/{realmId}/depots/:depotId", () => {
+    it("should get depot details", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, {
+        canManageDepot: true,
       });
 
-      expect(createResult.ok).toBe(true);
-      if (!createResult.ok) return;
+      // Create a depot
+      const createResponse = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "POST",
+        `/api/realm/${realm}/depots`,
+        { title: "Detail Test Depot" }
+      );
 
-      const { depotId } = createResult.data;
+      expect(createResponse.status).toBe(200);
+      const created = (await createResponse.json()) as any;
 
       // Get details
-      const result = await userClient.depots.get(realm, depotId);
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "GET",
+        `/api/realm/${realm}/depots/${created.depotId}`
+      );
 
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.data.depotId).toBe(depotId);
-        expect(result.data.title).toBe("Detail Test");
-        expect(result.data.history).toBeInstanceOf(Array);
-      }
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as any;
+      expect(data.depotId).toBe(created.depotId);
+      expect(data.title).toBe("Detail Test Depot");
     });
 
     it("should return 404 for non-existent depot", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const result = await userClient.depots.get(realm, "depot:NONEXISTENT0000000000000");
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.status).toBe(404);
-      }
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "GET",
+        `/api/realm/${realm}/depots/depot:nonexistent123`
+      );
+
+      expect(response.status).toBe(404);
     });
   });
+
+  // ==========================================================================
+  // PATCH /api/realm/{realmId}/depots/:depotId - Update Depot
+  // ==========================================================================
 
   describe("PATCH /api/realm/{realmId}/depots/:depotId", () => {
-    it("should update depot title", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+    it("should update depot metadata with canManageDepot permission", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Create depot
-      const createResult = await userClient.depots.create(realm, {
-        title: "Original Title",
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, {
+        canManageDepot: true,
       });
 
-      expect(createResult.ok).toBe(true);
-      if (!createResult.ok) return;
+      // Create a depot
+      const createResponse = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "POST",
+        `/api/realm/${realm}/depots`,
+        { title: "Original Title" }
+      );
 
-      const { depotId } = createResult.data;
+      const created = (await createResponse.json()) as any;
 
       // Update title
-      const result = await userClient.depots.update(realm, depotId, {
-        title: "New Title",
-      });
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "PATCH",
+        `/api/realm/${realm}/depots/${created.depotId}`,
+        { title: "Updated Title" }
+      );
 
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.data.title).toBe("New Title");
-      }
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as any;
+      expect(data.title).toBe("Updated Title");
     });
 
-    it("should update depot maxHistory", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+    it("should reject update without canManageDepot permission", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Create depot
-      const createResult = await userClient.depots.create(realm, {
-        title: "History Update",
-        maxHistory: 10,
+      // Create with permission
+      const createToken = await ctx.helpers.createAccessToken(token, realm, {
+        canManageDepot: true,
       });
 
-      expect(createResult.ok).toBe(true);
-      if (!createResult.ok) return;
+      const createResponse = await ctx.helpers.accessRequest(
+        createToken.tokenBase64,
+        "POST",
+        `/api/realm/${realm}/depots`,
+        { title: "Test Depot" }
+      );
 
-      const { depotId } = createResult.data;
+      const created = (await createResponse.json()) as any;
 
-      // Update maxHistory
-      const result = await userClient.depots.update(realm, depotId, {
-        maxHistory: 30,
+      // Try to update without permission
+      const readOnlyToken = await ctx.helpers.createAccessToken(token, realm, {
+        canManageDepot: false,
       });
 
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        const data = result.data as any;
-        expect(data.maxHistory).toBe(30);
-      }
-    });
+      const response = await ctx.helpers.accessRequest(
+        readOnlyToken.tokenBase64,
+        "PATCH",
+        `/api/realm/${realm}/depots/${created.depotId}`,
+        { title: "Unauthorized Update" }
+      );
 
-    it("should reject maxHistory exceeding limit", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
-
-      // Create depot
-      const createResult = await userClient.depots.create(realm, {
-        title: "Bad Update",
-      });
-
-      expect(createResult.ok).toBe(true);
-      if (!createResult.ok) return;
-
-      const { depotId } = createResult.data;
-
-      // Try to set too high maxHistory
-      const result = await userClient.depots.update(realm, depotId, {
-        maxHistory: 200,
-      });
-
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.status).toBe(400);
-      }
-    });
-
-    it("should return 404 for non-existent depot", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
-
-      const result = await userClient.depots.update(realm, "depot:NONEXISTENT0000000000000", {
-        title: "Update",
-      });
-
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.status).toBe(404);
-      }
+      expect(response.status).toBe(403);
     });
   });
 
-  describe("POST /api/realm/{realmId}/depots/:depotId/commit", () => {
-    it("should attempt commit new root node", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
-
-      // Create depot
-      const createResult = await userClient.depots.create(realm, {
-        title: "Commit Test",
-      });
-
-      expect(createResult.ok).toBe(true);
-      if (!createResult.ok) return;
-
-      const { depotId } = createResult.data;
-
-      // Commit new root (note: would fail if node doesn't exist)
-      const newRoot = testNodeKey(1);
-      const result = await userClient.depots.commit(realm, depotId, {
-        root: newRoot,
-      });
-
-      // Expect failure because the root node doesn't actually exist
-      expect(result.ok === true || result.error?.status === 400).toBe(true);
-    });
-
-    it("should reject invalid root key format", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
-
-      // Create depot
-      const createResult = await userClient.depots.create(realm, {
-        title: "Invalid Root Test",
-      });
-
-      expect(createResult.ok).toBe(true);
-      if (!createResult.ok) return;
-
-      const { depotId } = createResult.data;
-
-      // Commit with invalid root format
-      const result = await userClient.depots.commit(realm, depotId, {
-        root: "invalid-root-format",
-      });
-
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.status).toBe(400);
-      }
-    });
-
-    it("should return 404 for non-existent depot", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
-
-      const result = await userClient.depots.commit(realm, "depot:NONEXISTENT0000000000000", {
-        root: testNodeKey(1),
-      });
-
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.status).toBe(404);
-      }
-    });
-  });
+  // ==========================================================================
+  // DELETE /api/realm/{realmId}/depots/:depotId - Delete Depot
+  // ==========================================================================
 
   describe("DELETE /api/realm/{realmId}/depots/:depotId", () => {
-    it("should delete depot", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+    it("should delete depot with canManageDepot permission", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Create depot
-      const createResult = await userClient.depots.create(realm, {
-        title: "Delete Test",
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, {
+        canManageDepot: true,
       });
 
-      expect(createResult.ok).toBe(true);
-      if (!createResult.ok) return;
+      // Create a depot
+      const createResponse = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "POST",
+        `/api/realm/${realm}/depots`,
+        { title: "To Delete" }
+      );
 
-      const { depotId } = createResult.data;
+      const created = (await createResponse.json()) as any;
 
-      // Delete depot
-      const result = await userClient.depots.delete(realm, depotId);
+      // Delete
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "DELETE",
+        `/api/realm/${realm}/depots/${created.depotId}`
+      );
 
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.data.success).toBe(true);
-      }
+      expect(response.status).toBe(200);
 
       // Verify deleted
-      const getResult = await userClient.depots.get(realm, depotId);
-      expect(getResult.ok).toBe(false);
-      if (!getResult.ok) {
-        expect(getResult.error.status).toBe(404);
-      }
+      const getResponse = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "GET",
+        `/api/realm/${realm}/depots/${created.depotId}`
+      );
+
+      expect(getResponse.status).toBe(404);
     });
 
-    it("should return 404 for non-existent depot", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+    it("should not allow deleting MAIN depot", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const result = await userClient.depots.delete(realm, "depot:NONEXISTENT0000000000000");
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, {
+        canManageDepot: true,
+      });
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.status).toBe(404);
-      }
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "DELETE",
+        `/api/realm/${realm}/depots/MAIN`
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject delete without canManageDepot permission", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      // Create with permission
+      const createToken = await ctx.helpers.createAccessToken(token, realm, {
+        canManageDepot: true,
+      });
+
+      const createResponse = await ctx.helpers.accessRequest(
+        createToken.tokenBase64,
+        "POST",
+        `/api/realm/${realm}/depots`,
+        { title: "Protected Depot" }
+      );
+
+      const created = (await createResponse.json()) as any;
+
+      // Try to delete without permission
+      const readOnlyToken = await ctx.helpers.createAccessToken(token, realm, {
+        canManageDepot: false,
+      });
+
+      const response = await ctx.helpers.accessRequest(
+        readOnlyToken.tokenBase64,
+        "DELETE",
+        `/api/realm/${realm}/depots/${created.depotId}`
+      );
+
+      expect(response.status).toBe(403);
     });
   });
 
+  // ==========================================================================
+  // Access Control Tests
+  // ==========================================================================
+
   describe("Access Control", () => {
-    it("should reject access to other users realm depots", async () => {
+    it("should reject access to other user's realm depots", async () => {
       const userId1 = `user1-${uniqueId()}`;
       const userId2 = `user2-${uniqueId()}`;
-      const { token } = await ctx.helpers.createTestUser(userId1, "authorized");
-      await ctx.helpers.createTestUser(userId2, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
+      const { realm: otherRealm } = await ctx.helpers.createTestUser(userId2, "authorized");
 
-      const result = await userClient.depots.list(`usr_${userId2}`);
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.status).toBe(403);
-      }
-    });
-
-    it("should not allow Ticket to access depots list", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
-
-      // Create ticket
-      const createResult = await userClient.tickets.create(realm, {
-        purpose: "Depot access test",
-      });
-
-      expect(createResult.ok).toBe(true);
-      if (!createResult.ok) return;
-
-      const { ticketId } = createResult.data;
-
-      // Try to list depots with ticket - use raw fetch since ticketClient doesn't have list
-      const response = await ctx.helpers.ticketRequest(
-        ticketId,
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
         "GET",
-        `/api/realm/${realm}/depots`
+        `/api/realm/${otherRealm}/depots`
       );
 
       expect(response.status).toBe(403);

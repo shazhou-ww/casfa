@@ -1,15 +1,26 @@
 /**
- * E2E Tests: Node Operations
+ * E2E Tests: Node Operations (Delegate Token API)
  *
- * Tests for Node endpoints using casfa-client-v2 SDK:
- * - POST /api/realm/{realmId}/nodes/prepare - Pre-upload check
- * - PUT /api/realm/{realmId}/nodes/:key - Upload node
- * - GET /api/realm/{realmId}/nodes/:key/metadata - Get metadata
- * - GET /api/realm/{realmId}/nodes/:key - Get binary data
+ * Tests for Node endpoints:
+ * - POST /api/realm/{realmId}/nodes/prepare - Check missing nodes (Access Token)
+ * - PUT /api/realm/{realmId}/nodes/:key - Upload node (Access Token + canUpload)
+ * - GET /api/realm/{realmId}/nodes/:key/metadata - Get metadata (Access Token + X-CAS-Index-Path)
+ * - GET /api/realm/{realmId}/nodes/:key - Get binary data (Access Token + X-CAS-Index-Path)
+ *
+ * Key Concepts:
+ * - All operations require Access Token (not Delegate Token)
+ * - Read operations require X-CAS-Index-Path header to prove scope access
+ * - Write operations require canUpload permission
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createE2EContext, type E2EContext, testNodeKey, uniqueId } from "./setup.ts";
+import {
+  buildIndexPath,
+  createE2EContext,
+  type E2EContext,
+  testNodeKey,
+  uniqueId,
+} from "./setup.ts";
 
 describe("Node Operations", () => {
   let ctx: E2EContext;
@@ -23,82 +34,169 @@ describe("Node Operations", () => {
     ctx.cleanup();
   });
 
+  // ==========================================================================
+  // POST /api/realm/{realmId}/nodes/prepare - Check Missing Nodes
+  // ==========================================================================
+
   describe("POST /api/realm/{realmId}/nodes/prepare", () => {
     it("should return all keys as missing for non-existent nodes", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const testKeys = [testNodeKey(1), testNodeKey(2)];
 
-      const result = await userClient.nodes.prepare(realm, { keys: testKeys });
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "POST",
+        `/api/realm/${realm}/nodes/prepare`,
+        { keys: testKeys }
+      );
 
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.data.missing).toEqual(expect.arrayContaining(testKeys));
-        expect(result.data.exists).toEqual([]);
-      }
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as any;
+      expect(data.missing).toEqual(expect.arrayContaining(testKeys));
+      expect(data.exists).toEqual([]);
     });
 
     it("should handle empty keys array", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const result = await userClient.nodes.prepare(realm, { keys: [] });
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
-      // SDK might handle empty keys locally or return 400
-      if (result.ok) {
-        expect(result.data.exists).toEqual([]);
-        expect(result.data.missing).toEqual([]);
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "POST",
+        `/api/realm/${realm}/nodes/prepare`,
+        { keys: [] }
+      );
+
+      // Accept either success with empty result or 400 for empty input
+      if (response.status === 200) {
+        const data = (await response.json()) as any;
+        expect(data.exists).toEqual([]);
+        expect(data.missing).toEqual([]);
       } else {
-        expect(result.error.status).toBe(400);
+        expect(response.status).toBe(400);
       }
     });
 
     it("should reject invalid node key format", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const result = await userClient.nodes.prepare(realm, {
-        keys: ["invalid-key-format"],
-      });
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.status).toBe(400);
-      }
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "POST",
+        `/api/realm/${realm}/nodes/prepare`,
+        { keys: ["invalid-key-format"] }
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject too many keys (> 1000)", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
+
+      const tooManyKeys = Array.from({ length: 1001 }, (_, i) => testNodeKey(i));
+
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "POST",
+        `/api/realm/${realm}/nodes/prepare`,
+        { keys: tooManyKeys }
+      );
+
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject Delegate Token", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const delegateToken = await ctx.helpers.createDelegateToken(token, realm);
+
+      const response = await ctx.helpers.delegateRequest(
+        delegateToken.tokenBase64,
+        "POST",
+        `/api/realm/${realm}/nodes/prepare`,
+        { keys: [testNodeKey(1)] }
+      );
+
+      // Delegate Token cannot access node data directly
+      expect(response.status).toBe(403);
     });
 
     it("should reject unauthenticated requests", async () => {
       const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/nodes/prepare`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          keys: [testNodeKey(1)],
-        }),
+        body: JSON.stringify({ keys: [testNodeKey(1)] }),
       });
 
       expect(response.status).toBe(401);
     });
   });
 
+  // ==========================================================================
+  // PUT /api/realm/{realmId}/nodes/:key - Upload Node
+  // ==========================================================================
+
   describe("PUT /api/realm/{realmId}/nodes/:key", () => {
-    it("should attempt to upload a node", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+    it("should upload a node with canUpload permission", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, {
+        canUpload: true,
+      });
 
       // Create a simple test node (this would normally be a properly formatted CAS node)
       const nodeData = new Uint8Array([1, 2, 3, 4, 5]);
       const nodeKey = testNodeKey(1);
 
-      const result = await userClient.nodes.put(realm, nodeKey, { data: nodeData });
+      const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/${nodeKey}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${accessToken.tokenBase64}`,
+          "Content-Type": "application/octet-stream",
+        },
+        body: nodeData,
+      });
 
       // The actual response depends on whether the node format is valid
       // Accept either success or 400 (invalid format)
-      expect(result.ok === true || result.error?.status === 400).toBe(true);
+      expect(response.status === 200 || response.status === 400).toBe(true);
+    });
+
+    it("should reject upload without canUpload permission", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, {
+        canUpload: false,
+      });
+
+      const nodeData = new Uint8Array([1, 2, 3, 4, 5]);
+      const nodeKey = testNodeKey(2);
+
+      const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/${nodeKey}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${accessToken.tokenBase64}`,
+          "Content-Type": "application/octet-stream",
+        },
+        body: nodeData,
+      });
+
+      expect(response.status).toBe(403);
     });
 
     it("should reject unauthenticated requests", async () => {
@@ -115,20 +213,46 @@ describe("Node Operations", () => {
     });
   });
 
+  // ==========================================================================
+  // GET /api/realm/{realmId}/nodes/:key/metadata - Get Metadata
+  // ==========================================================================
+
   describe("GET /api/realm/{realmId}/nodes/:key/metadata", () => {
     it("should return 404 for non-existent node", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const nodeKey = testNodeKey(99);
 
-      const result = await userClient.nodes.getMetadata(realm, nodeKey);
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "GET",
+        `/api/realm/${realm}/nodes/${nodeKey}/metadata`,
+        undefined,
+        { "X-CAS-Index-Path": buildIndexPath(0) }
+      );
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.status).toBe(404);
-      }
+      expect(response.status).toBe(404);
+    });
+
+    it("should reject request without X-CAS-Index-Path header", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
+
+      const nodeKey = testNodeKey(1);
+
+      // No X-CAS-Index-Path header
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "GET",
+        `/api/realm/${realm}/nodes/${nodeKey}/metadata`
+      );
+
+      expect(response.status).toBe(400);
     });
 
     it("should reject unauthenticated requests", async () => {
@@ -140,20 +264,46 @@ describe("Node Operations", () => {
     });
   });
 
+  // ==========================================================================
+  // GET /api/realm/{realmId}/nodes/:key - Get Binary Data
+  // ==========================================================================
+
   describe("GET /api/realm/{realmId}/nodes/:key", () => {
     it("should return 404 for non-existent node", async () => {
-      const userId = `user-${uniqueId()}`;
-      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const nodeKey = testNodeKey(99);
 
-      const result = await userClient.nodes.get(realm, nodeKey);
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "GET",
+        `/api/realm/${realm}/nodes/${nodeKey}`,
+        undefined,
+        { "X-CAS-Index-Path": buildIndexPath(0) }
+      );
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.status).toBe(404);
-      }
+      expect(response.status).toBe(404);
+    });
+
+    it("should reject request without X-CAS-Index-Path header", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
+
+      const nodeKey = testNodeKey(1);
+
+      // No X-CAS-Index-Path header
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "GET",
+        `/api/realm/${realm}/nodes/${nodeKey}`
+      );
+
+      expect(response.status).toBe(400);
     });
 
     it("should reject unauthenticated requests", async () => {
@@ -165,22 +315,49 @@ describe("Node Operations", () => {
     });
   });
 
+  // ==========================================================================
+  // Access Control Tests
+  // ==========================================================================
+
   describe("Access Control", () => {
-    it("should reject access to other users realm nodes", async () => {
+    it("should reject access to other user's realm nodes", async () => {
       const userId1 = `user1-${uniqueId()}`;
       const userId2 = `user2-${uniqueId()}`;
-      const { token } = await ctx.helpers.createTestUser(userId1, "authorized");
-      await ctx.helpers.createTestUser(userId2, "authorized");
-      const userClient = ctx.helpers.getUserClient(token);
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
+      const { realm: otherRealm } = await ctx.helpers.createTestUser(userId2, "authorized");
+
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const nodeKey = testNodeKey(1);
 
-      const result = await userClient.nodes.get(`usr_${userId2}`, nodeKey);
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "GET",
+        `/api/realm/${otherRealm}/nodes/${nodeKey}`,
+        undefined,
+        { "X-CAS-Index-Path": buildIndexPath(0) }
+      );
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.status).toBe(403);
-      }
+      expect(response.status).toBe(403);
+    });
+
+    it("should reject invalid index-path format", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
+
+      const nodeKey = testNodeKey(1);
+
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
+        "GET",
+        `/api/realm/${realm}/nodes/${nodeKey}`,
+        undefined,
+        { "X-CAS-Index-Path": "invalid:path:format" }
+      );
+
+      expect(response.status).toBe(400);
     });
   });
 });
