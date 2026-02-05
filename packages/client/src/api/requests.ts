@@ -13,8 +13,8 @@ import type {
   DenyRequestResponse,
   PollRequestResponse,
 } from "@casfa/protocol";
-import type { FetchResult } from "../../types/client.ts";
-import { fetchApi, fetchWithAuth } from "../../utils/api-fetch.ts";
+import type { FetchResult } from "../types/client.ts";
+import { fetchApi, fetchWithAuth } from "../utils/http.ts";
 
 // ============================================================================
 // Public APIs (No auth required)

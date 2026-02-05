@@ -1,112 +1,59 @@
 /**
- * API module exports.
+ * API module exports for @casfa/client
  */
 
-// Admin API
-export {
-  type AdminApiContext,
-  type ListUsersParams,
-  listUsers,
-  type UpdateUserRoleParams,
-  updateUserRole,
-} from "./admin.ts";
-
-// Auth API (AWP Client + Agent Token)
-export {
-  type AuthApiContext,
-  type CompleteClientParams,
-  type CreateAgentTokenParams,
-  completeClient,
-  createAgentToken,
-  type InitClientParams,
-  initClient,
-  type ListAgentTokensParams,
-  type ListClientsParams,
-  listAgentTokens,
-  listClients,
-  type PollClientParams,
-  pollClient,
-  type RevokeAgentTokenParams,
-  type RevokeClientParams,
-  revokeAgentToken,
-  revokeClient,
-} from "./auth.ts";
 // Depot API
 export {
-  type CommitDepotParams,
-  type CreateDepotParams,
+  type CommitDepotResponse,
   commitDepot,
   createDepot,
-  type DeleteDepotParams,
-  type DepotApiContext,
   deleteDepot,
-  type GetDepotParams,
   getDepot,
-  type ListDepotsParams,
+  type ListDepotsResponse,
   listDepots,
-  type UpdateDepotParams,
   updateDepot,
 } from "./depots.ts";
-
 // Info API
-export { getInfo, type InfoApiContext } from "./info.ts";
-
-// MCP API
-export {
-  type CallMcpParams,
-  type CallToolParams,
-  callMcp,
-  callTool,
-  listTools,
-  type McpApiContext,
-} from "./mcp.ts";
+export { fetchServiceInfo, healthCheck } from "./info.ts";
 // Node API
-export {
-  type GetNodeMetadataParams,
-  type GetNodeParams,
-  getNode,
-  getNodeMetadata,
-  type NodeApiContext,
-  type PrepareNodesParams,
-  type PutNodeParams,
-  prepareNodes,
-  putNode,
-  type UploadNodeParams,
-  uploadNode,
-} from "./nodes.ts";
+export { getNode, getNodeMetadata, type NodeUploadResult, prepareNodes, putNode } from "./nodes.ts";
 // OAuth API
 export {
-  type BuildAuthUrlParams,
-  buildAuthUrl,
-  type ExchangeCodeParams,
+  type CognitoConfig,
   exchangeCode,
-  getConfig,
   getMe,
-  type LoginParams,
+  getOAuthConfig,
   login,
-  type OAuthApiContext,
-  type RefreshParams,
   refresh,
+  type TokenResponse,
+  tokenResponseToStoredUserToken,
+  type UserInfo,
 } from "./oauth.ts";
-// Realm API
+// Client Authorization Request API
 export {
-  getRealmInfo,
-  getRealmUsage,
-  type RealmApiContext,
-} from "./realm.ts";
+  approveAuthRequest,
+  createAuthRequest,
+  getAuthRequest,
+  pollAuthRequest,
+  rejectAuthRequest,
+} from "./requests.ts";
 // Ticket API
 export {
-  type CommitTicketParams,
-  type CreateTicketParams,
-  commitTicket,
   createTicket,
-  type DeleteTicketParams,
-  deleteTicket,
-  type GetTicketParams,
   getTicket,
-  type ListTicketsParams,
+  type ListTicketsResponse,
   listTickets,
-  type RevokeTicketParams,
-  revokeTicket,
-  type TicketApiContext,
+  type SubmitTicketResponse,
+  submitTicket,
 } from "./tickets.ts";
+// Token management API
+export {
+  createToken,
+  type DelegateTokenParams,
+  delegateToken,
+  getToken,
+  type ListTokensParams,
+  type ListTokensResponse,
+  listTokens,
+  revokeToken,
+} from "./tokens.ts";

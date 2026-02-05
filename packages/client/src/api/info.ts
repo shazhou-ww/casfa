@@ -1,32 +1,21 @@
 /**
- * Info API functions.
- *
- * Provides access to public service configuration and feature flags.
+ * Service info API.
  */
 
 import type { ServiceInfo } from "@casfa/protocol";
-import type { Fetcher, FetchResult } from "../utils/fetch.ts";
+import type { FetchResult } from "../types/client.ts";
+import { fetchApi } from "../utils/http.ts";
 
 /**
- * Info API context.
+ * Fetch service info from /api/info.
  */
-export type InfoApiContext = {
-  fetcher: Fetcher;
+export const fetchServiceInfo = async (baseUrl: string): Promise<FetchResult<ServiceInfo>> => {
+  return fetchApi<ServiceInfo>(`${baseUrl}/api/info`);
 };
 
 /**
- * Get service information.
- *
- * This is a public endpoint that does not require authentication.
- * Returns service configuration including:
- * - Service name and version
- * - Storage and database types
- * - Authentication method
- * - Server limits (max node size, etc.)
- * - Feature flags
+ * Health check.
  */
-export const getInfo = async (ctx: InfoApiContext): Promise<FetchResult<ServiceInfo>> => {
-  return ctx.fetcher.request<ServiceInfo>("/api/info", {
-    skipAuth: true,
-  });
+export const healthCheck = async (baseUrl: string): Promise<FetchResult<{ status: string }>> => {
+  return fetchApi<{ status: string }>(`${baseUrl}/api/health`);
 };

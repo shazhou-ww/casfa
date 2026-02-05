@@ -1,152 +1,155 @@
 /**
  * Depot API functions.
+ *
+ * Token Requirement:
+ * - All depot operations require Access Token with canManageDepot permission.
  */
 
 import type {
   CreateDepot,
+  CreateDepotResponse,
+  DepotCommit,
   DepotDetail,
-  DepotInfo,
-  PaginatedResponse,
+  DepotListItem,
+  ListDepotsQuery,
   UpdateDepot,
-} from "../types/api.ts";
-import type { Fetcher, FetchResult } from "../utils/fetch.ts";
+} from "@casfa/protocol";
+import type { FetchResult } from "../types/client.ts";
+import { fetchWithAuth } from "../utils/http.ts";
 
-/**
- * Depot API context.
- */
-export type DepotApiContext = {
-  fetcher: Fetcher;
-  realmId: string;
+// ============================================================================
+// Types
+// ============================================================================
+
+export type ListDepotsResponse = {
+  depots: DepotListItem[];
+  nextCursor?: string;
 };
+
+export type CommitDepotResponse = {
+  depotId: string;
+  root: string;
+  updatedAt: number;
+};
+
+// ============================================================================
+// Access Token APIs
+// ============================================================================
 
 /**
  * Create a new depot.
+ * Requires Access Token with canManageDepot.
  */
-export type CreateDepotParams = {
-  title?: string;
-  maxHistory?: number;
-};
-
 export const createDepot = async (
-  ctx: DepotApiContext,
-  params: CreateDepotParams = {}
-): Promise<FetchResult<DepotInfo>> => {
-  const body: Partial<CreateDepot> = {};
-  if (params.title !== undefined) body.title = params.title;
-  if (params.maxHistory !== undefined) body.maxHistory = params.maxHistory;
-
-  return ctx.fetcher.request<DepotInfo>(`/api/realm/${ctx.realmId}/depots`, {
-    method: "POST",
-    body,
-  });
+  baseUrl: string,
+  realm: string,
+  accessTokenBase64: string,
+  params: CreateDepot
+): Promise<FetchResult<CreateDepotResponse>> => {
+  return fetchWithAuth<CreateDepotResponse>(
+    `${baseUrl}/api/realm/${encodeURIComponent(realm)}/depots`,
+    `Bearer ${accessTokenBase64}`,
+    {
+      method: "POST",
+      body: params,
+    }
+  );
 };
 
 /**
  * List depots.
+ * Requires Access Token.
  */
-export type ListDepotsParams = {
-  cursor?: string;
-  limit?: number;
-};
-
 export const listDepots = async (
-  ctx: DepotApiContext,
-  params: ListDepotsParams = {}
-): Promise<FetchResult<PaginatedResponse<DepotInfo>>> => {
+  baseUrl: string,
+  realm: string,
+  accessTokenBase64: string,
+  params?: ListDepotsQuery
+): Promise<FetchResult<ListDepotsResponse>> => {
   const query = new URLSearchParams();
-  if (params.cursor) query.set("cursor", params.cursor);
-  if (params.limit) query.set("limit", params.limit.toString());
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.cursor) query.set("cursor", params.cursor);
 
-  const queryStr = query.toString();
-  const path = `/api/realm/${ctx.realmId}/depots${queryStr ? `?${queryStr}` : ""}`;
+  const queryString = query.toString();
+  const url = `${baseUrl}/api/realm/${encodeURIComponent(realm)}/depots${queryString ? `?${queryString}` : ""}`;
 
-  return ctx.fetcher.request<PaginatedResponse<DepotInfo>>(path);
+  return fetchWithAuth<ListDepotsResponse>(url, `Bearer ${accessTokenBase64}`);
 };
 
 /**
- * Get depot details with history.
+ * Get depot details.
+ * Requires Access Token.
  */
-export type GetDepotParams = {
-  depotId: string;
-  maxHistory?: number;
-};
-
 export const getDepot = async (
-  ctx: DepotApiContext,
-  params: GetDepotParams
+  baseUrl: string,
+  realm: string,
+  accessTokenBase64: string,
+  depotId: string
 ): Promise<FetchResult<DepotDetail>> => {
-  const query = new URLSearchParams();
-  if (params.maxHistory) query.set("maxHistory", params.maxHistory.toString());
-
-  const queryStr = query.toString();
-  const path = `/api/realm/${ctx.realmId}/depots/${params.depotId}${queryStr ? `?${queryStr}` : ""}`;
-
-  return ctx.fetcher.request<DepotDetail>(path);
+  return fetchWithAuth<DepotDetail>(
+    `${baseUrl}/api/realm/${encodeURIComponent(realm)}/depots/${encodeURIComponent(depotId)}`,
+    `Bearer ${accessTokenBase64}`
+  );
 };
 
 /**
  * Update depot metadata.
+ * Requires Access Token with canManageDepot.
  */
-export type UpdateDepotParams = {
-  depotId: string;
-  title?: string;
-  maxHistory?: number;
-};
-
 export const updateDepot = async (
-  ctx: DepotApiContext,
-  params: UpdateDepotParams
-): Promise<FetchResult<DepotInfo>> => {
-  const body: UpdateDepot = {};
-  if (params.title !== undefined) body.title = params.title;
-  if (params.maxHistory !== undefined) body.maxHistory = params.maxHistory;
-
-  return ctx.fetcher.request<DepotInfo>(`/api/realm/${ctx.realmId}/depots/${params.depotId}`, {
-    method: "PATCH",
-    body,
-  });
-};
-
-/**
- * Commit new root to depot.
- */
-export type CommitDepotParams = {
-  depotId: string;
-  root: string;
-  message?: string;
-  expectedRoot?: string; // For optimistic locking
-};
-
-export const commitDepot = async (
-  ctx: DepotApiContext,
-  params: CommitDepotParams
-): Promise<FetchResult<DepotInfo>> => {
-  return ctx.fetcher.request<DepotInfo>(
-    `/api/realm/${ctx.realmId}/depots/${params.depotId}/commit`,
+  baseUrl: string,
+  realm: string,
+  accessTokenBase64: string,
+  depotId: string,
+  params: UpdateDepot
+): Promise<FetchResult<DepotDetail>> => {
+  return fetchWithAuth<DepotDetail>(
+    `${baseUrl}/api/realm/${encodeURIComponent(realm)}/depots/${encodeURIComponent(depotId)}`,
+    `Bearer ${accessTokenBase64}`,
     {
-      method: "POST",
-      body: {
-        root: params.root,
-        message: params.message,
-        expectedRoot: params.expectedRoot,
-      },
+      method: "PATCH",
+      body: params,
     }
   );
 };
 
 /**
  * Delete a depot.
+ * Requires Access Token with canManageDepot.
  */
-export type DeleteDepotParams = {
-  depotId: string;
+export const deleteDepot = async (
+  baseUrl: string,
+  realm: string,
+  accessTokenBase64: string,
+  depotId: string
+): Promise<FetchResult<void>> => {
+  return fetchWithAuth<void>(
+    `${baseUrl}/api/realm/${encodeURIComponent(realm)}/depots/${encodeURIComponent(depotId)}`,
+    `Bearer ${accessTokenBase64}`,
+    {
+      method: "DELETE",
+      responseType: "none",
+    }
+  );
 };
 
-export const deleteDepot = async (
-  ctx: DepotApiContext,
-  params: DeleteDepotParams
-): Promise<FetchResult<{ success: boolean }>> => {
-  return ctx.fetcher.request<{ success: boolean }>(
-    `/api/realm/${ctx.realmId}/depots/${params.depotId}`,
-    { method: "DELETE" }
+/**
+ * Commit new root to depot.
+ * Requires Access Token with canManageDepot.
+ */
+export const commitDepot = async (
+  baseUrl: string,
+  realm: string,
+  accessTokenBase64: string,
+  depotId: string,
+  params: DepotCommit
+): Promise<FetchResult<CommitDepotResponse>> => {
+  return fetchWithAuth<CommitDepotResponse>(
+    `${baseUrl}/api/realm/${encodeURIComponent(realm)}/depots/${encodeURIComponent(depotId)}/commit`,
+    `Bearer ${accessTokenBase64}`,
+    {
+      method: "POST",
+      body: params,
+    }
   );
 };

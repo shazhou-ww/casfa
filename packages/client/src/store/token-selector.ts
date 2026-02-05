@@ -8,10 +8,8 @@
  */
 
 import type { ServiceInfo } from "@casfa/protocol";
-import type { StoredAccessToken, StoredDelegateToken, TokenState } from "../types/tokens.ts";
+import type { StoredAccessToken, StoredDelegateToken } from "../types/tokens.ts";
 import {
-  getMaxIssuerId,
-  isAccessTokenValid,
   isDelegateTokenValid,
   isUserTokenValid,
   shouldReissueAccessToken,

@@ -4,7 +4,7 @@
 
 import type { OnAuthRequiredCallback } from "../types/client.ts";
 import type { StoredUserToken } from "../types/tokens.ts";
-import { isTokenExpiringSoon, isUserTokenValid } from "./token-checks.ts";
+import { isUserTokenValid } from "./token-checks.ts";
 import type { TokenStore } from "./token-store.ts";
 
 // ============================================================================

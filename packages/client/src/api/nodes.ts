@@ -1,203 +1,164 @@
 /**
- * Node API functions with local caching support.
+ * Node API functions.
+ *
+ * Token Requirement:
+ * - GET /nodes/:nodeKey: Access Token (with X-CAS-Index-Path header)
+ * - POST /nodes/prepare: Access Token with canUpload
+ * - PUT /nodes/:nodeKey: Access Token with canUpload
  */
 
-import { hashToNodeKey } from "@casfa/protocol";
-import type { NodeMetadata, PrepareNodesResult } from "../types/api.ts";
-import type { HashProvider, StorageProvider } from "../types/providers.ts";
-import type { Fetcher, FetchResult } from "../utils/fetch.ts";
+import type { NodeMetadata, PrepareNodes, PrepareNodesResponse } from "@casfa/protocol";
+import type { FetchResult } from "../types/client.ts";
+import { fetchWithAuth } from "../utils/http.ts";
 
-/**
- * Node API context.
- */
-export type NodeApiContext = {
-  fetcher: Fetcher;
-  realmId: string;
-  storage?: StorageProvider;
-  hash?: HashProvider;
+// ============================================================================
+// Types
+// ============================================================================
+
+export type NodeUploadResult = {
+  nodeKey: string;
+  status: "created" | "exists";
 };
 
+// ============================================================================
+// Access Token APIs
+// ============================================================================
+
 /**
- * Prepare nodes for upload (check which ones already exist).
+ * Get node content.
+ * Requires Access Token with scope covering the index path.
+ *
+ * @param indexPath - The CAS index path for scope verification (e.g., "depot:MAIN:0:1")
  */
-export type PrepareNodesParams = {
-  keys: string[];
-};
+export const getNode = async (
+  baseUrl: string,
+  realm: string,
+  accessTokenBase64: string,
+  nodeKey: string,
+  indexPath: string
+): Promise<FetchResult<Uint8Array>> => {
+  const url = `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/${encodeURIComponent(nodeKey)}`;
 
-export const prepareNodes = async (
-  ctx: NodeApiContext,
-  params: PrepareNodesParams
-): Promise<FetchResult<PrepareNodesResult>> => {
-  // Check local cache first
-  const keysToCheck: string[] = [];
-  const cachedKeys: string[] = [];
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessTokenBase64}`,
+        "X-CAS-Index-Path": indexPath,
+      },
+    });
 
-  if (ctx.storage) {
-    for (const key of params.keys) {
-      const exists = await ctx.storage.has(key);
-      if (exists) {
-        cachedKeys.push(key);
-      } else {
-        keysToCheck.push(key);
-      }
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: response.statusText }));
+      return {
+        ok: false,
+        error: {
+          code: String(response.status),
+          message: (error as { message?: string }).message ?? response.statusText,
+          status: response.status,
+        },
+      };
     }
-  } else {
-    keysToCheck.push(...params.keys);
-  }
 
-  // If all keys are cached, return immediately
-  if (keysToCheck.length === 0) {
+    const data = new Uint8Array(await response.arrayBuffer());
+    return { ok: true, data, status: response.status };
+  } catch (err) {
     return {
-      ok: true,
-      data: { exists: params.keys, missing: [] },
-      status: 200,
+      ok: false,
+      error: {
+        code: "NETWORK_ERROR",
+        message: err instanceof Error ? err.message : "Network error",
+      },
     };
   }
-
-  // Check server for remaining keys
-  const result = await ctx.fetcher.request<PrepareNodesResult>(
-    `/api/realm/${ctx.realmId}/prepare-nodes`,
-    {
-      method: "POST",
-      body: { keys: keysToCheck },
-    }
-  );
-
-  if (!result.ok) {
-    return result;
-  }
-
-  // Merge cached keys with server response
-  return {
-    ok: true,
-    data: {
-      exists: [...cachedKeys, ...result.data.exists],
-      missing: result.data.missing,
-    },
-    status: result.status,
-  };
 };
 
 /**
  * Get node metadata.
+ * Requires Access Token with scope covering the index path.
  */
-export type GetNodeMetadataParams = {
-  key: string;
-};
-
 export const getNodeMetadata = async (
-  ctx: NodeApiContext,
-  params: GetNodeMetadataParams
+  baseUrl: string,
+  realm: string,
+  accessTokenBase64: string,
+  nodeKey: string,
+  indexPath: string
 ): Promise<FetchResult<NodeMetadata>> => {
-  return ctx.fetcher.request<NodeMetadata>(
-    `/api/realm/${ctx.realmId}/nodes/${params.key}/metadata`
-  );
-};
-
-/**
- * Get node binary data.
- */
-export type GetNodeParams = {
-  key: string;
-};
-
-export const getNode = async (
-  ctx: NodeApiContext,
-  params: GetNodeParams
-): Promise<FetchResult<Uint8Array>> => {
-  // Check local cache first
-  if (ctx.storage) {
-    const cached = await ctx.storage.get(params.key);
-    if (cached) {
-      return { ok: true, data: cached, status: 200 };
+  return fetchWithAuth<NodeMetadata>(
+    `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/${encodeURIComponent(nodeKey)}/metadata`,
+    `Bearer ${accessTokenBase64}`,
+    {
+      headers: {
+        "X-CAS-Index-Path": indexPath,
+      },
     }
-  }
-
-  // Fetch from server
-  const result = await ctx.fetcher.downloadBinary(`/api/realm/${ctx.realmId}/nodes/${params.key}`);
-
-  // Cache the result
-  if (result.ok && ctx.storage) {
-    await ctx.storage.put(params.key, result.data);
-  }
-
-  return result;
-};
-
-/**
- * Upload node binary data.
- */
-export type PutNodeParams = {
-  key: string;
-  data: Uint8Array;
-  contentMd5?: string;
-  blake3Hash?: string;
-};
-
-export const putNode = async (
-  ctx: NodeApiContext,
-  params: PutNodeParams
-): Promise<FetchResult<{ key: string }>> => {
-  const headers: Record<string, string> = {};
-
-  if (params.contentMd5) {
-    headers["Content-MD5"] = params.contentMd5;
-  }
-  if (params.blake3Hash) {
-    headers["X-CAS-Blake3"] = params.blake3Hash;
-  }
-
-  const result = await ctx.fetcher.uploadBinary(
-    `/api/realm/${ctx.realmId}/nodes/${params.key}`,
-    params.data,
-    { headers }
   );
-
-  // Cache the uploaded node
-  if (result.ok && ctx.storage) {
-    await ctx.storage.put(params.key, params.data);
-  }
-
-  return result as FetchResult<{ key: string }>;
 };
 
 /**
- * Upload node with automatic hash computation.
- * Uses BLAKE3 128-bit hash as the node key.
+ * Prepare nodes for upload.
+ * Returns which nodes need to be uploaded vs already exist.
+ * Requires Access Token with canUpload.
  */
-export type UploadNodeParams = {
-  data: Uint8Array;
+export const prepareNodes = async (
+  baseUrl: string,
+  realm: string,
+  accessTokenBase64: string,
+  params: PrepareNodes
+): Promise<FetchResult<PrepareNodesResponse>> => {
+  return fetchWithAuth<PrepareNodesResponse>(
+    `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/prepare`,
+    `Bearer ${accessTokenBase64}`,
+    {
+      method: "POST",
+      body: params,
+    }
+  );
 };
 
-export const uploadNode = async (
-  ctx: NodeApiContext,
-  params: UploadNodeParams
-): Promise<FetchResult<{ key: string }>> => {
-  if (!ctx.hash?.blake3) {
+/**
+ * Upload a node.
+ * Requires Access Token with canUpload.
+ */
+export const putNode = async (
+  baseUrl: string,
+  realm: string,
+  accessTokenBase64: string,
+  nodeKey: string,
+  content: Uint8Array
+): Promise<FetchResult<NodeUploadResult>> => {
+  const url = `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/${encodeURIComponent(nodeKey)}`;
+
+  try {
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessTokenBase64}`,
+        "Content-Type": "application/octet-stream",
+      },
+      body: content,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: response.statusText }));
+      return {
+        ok: false,
+        error: {
+          code: String(response.status),
+          message: (error as { message?: string }).message ?? response.statusText,
+          status: response.status,
+        },
+      };
+    }
+
+    const data = (await response.json()) as NodeUploadResult;
+    return { ok: true, data, status: response.status };
+  } catch (err) {
     return {
       ok: false,
       error: {
-        code: "VALIDATION_ERROR",
-        message: "HashProvider with blake3 required for uploadNode",
+        code: "NETWORK_ERROR",
+        message: err instanceof Error ? err.message : "Network error",
       },
     };
   }
-
-  // Compute BLAKE3 128-bit hash (16 bytes)
-  const fullHash = await ctx.hash.blake3(params.data);
-  // Truncate to 128 bits (16 bytes) - same as server-side
-  const hash128 = fullHash.slice(0, 16);
-
-  // Convert to node key format: node:{base32}
-  const key = hashToNodeKey(hash128);
-
-  // Check if already exists
-  if (ctx.storage) {
-    const exists = await ctx.storage.has(key);
-    if (exists) {
-      return { ok: true, data: { key }, status: 200 };
-    }
-  }
-
-  return putNode(ctx, { key, data: params.data });
 };

@@ -7,8 +7,6 @@
  * - Access Token: Data access token, used for CAS operations
  */
 
-import type { TokenType } from "@casfa/protocol";
-
 // ============================================================================
 // Stored Token Types
 // ============================================================================

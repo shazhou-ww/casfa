@@ -2,116 +2,113 @@
  * OAuth API functions.
  */
 
-import type { CognitoConfig, TokenResponse, UserInfo } from "../types/api.ts";
-import type { Fetcher, FetchResult } from "../utils/fetch.ts";
+import type { Login, Refresh, TokenExchange } from "@casfa/protocol";
+import type { FetchResult } from "../types/client.ts";
+import type { StoredUserToken } from "../types/tokens.ts";
+import { fetchApi, fetchWithAuth } from "../utils/http.ts";
 
-/**
- * OAuth API context.
- */
-export type OAuthApiContext = {
-  fetcher: Fetcher;
+// ============================================================================
+// Types
+// ============================================================================
+
+export type CognitoConfig = {
+  region: string;
+  userPoolId: string;
+  clientId: string;
+  domain: string;
 };
 
+export type TokenResponse = {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  idToken?: string;
+};
+
+export type UserInfo = {
+  userId: string;
+  email: string;
+  role: string;
+};
+
+// ============================================================================
+// Public OAuth API
+// ============================================================================
+
 /**
- * Get Cognito configuration for OAuth login.
+ * Get Cognito configuration.
  */
-export const getConfig = async (ctx: OAuthApiContext): Promise<FetchResult<CognitoConfig>> => {
-  return ctx.fetcher.request<CognitoConfig>("/api/oauth/config", {
-    skipAuth: true,
-  });
+export const getOAuthConfig = async (baseUrl: string): Promise<FetchResult<CognitoConfig>> => {
+  return fetchApi<CognitoConfig>(`${baseUrl}/api/oauth/config`);
 };
 
 /**
  * Exchange authorization code for tokens.
  */
-export type ExchangeCodeParams = {
-  code: string;
-  redirectUri: string;
-  codeVerifier?: string; // For PKCE
-};
-
 export const exchangeCode = async (
-  ctx: OAuthApiContext,
-  params: ExchangeCodeParams
+  baseUrl: string,
+  params: TokenExchange
 ): Promise<FetchResult<TokenResponse>> => {
-  return ctx.fetcher.request<TokenResponse>("/api/oauth/token", {
+  return fetchApi<TokenResponse>(`${baseUrl}/api/oauth/token`, {
     method: "POST",
-    body: {
-      code: params.code,
-      redirect_uri: params.redirectUri,
-      code_verifier: params.codeVerifier,
-    },
-    skipAuth: true,
+    body: params,
   });
 };
 
 /**
  * Login with email and password.
  */
-export type LoginParams = {
-  email: string;
-  password: string;
-};
-
 export const login = async (
-  ctx: OAuthApiContext,
-  params: LoginParams
+  baseUrl: string,
+  params: Login
 ): Promise<FetchResult<TokenResponse>> => {
-  return ctx.fetcher.request<TokenResponse>("/api/oauth/login", {
+  return fetchApi<TokenResponse>(`${baseUrl}/api/oauth/login`, {
     method: "POST",
     body: params,
-    skipAuth: true,
   });
 };
 
 /**
- * Refresh access token using refresh token.
+ * Refresh access token.
  */
-export type RefreshParams = {
-  refreshToken: string;
-};
-
 export const refresh = async (
-  ctx: OAuthApiContext,
-  params: RefreshParams
+  baseUrl: string,
+  params: Refresh
 ): Promise<FetchResult<TokenResponse>> => {
-  return ctx.fetcher.request<TokenResponse>("/api/oauth/refresh", {
+  return fetchApi<TokenResponse>(`${baseUrl}/api/oauth/refresh`, {
     method: "POST",
-    body: { refresh_token: params.refreshToken },
-    skipAuth: true,
+    body: params,
   });
 };
+
+// ============================================================================
+// Authenticated OAuth API
+// ============================================================================
 
 /**
  * Get current user info.
+ * Requires User JWT.
  */
-export const getMe = async (ctx: OAuthApiContext): Promise<FetchResult<UserInfo>> => {
-  return ctx.fetcher.request<UserInfo>("/api/oauth/me");
+export const getMe = async (
+  baseUrl: string,
+  userAccessToken: string
+): Promise<FetchResult<UserInfo>> => {
+  return fetchWithAuth<UserInfo>(`${baseUrl}/api/oauth/me`, `Bearer ${userAccessToken}`);
 };
+
+// ============================================================================
+// Helpers
+// ============================================================================
 
 /**
- * Build OAuth authorization URL with PKCE.
+ * Convert token response to stored user token.
  */
-export type BuildAuthUrlParams = {
-  config: CognitoConfig;
-  redirectUri: string;
-  codeChallenge: string;
-  state?: string;
-};
-
-export const buildAuthUrl = (params: BuildAuthUrlParams): string => {
-  const { config, redirectUri, codeChallenge, state } = params;
-  const authUrl = new URL(`https://${config.domain}/oauth2/authorize`);
-
-  authUrl.searchParams.set("client_id", config.clientId);
-  authUrl.searchParams.set("response_type", "code");
-  authUrl.searchParams.set("redirect_uri", redirectUri);
-  authUrl.searchParams.set("code_challenge", codeChallenge);
-  authUrl.searchParams.set("code_challenge_method", "S256");
-
-  if (state) {
-    authUrl.searchParams.set("state", state);
-  }
-
-  return authUrl.toString();
-};
+export const tokenResponseToStoredUserToken = (
+  response: TokenResponse,
+  userId: string
+): StoredUserToken => ({
+  accessToken: response.accessToken,
+  refreshToken: response.refreshToken,
+  userId,
+  expiresAt: Date.now() + response.expiresIn * 1000,
+});

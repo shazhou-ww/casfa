@@ -16,8 +16,8 @@ import type {
   TokenDetail,
   TokenListItem,
 } from "@casfa/protocol";
-import type { FetchResult } from "../../types/client.ts";
-import { fetchWithAuth } from "../../utils/api-fetch.ts";
+import type { FetchResult } from "../types/client.ts";
+import { fetchWithAuth } from "../utils/http.ts";
 
 // ============================================================================
 // Types

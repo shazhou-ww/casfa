@@ -2,8 +2,6 @@
  * Client configuration and callback types.
  */
 
-import type { ServiceInfo } from "@casfa/protocol";
-import type { HashProvider, StorageProvider } from "./providers.ts";
 import type { TokenState } from "./tokens.ts";
 
 // ============================================================================
@@ -53,10 +51,6 @@ export type ClientConfig = {
   realm: string;
   /** Optional token storage provider for persistence */
   tokenStorage?: TokenStorageProvider;
-  /** Optional CAS block storage provider for caching */
-  storage?: StorageProvider;
-  /** Optional hash provider for node operations */
-  hash?: HashProvider;
   /** Default TTL for auto-issued tokens (seconds). If not set, uses server max. */
   defaultTokenTtl?: number;
   /** Callback when token state changes */
@@ -66,28 +60,8 @@ export type ClientConfig = {
 };
 
 // ============================================================================
-// Client Types
+// Result Types
 // ============================================================================
-
-/**
- * Internal client context passed to API functions.
- */
-export type ClientContext = {
-  baseUrl: string;
-  realm: string;
-  storage?: StorageProvider;
-  hash?: HashProvider;
-  /** Server info (fetched on init) */
-  serverInfo: ServiceInfo | null;
-  /** Get current token state */
-  getTokenState: () => TokenState;
-  /** Get auth header for API calls */
-  getAuthHeader: (requirement: "user" | "delegate" | "access") => Promise<string | null>;
-  /** Ensure Access Token exists and is from max issuer */
-  ensureAccessToken: () => Promise<void>;
-  /** Ensure Delegate Token exists */
-  ensureDelegateToken: () => Promise<void>;
-};
 
 /**
  * Fetch result type.
