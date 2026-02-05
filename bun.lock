@@ -75,6 +75,14 @@
         "typescript": "^5",
       },
     },
+    "packages/cas-uri": {
+      "name": "@casfa/cas-uri",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.3.0",
+      },
+    },
     "packages/client": {
       "name": "@casfa/client",
       "version": "0.0.1",
@@ -91,6 +99,17 @@
         "@casfa/storage-core",
       ],
     },
+    "packages/client-auth-crypto": {
+      "name": "@casfa/client-auth-crypto",
+      "version": "0.0.1",
+      "dependencies": {
+        "@casfa/protocol": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.3.0",
+      },
+    },
     "packages/core": {
       "name": "@casfa/core",
       "version": "0.0.1",
@@ -98,6 +117,18 @@
         "@noble/hashes": "^1.7.1",
         "@types/bun": "latest",
         "typescript": "^5.0.0",
+      },
+    },
+    "packages/delegate-token": {
+      "name": "@casfa/delegate-token",
+      "version": "0.0.1",
+      "dependencies": {
+        "@casfa/protocol": "workspace:*",
+      },
+      "devDependencies": {
+        "@noble/hashes": "^1.3.0",
+        "@types/bun": "latest",
+        "typescript": "^5.3.0",
       },
     },
     "packages/protocol": {
@@ -272,11 +303,17 @@
 
     "@casfa/auth": ["@casfa/auth@workspace:packages/auth"],
 
+    "@casfa/cas-uri": ["@casfa/cas-uri@workspace:packages/cas-uri"],
+
     "@casfa/cli": ["@casfa/cli@workspace:apps/cli"],
 
     "@casfa/client": ["@casfa/client@workspace:packages/client"],
 
+    "@casfa/client-auth-crypto": ["@casfa/client-auth-crypto@workspace:packages/client-auth-crypto"],
+
     "@casfa/core": ["@casfa/core@workspace:packages/core"],
+
+    "@casfa/delegate-token": ["@casfa/delegate-token@workspace:packages/delegate-token"],
 
     "@casfa/protocol": ["@casfa/protocol@workspace:packages/protocol"],
 
@@ -529,6 +566,8 @@
     "@aws-crypto/util/@smithy/util-utf8": ["@smithy/util-utf8@2.3.0", "https://mirrors.tencent.com/npm/@smithy/util-utf8/-/util-utf8-2.3.0.tgz", { "dependencies": { "@smithy/util-buffer-from": "^2.2.0", "tslib": "^2.6.2" } }, "sha512-R8Rdn8Hy72KKcebgLiv8jQcQkXoLMOGGv5uI1/k0l+snqkOzQ1R0ChUBCxWMlBsFMekWjq0wRudIweFs7sKT5A=="],
 
     "@casfa/core/@noble/hashes": ["@noble/hashes@1.8.0", "https://mirrors.tencent.com/npm/@noble/hashes/-/hashes-1.8.0.tgz", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
+
+    "@casfa/delegate-token/@noble/hashes": ["@noble/hashes@1.8.0", "https://mirrors.tencent.com/npm/@noble/hashes/-/hashes-1.8.0.tgz", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
 
     "@casfa/server/@noble/hashes": ["@noble/hashes@1.8.0", "https://mirrors.tencent.com/npm/@noble/hashes/-/hashes-1.8.0.tgz", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
 
