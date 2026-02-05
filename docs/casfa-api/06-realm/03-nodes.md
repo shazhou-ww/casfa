@@ -242,6 +242,75 @@ key = "node:" + hex(blake3(node_bytes))
 
 ---
 
+## POST /api/realm/{realmId}/nodes/prepare
+
+批量检查节点是否存在，返回需要上传的节点列表。这是上传流程的关键优化 API。
+
+### 请求
+
+```http
+POST /api/realm/usr_abc123/nodes/prepare
+Authorization: Bearer {access_token}
+Content-Type: application/json
+
+{
+  "keys": [
+    "node:abc123...",
+    "node:def456...",
+    "node:ghi789..."
+  ]
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `keys` | `string[]` | 是 | 需要检查的节点 key 列表（最多 1000 个） |
+
+### 响应
+
+```json
+{
+  "missing": [
+    "node:abc123...",
+    "node:ghi789..."
+  ],
+  "existing": 1
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `missing` | `string[]` | 不存在的节点 key（需要上传） |
+| `existing` | `number` | 已存在的节点数量 |
+
+### 错误
+
+| 错误码 | HTTP Status | 说明 |
+|--------|-------------|------|
+| `INVALID_REQUEST` | 400 | keys 必须是非空数组 |
+| `INVALID_REQUEST` | 400 | 超过 1000 个 keys |
+
+### 使用场景
+
+客户端上传目录树时，先收集所有节点的 key，调用此 API 检查哪些已存在：
+
+```typescript
+// 1. 收集所有待上传节点的 key
+const allKeys = collectNodeKeys(directory);
+
+// 2. 调用 prepare-nodes 检查
+const { missing } = await api.prepareNodes(allKeys);
+
+// 3. 只上传缺失的节点
+for (const key of missing) {
+  await api.uploadNode(key, nodeData[key]);
+}
+```
+
+这样可以避免重复上传已存在的节点，大幅提升上传效率。
+
+---
+
 ## 使用建议
 
 1. **批量上传前先检查**：使用 `prepare-nodes` API 检查哪些节点需要上传

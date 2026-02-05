@@ -52,6 +52,7 @@ URL 中的 `realmId` 必须与 Token 关联的 realm 一致，否则返回 `403 
 | GET | `/api/realm/{realmId}/nodes/:key` | 读取节点 | Access Token |
 | GET | `/api/realm/{realmId}/nodes/:key/metadata` | 获取节点元信息 | Access Token |
 | PUT | `/api/realm/{realmId}/nodes/:key` | 上传节点 | Access Token (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/prepare` | 批量检查节点存在性 | Access Token |
 
 ### Depot 操作
 
@@ -84,12 +85,14 @@ X-CAS-Index-Path: 0:1:2
 
 ### 可见范围
 
-Ticket 和 Depot 的可见范围由 Issuer Chain 决定。
+Ticket 和 Depot 的可见范围由 Issuer Chain 决定，两者使用相同的可见性规则。
 
-Access Token 可以看到其 Issuer Chain 中任意 Token 创建的 Ticket/Depot：
-- 该 Access Token 的直接 Issuer（签发它的 Delegate Token）创建的资源
+Token 可以看到其 Issuer Chain 中任意**签发者**创建的 Ticket/Depot：
+- 该 Token 的直接 Issuer（签发它的 Delegate Token 的 issuerId）创建的资源
 - Issuer 的 Issuer 创建的资源，以此类推
 - 直到用户创建的资源
+
+可见性基于资源的 `creatorIssuerId` 字段，而非 `accessTokenId` 或 `creatorTokenId`。
 
 对于修改操作（更新、删除 Depot），还需要验证资源的 `creatorIssuerId` 在当前 Token 的 Issuer Chain 中。
 

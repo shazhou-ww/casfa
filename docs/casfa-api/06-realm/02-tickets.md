@@ -165,11 +165,15 @@ Authorization: Bearer {access_token}
 
 ### 可见范围
 
-Ticket 的可见范围由 Issuer Chain 决定。Access Token 可以看到其 Issuer Chain 中任意 Token 创建的 Ticket：
+Ticket 的可见范围由 Issuer Chain 决定，与 Depot 的可见性规则一致。
 
-- 该 Access Token 的直接 Issuer（签发它的 Delegate Token）创建的 Ticket
+Token 可以看到其 Issuer Chain 中任意**签发者**创建的 Ticket：
+
+- 该 Token 的直接 Issuer（签发它的 Delegate Token 的 issuerId）创建的 Ticket
 - Issuer 的 Issuer 创建的 Ticket，以此类推
 - 直到用户创建的 Ticket
+
+可见性基于 `creatorIssuerId`（创建 Ticket 的 Delegate Token 的签发者 ID），而非 `accessTokenId`。
 
 ---
 
@@ -193,7 +197,7 @@ Authorization: Bearer {access_token}
   "status": "pending",
   "root": null,
   "accessTokenId": "dlt1_xxxxx",
-  "creatorTokenId": "dlt1_yyyyy",
+  "creatorIssuerId": "dlt1_yyyyy",
   "createdAt": 1738497600000,
   "expiresAt": 1738501200000
 }
@@ -208,7 +212,7 @@ Authorization: Bearer {access_token}
   "status": "submitted",
   "root": "node:abc123...",
   "accessTokenId": "dlt1_xxxxx",
-  "creatorTokenId": "dlt1_yyyyy",
+  "creatorIssuerId": "dlt1_yyyyy",
   "createdAt": 1738497600000,
   "expiresAt": 1738501200000,
   "submittedAt": 1738498200000
@@ -224,10 +228,12 @@ Authorization: Bearer {access_token}
 | `status` | `string` | `pending` 或 `submitted` |
 | `root` | `string \| null` | 输出节点（pending 时为 null） |
 | `accessTokenId` | `string` | 关联的 Access Token ID |
-| `creatorTokenId` | `string` | 创建此 Ticket 的 Delegate Token ID |
+| `creatorIssuerId` | `string` | 创建此 Ticket 的 Delegate Token 的签发者 ID |
 | `createdAt` | `number` | 创建时间 |
 | `expiresAt` | `number` | 过期时间 |
 | `submittedAt` | `number?` | 提交时间（仅 submitted 状态） |
+
+> **注意**：`creatorIssuerId` 与 Depot 的 `creatorIssuerId` 语义一致，用于 Issuer Chain 可见性判断。
 
 ### 错误
 
