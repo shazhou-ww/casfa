@@ -583,16 +583,16 @@ async function submitTicket(
 │                                                              │
 │           ┌──────────────────────────────────────────────┐  │
 │           │              Token 解析                       │  │
-│           │  - 从 Authorization Header 提取 Token ID     │  │
-│           │  - 解析 Token ID 格式 (dlt_XXXXX)            │  │
+│           │  - 从 Authorization Header 提取完整 Token    │  │
+│           │  - Base64 解码得到 128 字节二进制            │  │
 │           └──────────────────────────────────────────────┘  │
 │                              │                               │
 │                              ▼                               │
 │           ┌──────────────────────────────────────────────┐  │
 │           │              Token 验证                       │  │
-│           │  - 从数据库获取 Token                         │  │
+│           │  - 计算 Token ID = hash(token_bytes)         │  │
+│           │  - 从数据库获取 Token 记录                    │  │
 │           │  - 验证未撤销、未过期                         │  │
-│           │  - 解码 Token 二进制数据                      │  │
 │           └──────────────────────────────────────────────┘  │
 │                              │                               │
 │                              ▼                               │
@@ -642,54 +642,67 @@ type DelegateAuthContext = {
 
 ### 6.3 中间件实现
 
+> **验证方案**：客户端发送完整 Token（128 字节），服务端计算 `hash(token) == stored_token_id` 验证身份。
+
 ```typescript
 import { createMiddleware } from "hono/factory";
+import { blake3_128, bytesToHex } from "@casfa/core";
 
 const tokenAuthMiddleware = createMiddleware<{
   Variables: { auth: DelegateAuthContext };
 }>(async (c, next) => {
-  // 1. 提取 Token
+  // 1. 提取完整 Token（Base64 编码的 128 字节）
   const authHeader = c.req.header("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return c.json({ error: { code: "MISSING_TOKEN" } }, 401);
   }
 
-  const tokenId = authHeader.slice(7);
-  if (!tokenId.startsWith("dlt1_")) {
+  const tokenBase64 = authHeader.slice(7);
+  let tokenBytes: Uint8Array;
+  try {
+    tokenBytes = base64Decode(tokenBase64);
+    if (tokenBytes.length !== 128) {
+      throw new Error("Invalid token length");
+    }
+  } catch {
     return c.json({ error: { code: "INVALID_TOKEN_FORMAT" } }, 401);
   }
 
-  // 2. 获取并验证 Token
-  const token = await tokensDb.getToken(tokenId);
-  if (!token) {
+  // 2. 计算 Token ID 并验证
+  const tokenId = blake3_128(tokenBytes);
+  const tokenIdStr = `dlt1_${crockfordBase32Encode(tokenId).toLowerCase()}`;
+
+  const tokenRecord = await tokensDb.getToken(tokenIdStr);
+  if (!tokenRecord) {
     return c.json({ error: { code: "TOKEN_NOT_FOUND" } }, 401);
   }
 
-  if (token.isRevoked) {
+  if (tokenRecord.isRevoked) {
     return c.json({ error: { code: "TOKEN_REVOKED" } }, 401);
   }
 
-  if (token.expiresAt < Date.now()) {
+  if (tokenRecord.expiresAt < Date.now()) {
     return c.json({ error: { code: "TOKEN_EXPIRED" } }, 401);
   }
 
-  // 3. 解码 Token
-  const decoded = decodeDelegateToken(token.tokenBytes);
+  // 3. 解码 Token 二进制数据（客户端发送的）
+  const decoded = decodeDelegateToken(tokenBytes);
 
   // 4. 构建 AuthContext
   const auth: DelegateAuthContext = {
-    tokenId: token.tokenId,
+    tokenId: tokenIdStr,
     tokenType: decoded.flags.isDelegate ? "delegate" : "access",
     flags: decoded.flags,
     realm: bytesToHex(decoded.realm),
     scope: decoded.scope,
     quota: decoded.quota,
     expiresAt: decoded.ttl,
-    issuerId: token.issuerId,
-    issuerType: token.issuerType,
+    issuerId: tokenRecord.issuerId,
+    issuerType: tokenRecord.issuerType,
+    issuerChain: tokenRecord.issuerChain,  // 预计算的 issuer chain
 
     isAccessToken: () => !decoded.flags.isDelegate,
-    canRead: () => !decoded.flags.isDelegate,
+    canRead: () => !decoded.flags.isDelegate && !decoded.flags.isWriteOnly,
     canWrite: () => !decoded.flags.isDelegate && decoded.flags.canUpload,
     canManageDepot: () => !decoded.flags.isDelegate && decoded.flags.canManageDepot,
   };

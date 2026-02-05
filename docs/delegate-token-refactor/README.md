@@ -182,7 +182,8 @@ User (user_hash)
 | AWP Client | Delegate Token (再授权) | 废弃 P-256 认证，统一使用 Delegate Token |
 | Ticket Token | Delegate Token (访问) | 统一为 Delegate Token，类型标记为访问 |
 | Ticket | Ticket (工作空间) | 仅保留 title + submit 状态，权限移至 Token |
-| scope (字符串数组) | scope (set-node hash) | 使用数据库存储的 set-node，带引用计数 |
+| scope (字符串数组) | scope (node/set-node hash) | 单 scope 直接存 hash，多 scope 用 set-node，只写用 empty set |
+| - | ScopeSetNode 表 | 独立存储 set-node，带引用计数，Token 撤销时递减 |
 | realm | realm | 保持不变，用户的数据隔离边界 |
 
 ### 4.2 权限对照

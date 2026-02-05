@@ -23,10 +23,11 @@
 
 | 表 | 变更类型 | 说明 |
 |-----|----------|------|
-| Token | 重构 | 统一为 DelegateToken 格式 |
+| Token | 重构 | 统一为 DelegateToken 格式，不存储完整 token |
 | Depot | 扩展 | 增加 creatorIssuerId 字段 |
-| Ticket | 简化 | 移除权限字段，仅保留工作空间状态 |
-| TokenUsage | 新增 | 记录各 Token 的 quota 使用量 |
+| Ticket | 简化 | 移除权限字段，仅保留工作空间状态，增加 root 字段 |
+| ScopeSetNode | 新增 | 存储 Token scope 的 set-node，带引用计数 |
+| TokenUsage | 新增 | 记录各 Token 的 quota 使用量（Reserved） |
 | TokenAudit | 新增 | Token 操作审计日志 |
 
 ### 1.2 数据库
@@ -101,6 +102,7 @@ type DelegateTokenRecord = {
   issuerId: string;           // 签发者 ID (hex)
   issuerType: "user" | "token";
   parentTokenId?: string;     // 转签发时的父 Token ID
+  issuerChain: string[];      // 预计算的签发链（签发时计算并存储）
 
   // 权限标志
   canUpload: boolean;
@@ -286,6 +288,9 @@ type TicketRecord = {
   status: "pending" | "submitted";
   submittedAt?: number;
 
+  // Submit 输出
+  root?: string;        // submit 的输出节点 hash（用于访问历史输出）
+
   // 关联的 Access Token
   accessTokenId: string;
 
@@ -314,6 +319,7 @@ type TicketRecord = {
 | config | - | 移至关联的 Access Token |
 | expiresAt | - | 通过 Access Token 判断 |
 | - | status | 新增：pending / submitted |
+| - | root | 新增：submit 输出节点，用于访问历史输出 |
 | - | accessTokenId | 新增：关联的 Access Token |
 
 ### 4.4 简化说明
@@ -322,9 +328,15 @@ type TicketRecord = {
 
 1. **工作空间标识**：ticketId、title
 2. **提交状态管理**：status、submittedAt
-3. **Token 关联**：accessTokenId
+3. **历史输出访问**：root（submit 输出节点）
+4. **Token 关联**：accessTokenId
 
 所有权限相关的信息都由关联的 Access Token 承载。
+
+**引用计数**：
+- Ticket 的 `root` 字段增加对应节点的引用计数
+- Ticket 过期不会清理 root 引用（Access Token 过期后 Ticket 数据仍有效）
+- Ticket 被删除时递减 root 的引用计数
 
 ---
 
@@ -342,7 +354,7 @@ type ScopeSetNodeRecord = {
 
   // set-node 数据
   setNodeId: string;    // Blake3-128 hash of children
-  children: string[];   // 子节点 hash 列表（已排序去重）
+  children: string[];   // 子节点 hash 列表（已排序去重，可为空）
 
   // 引用计数
   refCount: number;     // 引用此 set-node 的 Token 数量
@@ -355,8 +367,15 @@ type ScopeSetNodeRecord = {
 
 **用途**：
 - 存储 Token scope 的 set-node 数据
+- 支持 empty set-node（children 为空数组），用于只写 Token
 - 通过引用计数管理生命周期
-- Token 撤销/过期时减少引用计数，归零时可回收
+- Token 撤销时减少引用计数（触发级联撤销）
+- Token 记录删除时减少引用计数（定期清理过期记录）
+- 引用计数归零时可回收
+- **注意**：过期不会自动减少引用计数，只有删除记录时才递减
+
+> **注意**：单个 scope 时，直接使用节点 hash，不创建 ScopeSetNode 记录。
+> 只有多 scope 或只写（empty set）场景才使用 ScopeSetNode 表。
 
 ### 5.2 TokenUsage 表（Reserved）
 
@@ -621,6 +640,7 @@ export type DelegateTokenFlags = {
   isUserIssued: boolean;
   canUpload: boolean;
   canManageDepot: boolean;
+  depth: number;  // Token 深度 (0-15)
 };
 
 // Token 解码结果

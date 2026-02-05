@@ -82,6 +82,7 @@ Token 签发分为两种类型：
 │                    ▼                                         │
 │  6. 存储与返回                                               │
 │     ├── 计算 token_id = blake3_128(token_bytes)             │
+│     ├── 预计算 issuerChain = [user_id]                      │
 │     ├── 存储 Token 元数据到数据库（不含完整 token_bytes）   │
 │     ├── 增加关联 set-node 的引用计数                        │
 │     └── 通过 HTTPS 返回完整 Token 给客户端                  │
@@ -203,6 +204,7 @@ type CreateTokenResponse = {
 │  5. 存储与返回                                               │
 │     ├── 计算 token_id = blake3_128(token_bytes)             │
 │     ├── 验证深度限制 (parent.depth < 15)                    │
+│     ├── 预计算 issuerChain = [...parent.issuerChain, tokenId]│
 │     ├── 存储 Token 元数据到数据库（不含完整 token_bytes）   │
 │     ├── 记录父子关系用于追溯和级联撤销                      │
 │     ├── 增加关联 set-node 的引用计数                        │
@@ -419,13 +421,14 @@ type TokenRecord = {
   pk: string;  // TOKEN#{tokenId}
   sk: string;  // METADATA
 
-  // Token 二进制数据
-  tokenBytes: Uint8Array;  // 128 bytes
+  // 注意：不存储完整 tokenBytes，只存储元数据
+  // 完整 Token 通过 HTTPS 返回给客户端保管
 
   // 签发信息
   issuerId: string;      // 签发者 ID（user hash 或 parent token ID）
   issuerType: "user" | "token";
   parentTokenId?: string;  // 转签发时的父 Token ID
+  issuerChain: string[];   // 预计算的签发链
 
   // 状态
   isRevoked: boolean;

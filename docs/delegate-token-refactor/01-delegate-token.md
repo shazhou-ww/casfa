@@ -266,7 +266,7 @@ buffer.set(salt, 24);
 - **含义**: 签发者标识
 - **格式**:
   - 用户签发: User ID 的 Blake3-256 hash
-  - 转签发: 父 Token 的 Token ID（Blake3s-128，左侧填充 0）
+  - 转签发: 父 Token 的 Token ID（Blake3-128，左侧填充 0）
 
 ```typescript
 // 用户签发
@@ -290,17 +290,30 @@ buffer.set(issuer, 32);
 
 - **类型**: 32 bytes
 - **含义**: 可读取节点的范围
-- **格式**: set-node 的 Blake3s-128 hash（左侧填充 0 到 32 bytes）
+- **格式**: Blake3-128 hash（左侧填充 0 到 32 bytes）
+
+**存储规则**：
+| 场景 | 存储值 | 说明 |
+|------|--------|------|
+| 单个 scope | 节点 hash | 直接存储目标节点的 hash |
+| 多个 scope | set-node hash | 创建 set-node 存储多个节点 hash |
+| 只写（无读权限） | empty set-node hash | 表示不可读取任何节点 |
+
+> **注意**：Core 需要支持 empty set-node，虽然 CAS 中不存储空 set，但 server 的 set-node 表需要支持。
 
 ```typescript
-// 单个 scope
+// 单个 scope - 直接存储节点 hash
 const scopeHash = parseUri(uris[0]).nodeHash;
 
-// 多个 scope
+// 多个 scope - 使用 set-node
 const setNode = await encodeSetNode({
   children: uris.map(uri => parseUri(uri).nodeHash)
 }, hashProvider);
 const scopeHash = setNode.hash;
+
+// 只写（无读权限） - 使用 empty set-node
+const emptySetNode = await encodeSetNode({ children: [] }, hashProvider);
+const scopeHash = emptySetNode.hash;  // 固定值
 
 // 存储到 Token（16 bytes hash 填充到 32 bytes）
 const scope = new Uint8Array(32);
@@ -377,16 +390,18 @@ dlt1_{crockford_base32(token_id)}
 
 ### 6.2 验证
 
+> **验证方案**：客户端发送完整 Token（128 字节 Base64 编码），服务端计算 hash 验证。
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                       Token 验证流程                         │
 ├─────────────────────────────────────────────────────────────┤
-│ 1. 解析 Token ID                                            │
-│ 2. 从数据库查询 Token 记录                                   │
-│ 3. 验证 Token 未被撤销                                       │
-│ 4. 验证 Token 未过期 (ttl > now)                            │
-│ 5. 解码 Token 二进制数据                                     │
-│ 6. 提取权限信息用于后续鉴权                                  │
+│ 1. 从 Authorization Header 提取完整 Token（Base64）         │
+│ 2. Base64 解码得到 128 字节二进制数据                       │
+│ 3. 计算 Token ID = Blake3-128(token_bytes)                  │
+│ 4. 从数据库查询 Token 记录                                   │
+│ 5. 验证 Token 未被撤销、未过期 (ttl > now)                  │
+│ 6. 解码 Token 二进制数据，提取权限信息用于后续鉴权          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -411,6 +426,9 @@ dlt1_{crockford_base32(token_id)}
 - Token 过期后自动失效，无需显式撤销
 - 过期 Token 记录保留一段时间用于审计
 - 定期清理过期超过保留期的 Token 记录
+- **引用计数**：过期不会自动减少 set-node 引用计数，只有 Token 记录被删除时才减少
+
+> **注意**：过期是静默失效，不触发级联撤销。引用计数在定期清理任务删除过期记录时才递减。
 
 ---
 
@@ -429,6 +447,8 @@ type DelegateTokenFlags = {
   canUpload: boolean;
   /** 是否允许管理 Depot */
   canManageDepot: boolean;
+  /** Token 深度 (0-15)，用于限制委托链长度 */
+  depth: number;
 };
 
 /**
