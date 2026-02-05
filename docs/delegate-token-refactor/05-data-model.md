@@ -113,8 +113,9 @@ type DelegateTokenRecord = {
   canManageDepot: boolean;
   isUserIssued: boolean;
 
-  // Scope 信息
-  scopeSetNodeId?: string;    // 关联的 set-node ID（用于引用计数）
+  // Scope 信息（二选一，互斥）
+  scopeNodeHash?: string;     // 单 scope 时的节点 hash (hex)，直接指向单个 CAS 节点
+  scopeSetNodeId?: string;    // 多 scope 或 empty-set 时的 set-node ID，指向 ScopeSetNode 记录
 
   // 状态
   isRevoked: boolean;
@@ -123,6 +124,9 @@ type DelegateTokenRecord = {
 
   // 时间戳
   createdAt: number;
+
+  // TTL（DynamoDB 自动删除）
+  ttl: number;          // Unix epoch 秒，= expiresAt / 1000
 
   // GSI for realm queries
   gsi1pk: string;       // REALM#{realm}
@@ -133,6 +137,12 @@ type DelegateTokenRecord = {
   gsi2sk: string;       // TOKEN#{tokenId}
 };
 ```
+
+> **Issuer Chain 设计说明**：
+> - `issuerChain` 存储从根用户到当前 Token 的完整签发者 ID 链
+> - 格式：`[rootUserId, token1IssuerId, token2IssuerId, ...]`（不包含当前 Token 的 issuerId）
+> - 签发时预计算：`newIssuerChain = [...parentToken.issuerChain, parentToken.issuerId]`
+> - 用途：权限继承验证、Depot 可见性、审计追踪
 
 ### 2.3 字段对照
 
@@ -186,21 +196,21 @@ type Depot = {
 
 ```typescript
 type DepotRecord = {
-  // 主键
-  pk: string;           // DEPOT#{realm}#{depotId}
-  sk: string;           // METADATA
+  // 主键（使用 REALM 分区，可直接按 realm 查询）
+  pk: string;           // REALM#{realm}
+  sk: string;           // DEPOT#{depotId}
 
   // 基本信息
   realm: string;
   depotId: string;
-  title: string;
+  name: string;         // Depot 名称（与 API 响应一致）
 
   // 版本信息
   root: string;
   maxHistory: number;
   history: string[];
 
-  // 新增：创建者追踪
+  // 创建者追踪
   creatorIssuerId: string;    // 创建该 Depot 的 Token 的 issuer ID
   creatorTokenId: string;     // 创建该 Depot 的 Token ID
 
@@ -214,40 +224,39 @@ type DepotRecord = {
 };
 ```
 
-### 3.3 新增字段
+> **说明**：Depot 使用 `REALM#{realm}` 作为 PK，可直接通过主表按 realm 查询所有 Depot，不需要 GSI。
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| creatorIssuerId | string | 创建该 Depot 的 Token 的 issuer ID |
-| creatorTokenId | string | 创建该 Depot 的 Token ID |
-| gsi3pk | string | 用于按创建者查询 Depot |
-| gsi3sk | string | 排序键 |
+### 3.3 字段变更
+
+| 字段 | 变更类型 | 说明 |
+|------|----------|------|
+| pk | 修改 | `DEPOT#{realm}#{depotId}` → `REALM#{realm}` |
+| sk | 修改 | `METADATA` → `DEPOT#{depotId}` |
+| title | 重命名 | 改为 `name`，与 API 响应一致 |
+| creatorIssuerId | 新增 | 创建该 Depot 的 Token 的 issuer ID |
+| creatorTokenId | 新增 | 创建该 Depot 的 Token ID |
+| gsi3pk | 新增 | 用于按创建者查询 Depot |
+| gsi3sk | 新增 | 排序键 |
 
 ### 3.4 Issuer Chain 访问控制
 
-通过 creatorIssuerId 和 Token 的 issuer chain 实现访问控制：
+通过 creatorIssuerId 和 Token 的预计算 issuerChain 实现访问控制：
 
 ```typescript
 // 检查 Token 是否可以访问 Depot
-async function canAccessDepot(
+function canAccessDepot(
   token: DelegateTokenRecord,
   depot: DepotRecord
-): Promise<boolean> {
-  // 构建 Token 的 issuer chain
-  const chain = [token.issuerId];
-  let current = token;
-
-  while (current.issuerType === "token" && current.parentTokenId) {
-    const parent = await getToken(current.parentTokenId);
-    if (!parent) break;
-    chain.push(parent.issuerId);
-    current = parent;
-  }
-
+): boolean {
+  // 使用预计算的 issuerChain 加上当前 Token 的 issuerId
+  const visibleIssuers = [...token.issuerChain, token.issuerId];
+  
   // 检查 Depot 的创建者是否在 chain 中
-  return chain.includes(depot.creatorIssuerId);
+  return visibleIssuers.includes(depot.creatorIssuerId);
 }
 ```
+
+> **说明**：issuerChain 在 Token 签发时预计算并存储，无需运行时递归查询。
 
 ---
 
@@ -279,9 +288,9 @@ type Ticket = {
 
 ```typescript
 type TicketRecord = {
-  // 主键
-  pk: string;           // TICKET#{realm}#{ticketId}
-  sk: string;           // METADATA
+  // 主键（使用 REALM 分区，可直接按 realm 查询）
+  pk: string;           // REALM#{realm}
+  sk: string;           // TICKET#{ticketId}
 
   // 基本信息
   ticketId: string;
@@ -304,11 +313,14 @@ type TicketRecord = {
   // 时间戳
   createdAt: number;
 
-  // GSI for realm queries
-  gsi1pk: string;       // REALM#{realm}
-  gsi1sk: string;       // TICKET#{ticketId}
+  // TTL（DynamoDB 自动删除）
+  ttl: number;                // Unix epoch 秒，24 小时超时
 };
 ```
+
+> **说明**：
+> - Ticket 使用 `REALM#{realm}` 作为 PK，可直接通过主表按 realm 查询，不再需要 gsi1
+> - `expiresAt` 不存储在 Ticket 中，API 返回时从关联的 Access Token 获取
 
 ### 4.3 字段对照
 
@@ -443,16 +455,30 @@ type UserQuotaRecord = {
   pk: string;           // QUOTA#{realm}
   sk: string;           // USER
 
+  // 用户信息
+  realm: string;        // realm (userId hash)
+
   // 配额设置
   quotaLimit: number;   // 总配额（字节）
 
-  // 使用量
-  bytesUsed: number;
+  // 存储使用量
+  bytesUsed: number;          // 已提交的存储使用量
+  bytesInProgress: number;    // 进行中的 Ticket 占用（预扣）
+
+  // 资源计数
+  tokenCount: number;         // 当前有效 Token 数量
+  depotCount: number;         // 当前 Depot 数量
+  ticketCount: number;        // 当前活跃 Ticket 数量
 
   // 时间戳
+  createdAt: number;
   lastUpdated: number;
 };
 ```
+
+> **说明**：
+> - `bytesInProgress`：Ticket 创建时预扣，提交或过期时释放
+> - 资源计数字段用于限制用户创建资源的数量
 
 ---
 
@@ -498,22 +524,25 @@ async function cleanAndDeploy(): Promise<void> {
 | 索引 | PK 格式 | SK 格式 | 用途 |
 |------|---------|---------|------|
 | 主键 | TOKEN#{id} | METADATA | Token 查询 |
-| 主键 | DEPOT#{realm}#{id} | METADATA | Depot 查询 |
-| 主键 | TICKET#{realm}#{id} | METADATA | Ticket 查询 |
+| 主键 | REALM#{realm} | DEPOT#{id} | Depot 查询（按 realm 分区） |
+| 主键 | REALM#{realm} | TICKET#{id} | Ticket 查询（按 realm 分区） |
 | 主键 | SETNODE#{id} | METADATA | Scope set-node |
 | 主键 | USAGE#{tokenId} | AGGREGATE | Token 使用量 (reserved) |
 | 主键 | QUOTA#{realm} | USER | 用户配额 |
 | 主键 | AUDIT#{tokenId} | {ts}#{action} | 审计日志 |
+| 主键 | TOKENREQ#{id} | METADATA | 客户端授权申请 |
 
 ### 7.2 GSI 索引
 
 | GSI | PK | SK | 用途 |
 |-----|-----|-----|------|
 | gsi1 | REALM#{realm} | TOKEN#{id} | 按 realm 查询 Token |
-| gsi1 | REALM#{realm} | TICKET#{id} | 按 realm 查询 Ticket |
-| gsi2 | ISSUER#{id} | TOKEN#{id} | 按 issuer 查询子 Token |
+| gsi2 | ISSUER#{id} | TOKEN#{id} | 按 issuer 查询子 Token（级联撤销） |
 | gsi3 | CREATOR#{id} | DEPOT#{id} | 按创建者查询 Depot |
 | gsi4 | AUDIT_DATE#{date} | {ts}#{id} | 按日期查询审计日志 |
+
+> **说明**：
+> - Depot 和 Ticket 使用主表 `REALM#{realm}` 分区键，可直接查询，不需要 gsi1
 
 ### 7.3 查询模式
 
@@ -531,13 +560,26 @@ const children = await queryGsi2({
   skPrefix: "TOKEN#",
 });
 
-// 3. 获取某创建者的所有 Depot
-const depots = await queryGsi3({
+// 3. 获取某 realm 下所有 Depot（直接查询主表）
+const depots = await queryByPkPrefix({
+  pk: `REALM#${realm}`,
+  skPrefix: "DEPOT#",
+});
+
+// 4. 获取某 realm 下所有 Ticket（直接查询主表）
+const tickets = await queryByPkPrefix({
+  pk: `REALM#${realm}`,
+  skPrefix: "TICKET#",
+  filter: { status: "pending" },
+});
+
+// 5. 获取某创建者的所有 Depot（通过 gsi3）
+const creatorDepots = await queryGsi3({
   pk: `CREATOR#${issuerId}`,
   skPrefix: "DEPOT#",
 });
 
-// 4. 获取某日期的审计日志
+// 6. 获取某日期的审计日志
 const logs = await queryGsi4({
   pk: `AUDIT_DATE#${date}`,
   skRange: { start: `${startTs}`, end: `${endTs}` },
@@ -601,6 +643,11 @@ const tableDefinition = {
       Projection: { ProjectionType: "KEYS_ONLY" },
     },
   ],
+  // TTL 配置
+  TimeToLiveSpecification: {
+    AttributeName: "ttl",
+    Enabled: true,
+  },
 };
 ```
 
@@ -662,8 +709,9 @@ export type DecodedDelegateToken = {
 // Token 数据库记录
 // 注意：不存储完整 tokenBytes，只存储元数据
 export type DelegateTokenRecord = {
-  pk: string;
-  sk: string;
+  pk: string;           // TOKEN#{tokenId}
+  sk: string;           // METADATA
+  tokenId: string;      // dlt1_xxx 格式
   tokenType: "delegate" | "access";
   realm: string;
   expiresAt: number;
@@ -677,11 +725,13 @@ export type DelegateTokenRecord = {
   canUpload: boolean;
   canManageDepot: boolean;
   isUserIssued: boolean;
-  scopeSetNodeId?: string;
+  scopeNodeHash?: string;     // 单 scope 时的节点 hash
+  scopeSetNodeId?: string;    // 多 scope 时的 set-node ID
   isRevoked: boolean;
   revokedAt?: number;
   revokedBy?: string;
   createdAt: number;
+  ttl: number;          // Unix epoch 秒
   gsi1pk: string;
   gsi1sk: string;
   gsi2pk: string;
@@ -701,11 +751,11 @@ export type ScopeSetNodeRecord = {
 
 // Depot 记录
 export type DepotRecord = {
-  pk: string;
-  sk: string;
+  pk: string;           // REALM#{realm}
+  sk: string;           // DEPOT#{depotId}
   realm: string;
   depotId: string;
-  title: string;
+  name: string;         // Depot 名称（API 使用 name）
   root: string;
   maxHistory: number;
   history: string[];
@@ -713,25 +763,24 @@ export type DepotRecord = {
   creatorTokenId: string;
   createdAt: number;
   updatedAt: number;
-  gsi3pk: string;
-  gsi3sk: string;
+  gsi3pk: string;       // CREATOR#{creatorIssuerId}
+  gsi3sk: string;       // DEPOT#{depotId}
 };
 
 // Ticket 记录
 export type TicketRecord = {
-  pk: string;
-  sk: string;
+  pk: string;           // REALM#{realm}
+  sk: string;           // TICKET#{ticketId}
   ticketId: string;
   realm: string;
   title: string;
   status: "pending" | "submitted";
   submittedAt?: number;
-  root?: string;  // submit 输出节点 hash（用于访问历史输出）
+  root?: string;        // submit 输出节点 hash（用于访问历史输出）
   accessTokenId: string;
   creatorTokenId: string;
   createdAt: number;
-  gsi1pk: string;
-  gsi1sk: string;
+  ttl: number;          // Unix epoch 秒，24 小时超时
 };
 
 // Token 使用量记录
@@ -744,24 +793,57 @@ export type TokenUsageRecord = {
 
 // 用户配额记录
 export type UserQuotaRecord = {
-  pk: string;
-  sk: string;
+  pk: string;           // QUOTA#{realm}
+  sk: string;           // USER
+  realm: string;
   quotaLimit: number;
   bytesUsed: number;
+  bytesInProgress: number;
+  tokenCount: number;
+  depotCount: number;
+  ticketCount: number;
+  createdAt: number;
   lastUpdated: number;
 };
 
 // 审计日志记录
 export type TokenAuditRecord = {
-  pk: string;
-  sk: string;
+  pk: string;           // AUDIT#{tokenId}
+  sk: string;           // {timestamp}#{action}
   tokenId: string;
   action: "create" | "revoke" | "delegate" | "use";
   actorId: string;
   actorType: "user" | "token" | "system";
   timestamp: number;
   details?: Record<string, unknown>;
-  gsi4pk: string;
-  gsi4sk: string;
+  gsi4pk: string;       // AUDIT_DATE#{date}
+  gsi4sk: string;       // {timestamp}#{tokenId}
+  ttl: number;          // Unix epoch 秒，90 天保留期
+};
+
+// 客户端授权申请记录
+export type TokenRequestRecord = {
+  pk: string;           // TOKENREQ#{requestId}
+  sk: string;           // METADATA
+  requestId: string;
+  clientName: string;
+  clientSecretHash: string;
+  status: "pending" | "approved" | "rejected" | "expired";
+  realm?: string;
+  tokenType?: "delegate" | "access";
+  depth?: number;
+  expiresIn?: number;
+  canUpload?: boolean;
+  canManageDepot?: boolean;
+  scope?: string[];
+  tokenName?: string;
+  tokenDescription?: string;
+  encryptedToken?: string;
+  createdAt: number;
+  expiresAt: number;
+  approvedAt?: number;
+  approvedBy?: string;
+  approverTokenId?: string;
+  ttl: number;          // Unix epoch 秒
 };
 ```
