@@ -216,7 +216,8 @@ User (user_hash)
 | [03-token-issuance.md](./03-token-issuance.md) | Token 签发与转签发流程 |
 | [04-access-control.md](./04-access-control.md) | 访问鉴权规则 |
 | [05-data-model.md](./05-data-model.md) | 数据模型变更与迁移方案 |
-| [06-api-changes.md](./06-api-changes.md) | API 改动清单与迁移指南 |
+| [06-client-auth-flow.md](./06-client-auth-flow.md) | 客户端授权申请流程 |
+| [07-api-changes.md](./07-api-changes.md) | API 改动清单 |
 
 ---
 
