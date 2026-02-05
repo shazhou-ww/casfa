@@ -24,6 +24,8 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "check": "tsc --noEmit && biome check .",
+    "test:e2e": "bun run scripts/e2e-test.ts",
+    "test:e2e:debug": "bun run scripts/e2e-test.ts --no-cleanup --keep-container",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
@@ -40,6 +42,8 @@
     "yaml": "^2.5.0"
   },
   "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.975.0",
+    "@types/bun": "latest",
     "@types/node": "^22.5.0",
     "typescript": "^5.5.4"
   },

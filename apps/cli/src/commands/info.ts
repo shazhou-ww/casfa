@@ -16,7 +16,7 @@ export function registerInfoCommand(program: Command): void {
         const config = loadConfig();
         const profileName = opts.profile || config.currentProfile;
         const profile = getProfile(config, profileName);
-        const baseUrl = opts.baseUrl || profile.baseUrl;
+        const baseUrl = opts.baseUrl || process.env.CASFA_BASE_URL || profile.baseUrl;
 
         const result = await api.fetchServiceInfo(baseUrl);
 

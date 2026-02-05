@@ -16,7 +16,7 @@
       "name": "@casfa/cli",
       "version": "0.0.1",
       "bin": {
-        "casfa": "./src/cli.ts",
+        "casfa": "./dist/cli.js",
       },
       "dependencies": {
         "@casfa/client": "workspace:*",
@@ -32,6 +32,8 @@
         "yaml": "^2.5.0",
       },
       "devDependencies": {
+        "@aws-sdk/client-dynamodb": "^3.975.0",
+        "@types/bun": "latest",
         "@types/node": "^22.5.0",
         "typescript": "^5.5.4",
       },

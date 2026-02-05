@@ -231,7 +231,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
 
   // Nodes
   realmRouter.post("/:realmId/nodes/prepare", zValidator("json", PrepareNodesSchema), deps.chunks.prepareNodes);
-  realmRouter.put("/:realmId/nodes/:key", deps.canUploadMiddleware, deps.scopeValidationMiddleware, deps.chunks.put);
+  realmRouter.put("/:realmId/nodes/:key", deps.canUploadMiddleware, deps.chunks.put);
   realmRouter.get("/:realmId/nodes/:key", deps.scopeValidationMiddleware, deps.chunks.get);
   realmRouter.get("/:realmId/nodes/:key/metadata", deps.scopeValidationMiddleware, deps.chunks.getMetadata);
 

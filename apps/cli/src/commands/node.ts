@@ -35,6 +35,7 @@ async function ensureAccessToken(
         expiresIn: 3600, // 1 hour
         canUpload,
         canManageDepot: false,
+        scope: ["."], // Inherit parent scope
       }
     );
 
@@ -42,7 +43,7 @@ async function ensureAccessToken(
       throw new Error(`Failed to get access token: ${result.error.message}`);
     }
 
-    return result.data.token;
+    return result.data.tokenBase64;
   }
 
   if (state.user) {
@@ -59,7 +60,7 @@ async function ensureAccessToken(
       throw new Error(`Failed to get access token: ${result.error.message}`);
     }
 
-    return result.data.token;
+    return result.data.tokenBase64;
   }
 
   throw new Error("Authentication required. Run 'casfa auth login' or provide --delegate-token.");

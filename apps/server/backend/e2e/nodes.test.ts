@@ -171,8 +171,8 @@ describe("Node Operations", () => {
         body: nodeData,
       });
 
-      // The actual response depends on whether the node format is valid
-      // Accept either success or 400 (invalid format)
+      // PUT does not require X-CAS-Index-Path (no scope validation for uploads)
+      // Returns 400 if node format is invalid, 200 if valid
       expect(response.status === 200 || response.status === 400).toBe(true);
     });
 
