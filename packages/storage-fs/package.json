@@ -1,6 +1,6 @@
 {
   "name": "@casfa/storage-fs",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "File system storage provider for CAS",
   "type": "module",
   "main": "./dist/index.js",

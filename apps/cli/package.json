@@ -1,6 +1,6 @@
 {
   "name": "@casfa/cli",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "description": "CLI for CASFA content-addressable storage service",
   "type": "module",
   "main": "./dist/cli.js",

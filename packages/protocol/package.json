@@ -1,6 +1,6 @@
 {
   "name": "@casfa/protocol",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "description": "CASFA protocol definitions - shared schemas and types for API contract",
   "type": "module",
   "main": "./dist/index.js",

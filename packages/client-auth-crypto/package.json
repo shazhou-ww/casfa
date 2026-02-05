@@ -1,6 +1,6 @@
 {
   "name": "@casfa/client-auth-crypto",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "description": "Client authentication cryptography for CASFA (PKCE, encryption, display codes)",
   "type": "module",
   "main": "./dist/index.js",

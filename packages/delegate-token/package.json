@@ -1,6 +1,6 @@
 {
   "name": "@casfa/delegate-token",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "description": "Delegate Token encoding/decoding for CASFA authorization system",
   "type": "module",
   "main": "./dist/index.js",
