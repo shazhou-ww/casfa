@@ -166,6 +166,8 @@ type CreateTokenRequest = {
 }
 ```
 
+> **issuerChain 说明**：`issuerChain` 总是以用户 ID（`usr_xxx`）开头，因为第一个 issuer 一定是用户。后续元素为父 Token ID（`dlt1_xxx`）。
+
 ---
 
 #### POST /api/tokens/:tokenId/revoke
@@ -242,7 +244,7 @@ Access Token 可以通过两种方式获得：
 
 创建 Ticket 并签发关联的 Access Token。
 
-**认证**：`Bearer {base64_encoded_token}` (Access Token，需要 `canDelegate` 权限)
+**认证**：`Bearer {base64_encoded_token}` (Delegate Token)
 
 **请求**：
 
@@ -461,10 +463,24 @@ Content-Type: application/octet-stream
 ```
 
 **字段说明**：
-- `status`：`"pending"` 或 `"submitted"`
-- `root`：Ticket submit 时设置的输出节点（pending 状态时为 null）
-- `accessTokenId`：关联的 Access Token ID
+- `status`：`"pending"`（等待提交）或 `"submitted"`（已提交）
+- `root`：Ticket submit 时设置的输出节点（pending 状态时为 `null`，submitted 状态时为节点 hash）
+- `accessTokenId`：关联的 Access Token ID（submit 后该 Token 自动撤销）
 - `creatorTokenId`：创建此 Ticket 的 Delegate Token ID
+
+**submitted 状态示例**：
+```json
+{
+  "ticketId": "ticket:...",
+  "title": "Generate thumbnail",
+  "status": "submitted",
+  "root": "node:abc123...",
+  "accessTokenId": "dlt1_xxxxx",
+  "creatorTokenId": "dlt1_yyyyy",
+  "createdAt": 1738497600000,
+  "submittedAt": 1738501200000
+}
+```
 
 ---
 
@@ -548,7 +564,7 @@ Authorization: Bearer {base64_encoded_128_bytes}
 | PATCH | `/api/realm/{realmId}/depots/:id` | Access Token | 修改 Depot |
 | DELETE | `/api/realm/{realmId}/depots/:id` | Access Token | 删除 Depot |
 | GET | `/api/realm/{realmId}/tickets` | Access Token | 列出 Ticket |
-| POST | `/api/realm/{realmId}/tickets` | Access Token | 创建 Ticket |
+| POST | `/api/realm/{realmId}/tickets` | Delegate Token | 创建 Ticket |
 | GET | `/api/realm/{realmId}/tickets/:id` | Access Token | 查询 Ticket |
 | POST | `/api/realm/{realmId}/tickets/:id/submit` | Access Token | 提交 Ticket |
 

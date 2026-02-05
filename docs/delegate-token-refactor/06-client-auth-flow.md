@@ -129,19 +129,21 @@
 
 **示例**：
 ```
-╔═══════════════════════════════════════════════════════════╗
-║                                                           ║
-║  请打开以下链接完成授权                                   ║
-║                                                           ║
-║  https://casfa.app/authorize/req_xxxxx#secret=BASE64...   ║
-║                                                           ║
-║  验证码: ABCD-1234                                        ║
-║  请核对验证码后批准此请求                                 ║
-║                                                           ║
-╚═══════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════╗
+║                                                                      ║
+║  请打开以下链接完成授权                                              ║
+║                                                                      ║
+║  https://casfa.app/authorize/req_xxxxx#secret=0A1B2C3D4E5F6G7H8J9K   ║
+║                                                                      ║
+║  验证码: ABCD-1234                                                   ║
+║  请核对验证码后批准此请求                                            ║
+║                                                                      ║
+╚══════════════════════════════════════════════════════════════════════╝
 ```
 
-> **注意**：URL 中的 `#secret=xxx` 部分是 hash fragment，不会发送到服务器。
+> **注意**：
+> - URL 中的 `#secret=xxx` 部分是 hash fragment，不会发送到服务器
+> - `clientSecret` 使用 Crockford Base32 编码，URL 安全无需额外编码
 
 ---
 
@@ -193,11 +195,12 @@
 
 ```
 服务端返回: https://casfa.app/authorize/req_xxxxx
-客户端添加: https://casfa.app/authorize/req_xxxxx#secret=BASE64_CLIENT_SECRET
+客户端添加: https://casfa.app/authorize/req_xxxxx#secret=CROCKFORD_BASE32_SECRET
 ```
 
 > **安全说明**：
 > - `requestId` 使用 128 位随机数，不可枚举
+> - `clientSecret` 使用 Crockford Base32 编码（128 位 → 26 字符），URL 安全无需额外编码
 > - `clientSecret` 通过 URL hash 传递，hash 部分不会发送到服务端日志
 > - 只有用户浏览器和客户端知道 `clientSecret`
 
@@ -206,7 +209,6 @@
 | 错误码 | HTTP Status | 说明 |
 |--------|-------------|------|
 | `INVALID_CLIENT_NAME` | 400 | clientName 为空或过长 |
-| `INVALID_CLIENT_SECRET` | 400 | clientSecret 格式无效 |
 | `RATE_LIMITED` | 429 | 请求过于频繁 |
 
 ---
@@ -313,7 +315,7 @@
 **请求**：
 ```json
 {
-  "clientSecret": "base64_encoded_128_bit_random",
+  "clientSecret": "0123456789ABCDEFGHJKMNPQRSTVWXYZ",
   "realm": "usr_abc123",
   "name": "Cursor IDE Token",
   "expiresIn": 2592000,
@@ -325,7 +327,7 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `clientSecret` | `string` | 是 | 从 URL hash 读取的客户端密钥（128 位随机数，Base64 编码） |
+| `clientSecret` | `string` | 是 | 从 URL hash 读取的客户端密钥（128 位随机数，Crockford Base32 编码，26 字符） |
 | `realm` | `string` | 是 | 授权的 Realm ID（用户可选择自己拥有的 realm） |
 | `name` | `string` | 否 | Token 名称，默认使用 clientName |
 | `expiresIn` | `number` | 否 | 有效期（秒），默认 30 天 |
@@ -357,6 +359,7 @@
 | `REQUEST_EXPIRED` | 400 | 申请已过期 |
 | `REQUEST_ALREADY_PROCESSED` | 400 | 申请已被处理 |
 | `INVALID_REALM` | 400 | 无权访问指定的 Realm |
+| `INVALID_CLIENT_SECRET` | 400 | clientSecret 格式无效 |
 
 ---
 
@@ -462,7 +465,9 @@ const key = createHash('sha256').update(clientSecret).digest();
 
 - pending 状态申请 10 分钟后自动过期
 - expired/rejected 状态记录 24 小时后清理
-- approved 状态记录在 Token 被获取后 1 小时清理
+- approved 状态记录最多保留 1 小时（客户端获取后立即可清理，未获取也在 1 小时后清理）
+
+> **注意**：如果客户端因网络问题未能在 1 小时内获取 Token，需要重新发起授权申请。
 
 ---
 
@@ -517,7 +522,7 @@ interface TokenRequestRecord {
 type CreateTokenRequestInput = {
   clientName: string;
   description?: string;
-  clientSecret: string;  // 128 位随机数，Base64 编码
+  // 注意：clientSecret 不在此请求中发送，由客户端本地生成并通过 URL hash 传递
 };
 
 // 创建申请响应
@@ -568,10 +573,48 @@ type ApproveTokenRequestInput = {
 ```typescript
 import { randomBytes, createDecipheriv, createHash } from 'crypto';
 
+// Crockford Base32 编码（排除 I, L, O, U）
+const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+function encodeCrockfordBase32(buffer: Buffer): string {
+  let result = '';
+  let bits = 0;
+  let value = 0;
+  for (const byte of buffer) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      result += CROCKFORD_ALPHABET[(value >> bits) & 0x1f];
+    }
+  }
+  if (bits > 0) {
+    result += CROCKFORD_ALPHABET[(value << (5 - bits)) & 0x1f];
+  }
+  return result;
+}
+
+function decodeCrockfordBase32(str: string): Buffer {
+  const bytes: number[] = [];
+  let bits = 0;
+  let value = 0;
+  for (const char of str.toUpperCase()) {
+    const idx = CROCKFORD_ALPHABET.indexOf(char);
+    if (idx === -1) continue;
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((value >> bits) & 0xff);
+    }
+  }
+  return Buffer.from(bytes);
+}
+
 async function requestAuthorization(): Promise<string> {
   // 1. 生成 clientSecret (128 位随机数) - 本地保存，不发送到服务端
   const clientSecret = randomBytes(16);
-  const clientSecretBase64 = clientSecret.toString('base64');
+  const clientSecretEncoded = encodeCrockfordBase32(clientSecret);
   
   // 2. 发起申请（不发送 clientSecret）
   const initRes = await fetch("https://api.casfa.app/tokens/requests", {
@@ -590,8 +633,8 @@ async function requestAuthorization(): Promise<string> {
   
   const { requestId, displayCode, authorizeUrl, expiresAt, pollInterval } = await initRes.json();
   
-  // 3. 构造完整 URL（添加 hash 传递 clientSecret）
-  const fullAuthorizeUrl = `${authorizeUrl}#secret=${encodeURIComponent(clientSecretBase64)}`;
+  // 3. 构造完整 URL（Crockford Base32 无需 URL 编码）
+  const fullAuthorizeUrl = `${authorizeUrl}#secret=${clientSecretEncoded}`;
   
   // 4. 显示授权链接和验证码
   console.log(`\n请打开以下链接完成授权：`);
@@ -666,13 +709,34 @@ use sha2::{Sha256, Digest};
 use std::time::Duration;
 use tokio::time::sleep;
 
+// Crockford Base32 字符集（排除 I, L, O, U）
+const CROCKFORD_ALPHABET: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+fn encode_crockford_base32(data: &[u8]) -> String {
+    let mut result = String::new();
+    let mut bits = 0u32;
+    let mut value = 0u32;
+    for &byte in data {
+        value = (value << 8) | byte as u32;
+        bits += 8;
+        while bits >= 5 {
+            bits -= 5;
+            result.push(CROCKFORD_ALPHABET[((value >> bits) & 0x1f) as usize] as char);
+        }
+    }
+    if bits > 0 {
+        result.push(CROCKFORD_ALPHABET[((value << (5 - bits)) & 0x1f) as usize] as char);
+    }
+    result
+}
+
 async fn request_authorization() -> Result<String, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
     
     // 1. 生成 clientSecret (128 位随机数) - 本地保存，不发送到服务端
     let mut client_secret = [0u8; 16];
     rand::thread_rng().fill_bytes(&mut client_secret);
-    let client_secret_base64 = BASE64.encode(&client_secret);
+    let client_secret_encoded = encode_crockford_base32(&client_secret);
     
     // 2. 发起申请（不发送 clientSecret）
     let init_res = client
@@ -695,8 +759,8 @@ async fn request_authorization() -> Result<String, Box<dyn std::error::Error>> {
     let expires_at = init_data["expiresAt"].as_i64().unwrap();
     let poll_interval = init_data["pollInterval"].as_u64().unwrap();
     
-    // 3. 构造完整 URL（添加 hash 传递 clientSecret）
-    let full_authorize_url = format!("{}#secret={}", authorize_url, urlencoding::encode(&client_secret_base64));
+    // 3. 构造完整 URL（Crockford Base32 无需 URL 编码）
+    let full_authorize_url = format!("{}#secret={}", authorize_url, client_secret_encoded);
     
     // 4. 显示授权链接和验证码
     println!("\n请打开以下链接完成授权：");
