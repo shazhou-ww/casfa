@@ -25,9 +25,12 @@ describe("Realm API", () => {
     it("should return realm endpoint info", async () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      
+      // Realm API requires Access Token, not User JWT
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
-      const response = await ctx.helpers.authRequest(
-        token,
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
         "GET",
         `/api/realm/${realm}/info`
       );
@@ -50,15 +53,19 @@ describe("Realm API", () => {
     });
 
     it("should reject access to other users realm", async () => {
-      const userId1 = `user1-${uniqueId()}`;
-      const userId2 = `user2-${uniqueId()}`;
-      const { token, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
-      await ctx.helpers.createTestUser(userId2, "authorized");
+      const userId1 = uniqueId();
+      const userId2 = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
+      const { realm: otherRealm } = await ctx.helpers.createTestUser(userId2, "authorized");
+      
+      // Create access token for user1's realm
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
-      const response = await ctx.helpers.authRequest(
-        token,
+      // Try to access user2's realm with user1's token
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
         "GET",
-        `/api/realm/usr_${userId2}/info`
+        `/api/realm/${otherRealm}/info`
       );
 
       expect(response.status).toBe(403);
@@ -69,9 +76,12 @@ describe("Realm API", () => {
     it("should return usage statistics", async () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      
+      // Realm API requires Access Token
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
-      const response = await ctx.helpers.authRequest(
-        token,
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
         "GET",
         `/api/realm/${realm}/usage`
       );
@@ -92,9 +102,12 @@ describe("Realm API", () => {
     it("should return zero usage for new realm", async () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      
+      // Realm API requires Access Token
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
-      const response = await ctx.helpers.authRequest(
-        token,
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
         "GET",
         `/api/realm/${realm}/usage`
       );
@@ -115,15 +128,19 @@ describe("Realm API", () => {
     });
 
     it("should reject access to other users realm", async () => {
-      const userId1 = `user1-${uniqueId()}`;
-      const userId2 = `user2-${uniqueId()}`;
-      const { token, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
-      await ctx.helpers.createTestUser(userId2, "authorized");
+      const userId1 = uniqueId();
+      const userId2 = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
+      const { realm: otherRealm } = await ctx.helpers.createTestUser(userId2, "authorized");
+      
+      // Create access token for user1's realm
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
-      const response = await ctx.helpers.authRequest(
-        token,
+      // Try to access user2's realm with user1's token
+      const response = await ctx.helpers.accessRequest(
+        accessToken.tokenBase64,
         "GET",
-        `/api/realm/usr_${userId2}/usage`
+        `/api/realm/${otherRealm}/usage`
       );
 
       expect(response.status).toBe(403);
@@ -131,48 +148,54 @@ describe("Realm API", () => {
   });
 
   describe("Authentication Methods", () => {
-    it("should accept Bearer token authentication (User JWT)", async () => {
-      const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
-
-      const response = await ctx.helpers.authRequest(
-        token,
-        "GET",
-        `/api/realm/${realm}/info`
-      );
-
-      expect(response.status).toBe(200);
-    });
-
-    it("should accept Delegate Token authentication", async () => {
-      const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
-
-      // Create delegate token
-      const delegateToken = await ctx.helpers.createDelegateToken(token, realm);
-
-      // Use delegate token to access realm
-      const response = await ctx.helpers.delegateRequest(
-        delegateToken.tokenBase64,
-        "GET",
-        `/api/realm/${realm}/info`
-      );
-
-      expect(response.status).toBe(200);
-    });
-
-    it("should accept Access Token authentication", async () => {
+    it("should accept Access Token authentication (primary method)", async () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Create access token
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
-      // Use access token to access realm
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
         "GET",
         `/api/realm/${realm}/info`
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should reject Delegate Token authentication (Realm API requires Access Token)", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      // Create delegate token
+      const delegateToken = await ctx.helpers.createDelegateToken(token, realm);
+
+      // Delegate token should be rejected for realm API
+      const response = await ctx.helpers.delegateRequest(
+        delegateToken.tokenBase64,
+        "GET",
+        `/api/realm/${realm}/info`
+      );
+
+      expect(response.status).toBe(403); // ACCESS_TOKEN_REQUIRED
+    });
+
+    it("should reject User JWT authentication (Realm API requires Access Token)", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      // User JWT should be rejected for realm API
+      const response = await ctx.helpers.authRequest(
+        token,
+        "GET",
+        `/api/realm/${realm}/info`
+      );
+
+      expect(response.status).toBe(401); // Invalid token format for realm API
+    });
+  });
+});
       );
 
       expect(response.status).toBe(200);

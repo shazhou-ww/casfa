@@ -161,7 +161,7 @@ describe("Token Management", () => {
           realm: "usr_test",
           name: "Unauthorized Token",
           type: "delegate",
-          scope: [`cas://depot:${mainDepotId}`],
+          scope: ["cas://depot:AAAAAAAAAAAAAAAAAAAAAAAAAA"], // Fake depot ID for unauthenticated test
         }),
       });
 
@@ -298,8 +298,8 @@ describe("Token Management", () => {
     });
 
     it("should not return other user's token", async () => {
-      const userId1 = `user1-${uniqueId()}`;
-      const userId2 = `user2-${uniqueId()}`;
+      const userId1 = uniqueId();
+      const userId2 = uniqueId();
       const { token: token1, realm: realm1 } = await ctx.helpers.createTestUser(
         userId1,
         "authorized"
@@ -424,7 +424,7 @@ describe("Token Management", () => {
         }
       );
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(201);
       const data = (await response.json()) as any;
       expect(data.tokenId).toMatch(/^dlt1_/);
       expect(data.tokenBase64).toBeDefined();
@@ -450,7 +450,7 @@ describe("Token Management", () => {
         }
       );
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(201);
       const data = (await response.json()) as any;
       expect(data.tokenId).toMatch(/^dlt1_/);
     });

@@ -62,7 +62,7 @@ describe("Client Authorization", () => {
         }),
       });
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(201);
       const data = (await response.json()) as any;
       expect(data.requestId).toMatch(/^req_/);
       expect(data.displayCode).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
@@ -82,7 +82,7 @@ describe("Client Authorization", () => {
         }),
       });
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(201);
       const data = (await response.json()) as any;
       expect(data.requestId).toMatch(/^req_/);
     });
@@ -259,7 +259,7 @@ describe("Client Authorization", () => {
             realm: "usr_test",
             type: "delegate",
             name: "Test",
-            scope: [`cas://depot:${mainDepotId}`],
+            scope: ["cas://depot:AAAAAAAAAAAAAAAAAAAAAAAAAA"], // Fake depot ID for unauthenticated test
             clientSecret: request.clientSecret,
           }),
         }

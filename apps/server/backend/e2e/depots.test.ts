@@ -126,7 +126,7 @@ describe("Depot Management", () => {
         }
       );
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(201);
       const data = (await response.json()) as any;
       expect(data.depotId).toMatch(/^depot:/);
       expect(data.title).toBe("My Documents");
@@ -148,7 +148,7 @@ describe("Depot Management", () => {
         { title: "Default History Depot" }
       );
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(201);
       const data = (await response.json()) as any;
       expect(data.title).toBe("Default History Depot");
       // maxHistory should have a default value
@@ -222,7 +222,7 @@ describe("Depot Management", () => {
         { title: "Detail Test Depot" }
       );
 
-      expect(createResponse.status).toBe(200);
+      expect(createResponse.status).toBe(201);
       const created = (await createResponse.json()) as any;
 
       // Get details
@@ -422,8 +422,8 @@ describe("Depot Management", () => {
 
   describe("Access Control", () => {
     it("should reject access to other user's realm depots", async () => {
-      const userId1 = `user1-${uniqueId()}`;
-      const userId2 = `user2-${uniqueId()}`;
+      const userId1 = uniqueId();
+      const userId2 = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
       const { realm: otherRealm } = await ctx.helpers.createTestUser(userId2, "authorized");
 

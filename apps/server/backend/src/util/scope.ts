@@ -171,14 +171,20 @@ export async function resolveRelativeScope(
   const resolvedRoots: string[] = [];
 
   for (const scopePath of requestedScope) {
-    // "." means inherit parent scope
-    if (scopePath === ".") {
+    // "." or ".:" means inherit parent scope
+    if (scopePath === "." || scopePath === ".:") {
       resolvedRoots.push(...parentScopeRoots);
       continue;
     }
 
+    // Handle ".:index1:index2" format (relative index path from parent scope)
+    let indexPart = scopePath;
+    if (scopePath.startsWith(".:")) {
+      indexPart = scopePath.slice(2); // Remove ".:" prefix
+    }
+
     // Parse and resolve relative path
-    const indices = scopePath.split(":").map((s) => parseInt(s, 10));
+    const indices = indexPart.split(":").map((s) => parseInt(s, 10));
     if (indices.some(isNaN)) {
       return { valid: false, error: `Invalid scope path format: ${scopePath}` };
     }

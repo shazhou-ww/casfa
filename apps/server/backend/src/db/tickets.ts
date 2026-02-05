@@ -1,8 +1,8 @@
 /**
  * Ticket database operations
  *
- * Manages Ticket workspace records. Tickets are stored with primary key
- * REALM#{realm} + TICKET#{ticketId} for efficient realm-based queries.
+ * Manages Ticket workspace records. Tickets are stored in the realm table
+ * with primary key realm + key (where key = TICKET#{ticketId}).
  */
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
@@ -20,7 +20,6 @@ import type {
   PaginatedResult,
 } from "../types/delegate-token.ts";
 import {
-  toRealmPk,
   toTicketSk,
   toTicketTtl,
   encodeCursor,
@@ -88,8 +87,8 @@ export const createTicketsDb = (config: TicketsDbConfig): TicketsDb => {
     const now = Date.now();
 
     const record: TicketRecord = {
-      // Primary key
-      pk: toRealmPk(input.realm),
+      // Primary key (use realm table key format: realm + key)
+      pk: input.realm,
       sk: toTicketSk(input.ticketId),
 
       // Ticket fields from input
@@ -97,7 +96,7 @@ export const createTicketsDb = (config: TicketsDbConfig): TicketsDb => {
       realm: input.realm,
       title: input.title,
       accessTokenId: input.accessTokenId,
-      creatorTokenId: input.creatorTokenId,
+      creatorIssuerId: input.creatorIssuerId,
 
       // Status
       status: "pending",
@@ -109,11 +108,22 @@ export const createTicketsDb = (config: TicketsDbConfig): TicketsDb => {
       ttl: toTicketTtl(now),
     };
 
+    // Store with realm table key format
+    const item = {
+      realm: input.realm,
+      key: toTicketSk(input.ticketId),
+      ...record,
+    };
+
     await client.send(
       new PutCommand({
         TableName: tableName,
-        Item: record,
-        ConditionExpression: "attribute_not_exists(pk) OR attribute_not_exists(sk)",
+        Item: item,
+        ConditionExpression: "attribute_not_exists(#realm) OR attribute_not_exists(#key)",
+        ExpressionAttributeNames: {
+          "#realm": "realm",
+          "#key": "key",
+        },
       })
     );
 
@@ -124,7 +134,7 @@ export const createTicketsDb = (config: TicketsDbConfig): TicketsDb => {
     const result = await client.send(
       new GetCommand({
         TableName: tableName,
-        Key: { pk: toRealmPk(realm), sk: toTicketSk(ticketId) },
+        Key: { realm, key: toTicketSk(ticketId) },
       })
     );
 
@@ -143,12 +153,13 @@ export const createTicketsDb = (config: TicketsDbConfig): TicketsDb => {
       const result = await client.send(
         new UpdateCommand({
           TableName: tableName,
-          Key: { pk: toRealmPk(realm), sk: toTicketSk(ticketId) },
+          Key: { realm, key: toTicketSk(ticketId) },
           UpdateExpression: "SET #status = :submitted, #root = :root, submittedAt = :now",
-          ConditionExpression: "attribute_exists(pk) AND #status = :pending",
+          ConditionExpression: "attribute_exists(#realm) AND #status = :pending",
           ExpressionAttributeNames: {
             "#status": "status",
             "#root": "root",
+            "#realm": "realm",
           },
           ExpressionAttributeValues: {
             ":submitted": "submitted",
@@ -179,7 +190,7 @@ export const createTicketsDb = (config: TicketsDbConfig): TicketsDb => {
 
     const filterExpressions: string[] = [];
     const expressionValues: Record<string, unknown> = {
-      ":pk": toRealmPk(realm),
+      ":realm": realm,
       ":prefix": "TICKET#",
     };
 
@@ -191,9 +202,13 @@ export const createTicketsDb = (config: TicketsDbConfig): TicketsDb => {
     const result = await client.send(
       new QueryCommand({
         TableName: tableName,
-        KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
+        KeyConditionExpression: "#realm = :realm AND begins_with(#key, :prefix)",
         FilterExpression: filterExpressions.length > 0 ? filterExpressions.join(" AND ") : undefined,
-        ExpressionAttributeNames: filterExpressions.length > 0 ? { "#status": "status" } : undefined,
+        ExpressionAttributeNames: {
+          "#realm": "realm",
+          "#key": "key",
+          ...(filterExpressions.length > 0 ? { "#status": "status" } : {}),
+        },
         ExpressionAttributeValues: expressionValues,
         Limit: limit + 1,
         ExclusiveStartKey: options?.cursor ? decodeCursor(options.cursor) : undefined,
@@ -225,10 +240,14 @@ export const createTicketsDb = (config: TicketsDbConfig): TicketsDb => {
     const result = await client.send(
       new QueryCommand({
         TableName: tableName,
-        KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
-        FilterExpression: "creatorTokenId = :creatorId",
+        KeyConditionExpression: "#realm = :realm AND begins_with(#key, :prefix)",
+        FilterExpression: "creatorIssuerId = :creatorId",
+        ExpressionAttributeNames: {
+          "#realm": "realm",
+          "#key": "key",
+        },
         ExpressionAttributeValues: {
-          ":pk": toRealmPk(realm),
+          ":realm": realm,
           ":prefix": "TICKET#",
           ":creatorId": creatorTokenId,
         },
@@ -255,8 +274,11 @@ export const createTicketsDb = (config: TicketsDbConfig): TicketsDb => {
       await client.send(
         new DeleteCommand({
           TableName: tableName,
-          Key: { pk: toRealmPk(realm), sk: toTicketSk(ticketId) },
-          ConditionExpression: "attribute_exists(pk)",
+          Key: { realm, key: toTicketSk(ticketId) },
+          ConditionExpression: "attribute_exists(#realm)",
+          ExpressionAttributeNames: {
+            "#realm": "realm",
+          },
         })
       );
       return true;

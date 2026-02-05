@@ -10,6 +10,7 @@ import type { TicketsDb } from "../db/tickets.ts";
 import type { DepotsDb } from "../db/depots.ts";
 import type { TicketRecord } from "../types/delegate-token.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
+import { generateTicketId } from "../util/token-id.ts";
 
 // ============================================================================
 // Types
@@ -77,14 +78,14 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
       const realmId = c.req.param("realmId");
       const body = await c.req.json();
 
+      const ticketId = generateTicketId();
+      
       const ticket = await ticketsDb.create({
+        ticketId,
         realm: realmId,
         title: body.title,
-        canUpload: body.canUpload ?? false,
-        expiresIn: body.expiresIn ?? 3600, // Default 1 hour
-        creatorIssuerId: auth.tokenId,
-        scopeNodeHash: auth.tokenRecord.scopeNodeHash,
-        scopeSetNodeId: auth.tokenRecord.scopeSetNodeId,
+        accessTokenId: auth.tokenId, // The Access Token used to create this ticket
+        creatorIssuerId: auth.tokenId, // For issuer chain visibility
       });
 
       return c.json(
@@ -92,8 +93,8 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
           ticketId: ticket.ticketId,
           realm: ticket.realm,
           title: ticket.title,
-          canUpload: ticket.canUpload,
-          expiresAt: ticket.expiresAt,
+          status: ticket.status,
+          createdAt: ticket.createdAt,
         },
         201
       );
@@ -123,8 +124,8 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
       const realmId = c.req.param("realmId");
       const ticketId = c.req.param("ticketId");
 
-      const ticket = await ticketsDb.get(ticketId);
-      if (!ticket || ticket.realm !== realmId) {
+      const ticket = await ticketsDb.get(realmId, ticketId);
+      if (!ticket) {
         return c.json({ error: "not_found", message: "Ticket not found" }, 404);
       }
 
@@ -136,8 +137,8 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
       const ticketId = c.req.param("ticketId");
       const body = await c.req.json();
 
-      const ticket = await ticketsDb.get(ticketId);
-      if (!ticket || ticket.realm !== realmId) {
+      const ticket = await ticketsDb.get(realmId, ticketId);
+      if (!ticket) {
         return c.json({ error: "not_found", message: "Ticket not found" }, 404);
       }
 
@@ -173,14 +174,9 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
       const realmId = c.req.param("realmId");
       const ticketId = c.req.param("ticketId");
 
-      const ticket = await ticketsDb.get(ticketId);
-      if (!ticket || ticket.realm !== realmId) {
+      const ticket = await ticketsDb.get(realmId, ticketId);
+      if (!ticket) {
         return c.json({ error: "not_found", message: "Ticket not found" }, 404);
-      }
-
-      // Check if already revoked
-      if (ticket.status === "revoked") {
-        return c.json({ error: "conflict", message: "Ticket already revoked" }, 409);
       }
 
       // Check permission: only creator can revoke
@@ -192,15 +188,14 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
         }
       }
 
-      const success = await ticketsDb.revoke(ticketId);
+      // Revoke by deleting the ticket
+      const success = await ticketsDb.delete(realmId, ticketId);
       if (!success) {
         return c.json({ error: "conflict", message: "Failed to revoke ticket" }, 409);
       }
 
       return c.json({
         success: true,
-        status: "revoked",
-        output: ticket.submittedRoot,
       });
     },
 
@@ -209,8 +204,8 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
       const realmId = c.req.param("realmId");
       const ticketId = c.req.param("ticketId");
 
-      const ticket = await ticketsDb.get(ticketId);
-      if (!ticket || ticket.realm !== realmId) {
+      const ticket = await ticketsDb.get(realmId, ticketId);
+      if (!ticket) {
         return c.json({ error: "not_found", message: "Ticket not found" }, 404);
       }
 
@@ -223,7 +218,7 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
         }
       }
 
-      await ticketsDb.delete(ticketId);
+      await ticketsDb.delete(realmId, ticketId);
 
       return c.json({ success: true });
     },

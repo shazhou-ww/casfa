@@ -170,7 +170,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
 
   // Re-delegate a token (requires delegate token auth)
   tokensRouter.post(
-    "/:tokenId/delegate",
+    "/delegate",
     deps.delegateTokenMiddleware,
     zValidator("json", DelegateTokenSchema),
     deps.tokens.delegate

@@ -23,7 +23,7 @@ describe("Admin API", () => {
 
   describe("GET /api/admin/users", () => {
     it("should list all users for admin", async () => {
-      const adminId = `admin-${uniqueId()}`;
+      const adminId = uniqueId();
       const { token, mainDepotId } = await ctx.helpers.createTestUser(adminId, "admin");
 
       const response = await ctx.helpers.authRequest(token, "GET", "/api/admin/users");
@@ -50,7 +50,7 @@ describe("Admin API", () => {
 
   describe("PATCH /api/admin/users/:userId", () => {
     it("should update user role", async () => {
-      const adminId = `admin-${uniqueId()}`;
+      const adminId = uniqueId();
       const userId = uniqueId();
       const { token: adminToken } = await ctx.helpers.createTestUser(adminId, "admin");
       await ctx.helpers.createTestUser(userId, "authorized");
@@ -68,8 +68,8 @@ describe("Admin API", () => {
     });
 
     it("should reject non-admin users", async () => {
-      const userId1 = `user1-${uniqueId()}`;
-      const userId2 = `user2-${uniqueId()}`;
+      const userId1 = uniqueId();
+      const userId2 = uniqueId();
       const { token, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
       await ctx.helpers.createTestUser(userId2, "authorized");
 
@@ -84,7 +84,7 @@ describe("Admin API", () => {
     });
 
     it("should reject invalid role value", async () => {
-      const adminId = `admin-${uniqueId()}`;
+      const adminId = uniqueId();
       const userId = uniqueId();
       const { token: adminToken } = await ctx.helpers.createTestUser(adminId, "admin");
       await ctx.helpers.createTestUser(userId, "authorized");

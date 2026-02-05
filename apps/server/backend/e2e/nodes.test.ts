@@ -321,8 +321,8 @@ describe("Node Operations", () => {
 
   describe("Access Control", () => {
     it("should reject access to other user's realm nodes", async () => {
-      const userId1 = `user1-${uniqueId()}`;
-      const userId2 = `user2-${uniqueId()}`;
+      const userId1 = uniqueId();
+      const userId2 = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
       const { realm: otherRealm } = await ctx.helpers.createTestUser(userId2, "authorized");
 

@@ -242,12 +242,12 @@ export type TestHelpers = {
   createDelegateToken: (
     userToken: string,
     realm: string,
-    options: {
+    options?: {
       name?: string;
       expiresIn?: number;
       canUpload?: boolean;
       canManageDepot?: boolean;
-      scope: string[];  // Required - use mainDepotId from createTestUser
+      scope?: string[];  // Optional - defaults to MAIN depot
     }
   ) => Promise<DelegateTokenResult>;
 
@@ -255,12 +255,12 @@ export type TestHelpers = {
   createAccessToken: (
     userToken: string,
     realm: string,
-    options: {
+    options?: {
       name?: string;
       expiresIn?: number;
       canUpload?: boolean;
       canManageDepot?: boolean;
-      scope: string[];  // Required - use mainDepotId from createTestUser
+      scope?: string[];  // Optional - defaults to MAIN depot
     }
   ) => Promise<AccessTokenResult>;
 
@@ -483,11 +483,17 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
         expiresIn,
         canUpload = false,
         canManageDepot = false,
-        scope,  // Must be provided by caller with actual depot ID
+        scope,  // Optional - if not provided, will use MAIN depot
       } = options;
 
-      if (!scope || scope.length === 0) {
-        throw new Error("scope is required - use mainDepotId from createTestUser to build scope URI");
+      // If scope not provided, get the MAIN depot for this realm
+      let finalScope = scope;
+      if (!finalScope || finalScope.length === 0) {
+        const mainDepot = await db.depotsDb.getByName(realm, "MAIN");
+        if (!mainDepot) {
+          throw new Error(`MAIN depot not found for realm ${realm}`);
+        }
+        finalScope = [`cas://depot:${mainDepot.depotId}`];
       }
 
       const response = await helpers.authRequest(userToken, "POST", "/api/tokens", {
@@ -497,7 +503,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
         expiresIn,
         canUpload,
         canManageDepot,
-        scope,
+        scope: finalScope,
       });
 
       if (!response.ok) {
@@ -514,11 +520,17 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
         expiresIn,
         canUpload = false,
         canManageDepot = false,
-        scope,  // Must be provided by caller with actual depot ID
+        scope,  // Optional - if not provided, will use MAIN depot
       } = options;
 
-      if (!scope || scope.length === 0) {
-        throw new Error("scope is required - use mainDepotId from createTestUser to build scope URI");
+      // If scope not provided, get the MAIN depot for this realm
+      let finalScope = scope;
+      if (!finalScope || finalScope.length === 0) {
+        const mainDepot = await db.depotsDb.getByName(realm, "MAIN");
+        if (!mainDepot) {
+          throw new Error(`MAIN depot not found for realm ${realm}`);
+        }
+        finalScope = [`cas://depot:${mainDepot.depotId}`];
       }
 
       const response = await helpers.authRequest(userToken, "POST", "/api/tokens", {
@@ -528,7 +540,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
         expiresIn,
         canUpload,
         canManageDepot,
-        scope,
+        scope: finalScope,
       });
 
       if (!response.ok) {

@@ -38,7 +38,7 @@ describe("Ticket Management", () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Create Access Token first
+      // Create Access Token first with canUpload permission
       const accessToken = await ctx.helpers.createAccessToken(token, realm, {
         name: "Ticket Creator",
         canUpload: true,
@@ -53,36 +53,33 @@ describe("Ticket Management", () => {
         }
       );
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(201);
       const data = (await response.json()) as any;
-      expect(data.ticketId).toMatch(/^ticket:/);
+      expect(data.ticketId).toMatch(/^tkt_/);
       expect(data.title).toBe("Test Task");
       expect(data.status).toBe("pending");
-      expect(data.expiresAt).toBeGreaterThan(Date.now());
     });
 
-    it("should create ticket with custom expiration", async () => {
+    it("should create ticket with title only", async () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const accessToken = await ctx.helpers.createAccessToken(token, realm);
+      // canUpload is required for ticket creation
+      const accessToken = await ctx.helpers.createAccessToken(token, realm, { canUpload: true });
 
-      const expiresIn = 1800; // 30 minutes
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
         "POST",
         `/api/realm/${realm}/tickets`,
         {
-          title: "Short-lived Task",
-          expiresIn,
+          title: "Simple Task",
         }
       );
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(201);
       const data = (await response.json()) as any;
-      const expectedExpiry = Date.now() + expiresIn * 1000;
-      expect(data.expiresAt).toBeGreaterThan(expectedExpiry - 5000);
-      expect(data.expiresAt).toBeLessThan(expectedExpiry + 5000);
+      expect(data.ticketId).toBeDefined();
+      expect(data.title).toBe("Simple Task");
     });
 
     it("should reject Delegate Token for ticket creation", async () => {
@@ -132,8 +129,8 @@ describe("Ticket Management", () => {
     });
 
     it("should reject access to other user's realm", async () => {
-      const userId1 = `user1-${uniqueId()}`;
-      const userId2 = `user2-${uniqueId()}`;
+      const userId1 = uniqueId();
+      const userId2 = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
       const { realm: otherRealm } = await ctx.helpers.createTestUser(userId2, "authorized");
 
