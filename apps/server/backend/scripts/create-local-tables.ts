@@ -25,6 +25,7 @@ import {
   DeleteTableCommand,
   DynamoDBClient,
   ListTablesCommand,
+  UpdateTimeToLiveCommand,
 } from "@aws-sdk/client-dynamodb";
 
 // Parse --port argument
@@ -115,8 +116,9 @@ export async function listTables(dbClient: DynamoDBClient = client): Promise<str
 export async function createAllTables(dbClient: DynamoDBClient = client): Promise<void> {
   console.log(`Creating tables...\n`);
 
-  // Tokens table (users, agents, tickets, roles, awp-pending, awp-pubkeys)
+  // Tokens table (DelegateTokens, Tickets, TokenRequests, Audits, ScopeSetNodes, etc.)
   // Uses composite key (pk, sk) to support different entity types in one table
+  // See docs/delegate-token-refactor/impl/01-dynamodb-changes.md for details
   await createTable(dbClient, {
     TableName: tokensTable,
     AttributeDefinitions: [
@@ -126,6 +128,12 @@ export async function createAllTables(dbClient: DynamoDBClient = client): Promis
       { AttributeName: "createdAt", AttributeType: "N" },
       { AttributeName: "gsi1pk", AttributeType: "S" },
       { AttributeName: "gsi1sk", AttributeType: "S" },
+      { AttributeName: "gsi2pk", AttributeType: "S" },
+      { AttributeName: "gsi2sk", AttributeType: "S" },
+      { AttributeName: "gsi3pk", AttributeType: "S" },
+      { AttributeName: "gsi3sk", AttributeType: "S" },
+      { AttributeName: "gsi4pk", AttributeType: "S" },
+      { AttributeName: "gsi4sk", AttributeType: "S" },
     ],
     KeySchema: [
       { AttributeName: "pk", KeyType: "HASH" },
@@ -133,6 +141,7 @@ export async function createAllTables(dbClient: DynamoDBClient = client): Promis
     ],
     BillingMode: "PAY_PER_REQUEST",
     GlobalSecondaryIndexes: [
+      // Legacy: userId-index for listing agent tokens by user
       {
         IndexName: "userId-index",
         KeySchema: [
@@ -141,6 +150,7 @@ export async function createAllTables(dbClient: DynamoDBClient = client): Promis
         ],
         Projection: { ProjectionType: "ALL" },
       },
+      // gsi1: realm-index - Query Tokens by realm
       {
         IndexName: "gsi1",
         KeySchema: [
@@ -149,10 +159,59 @@ export async function createAllTables(dbClient: DynamoDBClient = client): Promis
         ],
         Projection: { ProjectionType: "ALL" },
       },
+      // gsi2: issuer-index - Query child Tokens by issuer (for cascade revocation)
+      {
+        IndexName: "gsi2",
+        KeySchema: [
+          { AttributeName: "gsi2pk", KeyType: "HASH" },
+          { AttributeName: "gsi2sk", KeyType: "RANGE" },
+        ],
+        Projection: { ProjectionType: "ALL" },
+      },
+      // gsi3: creator-index - Query Depots by creator
+      {
+        IndexName: "gsi3",
+        KeySchema: [
+          { AttributeName: "gsi3pk", KeyType: "HASH" },
+          { AttributeName: "gsi3sk", KeyType: "RANGE" },
+        ],
+        Projection: { ProjectionType: "ALL" },
+      },
+      // gsi4: audit-index - Query audit logs by date
+      {
+        IndexName: "gsi4",
+        KeySchema: [
+          { AttributeName: "gsi4pk", KeyType: "HASH" },
+          { AttributeName: "gsi4sk", KeyType: "RANGE" },
+        ],
+        Projection: { ProjectionType: "KEYS_ONLY" },
+      },
     ],
   });
 
+  // Enable TTL on tokens table
+  try {
+    await dbClient.send(
+      new UpdateTimeToLiveCommand({
+        TableName: tokensTable,
+        TimeToLiveSpecification: {
+          AttributeName: "ttl",
+          Enabled: true,
+        },
+      })
+    );
+    console.log(`Enabled TTL on table: ${tokensTable}`);
+  } catch (err: unknown) {
+    // TTL may already be enabled or not supported in local DynamoDB
+    const errName = err && typeof err === "object" && "name" in err ? (err as { name: string }).name : "";
+    if (errName !== "ValidationException") {
+      console.log(`Note: Could not enable TTL on ${tokensTable}: ${errName}`);
+    }
+  }
+
   // Realm table (ownership, commits, depots)
+  // Note: New Depot schema will use pk: REALM#{realm}, sk: DEPOT#{depotId}
+  // with gsi3 for creator-index. Legacy depots use realm + key: DEPOT#{depotId}
   await createTable(dbClient, {
     TableName: realmTable,
     AttributeDefinitions: [
@@ -160,6 +219,8 @@ export async function createAllTables(dbClient: DynamoDBClient = client): Promis
       { AttributeName: "key", AttributeType: "S" },
       { AttributeName: "gsi1pk", AttributeType: "S" },
       { AttributeName: "gsi1sk", AttributeType: "S" },
+      { AttributeName: "gsi3pk", AttributeType: "S" },
+      { AttributeName: "gsi3sk", AttributeType: "S" },
     ],
     KeySchema: [
       { AttributeName: "realm", KeyType: "HASH" },
@@ -180,6 +241,15 @@ export async function createAllTables(dbClient: DynamoDBClient = client): Promis
         KeySchema: [
           { AttributeName: "gsi1pk", KeyType: "HASH" },
           { AttributeName: "gsi1sk", KeyType: "RANGE" },
+        ],
+        Projection: { ProjectionType: "ALL" },
+      },
+      // gsi3: creator-index - Query Depots by creator
+      {
+        IndexName: "gsi3",
+        KeySchema: [
+          { AttributeName: "gsi3pk", KeyType: "HASH" },
+          { AttributeName: "gsi3sk", KeyType: "RANGE" },
         ],
         Projection: { ProjectionType: "ALL" },
       },

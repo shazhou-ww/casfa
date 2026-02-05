@@ -6,8 +6,8 @@
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { DeleteCommand, GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
-import type { ClientPubkey } from "../types.ts";
-import { createDocClient } from "./client.ts";
+import type { ClientPubkey } from "../../types.ts";
+import { createDocClient } from "../client.ts";
 
 // ============================================================================
 // Types

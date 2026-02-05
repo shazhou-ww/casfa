@@ -9,6 +9,8 @@ export {
   isValidClientId,
   isValidTokenId,
 } from "./client-id.ts";
+// New db-keys utilities for DelegateToken schema
+export * as dbKeys from "./db-keys.ts";
 export {
   fromCrockfordBase32,
   isValidCrockfordBase32,

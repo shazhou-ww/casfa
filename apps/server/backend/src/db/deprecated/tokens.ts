@@ -10,10 +10,10 @@ import {
   QueryCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { loadServerConfig } from "../config.ts";
-import type { AgentToken, Ticket, Token, UserToken } from "../types.ts";
-import { generateAgentTokenId, generateTicketId, toTokenPk } from "../util/token-id.ts";
-import { createDocClient } from "./client.ts";
+import { loadServerConfig } from "../../config.ts";
+import type { AgentToken, Ticket, Token, UserToken } from "../../types.ts";
+import { generateAgentTokenId, generateTicketId, toTokenPk } from "../../util/token-id.ts";
+import { createDocClient } from "../client.ts";
 
 // ============================================================================
 // Types

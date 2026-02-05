@@ -4,8 +4,8 @@
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { DeleteCommand, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
-import type { AwpPendingAuth } from "../types.ts";
-import { createDocClient } from "./client.ts";
+import type { AwpPendingAuth } from "../../types.ts";
+import { createDocClient } from "../client.ts";
 
 // ============================================================================
 // Types
