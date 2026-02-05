@@ -54,7 +54,7 @@
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|------|------|
 | POST | `/api/tokens/requests` | 无 | 发起授权申请 |
-| GET | `/api/tokens/requests/:requestId` | 无 | 轮询申请状态（客户端侧） |
+| GET | `/api/tokens/requests/:requestId/poll` | 无 | 轮询申请状态（客户端侧） |
 | GET | `/api/tokens/requests/:requestId` | User JWT | 查看申请详情（用户侧） |
 | POST | `/api/tokens/requests/:requestId/approve` | User JWT | 批准申请 |
 | POST | `/api/tokens/requests/:requestId/reject` | User JWT | 拒绝申请 |
@@ -240,9 +240,9 @@ Access Token 可以通过两种方式获得：
 
 #### POST /api/realm/{realmId}/tickets
 
-创建 Ticket（需要再授权 Token）。
+创建 Ticket 并签发关联的 Access Token。
 
-**认证**：`Bearer {base64_encoded_token}` (Delegate Token)
+**认证**：`Bearer {base64_encoded_token}` (Access Token，需要 `canDelegate` 权限)
 
 **请求**：
 
@@ -285,7 +285,7 @@ type CreateTicketRequest = {
 
 列出 Ticket。
 
-**认证**：`Bearer {jwt}` (User Token) 或 `Bearer {base64_encoded_token}` (Delegate Token)
+**认证**：`Bearer {base64_encoded_token}` (Access Token)
 
 **查询参数**：
 
@@ -310,9 +310,7 @@ type CreateTicketRequest = {
 }
 ```
 
-**认证说明**：
-- **User JWT**：用户查看自己 realm 下的所有 Ticket
-- **Delegate Token**：查看该 Token 及其子 Token 创建的 Ticket
+**可见范围**：查看该 Token 及其子 Token 创建的 Ticket
 
 ---
 
@@ -350,6 +348,8 @@ type CreateTicketRequest = {
 - 认证方式从 `Ticket` 改为 `Bearer` + Access Token
 - 新增 `X-CAS-Index-Path` Header 用于 scope 验证
 
+> **注意**：Delegate Token 用于管理和转签发，不能直接访问节点数据。需先转签发为 Access Token 再进行读写操作。
+
 **请求**：
 ```http
 GET /api/realm/{realmId}/nodes/:key
@@ -359,8 +359,10 @@ X-CAS-Index-Path: 0:1:2
 
 | Header | 必选 | 说明 |
 |--------|------|------|
-| `Authorization` | 是 | 完整 Token 的 Base64 编码 |
+| `Authorization` | 是 | Access Token 的 Base64 编码 |
 | `X-CAS-Index-Path` | 是 | 证明节点在 scope 内的索引路径 |
+
+**Realm 验证**：URL 中的 `realmId` 必须与 Token 关联的 realm 一致，否则返回 `403 REALM_MISMATCH`。
 
 ### 3.2 Node 写入
 
@@ -385,7 +387,7 @@ Content-Type: application/octet-stream
 
 列出 Depot。
 
-**认证**：`Bearer {jwt}` (User Token) 或 `Bearer {base64_encoded_token}` (Delegate/Access Token)
+**认证**：`Bearer {base64_encoded_token}` (Access Token)
 
 **查询参数**：
 
@@ -409,11 +411,13 @@ Content-Type: application/octet-stream
 }
 ```
 
+**可见范围**：查看该 Token 及其子 Token 创建的 Depot
+
 #### POST /api/realm/{realmId}/depots
 
 创建 Depot。
 
-**认证**：`Bearer {base64_encoded_token}` (Delegate Token 或 Access Token，需要 `canManageDepot` 权限)
+**认证**：`Bearer {base64_encoded_token}` (Access Token，需要 `canManageDepot` 权限)
 
 **变更**：
 - 新增 `creatorIssuerId` 记录创建者
@@ -429,7 +433,7 @@ Content-Type: application/octet-stream
 
 #### PATCH/DELETE /api/realm/{realmId}/depots/:depotId
 
-**认证**：`Bearer {base64_encoded_token}` (Delegate Token 或 Access Token，需要 `canManageDepot` 权限)
+**认证**：`Bearer {base64_encoded_token}` (Access Token，需要 `canManageDepot` 权限)
 
 **变更**：
 - 需要验证 Issuer Chain（只能操作自己或子 Token 创建的 Depot）
@@ -438,11 +442,9 @@ Content-Type: application/octet-stream
 
 #### GET /api/realm/{realmId}/tickets/:ticketId
 
-**认证**：`Bearer {jwt}` (User Token) 或 `Bearer {base64_encoded_token}` (Delegate Token)
+**认证**：`Bearer {base64_encoded_token}` (Access Token)
 
-**认证说明**：
-- **User JWT**：用户查看自己 realm 下的任意 Ticket
-- **Delegate Token**：查看该 Token 及其子 Token 创建的 Ticket
+**可见范围**：查看该 Token 及其子 Token 创建的 Ticket
 
 **响应格式**：
 
@@ -450,7 +452,7 @@ Content-Type: application/octet-stream
 {
   "ticketId": "ticket:...",
   "title": "Generate thumbnail",
-  "status": "pending" | "submitted",
+  "status": "pending",
   "root": "node:...",
   "accessTokenId": "dlt1_xxxxx",
   "creatorTokenId": "dlt1_yyyyy",
@@ -459,7 +461,8 @@ Content-Type: application/octet-stream
 ```
 
 **字段说明**：
-- `root`：Ticket submit 时设置的输出节点（之前的 `output`）
+- `status`：`"pending"` 或 `"submitted"`
+- `root`：Ticket submit 时设置的输出节点（pending 状态时为 null）
 - `accessTokenId`：关联的 Access Token ID
 - `creatorTokenId`：创建此 Ticket 的 Delegate Token ID
 
@@ -527,7 +530,8 @@ Authorization: Bearer {base64_encoded_128_bytes}
 | 方法 | 路径 | 认证 | 描述 |
 |------|------|------|------|
 | POST | `/api/tokens/requests` | 无 | 发起授权申请 |
-| GET | `/api/tokens/requests/:id` | 无/JWT | 轮询状态(客户端)/查看详情(用户) |
+| GET | `/api/tokens/requests/:id/poll` | 无 | 轮询状态（客户端侧） |
+| GET | `/api/tokens/requests/:id` | JWT | 查看详情（用户侧） |
 | POST | `/api/tokens/requests/:id/approve` | JWT | 批准申请 |
 | POST | `/api/tokens/requests/:id/reject` | JWT | 拒绝申请 |
 
@@ -539,13 +543,13 @@ Authorization: Bearer {base64_encoded_128_bytes}
 |------|------|------|------|
 | GET | `/api/realm/{realmId}/nodes/:key` | Access Token | 读取节点 |
 | PUT | `/api/realm/{realmId}/nodes/:key` | Access Token | 写入节点 |
-| GET | `/api/realm/{realmId}/depots` | JWT/Delegate/Access | 列出 Depot |
-| POST | `/api/realm/{realmId}/depots` | Delegate/Access | 创建 Depot |
-| PATCH | `/api/realm/{realmId}/depots/:id` | Delegate/Access | 修改 Depot |
-| DELETE | `/api/realm/{realmId}/depots/:id` | Delegate/Access | 删除 Depot |
-| GET | `/api/realm/{realmId}/tickets` | JWT/Delegate | 列出 Ticket |
-| POST | `/api/realm/{realmId}/tickets` | Delegate Token | 创建 Ticket |
-| GET | `/api/realm/{realmId}/tickets/:id` | JWT/Delegate | 查询 Ticket |
+| GET | `/api/realm/{realmId}/depots` | Access Token | 列出 Depot |
+| POST | `/api/realm/{realmId}/depots` | Access Token | 创建 Depot |
+| PATCH | `/api/realm/{realmId}/depots/:id` | Access Token | 修改 Depot |
+| DELETE | `/api/realm/{realmId}/depots/:id` | Access Token | 删除 Depot |
+| GET | `/api/realm/{realmId}/tickets` | Access Token | 列出 Ticket |
+| POST | `/api/realm/{realmId}/tickets` | Access Token | 创建 Ticket |
+| GET | `/api/realm/{realmId}/tickets/:id` | Access Token | 查询 Ticket |
 | POST | `/api/realm/{realmId}/tickets/:id/submit` | Access Token | 提交 Ticket |
 
 ---
@@ -579,6 +583,7 @@ Authorization: Bearer {base64_encoded_128_bytes}
 
 | 错误码 | HTTP Status | 说明 |
 |--------|-------------|------|
+| `REALM_MISMATCH` | 403 | Token realm 与 URL realmId 不匹配 |
 | `INDEX_PATH_REQUIRED` | 400 | 缺少 X-CAS-Index-Path |
 | `NODE_NOT_IN_SCOPE` | 403 | 节点不在授权范围 |
 | `DEPOT_ACCESS_DENIED` | 403 | 无权访问该 Depot |

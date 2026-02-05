@@ -46,35 +46,49 @@
 │  Client  │                    │  Server  │                    │   User   │
 └────┬─────┘                    └────┬─────┘                    └────┬─────┘
      │                               │                               │
-     │ 1. POST /tokens/requests      │                               │
-     │    {clientName, clientSecret} │                               │
+     │ 1. 生成 clientSecret (本地)   │                               │
+     │                               │                               │
+     │ 2. POST /tokens/requests      │                               │
+     │    {clientName}               │                               │
      │──────────────────────────────>│                               │
      │                               │                               │
-     │ 2. {requestId, displayCode,   │                               │
+     │ 3. {requestId, displayCode,   │                               │
      │     authorizeUrl, expiresAt}  │                               │
      │<──────────────────────────────│                               │
      │                               │                               │
-     │ 3. 显示授权链接和验证码       │                               │
+     │ 4. 构造完整 URL (添加 hash)   │                               │
+     │    authorizeUrl#secret=xxx    │                               │
+     │                               │                               │
+     │ 5. 显示授权链接和验证码       │                               │
      │   "请打开链接并核对 ABCD-1234"│                               │
      │────────────────────────────────────────────────────────────>│
      │                               │                               │
-     │                               │  4. 用户打开链接，登录并核对验证码
+     │                               │  6. 用户打开链接（浏览器）
+     │                               │     浏览器 JS 读取 hash 中的 secret
+     │                               │     GET /tokens/requests/:id
+     │                               │     (获取详情展示，不含 secret)
      │                               │<──────────────────────────────│
      │                               │                               │
-     │                               │  5. 选择 realm，设置权限并批准
+     │                               │  7. 用户选择 realm，设置权限并批准
      │                               │     POST /tokens/requests/:id/approve
-     │                               │     {realm, scope, expiresIn...}
+     │                               │     {realm, scope, clientSecret...}
+     │                               │     (前端从 hash 读取 secret 附加)
      │                               │<──────────────────────────────│
      │                               │                               │
-     │ 6. GET /tokens/requests/:id   │                               │
+     │                               │  8. 服务端签发 Token，用 clientSecret
+     │                               │     加密后存储 encryptedToken
+     │                               │     【不存储 clientSecret】
+     │                               │                               │
+     │ 9. GET /tokens/requests/:id/poll                               │
      │    (轮询)                     │                               │
      │──────────────────────────────>│                               │
      │                               │                               │
-     │ 7. status: "approved"         │                               │
-     │    encryptedToken (用 clientSecret 加密)                      │
+     │ 10. status: "approved"        │                               │
+     │     encryptedToken            │                               │
      │<──────────────────────────────│                               │
      │                               │                               │
-     │ 8. 解密 Token，保存并使用     │                               │
+     │ 11. 用本地 clientSecret 解密  │                               │
+     │     保存 Token 并使用         │                               │
      │                               │                               │
 ```
 
@@ -115,17 +129,19 @@
 
 **示例**：
 ```
-╔════════════════════════════════════════╗
-║                                        ║
-║  请打开以下链接完成授权                ║
-║                                        ║
-║  https://casfa.app/authorize/req_xxxxx ║
-║                                        ║
-║  验证码: ABCD-1234                     ║
-║  请核对验证码后批准此请求              ║
-║                                        ║
-╚════════════════════════════════════════╝
+╔═══════════════════════════════════════════════════════════╗
+║                                                           ║
+║  请打开以下链接完成授权                                   ║
+║                                                           ║
+║  https://casfa.app/authorize/req_xxxxx#secret=BASE64...   ║
+║                                                           ║
+║  验证码: ABCD-1234                                        ║
+║  请核对验证码后批准此请求                                 ║
+║                                                           ║
+╚═══════════════════════════════════════════════════════════╝
 ```
+
+> **注意**：URL 中的 `#secret=xxx` 部分是 hash fragment，不会发送到服务器。
 
 ---
 
@@ -143,8 +159,7 @@
 ```json
 {
   "clientName": "Cursor IDE",
-  "description": "AI 编程助手",
-  "clientSecret": "base64_encoded_128_bit_random"
+  "description": "AI 编程助手"
 }
 ```
 
@@ -152,7 +167,8 @@
 |------|------|------|------|
 | `clientName` | `string` | 是 | 客户端名称（1-64 字符） |
 | `description` | `string` | 否 | 客户端描述（最多 256 字符） |
-| `clientSecret` | `string` | 是 | 客户端生成的 128 位随机数（Base64 编码），用于加密返回的 Token |
+
+> **注意**：`clientSecret` 由客户端本地生成，不发送到服务端。客户端需自行构造完整的授权 URL（添加 hash）。
 
 **响应**：
 ```json
@@ -169,11 +185,21 @@
 |------|------|------|
 | `requestId` | `string` | 申请 ID，128 位随机数（Base64 编码），前缀 `req_` |
 | `displayCode` | `string` | 验证码，`XXXX-YYYY` 格式（Crockford Base32） |
-| `authorizeUrl` | `string` | 授权页面 URL，客户端应引导用户打开 |
+| `authorizeUrl` | `string` | 授权页面基础 URL（不含 hash），客户端需自行添加 `#secret=xxx` |
 | `expiresAt` | `number` | 申请过期时间（Unix 毫秒），10 分钟 |
 | `pollInterval` | `number` | 建议轮询间隔（秒） |
 
-> **安全说明**：`requestId` 使用 128 位随机数，不可枚举，只有知道 requestId 的客户端才能轮询状态。
+**客户端构造完整 URL**：
+
+```
+服务端返回: https://casfa.app/authorize/req_xxxxx
+客户端添加: https://casfa.app/authorize/req_xxxxx#secret=BASE64_CLIENT_SECRET
+```
+
+> **安全说明**：
+> - `requestId` 使用 128 位随机数，不可枚举
+> - `clientSecret` 通过 URL hash 传递，hash 部分不会发送到服务端日志
+> - 只有用户浏览器和客户端知道 `clientSecret`
 
 **错误**：
 
@@ -185,11 +211,11 @@
 
 ---
 
-### 3.2 轮询申请状态
+### 3.2 轮询申请状态（客户端侧）
 
-#### GET /api/tokens/requests/:requestId
+#### GET /api/tokens/requests/:requestId/poll
 
-轮询授权申请状态。
+客户端轮询授权申请状态。此路由与用户侧查看详情的路由分开，以区分客户端和用户的访问场景。
 
 **认证**：无（通过 requestId 的随机性保证安全）
 
@@ -287,6 +313,7 @@
 **请求**：
 ```json
 {
+  "clientSecret": "base64_encoded_128_bit_random",
   "realm": "usr_abc123",
   "name": "Cursor IDE Token",
   "expiresIn": 2592000,
@@ -298,6 +325,7 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `clientSecret` | `string` | 是 | 从 URL hash 读取的客户端密钥（128 位随机数，Base64 编码） |
 | `realm` | `string` | 是 | 授权的 Realm ID（用户可选择自己拥有的 realm） |
 | `name` | `string` | 否 | Token 名称，默认使用 clientName |
 | `expiresIn` | `number` | 否 | 有效期（秒），默认 30 天 |
@@ -315,7 +343,11 @@
 }
 ```
 
-> **安全说明**：Token 不在此响应中返回，而是加密后由客户端通过轮询获取，确保 Token 只传递给发起申请的客户端。
+> **安全说明**：
+> - `clientSecret` 由前端从 URL hash 读取，服务端仅在内存中使用，**不持久化存储**
+> - Token 使用 `clientSecret` 加密后存储为 `encryptedToken`
+> - 客户端通过轮询获取 `encryptedToken`，使用本地保存的 `clientSecret` 解密
+> - 这确保即使数据库泄露，攻击者也无法解密 Token
 
 **错误**：
 
@@ -377,14 +409,54 @@
 | 端点 | 限制 |
 |------|------|
 | POST /api/tokens/requests | 10 次/分钟/IP |
-| GET /api/tokens/requests/:id | 60 次/分钟/IP |
+| GET /api/tokens/requests/:id/poll | 60 次/分钟/IP |
+| GET /api/tokens/requests/:id | 30 次/分钟/IP |
 
 ### 4.4 Token 传递安全
 
+**clientSecret 传递机制**：
+
+```
+客户端 ──生成 clientSecret──> 本地保存
+         │
+         └──构造 URL──> authorizeUrl#secret=xxx
+                              │
+                              ▼
+                       用户浏览器
+                       (JS 读取 hash)
+                              │
+                              ▼
+                       approve 请求
+                       (HTTPS POST)
+                              │
+                              ▼
+                       服务端内存
+                       (加密后丢弃)
+```
+
+**安全保障**：
+
+| 环节 | 安全措施 |
+|------|----------|
+| URL hash | 不发送到服务器日志，仅浏览器可见 |
+| approve 请求 | HTTPS 加密传输 |
+| 服务端处理 | 仅在内存中使用，不持久化 |
+| 数据库存储 | 只存 encryptedToken，无密钥 |
+| 客户端解密 | 使用本地保存的 clientSecret |
+
+**密钥派生**：
+
+由于 `clientSecret` 为 128 位，AES-256-GCM 需要 256 位密钥，采用 SHA-256 派生：
+
+```typescript
+const key = createHash('sha256').update(clientSecret).digest();
+```
+
+**其他安全措施**：
+
 - Token 仅通过 HTTPS 传输
-- Token 使用客户端提供的 `clientSecret` 进行 AES-256-GCM 加密存储和传输
 - `encryptedToken` 仅在首次轮询到 approved 状态时返回
-- 服务端不存储明文 Token，只存储 Token ID (hash) 和加密后的 Token
+- 服务端不存储明文 Token，只存储 Token ID (hash) 和 encryptedToken
 
 ### 4.5 申请清理
 
@@ -409,7 +481,7 @@ interface TokenRequestRecord {
   clientName: string;      // 客户端名称
   description?: string;    // 客户端描述
   displayCode: string;     // ABCD-1234 (Crockford Base32)
-  clientSecretHash: string; // clientSecret 的 hash，用于验证
+  // 注意：不存储 clientSecret 或其 hash，密钥仅在 approve 时通过请求传入
   
   // 状态
   status: "pending" | "approved" | "rejected" | "expired";
@@ -477,6 +549,7 @@ type TokenRequestDetail = {
 
 // 审批请求
 type ApproveTokenRequestInput = {
+  clientSecret: string;   // 从 URL hash 读取
   realm: string;
   name?: string;
   expiresIn?: number;
@@ -493,21 +566,20 @@ type ApproveTokenRequestInput = {
 ### TypeScript/Node.js
 
 ```typescript
-import { randomBytes, createDecipheriv } from 'crypto';
+import { randomBytes, createDecipheriv, createHash } from 'crypto';
 
 async function requestAuthorization(): Promise<string> {
-  // 1. 生成 clientSecret (128 位随机数)
+  // 1. 生成 clientSecret (128 位随机数) - 本地保存，不发送到服务端
   const clientSecret = randomBytes(16);
   const clientSecretBase64 = clientSecret.toString('base64');
   
-  // 2. 发起申请
+  // 2. 发起申请（不发送 clientSecret）
   const initRes = await fetch("https://api.casfa.app/tokens/requests", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       clientName: "My CLI Tool",
-      description: "命令行工具",
-      clientSecret: clientSecretBase64
+      description: "命令行工具"
     })
   });
   
@@ -518,17 +590,20 @@ async function requestAuthorization(): Promise<string> {
   
   const { requestId, displayCode, authorizeUrl, expiresAt, pollInterval } = await initRes.json();
   
-  // 3. 显示授权链接和验证码
+  // 3. 构造完整 URL（添加 hash 传递 clientSecret）
+  const fullAuthorizeUrl = `${authorizeUrl}#secret=${encodeURIComponent(clientSecretBase64)}`;
+  
+  // 4. 显示授权链接和验证码
   console.log(`\n请打开以下链接完成授权：`);
-  console.log(`${authorizeUrl}\n`);
+  console.log(`${fullAuthorizeUrl}\n`);
   console.log(`验证码: ${displayCode}`);
   console.log(`请核对验证码后批准此请求\n`);
   
-  // 4. 轮询状态
+  // 5. 轮询状态
   while (Date.now() < expiresAt) {
     await sleep(pollInterval * 1000);
     
-    const statusRes = await fetch(`https://api.casfa.app/tokens/requests/${requestId}`);
+    const statusRes = await fetch(`https://api.casfa.app/tokens/requests/${requestId}/poll`);
     
     if (!statusRes.ok) {
       if (statusRes.status === 404) {
@@ -542,7 +617,7 @@ async function requestAuthorization(): Promise<string> {
     switch (status.status) {
       case "approved":
         console.log("授权成功！");
-        // 5. 解密 Token
+        // 6. 解密 Token
         const tokenBase64 = decryptToken(status.encryptedToken, clientSecret);
         return tokenBase64;
       case "rejected":
@@ -565,8 +640,8 @@ function decryptToken(encryptedToken: string, clientSecret: Buffer): string {
   const authTag = encrypted.subarray(encrypted.length - 16);
   const ciphertext = encrypted.subarray(12, encrypted.length - 16);
   
-  // 使用 clientSecret 派生 256 位密钥
-  const key = crypto.createHash('sha256').update(clientSecret).digest();
+  // 使用 SHA-256 派生 256 位密钥
+  const key = createHash('sha256').update(clientSecret).digest();
   
   const decipher = createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(authTag);
@@ -594,18 +669,17 @@ use tokio::time::sleep;
 async fn request_authorization() -> Result<String, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
     
-    // 1. 生成 clientSecret (128 位随机数)
+    // 1. 生成 clientSecret (128 位随机数) - 本地保存，不发送到服务端
     let mut client_secret = [0u8; 16];
     rand::thread_rng().fill_bytes(&mut client_secret);
     let client_secret_base64 = BASE64.encode(&client_secret);
     
-    // 2. 发起申请
+    // 2. 发起申请（不发送 clientSecret）
     let init_res = client
         .post("https://api.casfa.app/tokens/requests")
         .json(&serde_json::json!({
             "clientName": "My CLI Tool",
-            "description": "命令行工具",
-            "clientSecret": client_secret_base64
+            "description": "命令行工具"
         }))
         .send()
         .await?;
@@ -621,13 +695,16 @@ async fn request_authorization() -> Result<String, Box<dyn std::error::Error>> {
     let expires_at = init_data["expiresAt"].as_i64().unwrap();
     let poll_interval = init_data["pollInterval"].as_u64().unwrap();
     
-    // 3. 显示授权链接和验证码
+    // 3. 构造完整 URL（添加 hash 传递 clientSecret）
+    let full_authorize_url = format!("{}#secret={}", authorize_url, urlencoding::encode(&client_secret_base64));
+    
+    // 4. 显示授权链接和验证码
     println!("\n请打开以下链接完成授权：");
-    println!("{}\n", authorize_url);
+    println!("{}\n", full_authorize_url);
     println!("验证码: {}", display_code);
     println!("请核对验证码后批准此请求\n");
     
-    // 4. 轮询状态
+    // 5. 轮询状态
     loop {
         if chrono::Utc::now().timestamp_millis() >= expires_at {
             return Err("授权请求超时".into());
@@ -636,7 +713,7 @@ async fn request_authorization() -> Result<String, Box<dyn std::error::Error>> {
         sleep(Duration::from_secs(poll_interval)).await;
         
         let status_res = client
-            .get(&format!("https://api.casfa.app/tokens/requests/{}", request_id))
+            .get(&format!("https://api.casfa.app/tokens/requests/{}/poll", request_id))
             .send()
             .await;
         
@@ -654,7 +731,7 @@ async fn request_authorization() -> Result<String, Box<dyn std::error::Error>> {
         match status["status"].as_str().unwrap() {
             "approved" => {
                 println!("授权成功！");
-                // 5. 解密 Token
+                // 6. 解密 Token
                 let encrypted_token = status["encryptedToken"].as_str().unwrap();
                 let token = decrypt_token(encrypted_token, &client_secret)?;
                 return Ok(token);
