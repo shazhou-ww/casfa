@@ -24,7 +24,7 @@
 ```json
 {
   "status": "ok",
-  "service": "casfa"
+  "service": "casfa-v2"
 }
 ```
 
@@ -44,8 +44,8 @@
 
 ```json
 {
-  "service": "casfa",
-  "version": "1.0.0",
+  "service": "casfa-v2",
+  "version": "0.1.0",
   "storage": "memory",
   "auth": "mock",
   "database": "local",
@@ -55,14 +55,12 @@
     "maxCollectionChildren": 10000,
     "maxPayloadSize": 10485760,
     "maxTicketTtl": 86400,
-    "maxDelegateTokenTtl": 2592000,
-    "maxAccessTokenTtl": 86400,
-    "maxTokenDepth": 15
+    "maxAgentTokenTtl": 2592000
   },
   "features": {
     "jwtAuth": true,
     "oauthLogin": true,
-    "delegateTokens": true
+    "awpAuth": true
   }
 }
 ```
@@ -73,7 +71,7 @@
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `service` | string | 服务名称，固定为 `"casfa"` |
+| `service` | string | 服务名称，固定为 `"casfa-v2"` |
 | `version` | string | 服务版本号 |
 | `storage` | string | 存储后端类型 |
 | `auth` | string | 认证方式 |
@@ -95,7 +93,7 @@
 |------|------|
 | `mock` | Mock JWT 认证（开发/测试用） |
 | `cognito` | AWS Cognito 认证（生产环境） |
-| `tokens-only` | 仅支持 Delegate Token，无 JWT 验证 |
+| `tokens-only` | 仅支持 stored tokens，无 JWT 验证 |
 
 #### `database` 可选值
 
@@ -113,17 +111,17 @@
 | `maxCollectionChildren` | number | count | 10000 | 集合节点的最大子节点数 |
 | `maxPayloadSize` | number | bytes | 10485760 (10MB) | 单次上传的最大负载大小 |
 | `maxTicketTtl` | number | seconds | 86400 (1天) | Ticket 的最大有效期 |
-| `maxDelegateTokenTtl` | number | seconds | 2592000 (30天) | Delegate Token 的最大有效期 |
-| `maxAccessTokenTtl` | number | seconds | 86400 (1天) | Access Token 的最大有效期 |
-| `maxTokenDepth` | number | count | 15 | Token 转签发链的最大深度 |
+| `maxAgentTokenTtl` | number | seconds | 2592000 (30天) | Agent Token 的最大有效期 |
 
 #### `features` 字段
+
+Feature flags 可以通过环境变量控制开关，所有功能默认启用。
 
 | 字段 | 类型 | 环境变量 | 默认值 | 说明 |
 |------|------|----------|--------|------|
 | `jwtAuth` | boolean | `FEATURE_JWT_AUTH` | true | 是否启用 JWT Bearer Token 认证 |
 | `oauthLogin` | boolean | `FEATURE_OAUTH_LOGIN` | true | 是否启用 OAuth 登录流程 |
-| `delegateTokens` | boolean | `FEATURE_DELEGATE_TOKENS` | true | 是否启用 Delegate Token 授权 |
+| `awpAuth` | boolean | `FEATURE_AWP_AUTH` | true | 是否启用 AWP 客户端认证 |
 
 设置环境变量为 `false` 可禁用对应功能：
 
@@ -131,8 +129,8 @@
 # 禁用 OAuth 登录（如维护模式）
 FEATURE_OAUTH_LOGIN=false
 
-# 禁用 Delegate Token 授权
-FEATURE_DELEGATE_TOKENS=false
+# 禁用 AWP 认证
+FEATURE_AWP_AUTH=false
 ```
 
 ### 使用场景
@@ -140,7 +138,7 @@ FEATURE_DELEGATE_TOKENS=false
 1. **客户端初始化**: 在连接服务前查询限制参数，避免上传超过限制的数据
 2. **环境检测**: 检查当前连接的是开发环境还是生产环境
 3. **功能降级**: 根据 `features` 字段决定启用哪些功能
-4. **Token 配置**: 获取 Token TTL 限制，合理设置 Token 有效期
+4. **调试工具**: 开发者工具显示当前服务配置
 
 ### 示例
 
@@ -150,8 +148,15 @@ curl http://localhost:8801/api/info
 
 ```typescript
 // 客户端示例
-const info = await fetch("/api/info").then((r) => r.json());
-if (info.limits.maxNodeSize < myFileSize) {
-  throw new Error("File too large for this server");
+const info = await fetch('/api/info').then(r => r.json());
+
+// 检查块大小限制
+if (data.length > info.limits.maxNodeSize) {
+  throw new Error(`Data exceeds max node size of ${info.limits.maxNodeSize} bytes`);
+}
+
+// 检查是否支持 OAuth
+if (info.features.oauthLogin) {
+  showLoginButton();
 }
 ```
