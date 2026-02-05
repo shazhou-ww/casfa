@@ -6,6 +6,7 @@ import { HEADER_SIZE, MAGIC, NODE_TYPE } from "../src/constants.ts";
 import {
   createDictHeader,
   createFileHeader,
+  createSetHeader,
   createSuccessorHeader,
   decodeHeader,
   encodeHeader,
@@ -104,6 +105,13 @@ describe("Header", () => {
   });
 
   describe("node type helpers", () => {
+    it("should create set-node header", () => {
+      const header = createSetHeader(3);
+      expect(getNodeType(header.flags)).toBe(NODE_TYPE.SET);
+      expect(header.size).toBe(0); // Set nodes have no payload
+      expect(header.count).toBe(3);
+    });
+
     it("should create d-node header", () => {
       const header = createDictHeader(100, 5);
       expect(getNodeType(header.flags)).toBe(NODE_TYPE.DICT);

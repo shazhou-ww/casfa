@@ -2,6 +2,7 @@
  * CAS Binary Format Types (v2.1)
  *
  * Node types:
+ * - set-node: set of children sorted by hash (for authorization scope)
  * - d-node (dict node): directory with sorted children by name
  * - s-node (successor node): file continuation chunk
  * - f-node (file node): file top-level node with FileInfo
@@ -10,7 +11,7 @@
 /**
  * Node kind discriminator
  */
-export type NodeKind = "dict" | "file" | "successor";
+export type NodeKind = "set" | "dict" | "file" | "successor";
 
 /**
  * Hash provider - injected by platform-specific implementations
@@ -140,6 +141,15 @@ export type DictNodeInput = {
   children: Uint8Array[];
   /** Child names (will be sorted by UTF-8 bytes) */
   childNames: string[];
+};
+
+/**
+ * Set node input for encoding (set-node)
+ * Used for authorization scope - a pure set of children sorted by hash
+ */
+export type SetNodeInput = {
+  /** Child hashes (16 bytes each, will be sorted by hash bytes) */
+  children: Uint8Array[];
 };
 
 /**

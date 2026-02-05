@@ -125,6 +125,14 @@ export function setHashAlgo(flags: number, algo: number): number {
 }
 
 /**
+ * Build flags for a set node
+ * Uses default hash algorithm (BLAKE3s-128)
+ */
+export function buildSetFlags(): number {
+  return NODE_TYPE.SET | (HASH_ALGO.BLAKE3S_128 << FLAGS.HASH_ALGO_SHIFT);
+}
+
+/**
  * Build flags for a dict node (d-node)
  * Uses default hash algorithm (BLAKE3s-128)
  */
@@ -146,6 +154,19 @@ export function buildSuccessorFlags(): number {
  */
 export function buildFileFlags(): number {
   return NODE_TYPE.FILE | (HASH_ALGO.BLAKE3S_128 << FLAGS.HASH_ALGO_SHIFT);
+}
+
+/**
+ * Create a header for a set node
+ * @param count - Number of children (must be >= 2)
+ */
+export function createSetHeader(count: number): CasHeader {
+  return {
+    magic: MAGIC,
+    flags: buildSetFlags(),
+    size: 0, // Set nodes have no payload
+    count,
+  };
 }
 
 /**

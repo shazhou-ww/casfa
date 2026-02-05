@@ -223,6 +223,9 @@ export async function validateNode(
   const nodeType = getNodeType(header.flags);
   let kind: NodeKind;
   switch (nodeType) {
+    case NODE_TYPE.SET:
+      kind = "set";
+      break;
     case NODE_TYPE.DICT:
       kind = "dict";
       break;
@@ -236,6 +239,7 @@ export async function validateNode(
       return { valid: false, error: `Unknown node type: ${nodeType}` };
   }
 
+  const isSet = nodeType === NODE_TYPE.SET;
   const isDict = nodeType === NODE_TYPE.DICT;
   const isFile = nodeType === NODE_TYPE.FILE;
 
@@ -273,7 +277,49 @@ export async function validateNode(
     childKeys.push(hashToKey(hashBytes));
   }
 
-  // 8. Validate f-node FileInfo section (64 bytes: fileSize + contentType)
+  // 8. Validate set-node constraints
+  if (isSet) {
+    // Set node requires at least 2 children
+    if (header.count < 2) {
+      return {
+        valid: false,
+        error: `Set node requires at least 2 children, got ${header.count}`,
+      };
+    }
+    // Set node must have no payload (size = 0)
+    if (header.size !== 0) {
+      return {
+        valid: false,
+        error: `Set node size must be 0, got ${header.size}`,
+      };
+    }
+    // Validate children are sorted by hash and unique
+    for (let i = 0; i < header.count - 1; i++) {
+      const current = bytes.subarray(
+        HEADER_SIZE + i * HASH_SIZE,
+        HEADER_SIZE + (i + 1) * HASH_SIZE
+      );
+      const next = bytes.subarray(
+        HEADER_SIZE + (i + 1) * HASH_SIZE,
+        HEADER_SIZE + (i + 2) * HASH_SIZE
+      );
+      const cmp = compareBytes(current, next);
+      if (cmp === 0) {
+        return {
+          valid: false,
+          error: `Set node has duplicate child hash at index ${i}`,
+        };
+      }
+      if (cmp > 0) {
+        return {
+          valid: false,
+          error: `Set node children not sorted at index ${i}`,
+        };
+      }
+    }
+  }
+
+  // 9. Validate f-node FileInfo section (64 bytes: fileSize + contentType)
   if (isFile) {
     // f-node size must be at least FILEINFO_SIZE (64 bytes)
     if (header.size < FILEINFO_SIZE) {
@@ -443,6 +489,9 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
   const nodeType = getNodeType(header.flags);
   let kind: NodeKind;
   switch (nodeType) {
+    case NODE_TYPE.SET:
+      kind = "set";
+      break;
     case NODE_TYPE.DICT:
       kind = "dict";
       break;
@@ -456,6 +505,7 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
       return { valid: false, error: `Unknown node type: ${nodeType}` };
   }
 
+  const isSet = nodeType === NODE_TYPE.SET;
   const isDict = nodeType === NODE_TYPE.DICT;
   const isFile = nodeType === NODE_TYPE.FILE;
 
@@ -490,7 +540,49 @@ export function validateNodeStructure(bytes: Uint8Array): ValidationResult {
     childKeys.push(hashToKey(hashBytes));
   }
 
-  // 8. Validate f-node FileInfo section
+  // 8. Validate set-node constraints
+  if (isSet) {
+    // Set node requires at least 2 children
+    if (header.count < 2) {
+      return {
+        valid: false,
+        error: `Set node requires at least 2 children, got ${header.count}`,
+      };
+    }
+    // Set node must have no payload (size = 0)
+    if (header.size !== 0) {
+      return {
+        valid: false,
+        error: `Set node size must be 0, got ${header.size}`,
+      };
+    }
+    // Validate children are sorted by hash and unique
+    for (let i = 0; i < header.count - 1; i++) {
+      const current = bytes.subarray(
+        HEADER_SIZE + i * HASH_SIZE,
+        HEADER_SIZE + (i + 1) * HASH_SIZE
+      );
+      const next = bytes.subarray(
+        HEADER_SIZE + (i + 1) * HASH_SIZE,
+        HEADER_SIZE + (i + 2) * HASH_SIZE
+      );
+      const cmp = compareBytes(current, next);
+      if (cmp === 0) {
+        return {
+          valid: false,
+          error: `Set node has duplicate child hash at index ${i}`,
+        };
+      }
+      if (cmp > 0) {
+        return {
+          valid: false,
+          error: `Set node children not sorted at index ${i}`,
+        };
+      }
+    }
+  }
+
+  // 9. Validate f-node FileInfo section
   if (isFile) {
     if (header.size < FILEINFO_SIZE) {
       return {

@@ -4,6 +4,7 @@
  * CAS binary format encoding/decoding library (v2.1)
  *
  * Node types:
+ * - set-node: set of children sorted by hash (for authorization scope)
  * - d-node (dict): directory with sorted children by name
  * - s-node (successor): file continuation chunk
  * - f-node (file): file top-level node with FileInfo
@@ -48,9 +49,11 @@ export {
 export {
   buildDictFlags,
   buildFileFlags,
+  buildSetFlags,
   buildSuccessorFlags,
   createDictHeader,
   createFileHeader,
+  createSetHeader,
   createSuccessorHeader,
   decodeHeader,
   encodeHeader,
@@ -67,6 +70,7 @@ export {
   decodeNode,
   encodeDictNode,
   encodeFileNode,
+  encodeSetNode,
   encodeSuccessorNode,
   getNodeKind,
   isValidNode,
@@ -92,6 +96,7 @@ export type {
   HashProvider,
   LayoutNode,
   NodeKind,
+  SetNodeInput,
   StorageProvider,
   SuccessorNodeInput,
 } from "./types.ts";

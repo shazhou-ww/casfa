@@ -7,6 +7,7 @@ import {
   decodeNode,
   encodeDictNode,
   encodeFileNode,
+  encodeSetNode,
   encodeSuccessorNode,
   getNodeKind,
   isValidNode,
@@ -131,6 +132,87 @@ describe("Node", () => {
     });
   });
 
+  describe("encodeSetNode (set-node)", () => {
+    it("should encode set node with sorted children", async () => {
+      // Create children in unsorted order
+      const child1 = new Uint8Array(HASH_SIZE).fill(0x33);
+      const child2 = new Uint8Array(HASH_SIZE).fill(0x11);
+      const child3 = new Uint8Array(HASH_SIZE).fill(0x22);
+
+      const result = await encodeSetNode(
+        { children: [child1, child2, child3] },
+        mockHashProvider
+      );
+
+      const decoded = decodeNode(result.bytes);
+      expect(decoded.kind).toBe("set");
+      expect(decoded.children).toHaveLength(3);
+      // Should be sorted: 0x11, 0x22, 0x33
+      expect(decoded.children![0]).toEqual(child2);
+      expect(decoded.children![1]).toEqual(child3);
+      expect(decoded.children![2]).toEqual(child1);
+    });
+
+    it("should have no payload (size = 0)", async () => {
+      const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
+      const child2 = new Uint8Array(HASH_SIZE).fill(0x22);
+
+      const result = await encodeSetNode(
+        { children: [child1, child2] },
+        mockHashProvider
+      );
+
+      // Header(16) + 2 children(32) = 48
+      expect(result.bytes.length).toBe(HEADER_SIZE + 2 * HASH_SIZE);
+
+      const decoded = decodeNode(result.bytes);
+      expect(decoded.size).toBe(0);
+      expect(decoded.data).toBeUndefined();
+      expect(decoded.fileInfo).toBeUndefined();
+      expect(decoded.childNames).toBeUndefined();
+    });
+
+    it("should throw on less than 2 children", async () => {
+      const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
+
+      await expect(
+        encodeSetNode({ children: [child1] }, mockHashProvider)
+      ).rejects.toThrow(/at least 2 children/);
+
+      await expect(
+        encodeSetNode({ children: [] }, mockHashProvider)
+      ).rejects.toThrow(/at least 2 children/);
+    });
+
+    it("should throw on duplicate children", async () => {
+      const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
+      const child2 = new Uint8Array(HASH_SIZE).fill(0x11); // duplicate
+
+      await expect(
+        encodeSetNode({ children: [child1, child2] }, mockHashProvider)
+      ).rejects.toThrow(/unique|duplicate/i);
+    });
+
+    it("should produce same hash regardless of input order", async () => {
+      const childA = new Uint8Array(HASH_SIZE).fill(0xaa);
+      const childB = new Uint8Array(HASH_SIZE).fill(0xbb);
+      const childC = new Uint8Array(HASH_SIZE).fill(0xcc);
+
+      const result1 = await encodeSetNode(
+        { children: [childA, childB, childC] },
+        realHashProvider
+      );
+      const result2 = await encodeSetNode(
+        { children: [childC, childA, childB] },
+        realHashProvider
+      );
+
+      // After sorting, should be identical
+      expect(result1.hash).toEqual(result2.hash);
+      expect(result1.bytes).toEqual(result2.bytes);
+    });
+  });
+
   describe("encodeDictNode (d-node)", () => {
     it("should encode dict node with children and names", async () => {
       const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
@@ -228,6 +310,23 @@ describe("Node", () => {
   });
 
   describe("decodeNode", () => {
+    it("should decode set-node correctly", async () => {
+      const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
+      const child2 = new Uint8Array(HASH_SIZE).fill(0x22);
+      const encoded = await encodeSetNode(
+        { children: [child1, child2] },
+        mockHashProvider
+      );
+      const decoded = decodeNode(encoded.bytes);
+
+      expect(decoded.kind).toBe("set");
+      expect(decoded.children).toHaveLength(2);
+      expect(decoded.size).toBe(0);
+      expect(decoded.data).toBeUndefined();
+      expect(decoded.fileInfo).toBeUndefined();
+      expect(decoded.childNames).toBeUndefined();
+    });
+
     it("should decode f-node correctly", async () => {
       const data = new Uint8Array([10, 20, 30, 40, 50]);
       const encoded = await encodeFileNode(
@@ -286,6 +385,16 @@ describe("Node", () => {
   });
 
   describe("getNodeKind", () => {
+    it("should return set for set-node", async () => {
+      const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
+      const child2 = new Uint8Array(HASH_SIZE).fill(0x22);
+      const result = await encodeSetNode(
+        { children: [child1, child2] },
+        mockHashProvider
+      );
+      expect(getNodeKind(result.bytes)).toBe("set");
+    });
+
     it("should return file for f-node", async () => {
       const data = new Uint8Array([1, 2, 3]);
       const result = await encodeFileNode({ data, fileSize: 3 }, mockHashProvider);

@@ -19,6 +19,7 @@ import {
 import {
   createDictHeader,
   createFileHeader,
+  createSetHeader,
   createSuccessorHeader,
   decodeHeader,
   encodeHeader,
@@ -32,6 +33,7 @@ import type {
   FileNodeInput,
   HashProvider,
   NodeKind,
+  SetNodeInput,
   SuccessorNodeInput,
 } from "./types.ts";
 import { concatBytes, decodePascalStrings, encodePascalStrings } from "./utils.ts";
@@ -88,6 +90,18 @@ function decodeFileInfo(buffer: Uint8Array, offset: number): FileInfo {
 }
 
 /**
+ * Compare two byte arrays lexicographically
+ * Returns negative if a < b, 0 if equal, positive if a > b
+ */
+function compareBytes(a: Uint8Array, b: Uint8Array): number {
+  const minLen = Math.min(a.length, b.length);
+  for (let i = 0; i < minLen; i++) {
+    if (a[i]! !== b[i]!) return a[i]! - b[i]!;
+  }
+  return a.length - b.length;
+}
+
+/**
  * Sort children by name (UTF-8 byte order) for d-node
  * Returns sorted [names, children] arrays
  */
@@ -99,16 +113,63 @@ function sortChildrenByName(
   pairs.sort((a, b) => {
     const aBuf = textEncoder.encode(a.name);
     const bBuf = textEncoder.encode(b.name);
-    const minLen = Math.min(aBuf.length, bBuf.length);
-    for (let i = 0; i < minLen; i++) {
-      if (aBuf[i]! !== bBuf[i]!) return aBuf[i]! - bBuf[i]!;
-    }
-    return aBuf.length - bBuf.length;
+    return compareBytes(aBuf, bBuf);
   });
   return {
     sortedNames: pairs.map((p) => p.name),
     sortedChildren: pairs.map((p) => p.child),
   };
+}
+
+/**
+ * Sort and deduplicate children by hash (byte order) for set-node
+ * Returns sorted unique children array
+ * @throws Error if duplicate hashes are found
+ */
+function sortChildrenByHash(children: Uint8Array[]): Uint8Array[] {
+  const sorted = [...children].sort(compareBytes);
+  // Check for duplicates
+  for (let i = 0; i < sorted.length - 1; i++) {
+    if (compareBytes(sorted[i]!, sorted[i + 1]!) === 0) {
+      throw new Error("Set node children must be unique (duplicate hash found)");
+    }
+  }
+  return sorted;
+}
+
+/**
+ * Encode a set node - pure set of children sorted by hash
+ * Used for authorization scope
+ * @throws Error if children count < 2 or duplicate hashes
+ */
+export async function encodeSetNode(
+  input: SetNodeInput,
+  hashProvider: HashProvider
+): Promise<EncodedNode> {
+  const { children } = input;
+
+  // Validate minimum children count
+  if (children.length < 2) {
+    throw new Error(`Set node requires at least 2 children, got ${children.length}`);
+  }
+
+  // Sort children by hash and check for duplicates
+  const sortedChildren = sortChildrenByHash(children);
+
+  // Encode sections
+  const childrenBytes = concatBytes(...sortedChildren);
+
+  // Create header (size = 0, no payload)
+  const header = createSetHeader(children.length);
+  const headerBytes = encodeHeader(header);
+
+  // Combine all sections
+  const nodeBytes = concatBytes(headerBytes, childrenBytes);
+
+  // Compute hash
+  const hash = await hashProvider.hash(nodeBytes);
+
+  return { bytes: nodeBytes, hash };
 }
 
 /**
@@ -215,6 +276,15 @@ export function decodeNode(buffer: Uint8Array): CasNode {
 
   // Parse based on node type
   switch (nodeType) {
+    case NODE_TYPE.SET: {
+      // set-node: pure set of children (no payload)
+      return {
+        kind: "set",
+        size: header.size,
+        children: children.length > 0 ? children : undefined,
+      };
+    }
+
     case NODE_TYPE.DICT: {
       // d-node: parse names
       const childNames = decodePascalStrings(buffer, offset, header.count);
@@ -284,6 +354,8 @@ export function getNodeKind(buffer: Uint8Array): NodeKind | null {
     const header = decodeHeader(buffer);
     const nodeType = getNodeType(header.flags);
     switch (nodeType) {
+      case NODE_TYPE.SET:
+        return "set";
       case NODE_TYPE.DICT:
         return "dict";
       case NODE_TYPE.SUCCESSOR:

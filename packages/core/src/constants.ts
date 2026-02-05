@@ -48,11 +48,14 @@ export const CONTENT_TYPE_MAX_LENGTH = 56;
  *
  * | Type   | Bits | HasStrings | HasData |
  * |--------|------|------------|---------|
+ * | set    | 00   | no         | no      |
  * | d-node | 01   | yes(names) | no      |
  * | s-node | 10   | no         | yes     |
  * | f-node | 11   | yes(info)  | yes     |
  */
 export const NODE_TYPE = {
+  /** Set node (authorization scope) - 00b */
+  SET: 0b00,
   /** Dict node (directory) - 01b */
   DICT: 0b01,
   /** Successor node (file chunk) - 10b */
