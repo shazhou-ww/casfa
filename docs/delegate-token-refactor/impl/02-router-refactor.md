@@ -82,7 +82,7 @@ apps/server/backend/src/
 | 授权申请（用户侧） | - | User JWT |
 | Token 转签发 | - | Delegate Token |
 | Realm 数据操作 | Ticket | Access Token |
-| Ticket 创建 | Agent Token | Delegate Token |
+| Ticket 创建 | Agent Token | Access Token（绑定预签发 Token） |
 
 ---
 
@@ -177,16 +177,20 @@ app.post(
 | GET | `/:realmId` | Agent/Ticket | Access Token | Realm 信息 |
 | GET | `/:realmId/usage` | Agent/Ticket | Access Token | 使用统计 |
 | GET | `/:realmId/nodes/:key` | Ticket | Access Token | 读取节点 |
+| GET | `/:realmId/nodes/:key/metadata` | Ticket | Access Token | 节点元信息 |
 | PUT | `/:realmId/nodes/:key` | Ticket | Access Token (canUpload) | 写入节点 |
+| POST | `/:realmId/nodes/prepare` | Ticket | Access Token | 批量检查节点存在性 |
 | GET | `/:realmId/depots` | Agent/Ticket | Access Token | 列出 Depot |
 | POST | `/:realmId/depots` | Agent/Ticket | Access Token (canManageDepot) | 创建 Depot |
 | GET | `/:realmId/depots/:depotId` | Agent/Ticket | Access Token | Depot 详情 |
 | PATCH | `/:realmId/depots/:depotId` | Agent/Ticket | Access Token (canManageDepot) | 更新 Depot |
 | DELETE | `/:realmId/depots/:depotId` | Agent/Ticket | Access Token (canManageDepot) | 删除 Depot |
 | GET | `/:realmId/tickets` | Agent/Ticket | Access Token | 列出 Ticket |
-| POST | `/:realmId/tickets` | Agent | **Delegate Token** | 创建 Ticket |
+| POST | `/:realmId/tickets` | Agent | **Access Token** | 创建 Ticket（绑定预签发 Token） |
 | GET | `/:realmId/tickets/:ticketId` | Agent/Ticket | Access Token | Ticket 详情 |
 | POST | `/:realmId/tickets/:ticketId/submit` | Ticket | Access Token | 提交 Ticket |
+
+> **设计原则**：所有 Realm 数据操作统一使用 Access Token，Delegate Token 只负责签发 Token。
 
 ### 4.2 新增 Header 要求
 
@@ -206,10 +210,21 @@ realmRouter.get(
 
 | 操作 | 旧 API | 新 API | 说明 |
 |------|--------|--------|------|
-| 创建 | POST `/:realmId/tickets` | 保持 | 返回增加 `accessTokenId`, `accessTokenBase64` |
+| 创建 | POST `/:realmId/tickets` | 保持 | 改为绑定预签发 Token，不再自动签发 |
 | 提交 | POST `/:ticketId/commit` | POST `/:ticketId/submit` | 路径重命名，body 改为 `{ root: "..." }` |
 | 撤销 | POST `/:ticketId/revoke` | 废弃 | 通过撤销 Access Token 实现 |
 | 删除 | DELETE `/:ticketId` | 废弃 | Ticket 自动过期删除 |
+
+**Ticket 创建流程变更**：
+
+```
+旧流程（一步）:
+  Agent Token → POST /tickets → 自动签发 Access Token → 返回 ticketId + accessTokenBase64
+
+新流程（两步）:
+  1. Delegate Token → POST /api/tokens/delegate → 返回 tokenId + tokenBase64
+  2. Access Token → POST /tickets { accessTokenId } → 返回 ticketId
+```
 
 ---
 

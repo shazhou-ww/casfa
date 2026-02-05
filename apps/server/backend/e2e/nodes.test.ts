@@ -2,7 +2,7 @@
  * E2E Tests: Node Operations
  *
  * Tests for Node endpoints using casfa-client-v2 SDK:
- * - POST /api/realm/{realmId}/prepare-nodes - Pre-upload check
+ * - POST /api/realm/{realmId}/nodes/prepare - Pre-upload check
  * - PUT /api/realm/{realmId}/nodes/:key - Upload node
  * - GET /api/realm/{realmId}/nodes/:key/metadata - Get metadata
  * - GET /api/realm/{realmId}/nodes/:key - Get binary data
@@ -23,7 +23,7 @@ describe("Node Operations", () => {
     ctx.cleanup();
   });
 
-  describe("POST /api/realm/{realmId}/prepare-nodes", () => {
+  describe("POST /api/realm/{realmId}/nodes/prepare", () => {
     it("should return all keys as missing for non-existent nodes", async () => {
       const userId = `user-${uniqueId()}`;
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
@@ -72,7 +72,7 @@ describe("Node Operations", () => {
     });
 
     it("should reject unauthenticated requests", async () => {
-      const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/prepare-nodes`, {
+      const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/nodes/prepare`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

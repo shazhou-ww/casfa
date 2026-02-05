@@ -10,7 +10,7 @@ import { NODE_KEY_REGEX, NodeKindSchema } from "./common.ts";
 // ============================================================================
 
 /**
- * Schema for POST /api/realm/{realmId}/prepare-nodes
+ * Schema for POST /api/realm/{realmId}/nodes/prepare
  * Pre-upload check: returns which nodes need to be uploaded
  *
  * Note: This operation has side effects - existing nodes are "touched"
@@ -24,7 +24,7 @@ export const PrepareNodesSchema = z.object({
 export type PrepareNodes = z.infer<typeof PrepareNodesSchema>;
 
 /**
- * Response schema for prepare-nodes
+ * Response schema for nodes/prepare
  */
 export const PrepareNodesResponseSchema = z.object({
   /** Node keys that need to be uploaded */

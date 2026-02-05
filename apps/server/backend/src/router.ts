@@ -210,7 +210,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
 
   // Nodes
   realmRouter.post(
-    "/:realmId/prepare-nodes",
+    "/:realmId/nodes/prepare",
     zValidator("json", PrepareNodesSchema),
     deps.chunks.prepareNodes
   );

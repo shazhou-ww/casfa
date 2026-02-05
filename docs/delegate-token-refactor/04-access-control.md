@@ -34,8 +34,10 @@
 | 读取 Node | ✗ | ✓ (需 scope 证明) |
 | 写入 Node | ✗ | ✓ (需 quota + can_upload) |
 | 访问 Depot | ✗ | ✓ (需 can_manage_depot) |
-| 创建 Ticket | ✓ | ✗ |
+| 创建 Ticket | ✗ | ✓ (需绑定预签发的 Access Token) |
 | 签发 Token | ✓ | ✗ |
+
+> **设计原则**：Delegate Token 只负责签发 Token，所有 Realm 数据操作统一使用 Access Token。
 
 ---
 
@@ -429,8 +431,8 @@ async function createDepot(
 
 - **不包含权限字段**：权限由关联的 Access Token 承载
 - **仅包含工作空间状态**：title、submit 状态
-- **创建时自动生成 Access Token**：包含在 Ticket 响应中
-- **一对一关系**：一个 Ticket 只能关联一个 Access Token，不能重新签发
+- **绑定预签发的 Access Token**：创建 Ticket 时绑定一个已签发的 Access Token
+- **一对一关系**：一个 Ticket 只能关联一个 Access Token，一个 Access Token 只能绑定一个 Ticket
 - **数据持久性**：Access Token 过期后，Ticket 承载的 Tool 返回数据仍然有效
 
 ### 5.2 Ticket 生命周期
@@ -440,11 +442,17 @@ async function createDepot(
 │                    Ticket 生命周期                           │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
-│  1. 创建 Ticket (需要再授权 Token)                           │
-│     ├── 验证 Token 类型是再授权                              │
+│  0. 预签发 Access Token (需要再授权 Token)                   │
+│     ├── Agent 使用 Delegate Token 签发 Access Token          │
+│     └── 获得 tokenId + tokenBase64                           │
+│                    │                                         │
+│                    ▼                                         │
+│  1. 创建 Ticket (需要访问 Token)                             │
+│     ├── 验证调用者是 Access Token                            │
 │     ├── 验证 realm                                           │
-│     ├── 创建 Ticket 记录 (title + pending 状态)              │
-│     └── 自动签发关联的 Access Token                          │
+│     ├── 验证预签发的 accessTokenId 有效且未绑定              │
+│     ├── 验证 accessTokenId 的 issuer chain 包含调用者        │
+│     └── 创建 Ticket 记录并绑定 Access Token                  │
 │                    │                                         │
 │                    ▼                                         │
 │  2. 使用 Ticket (通过关联的 Access Token)                    │
@@ -461,6 +469,7 @@ async function createDepot(
 
 > **重要约束**：
 > - 一个 Ticket 只能关联一个 Access Token
+> - 一个 Access Token 只能绑定一个 Ticket
 > - Ticket submit 后 Access Token 自动撤销
 > - Access Token 过期不影响 Ticket 数据的有效性
 ```
@@ -470,19 +479,14 @@ async function createDepot(
 ```typescript
 type CreateTicketRequest = {
   title: string;
-  // 权限参数 - 用于生成关联的 Access Token
-  expiresIn?: number;
-  canUpload?: boolean;
-  quota?: number;
-  scope: string[];  // relative index-path
+  accessTokenId: string;  // 预签发的 Access Token ID
 };
 
 type CreateTicketResponse = {
   ticketId: string;
   title: string;
   status: "pending";
-  accessToken: string;  // 关联的 Access Token ID
-  expiresAt: string;
+  accessTokenId: string;  // 绑定的 Access Token ID
 };
 ```
 
@@ -490,47 +494,73 @@ type CreateTicketResponse = {
 
 ```typescript
 async function createTicket(
-  delegateToken: TokenRecord,
+  callerToken: TokenRecord,  // 调用者的 Access Token
   request: CreateTicketRequest,
   tokensDb: TokensDb,
   ticketsDb: TicketsDb
 ): Promise<CreateTicketResponse> {
-  // 1. 验证是再授权 Token
-  if (!delegateToken.flags.isDelegate) {
-    throw new Error("Ticket creation requires delegation token");
+  // 1. 验证调用者是 Access Token
+  if (callerToken.flags.isDelegate) {
+    throw new Error("Ticket creation requires access token");
   }
 
-  // 2. 创建 Ticket 记录
+  // 2. 获取预签发的 Access Token
+  const boundToken = await tokensDb.getToken(request.accessTokenId);
+  if (!boundToken) {
+    throw new Error("Access token not found");
+  }
+
+  // 3. 验证预签发的 Token 是 Access Token
+  if (boundToken.flags.isDelegate) {
+    throw new Error("Bound token must be access token");
+  }
+
+  // 4. 验证 Token 未被绑定到其他 Ticket
+  if (boundToken.boundTicketId) {
+    throw new Error("Access token already bound to a ticket");
+  }
+
+  // 5. 验证 realm 一致
+  if (boundToken.realm !== callerToken.realm) {
+    throw new Error("Realm mismatch");
+  }
+
+  // 6. 验证 issuer chain 权限（boundToken 的 issuer chain 应包含调用者或其 issuer）
+  if (!verifyIssuerChainAccess(callerToken, boundToken)) {
+    throw new Error("No permission to bind this token");
+  }
+
+  // 7. 创建 Ticket 记录
   const ticket = await ticketsDb.create({
-    realm: delegateToken.realm,
+    realm: callerToken.realm,
     title: request.title,
     status: "pending",
-    creatorTokenId: delegateToken.tokenId,
+    accessTokenId: request.accessTokenId,
+    creatorIssuerId: callerToken.issuerId,  // 记录创建者的 issuer
   });
 
-  // 3. 签发关联的 Access Token
-  const accessToken = await tokensDb.createDelegated({
-    parentTokenId: delegateToken.tokenId,
-    type: "access",
-    expiresIn: request.expiresIn ?? 86400,
-    canUpload: request.canUpload ?? false,
-    canManageDepot: false,  // Ticket 的 Access Token 不能管理 Depot
-    quota: request.quota,
-    scope: request.scope,
-  });
-
-  // 4. 关联 Ticket 和 Access Token
-  await ticketsDb.update(ticket.ticketId, {
-    accessTokenId: accessToken.tokenId,
+  // 8. 标记 Token 已绑定
+  await tokensDb.update(request.accessTokenId, {
+    boundTicketId: ticket.ticketId,
   });
 
   return {
     ticketId: ticket.ticketId,
     title: ticket.title,
     status: "pending",
-    accessToken: accessToken.tokenId,
-    expiresAt: new Date(accessToken.expiresAt).toISOString(),
+    accessTokenId: request.accessTokenId,
   };
+}
+
+// 验证调用者有权绑定 boundToken
+function verifyIssuerChainAccess(
+  callerToken: TokenRecord,
+  boundToken: TokenRecord
+): boolean {
+  // boundToken 的 issuer chain 应该包含 callerToken 的 issuerId
+  // 或者 callerToken 和 boundToken 有共同的祖先
+  return boundToken.issuerChain.includes(callerToken.issuerId) ||
+         callerToken.issuerChain.some(id => boundToken.issuerChain.includes(id));
 }
 ```
 

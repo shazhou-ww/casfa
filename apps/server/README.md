@@ -249,7 +249,7 @@ FEATURE_OAUTH_LOGIN=false  # 禁用 OAuth 登录
 
 ### Node
 
-- `POST /api/realm/:realmId/prepare-nodes` - 准备上传节点
+- `POST /api/realm/:realmId/nodes/prepare` - 准备上传节点
 - `PUT /api/realm/:realmId/nodes/:key` - 上传节点
 - `GET /api/realm/:realmId/nodes/:key` - 获取节点内容
 - `GET /api/realm/:realmId/nodes/:key/metadata` - 获取节点元数据

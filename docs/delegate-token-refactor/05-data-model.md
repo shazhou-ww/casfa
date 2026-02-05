@@ -122,6 +122,9 @@ type DelegateTokenRecord = {
   revokedAt?: number;
   revokedBy?: string;
 
+  // Ticket 绑定（仅 Access Token）
+  boundTicketId?: string;   // 绑定的 Ticket ID，一个 Token 只能绑定一个 Ticket
+
   // 时间戳
   createdAt: number;
 
@@ -159,6 +162,7 @@ type DelegateTokenRecord = {
 | commit.accept | - | 暂时废弃，后续可扩展 |
 | isRevoked | isRevoked | 保持 |
 | - | depth | 新增：Token 深度 (0-15) |
+| - | boundTicketId | 新增：绑定的 Ticket ID（仅 Access Token） |
 
 ### 2.4 主键设计
 
@@ -304,11 +308,11 @@ type TicketRecord = {
   // Submit 输出
   root?: string;        // submit 的输出节点 hash（用于访问历史输出）
 
-  // 关联的 Access Token
+  // 关联的 Access Token（绑定的 Token，给 Tool 使用）
   accessTokenId: string;
 
   // 创建信息
-  creatorTokenId: string;     // 创建该 Ticket 的再授权 Token ID
+  creatorIssuerId: string;    // 创建者的 issuer ID，用于 Issuer Chain 可见性验证
 
   // 时间戳
   createdAt: number;
@@ -321,13 +325,14 @@ type TicketRecord = {
 > **说明**：
 > - Ticket 使用 `REALM#{realm}` 作为 PK，可直接通过主表按 realm 查询，不再需要 gsi1
 > - `expiresAt` 不存储在 Ticket 中，API 返回时从关联的 Access Token 获取
+> - `creatorIssuerId` 是创建 Ticket 时调用者 Access Token 的 issuerId，用于 Issuer Chain 可见性验证（与 Depot 的 creatorIssuerId 语义一致）
 
 ### 4.3 字段对照
 
 | 旧字段 | 新字段 | 说明 |
 |--------|--------|------|
 | type: "ticket" | - | Ticket 独立于 Token 存储 |
-| issuerId | creatorTokenId | 创建者 Token ID |
+| issuerId | creatorIssuerId | 创建者 Token 的 issuer ID，用于可见性验证 |
 | purpose | title | 重命名 |
 | scope | - | 移至关联的 Access Token |
 | commit | - | 移至关联的 Access Token |
@@ -336,7 +341,7 @@ type TicketRecord = {
 | expiresAt | - | 通过 Access Token 判断 |
 | - | status | 新增：pending / submitted |
 | - | root | 新增：submit 输出节点，用于访问历史输出 |
-| - | accessTokenId | 新增：关联的 Access Token |
+| - | accessTokenId | 新增：绑定的 Access Token（给 Tool 使用） |
 
 ### 4.4 简化说明
 

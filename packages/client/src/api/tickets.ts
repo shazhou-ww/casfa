@@ -2,10 +2,17 @@
  * Ticket API functions.
  *
  * Token Requirement:
- * - POST /api/realm/{realmId}/tickets: Delegate Token (create ticket)
+ * - POST /api/realm/{realmId}/tickets: Access Token (create ticket, bind pre-issued token)
  * - GET /api/realm/{realmId}/tickets: Access Token (list)
  * - GET /api/realm/{realmId}/tickets/:ticketId: Access Token (get detail)
  * - POST /api/realm/{realmId}/tickets/:ticketId/submit: Access Token (submit)
+ *
+ * Design Principle: All Realm data operations use Access Token.
+ * Delegate Token is only for issuing tokens.
+ *
+ * Two-step Ticket creation flow:
+ *   1. Issue Access Token using Delegate Token (POST /api/tokens/delegate)
+ *   2. Create Ticket and bind the token (POST /api/realm/{realmId}/tickets)
  */
 
 import type {
@@ -36,32 +43,31 @@ export type SubmitTicketResponse = {
 };
 
 // ============================================================================
-// Delegate Token APIs
+// Access Token APIs
 // ============================================================================
 
 /**
- * Create a new ticket.
- * Requires Delegate Token.
+ * Create a new ticket and bind a pre-issued Access Token.
+ * Requires Access Token.
+ *
+ * @param accessTokenBase64 - Caller's Access Token (for authentication)
+ * @param params.accessTokenId - Pre-issued Access Token ID to bind (for Tool use)
  */
 export const createTicket = async (
   baseUrl: string,
   realm: string,
-  delegateTokenBase64: string,
+  accessTokenBase64: string,
   params: CreateTicket
 ): Promise<FetchResult<CreateTicketResponse>> => {
   return fetchWithAuth<CreateTicketResponse>(
     `${baseUrl}/api/realm/${encodeURIComponent(realm)}/tickets`,
-    `Bearer ${delegateTokenBase64}`,
+    `Bearer ${accessTokenBase64}`,
     {
       method: "POST",
       body: params,
     }
   );
 };
-
-// ============================================================================
-// Access Token APIs
-// ============================================================================
 
 /**
  * List tickets.

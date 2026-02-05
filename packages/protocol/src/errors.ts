@@ -80,6 +80,15 @@ export const TICKET_NOT_PENDING = "TICKET_NOT_PENDING";
 /** Ticket has expired */
 export const TICKET_EXPIRED = "TICKET_EXPIRED";
 
+/** Access Token is already bound to another ticket */
+export const TOKEN_ALREADY_BOUND = "TOKEN_ALREADY_BOUND";
+
+/** No permission to bind the specified Access Token */
+export const TICKET_BIND_PERMISSION_DENIED = "TICKET_BIND_PERMISSION_DENIED";
+
+/** Bound token is invalid (not found, not access type, or revoked) */
+export const INVALID_BOUND_TOKEN = "INVALID_BOUND_TOKEN";
+
 /** Depot not found */
 export const DEPOT_NOT_FOUND = "DEPOT_NOT_FOUND";
 
@@ -163,6 +172,9 @@ export const ErrorCodeSchema = z.enum([
   TICKET_NOT_FOUND,
   TICKET_NOT_PENDING,
   TICKET_EXPIRED,
+  TOKEN_ALREADY_BOUND,
+  TICKET_BIND_PERMISSION_DENIED,
+  INVALID_BOUND_TOKEN,
   DEPOT_NOT_FOUND,
   NODE_NOT_FOUND,
   REALM_NOT_FOUND,

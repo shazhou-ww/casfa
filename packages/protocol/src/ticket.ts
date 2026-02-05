@@ -75,9 +75,12 @@ export const TicketDetailSchema = z.object({
   title: z.string(),
   status: TicketStatusSchema,
   root: z.string().nullable(),
+  /** Bound Access Token ID (for Tool use) */
   accessTokenId: z.string(),
-  creatorTokenId: z.string(),
+  /** Creator's issuer ID (for Issuer Chain visibility) */
+  creatorIssuerId: z.string(),
   createdAt: z.number(),
+  /** Expiration time (from bound Access Token) */
   expiresAt: z.number(),
   submittedAt: z.number().optional(),
 });
@@ -86,15 +89,16 @@ export type TicketDetail = z.infer<typeof TicketDetailSchema>;
 
 /**
  * Create ticket response schema
+ *
+ * Note: tokenBase64 is obtained in step 1 (POST /api/tokens/delegate),
+ * not returned here in step 2.
  */
 export const CreateTicketResponseSchema = z.object({
   ticketId: z.string(),
   title: z.string(),
   status: z.literal("pending"),
+  /** Bound Access Token ID */
   accessTokenId: z.string(),
-  /** Access Token Base64 (only returned once at creation) */
-  accessTokenBase64: z.string(),
-  expiresAt: z.number(),
 });
 
 export type CreateTicketResponse = z.infer<typeof CreateTicketResponseSchema>;

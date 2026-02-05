@@ -73,19 +73,19 @@ export type WritableConfig = z.infer<typeof WritableConfigSchema>;
 
 /**
  * Schema for POST /api/realm/{realmId}/tickets
- * Create a new ticket with associated Access Token
+ * Create a new ticket and bind a pre-issued Access Token
  *
- * Note: Requires Delegate Token authentication
+ * Note: Requires Access Token authentication
+ *
+ * Two-step creation flow:
+ *   1. Issue Access Token using Delegate Token (POST /api/tokens/delegate)
+ *   2. Create Ticket and bind the token (this endpoint)
  */
 export const CreateTicketSchema = z.object({
   /** Ticket title (human-readable task description) */
   title: z.string().min(1).max(256),
-  /** Expiration time in seconds, default 1 hour */
-  expiresIn: z.number().positive().optional(),
-  /** Whether the associated Access Token can upload nodes */
-  canUpload: z.boolean().optional(),
-  /** Relative index-path scope (subset of creator's scope) */
-  scope: z.array(z.string()).optional(),
+  /** Pre-issued Access Token ID to bind to this ticket */
+  accessTokenId: z.string().min(1),
 });
 
 export type CreateTicket = z.infer<typeof CreateTicketSchema>;

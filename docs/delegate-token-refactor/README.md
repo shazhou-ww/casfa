@@ -75,9 +75,10 @@ User → Delegate
 
 ### 2.3 职责分离
 
-- **OAuth**: 仅负责用户身份认证和 Delegate 管理
-- **Delegate Token**: 负责所有数据访问授权
-- **Ticket**: 简化为工作空间概念（title + submit 状态），权限由关联的 Access Token 承载
+- **OAuth**: 仅负责用户身份认证
+- **Delegate Token（再授权）**: 只负责签发 Token，不能访问数据
+- **Access Token（访问）**: 负责所有 Realm 数据操作（Node、Depot、Ticket）
+- **Ticket**: 简化为工作空间概念（title + submit 状态），权限由绑定的 Access Token 承载
 
 ### 2.4 可追溯性
 
@@ -192,7 +193,8 @@ User (user_hash)
 |--------|--------|----------|
 | `canRead` | Token scope | scope 非空即可读 |
 | `canWrite` | Token quota + flags | quota > 0 且 flags.canUpload |
-| `canIssueTicket` | Token flags | flags.isDelegateToken |
+| `canIssueToken` | Token flags | flags.isDelegateToken（只有再授权 Token 能签发 Token） |
+| `canCreateTicket` | Access Token | 所有 Access Token 都可以创建 Ticket（需绑定预签发的 Token） |
 | `canManageUsers` | OAuth 层面 | 不再属于 Delegate Token 范畴 |
 | Ticket.commit | Token flags + Ticket.status | quota 保留，accept 暂废弃 |
 

@@ -51,6 +51,9 @@ export type DelegateTokenRecord = {
   revokedAt?: number;
   revokedBy?: string;
 
+  // Ticket 绑定（仅 Access Token）
+  boundTicketId?: string; // 绑定的 Ticket ID，一个 Token 只能绑定一个 Ticket
+
   // 时间戳
   createdAt: number;
 
@@ -79,8 +82,12 @@ export type CreateDelegateTokenInput = Omit<
 /**
  * Ticket 工作空间记录
  *
- * 简化设计：权限由关联的 Access Token 承载
+ * 简化设计：权限由绑定的 Access Token 承载
  * 主键设计：使用 REALM#{realm} 分区，可直接按 realm 查询，无需 GSI
+ *
+ * 创建流程（两步）：
+ *   1. 用 Delegate Token 签发 Access Token（POST /api/tokens/delegate）
+ *   2. 用 Access Token 创建 Ticket 并绑定（POST /api/realm/:realmId/tickets）
  *
  * 注意：expiresAt 不存储在 Ticket 中，查询时从关联的 Access Token 获取
  */
@@ -101,11 +108,11 @@ export type TicketRecord = {
   // Submit 输出
   root?: string; // submit 的输出节点 hash
 
-  // 关联的 Access Token
+  // 关联的 Access Token（绑定的 Token，给 Tool 使用）
   accessTokenId: string;
 
   // 创建信息
-  creatorTokenId: string; // 创建该 Ticket 的再授权 Token ID
+  creatorIssuerId: string; // 创建者 Token 的 issuer ID，用于 Issuer Chain 可见性验证
 
   // 时间戳
   createdAt: number;

@@ -761,92 +761,90 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
 
   /**
    * POST /api/realm/:realmId/tickets
-   * 创建 Ticket（需要 Delegate Token）
+   * 创建 Ticket 并绑定预签发的 Access Token（需要 Access Token）
+   * 
+   * 设计原则：所有 Realm 数据操作统一使用 Access Token
+   * Token 签发与 Ticket 创建解耦：
+   *   1. 先用 Delegate Token 签发 Access Token（POST /api/tokens/delegate）
+   *   2. 再用 Access Token 创建 Ticket 并绑定（本接口）
    */
   const create = async (c: Context<Env>): Promise<Response> => {
     const auth = c.get("auth") as DelegateTokenAuthContext;
     const realmId = c.req.param("realmId");
     const body = await c.req.json();
 
+    // 验证调用者是 Access Token
+    if (auth.tokenType === "delegate") {
+      return c.json({ error: "ACCESS_TOKEN_REQUIRED", message: "Ticket creation requires access token" }, 403);
+    }
+
+    // 获取预签发的 Access Token
+    const { accessTokenId, title } = body;
+    if (!accessTokenId) {
+      return c.json({ error: "MISSING_ACCESS_TOKEN_ID", message: "accessTokenId is required" }, 400);
+    }
+
+    const boundToken = await delegateTokensDb.get(accessTokenId);
+    if (!boundToken) {
+      return c.json({ error: "INVALID_BOUND_TOKEN", message: "Access token not found" }, 400);
+    }
+
+    // 验证预签发的 Token 是 Access Token
+    if (boundToken.tokenType !== "access") {
+      return c.json({ error: "INVALID_BOUND_TOKEN", message: "Bound token must be access token" }, 400);
+    }
+
+    // 验证 Token 未被绑定到其他 Ticket
+    if (boundToken.boundTicketId) {
+      return c.json({ error: "TOKEN_ALREADY_BOUND", message: "Access token already bound to a ticket" }, 400);
+    }
+
+    // 验证 Token 未被撤销
+    if (boundToken.isRevoked) {
+      return c.json({ error: "INVALID_BOUND_TOKEN", message: "Access token is revoked" }, 400);
+    }
+
+    // 验证 realm 一致
+    if (boundToken.realm !== realmId) {
+      return c.json({ error: "REALM_MISMATCH", message: "Bound token realm does not match" }, 403);
+    }
+
+    // 验证 issuer chain 权限
+    // boundToken 的 issuerChain 应该包含调用者的 issuerId，或者共享祖先
+    const callerVisibleIssuers = [...auth.issuerChain, auth.tokenRecord.issuerId];
+    const boundTokenChain = [...boundToken.issuerChain, boundToken.issuerId];
+    const hasPermission = boundTokenChain.some(id => callerVisibleIssuers.includes(id)) ||
+                          callerVisibleIssuers.some(id => boundTokenChain.includes(id));
+    if (!hasPermission) {
+      return c.json({ error: "TICKET_BIND_PERMISSION_DENIED", message: "No permission to bind this token" }, 403);
+    }
+
     // 生成 Ticket ID
     const ticketId = `ticket:${generateUlid()}`;
 
-    // 解析 scope（相对于 Delegate Token 的 scope）
-    const scopeResult = await resolveRelativeScope(
-      body.scope ?? ["."], // 默认继承全部 scope
-      auth,
-      scopeSetNodesDb
-    );
-    if (!scopeResult.success) {
-      return c.json({ error: "INVALID_SCOPE", message: scopeResult.error }, 400);
-    }
-
-    // 计算过期时间
-    const expiresIn = body.expiresIn ?? 3600; // 默认 1 小时
-    const parentRemainingTtl = auth.tokenRecord.expiresAt - Date.now();
-    if (expiresIn * 1000 > parentRemainingTtl) {
-      return c.json({ error: "INVALID_TTL", message: "TTL exceeds parent token remaining time" }, 400);
-    }
-    const expiresAt = Date.now() + expiresIn * 1000;
-
-    // 生成关联的 Access Token
-    const accessTokenBytes = generateToken({
-      type: "access",
-      isUserIssued: false,
-      canUpload: body.canUpload ?? false,
-      canManageDepot: false, // Ticket 的 Access Token 不能管理 Depot
-      depth: auth.depth + 1,
-      expiresAt,
-      quota: 0,
-      issuerHash: computeTokenIdHash(auth.tokenId),
-      realmHash: auth.decoded.realm,
-      scopeHash: scopeResult.scopeHash,
-    });
-
-    const accessTokenId = computeTokenId(accessTokenBytes);
-    const newIssuerChain = [...auth.issuerChain, auth.tokenId];
-
-    // 创建 Access Token 记录
-    await delegateTokensDb.create({
-      tokenId: accessTokenId,
-      tokenType: "access",
-      realm: realmId,
-      expiresAt,
-      depth: auth.depth + 1,
-      issuerId: auth.tokenId,
-      issuerType: "token",
-      parentTokenId: auth.tokenId,
-      issuerChain: newIssuerChain,
-      canUpload: body.canUpload ?? false,
-      canManageDepot: false,
-      isUserIssued: false,
-      scopeNodeHash: scopeResult.scopeNodeHash,
-      scopeSetNodeId: scopeResult.scopeSetNodeId,
-      isRevoked: false,
-      createdAt: Date.now(),
-    });
-
     // 创建 Ticket 记录
-    // 注意：使用 creatorIssuerId（Delegate Token 的 issuerId）而非 accessTokenId
-    // 这样可见性逻辑与 Depot 保持一致
+    // 使用 creatorIssuerId（调用者 Access Token 的 issuerId）
+    // 可见性逻辑与 Depot 保持一致
     await ticketsDb.create({
       ticketId,
       realm: realmId,
-      title: body.title,
+      title,
       status: "pending",
       accessTokenId,
-      creatorIssuerId: auth.tokenRecord.issuerId,  // Delegate Token 的签发者
-      creatorTokenId: auth.tokenId,  // 保留用于审计
+      creatorIssuerId: auth.tokenRecord.issuerId,  // 调用者 Token 的签发者
       createdAt: Date.now(),
+    });
+
+    // 标记 Token 已绑定
+    await delegateTokensDb.update(accessTokenId, {
+      boundTicketId: ticketId,
     });
 
     return c.json({
       ticketId,
-      title: body.title,
+      title,
       status: "pending",
       accessTokenId,
-      accessTokenBase64: Buffer.from(accessTokenBytes).toString("base64"),
-      expiresAt,
     }, 201);
   };
 
@@ -1477,16 +1475,25 @@ export { createAuthClientsController } from "./deprecated/auth-clients";
   "expiresAt": 123456789
 }
 
-// 新格式
+// 新格式（两步流程）
+// 步骤 1: POST /api/tokens/delegate 签发 Access Token
+{
+  "tokenId": "dlt1_xxx",
+  "tokenBase64": "SGVsbG8gV29...",
+  "expiresAt": 123456789
+}
+
+// 步骤 2: POST /api/realm/:realmId/tickets 创建 Ticket
 {
   "ticketId": "ticket:xxx",
   "title": "...",
   "status": "pending",
-  "accessTokenId": "dlt1_xxx",
-  "accessTokenBase64": "SGVsbG8gV29...",
-  "expiresAt": 123456789
+  "accessTokenId": "dlt1_xxx"
 }
 ```
+
+> **设计变更**：Ticket 创建由原来的「Delegate Token 直接创建并自动签发」改为「Access Token 创建并绑定预签发的 Token」。
+> 所有 Realm 数据操作统一使用 Access Token，Delegate Token 只负责签发 Token。
 
 ### Depot 创建响应
 

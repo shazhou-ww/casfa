@@ -1,5 +1,12 @@
 /**
  * Ticket methods for the stateful client.
+ *
+ * Design Principle: All Realm data operations use Access Token.
+ * Delegate Token is only for issuing tokens.
+ *
+ * Two-step Ticket creation flow:
+ *   1. Issue Access Token using tokens.delegate() (requires Delegate Token)
+ *   2. Create Ticket using tickets.create() (requires Access Token)
  */
 
 import type {
@@ -12,18 +19,22 @@ import type {
 import * as api from "../api/index.ts";
 import type { TokenSelector } from "../store/token-selector.ts";
 import type { FetchResult } from "../types/client.ts";
-import type { StoredAccessToken } from "../types/tokens.ts";
-import { withAccessToken, withDelegateToken } from "./helpers.ts";
+import { withAccessToken } from "./helpers.ts";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export type TicketMethods = {
-  /** Create a new ticket (Delegate Token required) */
-  create: (
-    params: CreateTicket
-  ) => Promise<FetchResult<{ ticketId: string; accessToken: StoredAccessToken }>>;
+  /**
+   * Create a new ticket and bind a pre-issued Access Token.
+   * Requires Access Token.
+   *
+   * Note: The Access Token to bind must be issued first using tokens.delegate().
+   *
+   * @param params.accessTokenId - Pre-issued Access Token ID to bind (for Tool use)
+   */
+  create: (params: CreateTicket) => Promise<FetchResult<CreateTicketResponse>>;
   /** List tickets */
   list: (params?: ListTicketsQuery) => Promise<FetchResult<api.ListTicketsResponse>>;
   /** Get ticket details */
@@ -50,32 +61,11 @@ export const createTicketMethods = ({
   realm,
   tokenSelector,
 }: TicketDeps): TicketMethods => {
-  const requireDelegate = withDelegateToken(() => tokenSelector.ensureDelegateToken());
   const requireAccess = withAccessToken(() => tokenSelector.ensureAccessToken());
 
   return {
     create: (params) =>
-      requireDelegate(async (delegate) => {
-        const result = await api.createTicket(baseUrl, realm, delegate.tokenBase64, params);
-        if (!result.ok) return result;
-
-        const accessToken: StoredAccessToken = {
-          tokenId: (result.data as CreateTicketResponse & { accessTokenId: string }).accessTokenId,
-          tokenBase64: (result.data as CreateTicketResponse & { accessTokenBase64: string })
-            .accessTokenBase64,
-          type: "access",
-          issuerId: delegate.tokenId,
-          expiresAt: result.data.expiresAt,
-          canUpload: params.canUpload ?? false,
-          canManageDepot: false,
-        };
-
-        return {
-          ok: true,
-          data: { ticketId: result.data.ticketId, accessToken },
-          status: result.status,
-        };
-      }),
+      requireAccess((access) => api.createTicket(baseUrl, realm, access.tokenBase64, params)),
 
     list: (params) =>
       requireAccess((access) => api.listTickets(baseUrl, realm, access.tokenBase64, params)),

@@ -13,21 +13,26 @@ Ticket 是一个工作空间概念，代表一个具体的任务。每个 Ticket
 - **title**: 人类可读的任务描述
 - **status**: `pending`（等待提交）或 `submitted`（已提交）
 - **root**: 任务输出节点（submit 后设置）
-- **accessTokenId**: 关联的 Access Token
+- **accessTokenId**: 关联的 Access Token（预签发后绑定）
 
 权限控制（scope、quota、canUpload）由关联的 Access Token 承载，不再由 Ticket 直接控制。
 
 ### 生命周期
 
 ```
-        ┌───────────┐
-        │  创建    │
-        └────┬──────┘
+        ┌───────────────┐
+        │ 预签发 Token  │  使用 Delegate Token 签发 Access Token
+        └────┬──────────┘
              │
-             │ 创建时自动签发关联的 Access Token
+             │ 获得 tokenId + tokenBase64
+             ▼
+        ┌───────────────┐
+        │  创建 Ticket  │  使用 Access Token 创建，绑定预签发的 Token
+        └────┬──────────┘
+             │
              ▼
         ┌───────────┐
-        │  pending  │  可以读写数据
+        │  pending  │  Tool 使用绑定的 Token 读写数据
         └────┬──────┘
              │
              │ submit
@@ -48,52 +53,81 @@ Ticket 是一个工作空间概念，代表一个具体的任务。每个 Ticket
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
-| POST | `/api/realm/{realmId}/tickets` | 创建 Ticket | **Delegate Token** |
+| POST | `/api/realm/{realmId}/tickets` | 创建 Ticket | **Access Token** |
 | GET | `/api/realm/{realmId}/tickets` | 列出 Ticket | Access Token |
 | GET | `/api/realm/{realmId}/tickets/:ticketId` | 获取 Ticket 详情 | Access Token |
 | POST | `/api/realm/{realmId}/tickets/:ticketId/submit` | 提交 Ticket | Access Token |
 
+> **设计原则**：所有 Realm 数据操作统一使用 Access Token，Delegate Token 只负责签发 Token。
+
 ---
 
-## POST /api/realm/{realmId}/tickets
+## 两步创建流程
 
-创建 Ticket 并签发关联的 Access Token。
+创建 Ticket 需要两步：先签发 Access Token，再创建 Ticket 并绑定。
 
-> **认证要求**：需要 **Delegate Token**（再授权 Token），Access Token 不能创建 Ticket。
+### 步骤 1：签发 Access Token 给 Tool
 
-### 请求
+使用 Delegate Token 签发一个 Access Token，用于 Tool 执行任务：
 
 ```http
-POST /api/realm/usr_abc123/tickets
-Authorization: Bearer {delegate_token}
+POST /api/tokens/delegate
+Authorization: Bearer {delegate_token_base64}
 Content-Type: application/json
 
 {
-  "title": "Generate thumbnail",
+  "type": "access",
   "expiresIn": 3600,
   "canUpload": true,
   "scope": [".:0:1"]
 }
 ```
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `title` | `string` | 是 | Ticket 标题（1-256 字符） |
-| `expiresIn` | `number` | 否 | 有效期（秒），默认 1 小时 |
-| `canUpload` | `boolean` | 否 | 关联 Token 是否可上传 |
-| `scope` | `string[]` | 否 | 相对 index-path 格式的 scope |
-
-### Scope 格式
-
-创建 Ticket 时，scope 使用相对 index-path 格式（相对于创建者 Delegate Token 的 scope）：
+响应：
 
 ```json
 {
-  "scope": [".:0:1", ".:0:2"]
+  "tokenId": "dlt1_xxxxx",
+  "tokenBase64": "SGVsbG8gV29ybGQh...",
+  "expiresAt": 1738501200000
 }
 ```
 
-如果不指定 scope，则继承创建者 Delegate Token 的完整 scope。
+> 保存 `tokenId` 用于步骤 2，`tokenBase64` 交给 Tool 使用。
+
+### 步骤 2：创建 Ticket 并绑定 Token
+
+## POST /api/realm/{realmId}/tickets
+
+创建 Ticket 并绑定预签发的 Access Token。
+
+> **认证要求**：需要 **Access Token**。
+
+### 请求
+
+```http
+POST /api/realm/usr_abc123/tickets
+Authorization: Bearer {access_token_base64}
+Content-Type: application/json
+
+{
+  "title": "Generate thumbnail",
+  "accessTokenId": "dlt1_xxxxx"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `title` | `string` | 是 | Ticket 标题（1-256 字符） |
+| `accessTokenId` | `string` | 是 | 预签发的 Access Token ID |
+
+### 绑定验证
+
+服务端会验证：
+
+1. `accessTokenId` 是有效的 Access Token
+2. 该 Token 未被绑定到其他 Ticket
+3. 该 Token 的 issuer chain 包含调用者（权限验证）
 
 ### 响应
 
@@ -102,9 +136,7 @@ Content-Type: application/json
   "ticketId": "ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
   "title": "Generate thumbnail",
   "status": "pending",
-  "accessTokenId": "dlt1_xxxxx",
-  "accessTokenBase64": "SGVsbG8gV29ybGQh...",
-  "expiresAt": 1738501200000
+  "accessTokenId": "dlt1_xxxxx"
 }
 ```
 
@@ -113,18 +145,18 @@ Content-Type: application/json
 | `ticketId` | `string` | Ticket ID |
 | `title` | `string` | Ticket 标题 |
 | `status` | `string` | 状态：`pending` |
-| `accessTokenId` | `string` | 关联的 Access Token ID |
-| `accessTokenBase64` | `string` | 关联的 Access Token（**仅返回一次**） |
-| `expiresAt` | `number` | 过期时间 |
+| `accessTokenId` | `string` | 绑定的 Access Token ID |
 
-> **重要**：`accessTokenBase64` 仅在创建时返回一次。Tool 使用此 Token 执行任务。
+> **注意**：`tokenBase64` 在步骤 1 签发时返回，创建 Ticket 时不再返回。
 
 ### 错误
 
 | 错误码 | HTTP Status | 说明 |
 |--------|-------------|------|
-| `DELEGATE_TOKEN_REQUIRED` | 403 | 需要 Delegate Token |
-| `INVALID_SCOPE` | 400 | Scope 不是创建者 Token 的子集 |
+| `ACCESS_TOKEN_REQUIRED` | 403 | 需要 Access Token |
+| `INVALID_BOUND_TOKEN` | 400 | 绑定的 Token ID 无效或不是 Access Token |
+| `TOKEN_ALREADY_BOUND` | 400 | Access Token 已绑定到其他 Ticket |
+| `TICKET_BIND_PERMISSION_DENIED` | 403 | 无权绑定该 Access Token |
 
 ---
 
@@ -287,46 +319,80 @@ Content-Type: application/json
 
 ## 完整示例：Tool 通过 Ticket 完成任务
 
-### 1. Agent 使用 Delegate Token 创建 Ticket
+### 1. Agent 签发 Access Token 给 Tool
 
 ```http
-POST /api/realm/usr_abc123/tickets
+POST /api/tokens/delegate
 Authorization: Bearer {delegate_token_base64}
 Content-Type: application/json
 
 {
-  "title": "Generate thumbnail for uploaded image",
+  "type": "access",
   "expiresIn": 3600,
   "canUpload": true,
   "scope": [".:0:1"]
 }
 ```
 
-响应包含 `accessTokenBase64`，将其交给 Tool。
+响应：
 
-### 2. Tool 使用 Access Token 读取输入
+```json
+{
+  "tokenId": "dlt1_tool_token",
+  "tokenBase64": "SGVsbG8gV29ybGQh...",
+  "expiresAt": 1738501200000
+}
+```
+
+保存 `tokenId`，将 `tokenBase64` 交给 Tool。
+
+### 2. Agent 创建 Ticket 并绑定 Token
+
+```http
+POST /api/realm/usr_abc123/tickets
+Authorization: Bearer {agent_access_token_base64}
+Content-Type: application/json
+
+{
+  "title": "Generate thumbnail for uploaded image",
+  "accessTokenId": "dlt1_tool_token"
+}
+```
+
+响应：
+
+```json
+{
+  "ticketId": "ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
+  "title": "Generate thumbnail for uploaded image",
+  "status": "pending",
+  "accessTokenId": "dlt1_tool_token"
+}
+```
+
+### 3. Tool 使用 Access Token 读取输入
 
 ```http
 GET /api/realm/usr_abc123/nodes/node:input...
-Authorization: Bearer {access_token_base64}
+Authorization: Bearer {tool_access_token_base64}
 X-CAS-Index-Path: 0
 ```
 
-### 3. Tool 使用 Access Token 上传结果
+### 4. Tool 使用 Access Token 上传结果
 
 ```http
 PUT /api/realm/usr_abc123/nodes/node:result...
-Authorization: Bearer {access_token_base64}
+Authorization: Bearer {tool_access_token_base64}
 Content-Type: application/octet-stream
 
 (二进制数据)
 ```
 
-### 4. Tool 提交 Ticket
+### 5. Tool 提交 Ticket
 
 ```http
 POST /api/realm/usr_abc123/tickets/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC/submit
-Authorization: Bearer {access_token_base64}
+Authorization: Bearer {tool_access_token_base64}
 Content-Type: application/json
 
 {
@@ -336,11 +402,11 @@ Content-Type: application/json
 
 提交成功后，Access Token 自动撤销，Tool 不能再执行任何操作。
 
-### 5. Agent 查看结果
+### 6. Agent 查看结果
 
 ```http
 GET /api/realm/usr_abc123/tickets/ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC
-Authorization: Bearer {another_access_token}
+Authorization: Bearer {agent_access_token_base64}
 ```
 
 响应中 `status: "submitted"`, `root: "node:result..."`。

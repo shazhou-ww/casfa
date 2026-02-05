@@ -271,8 +271,10 @@ export async function validateToken(
 /**
  * Delegate Token Authentication Middleware
  *
- * 验证 Delegate Token（再授权 Token），用于 Token 转签发和 Ticket 创建。
- * Delegate Token 可以转签发但不能直接访问数据。
+ * 验证 Delegate Token（再授权 Token），仅用于 Token 转签发。
+ * Delegate Token 不能直接访问数据，也不能创建 Ticket。
+ * 
+ * 设计原则：Delegate Token 只负责签发 Token，所有 Realm 数据操作统一使用 Access Token。
  */
 
 import type { MiddlewareHandler } from "hono";

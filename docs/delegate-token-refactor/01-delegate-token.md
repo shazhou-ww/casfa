@@ -41,10 +41,11 @@ Delegate Token 是 CASFA 授权系统的核心凭证。所有数据访问都必�
 ├──────────────────────────┼─────────────────────────────────┤
 │ ✗ 不能访问数据            │ ✓ 可以访问数据                  │
 │ ✓ 可以签发子 Token        │ ✗ 不能签发 Token                │
-│ ✓ 可以创建 Ticket         │ ✗ 不能创建 Ticket               │
 │ 较长生命周期（业务控制）   │ 较短生命周期（业务控制）         │
 └──────────────────────────┴─────────────────────────────────┘
 ```
+
+> **设计原则**：Delegate Token 只负责签发 Token，所有 Realm 数据操作（包括 Ticket、Depot 管理）统一使用 Access Token。
 
 ---
 
@@ -110,9 +111,8 @@ Delegate Token 的权限由 6 个维度组成：
 **用途**: 分发给 Agent 或第三方服务，允许其签发受限的访问 Token
 
 **特性**:
-- 不能直接访问数据（读写 Node、访问 Depot）
+- 不能直接访问数据（读写 Node、访问 Depot、创建 Ticket）
 - 可以签发子 Token（再授权或访问）
-- 可以创建 Ticket（工作空间）
 - 建议较长生命周期（如 30 天）
 
 **典型场景**:
@@ -121,7 +121,8 @@ User 签发再授权 Token 给 Agent X
     │
     └── Agent X 根据任务需要签发访问 Token
             │
-            └── 访问 Token 用于实际数据操作
+            ├── 访问 Token A：用于 Depot 管理
+            └── 访问 Token B：绑定到 Ticket，给 Tool 使用
 ```
 
 ### 3.2 访问 Token (Access Token)
@@ -132,6 +133,7 @@ User 签发再授权 Token 给 Agent X
 - 可以读取 scope 内的 Node
 - 可以写入 Node（如果有 quota 和 can_upload 权限）
 - 可以访问 Depot（如果有 can_manage_depot 权限）
+- 可以创建 Ticket（需绑定预签发的 Access Token）
 - 不能签发任何 Token
 - 建议较短生命周期（如 1 小时）
 
@@ -141,7 +143,8 @@ Agent 签发访问 Token
     │
     ├── 读取指定 scope 下的文件
     ├── 上传新的节点（受 quota 限制）
-    └── 操作 Depot（如果有权限）
+    ├── 操作 Depot（如果有权限）
+    └── 创建 Ticket（绑定另一个预签发的 Access Token 给 Tool）
 ```
 
 ### 3.3 用户直接签发 vs 转签发

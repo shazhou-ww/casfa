@@ -240,20 +240,26 @@ Access Token 可以通过两种方式获得：
 
 ### 2.4 Ticket 管理
 
+Ticket 创建采用**两步流程**：先签发 Access Token，再创建 Ticket 并绑定。
+
+#### 步骤 1：签发 Access Token 给 Tool
+
+使用 `POST /api/tokens/delegate` 签发 Access Token（参见 2.3 节）。
+
+#### 步骤 2：创建 Ticket 并绑定 Token
+
 #### POST /api/realm/{realmId}/tickets
 
-创建 Ticket 并签发关联的 Access Token。
+创建 Ticket 并绑定预签发的 Access Token。
 
-**认证**：`Bearer {base64_encoded_token}` (Delegate Token)
+**认证**：`Bearer {base64_encoded_token}` (Access Token)
 
 **请求**：
 
 ```typescript
 type CreateTicketRequest = {
   title: string;
-  expiresIn?: number;
-  canUpload?: boolean;
-  scope?: string[];  // 相对 index-path 格式
+  accessTokenId: string;  // 预签发的 Access Token ID
 };
 ```
 
@@ -261,9 +267,7 @@ type CreateTicketRequest = {
 ```json
 {
   "title": "Generate thumbnail",
-  "expiresIn": 3600,
-  "canUpload": true,
-  "scope": [".:0:1"]
+  "accessTokenId": "dlt1_xxxxx"
 }
 ```
 
@@ -273,13 +277,16 @@ type CreateTicketRequest = {
   "ticketId": "ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC",
   "title": "Generate thumbnail",
   "status": "pending",
-  "accessTokenId": "dlt1_xxxxx",
-  "accessTokenBase64": "SGVsbG8gV29ybGQh...",
-  "expiresAt": 1738501200000
+  "accessTokenId": "dlt1_xxxxx"
 }
 ```
 
-> Ticket 创建时自动签发关联的 Access Token。该 Access Token 绑定到 Ticket，submit 后自动撤销。
+**验证规则**：
+- `accessTokenId` 必须是有效的 Access Token
+- 该 Token 未被绑定到其他 Ticket
+- 该 Token 的 issuer chain 包含调用者（权限验证）
+
+> Ticket 创建时绑定预签发的 Access Token。Tool 使用在步骤 1 获得的 `tokenBase64` 执行任务。
 
 ---
 
@@ -563,15 +570,20 @@ Authorization: Bearer {base64_encoded_128_bytes}
 | 方法 | 路径 | 认证 | 描述 |
 |------|------|------|------|
 | GET | `/api/realm/{realmId}/nodes/:key` | Access Token | 读取节点 |
-| PUT | `/api/realm/{realmId}/nodes/:key` | Access Token | 写入节点 |
+| GET | `/api/realm/{realmId}/nodes/:key/metadata` | Access Token | 获取节点元信息 |
+| PUT | `/api/realm/{realmId}/nodes/:key` | Access Token (canUpload) | 写入节点 |
+| POST | `/api/realm/{realmId}/nodes/prepare` | Access Token | 批量检查节点存在性 |
 | GET | `/api/realm/{realmId}/depots` | Access Token | 列出 Depot |
-| POST | `/api/realm/{realmId}/depots` | Access Token | 创建 Depot |
-| PATCH | `/api/realm/{realmId}/depots/:id` | Access Token | 修改 Depot |
-| DELETE | `/api/realm/{realmId}/depots/:id` | Access Token | 删除 Depot |
+| POST | `/api/realm/{realmId}/depots` | Access Token (canManageDepot) | 创建 Depot |
+| GET | `/api/realm/{realmId}/depots/:id` | Access Token | 获取 Depot 详情 |
+| PATCH | `/api/realm/{realmId}/depots/:id` | Access Token (canManageDepot) | 修改 Depot |
+| DELETE | `/api/realm/{realmId}/depots/:id` | Access Token (canManageDepot) | 删除 Depot |
 | GET | `/api/realm/{realmId}/tickets` | Access Token | 列出 Ticket |
-| POST | `/api/realm/{realmId}/tickets` | Delegate Token | 创建 Ticket |
+| POST | `/api/realm/{realmId}/tickets` | Access Token | 创建 Ticket（绑定预签发 Token） |
 | GET | `/api/realm/{realmId}/tickets/:id` | Access Token | 查询 Ticket |
 | POST | `/api/realm/{realmId}/tickets/:id/submit` | Access Token | 提交 Ticket |
+
+> **设计原则**：所有 Realm 数据操作统一使用 Access Token，Delegate Token 只负责签发 Token。
 
 ---
 
@@ -609,3 +621,13 @@ Authorization: Bearer {base64_encoded_128_bytes}
 | `NODE_NOT_IN_SCOPE` | 403 | 节点不在授权范围 |
 | `DEPOT_ACCESS_DENIED` | 403 | 无权访问该 Depot |
 | `RATE_LIMITED` | 429 | 请求过于频繁 |
+
+### Ticket 相关
+
+| 错误码 | HTTP Status | 说明 |
+|--------|-------------|------|
+| `TOKEN_ALREADY_BOUND` | 400 | Access Token 已绑定到其他 Ticket |
+| `INVALID_BOUND_TOKEN` | 400 | 绑定的 Token ID 无效或不是 Access Token |
+| `TICKET_BIND_PERMISSION_DENIED` | 403 | 无权绑定该 Access Token |
+| `TICKET_NOT_FOUND` | 404 | Ticket 不存在 |
+| `TICKET_ALREADY_SUBMITTED` | 409 | Ticket 已提交 |

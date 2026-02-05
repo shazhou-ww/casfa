@@ -298,7 +298,7 @@ Content-Type: application/json
 // 1. 收集所有待上传节点的 key
 const allKeys = collectNodeKeys(directory);
 
-// 2. 调用 prepare-nodes 检查
+// 2. 调用 nodes/prepare 检查
 const { missing } = await api.prepareNodes(allKeys);
 
 // 3. 只上传缺失的节点
@@ -313,7 +313,7 @@ for (const key of missing) {
 
 ## 使用建议
 
-1. **批量上传前先检查**：使用 `prepare-nodes` API 检查哪些节点需要上传
+1. **批量上传前先检查**：使用 `nodes/prepare` API 检查哪些节点需要上传
 2. **提供校验和**：上传时提供 `Content-MD5` 或 `X-CAS-Blake3` 确保完整性
 3. **按依赖顺序上传**：先上传子节点，再上传父节点
 4. **合理使用 Index-Path**：客户端需要追踪节点的路径以便读取时提供证明

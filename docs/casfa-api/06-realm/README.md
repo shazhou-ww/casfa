@@ -38,12 +38,12 @@ URL 中的 `realmId` 必须与 Token 关联的 realm 一致，否则返回 `403 
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
-| POST | `/api/realm/{realmId}/tickets` | 创建 Ticket | **Delegate Token** |
+| POST | `/api/realm/{realmId}/tickets` | 创建 Ticket | Access Token |
 | GET | `/api/realm/{realmId}/tickets` | 列出 Ticket | Access Token |
 | GET | `/api/realm/{realmId}/tickets/:ticketId` | 获取 Ticket 详情 | Access Token |
 | POST | `/api/realm/{realmId}/tickets/:ticketId/submit` | 提交 Ticket | Access Token |
 
-> **注意**：创建 Ticket 需要 **Delegate Token**，其他 Ticket 操作使用 Access Token。
+> **设计原则**：所有 Realm 数据操作统一使用 Access Token。创建 Ticket 需要绑定一个预签发的 Access Token 给 Tool 使用。
 
 ### Node 操作
 
@@ -107,7 +107,7 @@ Token 可以看到其 Issuer Chain 中任意**签发者**创建的 Ticket/Depot�
 | `TOKEN_REVOKED` | 401 | Token 已被撤销 |
 | `TOKEN_EXPIRED` | 401 | Token 已过期 |
 | `ACCESS_TOKEN_REQUIRED` | 403 | 需要 Access Token |
-| `DELEGATE_TOKEN_REQUIRED` | 403 | 需要 Delegate Token |
+| `DELEGATE_TOKEN_REQUIRED` | 403 | 需要 Delegate Token（仅用于 Token 签发） |
 
 ### 访问控制相关
 
