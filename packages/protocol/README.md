@@ -64,3 +64,7 @@ All 128-bit identifiers use Crockford Base32 encoding (26 characters):
 - `UserRole`: `"unauthorized" | "authorized" | "admin"`
 - `TicketStatus`: `"issued" | "committed" | "revoked" | "archived"`
 - `NodeKind`: `"dict" | "file" | "successor"`
+
+## License
+
+MIT

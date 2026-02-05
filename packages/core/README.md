@@ -2,6 +2,12 @@
 
 CAS (Content-Addressable Storage) binary format encoding/decoding library.
 
+## Installation
+
+```bash
+bun add @casfa/core
+```
+
 ## Overview
 
 This package implements the core binary format for CAS nodes. All nodes use a unified 32-byte header followed by variable-length body sections.
