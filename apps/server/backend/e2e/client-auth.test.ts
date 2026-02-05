@@ -395,10 +395,81 @@ describe("Client Authorization", () => {
   // ==========================================================================
 
   describe("Request Expiration", () => {
-    // Note: This test may be skipped in CI as it requires waiting
-    it.skip("should expire after 10 minutes", async () => {
-      // This test would need to mock time or wait 10 minutes
-      // Skipped for practical reasons
+    it("should reject approval of expired request", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      // Create a request that's already expired by directly using the db
+      const requestId = `req_${Date.now().toString(36)}`;
+      const clientSecret = Array.from({ length: 32 }, () => 
+        Math.floor(Math.random() * 256).toString(16).padStart(2, "0")
+      ).join("");
+      
+      // Hash the client secret
+      const encoder = new TextEncoder();
+      const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(clientSecret));
+      const clientSecretHash = Array.from(new Uint8Array(hashBuffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      // Create request directly in db with negative expiresIn (already expired)
+      await ctx.db.tokenRequestsDb.create({
+        requestId,
+        clientName: "Expired Test Client",
+        clientSecretHash,
+        displayCode: "TEST-CODE",
+        expiresIn: -60, // Expired 1 minute ago
+      });
+
+      // Try to approve the expired request
+      const response = await ctx.helpers.authRequest(
+        token,
+        "POST",
+        `/api/tokens/requests/${requestId}/approve`,
+        {
+          realm,
+          type: "delegate",
+          name: "Too Late Token",
+          expiresIn: 3600,
+          canUpload: false,
+          canManageDepot: false,
+          scope: [`cas://depot:${mainDepotId}`],
+          clientSecret,
+        }
+      );
+
+      // Should fail with 400 REQUEST_EXPIRED
+      expect(response.status).toBe(400);
+      const data = (await response.json()) as any;
+      expect(data.error).toBe("REQUEST_EXPIRED");
+    });
+
+    it("should reject polling of expired request", async () => {
+      // Create an expired request directly in db
+      const requestId = `req_${Date.now().toString(36)}_poll`;
+      const clientSecretHash = "a".repeat(64);
+
+      await ctx.db.tokenRequestsDb.create({
+        requestId,
+        clientName: "Expired Poll Test",
+        clientSecretHash,
+        displayCode: "POLL-TEST",
+        expiresIn: -60, // Expired
+      });
+
+      // Poll should return expired status
+      const response = await fetch(
+        `${ctx.baseUrl}/api/tokens/requests/${requestId}/poll`
+      );
+      
+      // Could be 200 with status: "expired" or a 400/410 error
+      // Depends on implementation - let's check the actual behavior
+      if (response.status === 200) {
+        const data = (await response.json()) as any;
+        expect(data.status).toBe("expired");
+      } else {
+        expect([400, 410]).toContain(response.status);
+      }
     });
 
     it("should not allow approval of non-existent request", async () => {
