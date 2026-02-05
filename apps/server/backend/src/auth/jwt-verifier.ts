@@ -9,7 +9,7 @@
 import { createHmac } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { CognitoConfig } from "../config.ts";
-import type { JwtVerifier } from "../middleware/auth.ts";
+import type { JwtVerifier } from "../middleware/jwt-auth.ts";
 import { uuidToUserId } from "../util/encoding.ts";
 
 // ============================================================================

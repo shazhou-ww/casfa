@@ -51,7 +51,9 @@ export const createInfoController = (deps: InfoControllerDeps): InfoController =
       maxCollectionChildren: serverConfig.maxCollectionChildren,
       maxPayloadSize: serverConfig.maxPayloadSize,
       maxTicketTtl: serverConfig.maxTicketTtl,
-      maxAgentTokenTtl: serverConfig.maxAgentTokenTtl,
+      maxDelegateTokenTtl: serverConfig.maxDelegateTokenTtl,
+      maxAccessTokenTtl: serverConfig.maxAccessTokenTtl,
+      maxTokenDepth: serverConfig.maxTokenDepth,
     },
     features: {
       jwtAuth: featuresConfig.jwtAuth,

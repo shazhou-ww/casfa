@@ -2,7 +2,7 @@
  * Depots controller
  *
  * Handles depot CRUD operations.
- * Ticket authentication is not allowed for depot operations.
+ * Requires Access Token with canManageDepot permission for create/update/delete.
  */
 
 import { EMPTY_DICT_KEY } from "@casfa/core";
@@ -73,17 +73,8 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
     return c.req.param("realmId") ?? c.get("auth").realm;
   };
 
-  const isTicketAuth = (c: Context<Env>): boolean => {
-    return c.get("auth").identityType === "ticket";
-  };
-
   return {
     list: async (c) => {
-      // Tickets cannot access depots
-      if (isTicketAuth(c)) {
-        return c.json({ error: "Tickets cannot access depot operations" }, 403);
-      }
-
       const realm = getRealm(c);
       const limit = Number.parseInt(c.req.query("limit") ?? "100", 10);
       const cursor = c.req.query("cursor");
@@ -98,10 +89,7 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
     },
 
     create: async (c) => {
-      if (isTicketAuth(c)) {
-        return c.json({ error: "Tickets cannot access depot operations" }, 403);
-      }
-
+      // Permission check is done by middleware (canManageDepotMiddleware)
       const realm = getRealm(c);
       const body = CreateDepotSchema.parse(await c.req.json());
       const { title, maxHistory = DEFAULT_MAX_HISTORY } = body;
@@ -121,6 +109,7 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
 
       // Create depot with empty dict as initial root
       const depot = await depotsDb.create(realm, {
+        name: title ?? `depot-${Date.now()}`,
         title: title ?? `Depot ${Date.now()}`,
         root: EMPTY_DICT_KEY,
         maxHistory,
@@ -130,10 +119,6 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
     },
 
     get: async (c) => {
-      if (isTicketAuth(c)) {
-        return c.json({ error: "Tickets cannot access depot operations" }, 403);
-      }
-
       const realm = getRealm(c);
       const depotId = decodeURIComponent(c.req.param("depotId"));
 
@@ -146,10 +131,7 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
     },
 
     update: async (c) => {
-      if (isTicketAuth(c)) {
-        return c.json({ error: "Tickets cannot access depot operations" }, 403);
-      }
-
+      // Permission check is done by middleware (canManageDepotMiddleware)
       const realm = getRealm(c);
       const depotId = decodeURIComponent(c.req.param("depotId"));
       const { title, maxHistory } = UpdateDepotSchema.parse(await c.req.json());
@@ -168,10 +150,7 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
     },
 
     commit: async (c) => {
-      if (isTicketAuth(c)) {
-        return c.json({ error: "Tickets cannot access depot operations" }, 403);
-      }
-
+      // Permission check is done by middleware (canUploadMiddleware)
       const realm = getRealm(c);
       const depotId = decodeURIComponent(c.req.param("depotId"));
 
@@ -201,10 +180,7 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
     },
 
     delete: async (c) => {
-      if (isTicketAuth(c)) {
-        return c.json({ error: "Tickets cannot access depot operations" }, 403);
-      }
-
+      // Permission check is done by middleware (canManageDepotMiddleware)
       const realm = getRealm(c);
       const depotId = decodeURIComponent(c.req.param("depotId"));
 

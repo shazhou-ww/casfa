@@ -5,8 +5,7 @@
 import { LoginSchema, RefreshSchema, TokenExchangeSchema } from "@casfa/protocol";
 import type { Context } from "hono";
 import type { CognitoConfig } from "../config.ts";
-import type { AuthService } from "../services/auth.ts";
-import type { Env } from "../types.ts";
+import type { Env, JwtAuthContext } from "../types.ts";
 
 export type OAuthController = {
   getConfig: (c: Context) => Response;
@@ -18,11 +17,10 @@ export type OAuthController = {
 
 type OAuthControllerDeps = {
   cognitoConfig: CognitoConfig;
-  authService: AuthService;
 };
 
 export const createOAuthController = (deps: OAuthControllerDeps): OAuthController => {
-  const { cognitoConfig, authService } = deps;
+  const { cognitoConfig } = deps;
 
   return {
     getConfig: (c) => {
@@ -43,25 +41,79 @@ export const createOAuthController = (deps: OAuthControllerDeps): OAuthControlle
     },
 
     login: async (c) => {
-      const { email, password } = LoginSchema.parse(await c.req.json());
-      const result = await authService.login(email, password);
+      const body = LoginSchema.parse(await c.req.json());
 
-      if (!result.ok) {
-        return c.json({ error: result.error }, 401);
+      // Direct Cognito authentication using USER_PASSWORD_AUTH flow
+      const authUrl = `https://cognito-idp.${cognitoConfig.region}.amazonaws.com`;
+      const response = await fetch(authUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-amz-json-1.1",
+          "X-Amz-Target": "AWSCognitoIdentityProviderService.InitiateAuth",
+        },
+        body: JSON.stringify({
+          AuthFlow: "USER_PASSWORD_AUTH",
+          ClientId: cognitoConfig.clientId,
+          AuthParameters: {
+            USERNAME: body.email,
+            PASSWORD: body.password,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return c.json({ error: error.message || "Authentication failed" }, 401);
       }
 
-      return c.json(result.value);
+      const result = await response.json();
+      if (!result.AuthenticationResult) {
+        return c.json({ error: "Authentication incomplete" }, 401);
+      }
+
+      return c.json({
+        accessToken: result.AuthenticationResult.AccessToken,
+        idToken: result.AuthenticationResult.IdToken,
+        refreshToken: result.AuthenticationResult.RefreshToken,
+        expiresIn: result.AuthenticationResult.ExpiresIn,
+      });
     },
 
     refresh: async (c) => {
       const { refreshToken } = RefreshSchema.parse(await c.req.json());
-      const result = await authService.refresh(refreshToken);
 
-      if (!result.ok) {
-        return c.json({ error: result.error }, 401);
+      // Direct Cognito token refresh
+      const authUrl = `https://cognito-idp.${cognitoConfig.region}.amazonaws.com`;
+      const response = await fetch(authUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-amz-json-1.1",
+          "X-Amz-Target": "AWSCognitoIdentityProviderService.InitiateAuth",
+        },
+        body: JSON.stringify({
+          AuthFlow: "REFRESH_TOKEN_AUTH",
+          ClientId: cognitoConfig.clientId,
+          AuthParameters: {
+            REFRESH_TOKEN: refreshToken,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return c.json({ error: error.message || "Token refresh failed" }, 401);
       }
 
-      return c.json(result.value);
+      const result = await response.json();
+      if (!result.AuthenticationResult) {
+        return c.json({ error: "Token refresh incomplete" }, 401);
+      }
+
+      return c.json({
+        accessToken: result.AuthenticationResult.AccessToken,
+        idToken: result.AuthenticationResult.IdToken,
+        expiresIn: result.AuthenticationResult.ExpiresIn,
+      });
     },
 
     exchangeToken: async (c) => {
@@ -103,7 +155,8 @@ export const createOAuthController = (deps: OAuthControllerDeps): OAuthControlle
     },
 
     me: (c) => {
-      const auth = c.get("auth");
+      // This endpoint requires JWT auth, so we can safely cast
+      const auth = c.get("auth") as JwtAuthContext;
       return c.json({
         userId: auth.userId,
         email: auth.email,

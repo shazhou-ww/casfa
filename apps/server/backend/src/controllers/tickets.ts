@@ -2,14 +2,14 @@
  * Tickets controller for Realm routes
  *
  * Handles ticket management under /api/realm/{realmId}/tickets/*
+ * Tickets are created by Access Token holders to allow temporary access to specific nodes.
  */
 
-import { CreateTicketSchema, TicketCommitSchema } from "@casfa/protocol";
 import type { Context } from "hono";
-import type { ServerConfig } from "../config.ts";
-import type { TokensDb } from "../db/tokens.ts";
-import type { Env, Ticket } from "../types.ts";
-import { extractTokenId } from "../util/token-id.ts";
+import type { TicketsDb } from "../db/tickets.ts";
+import type { DepotsDb } from "../db/depots.ts";
+import type { TicketRecord } from "../types/delegate-token.ts";
+import type { AccessTokenAuthContext, Env } from "../types.ts";
 
 // ============================================================================
 // Types
@@ -19,52 +19,45 @@ export type TicketsController = {
   create: (c: Context<Env>) => Promise<Response>;
   list: (c: Context<Env>) => Promise<Response>;
   get: (c: Context<Env>) => Promise<Response>;
-  commit: (c: Context<Env>) => Promise<Response>;
+  submit: (c: Context<Env>) => Promise<Response>;
   revoke: (c: Context<Env>) => Promise<Response>;
   delete: (c: Context<Env>) => Promise<Response>;
 };
 
 type TicketsControllerDeps = {
-  tokensDb: TokensDb;
-  serverConfig: ServerConfig;
+  ticketsDb: TicketsDb;
+  depotsDb: DepotsDb;
 };
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-const deriveTicketStatus = (ticket: Ticket): string => {
-  if (ticket.commit?.root && ticket.isRevoked) return "archived";
-  if (ticket.commit?.root) return "committed";
-  if (ticket.isRevoked) return "revoked";
+const deriveTicketStatus = (ticket: TicketRecord): string => {
+  if (ticket.status === "revoked") return "revoked";
+  if (ticket.status === "submitted") return "submitted";
+  if (ticket.status === "expired" || ticket.expiresAt < Date.now()) return "expired";
   return "issued";
 };
 
-const formatTicketResponse = (ticket: Ticket, includeConfig = false) => {
-  const ticketId = extractTokenId(ticket.pk);
+const formatTicketResponse = (ticket: TicketRecord, includeDetails = false) => {
   const base = {
-    ticketId: `ticket:${ticketId}`,
+    ticketId: ticket.ticketId,
     realm: ticket.realm,
     status: deriveTicketStatus(ticket),
-    purpose: ticket.purpose,
-    input: ticket.scope,
-    output: ticket.commit?.root ?? null,
-    isRevoked: ticket.isRevoked ?? false,
-    issuerId: ticket.issuerId,
-    writable: !!ticket.commit,
+    title: ticket.title,
+    output: ticket.submittedRoot ?? null,
+    creatorIssuerId: ticket.creatorIssuerId,
+    canUpload: ticket.canUpload,
     createdAt: ticket.createdAt,
     expiresAt: ticket.expiresAt,
   };
 
-  if (includeConfig && ticket.config) {
+  if (includeDetails) {
     return {
       ...base,
-      config: {
-        nodeLimit: ticket.config.nodeLimit,
-        maxNameBytes: ticket.config.maxNameBytes,
-        quota: ticket.commit?.quota,
-        accept: ticket.commit?.accept,
-      },
+      scopeNodeHash: ticket.scopeNodeHash,
+      scopeSetNodeId: ticket.scopeSetNodeId,
     };
   }
 
@@ -76,58 +69,51 @@ const formatTicketResponse = (ticket: Ticket, includeConfig = false) => {
 // ============================================================================
 
 export const createTicketsController = (deps: TicketsControllerDeps): TicketsController => {
-  const { tokensDb, serverConfig } = deps;
+  const { ticketsDb, depotsDb } = deps;
 
   return {
     create: async (c) => {
-      const auth = c.get("auth");
+      const auth = c.get("auth") as AccessTokenAuthContext;
       const realmId = c.req.param("realmId");
-      const body = CreateTicketSchema.parse(await c.req.json());
+      const body = await c.req.json();
 
-      // Use the caller's issuerId directly
-      const issuerId = auth.issuerId;
-
-      const ticket = await tokensDb.createTicket(realmId, issuerId, {
-        scope: body.input,
-        purpose: body.purpose,
-        commit: body.writable,
-        expiresIn: body.expiresIn,
+      const ticket = await ticketsDb.create({
+        realm: realmId,
+        title: body.title,
+        canUpload: body.canUpload ?? false,
+        expiresIn: body.expiresIn ?? 3600, // Default 1 hour
+        creatorIssuerId: auth.tokenId,
+        scopeNodeHash: auth.tokenRecord.scopeNodeHash,
+        scopeSetNodeId: auth.tokenRecord.scopeSetNodeId,
       });
 
-      const ticketId = extractTokenId(ticket.pk);
-
-      return c.json({
-        ticketId: `ticket:${ticketId}`,
-        realm: ticket.realm,
-        input: ticket.scope,
-        writable: !!ticket.commit,
-        config: {
-          nodeLimit: serverConfig.nodeLimit,
-          maxNameBytes: serverConfig.maxNameBytes,
-          quota: ticket.commit?.quota,
-          accept: ticket.commit?.accept,
+      return c.json(
+        {
+          ticketId: ticket.ticketId,
+          realm: ticket.realm,
+          title: ticket.title,
+          canUpload: ticket.canUpload,
+          expiresAt: ticket.expiresAt,
         },
-        expiresAt: ticket.expiresAt,
-      });
+        201
+      );
     },
 
     list: async (c) => {
+      const auth = c.get("auth") as AccessTokenAuthContext;
       const realmId = c.req.param("realmId");
       const limit = Number.parseInt(c.req.query("limit") ?? "100", 10);
       const cursor = c.req.query("cursor");
-      const statusFilter = c.req.query("status");
 
-      const result = await tokensDb.listTicketsByRealm(realmId, { limit, cursor });
-
-      let tickets = result.tickets.map((t) => formatTicketResponse(t, false));
-
-      // Filter by status if specified
-      if (statusFilter) {
-        tickets = tickets.filter((t) => t.status === statusFilter);
-      }
+      // List tickets created by the caller's issuer chain
+      const result = await ticketsDb.listByRealm(realmId, {
+        limit,
+        cursor,
+        creatorIssuerId: auth.tokenId,
+      });
 
       return c.json({
-        tickets,
+        tickets: result.tickets.map((t) => formatTicketResponse(t, false)),
         nextCursor: result.nextCursor,
         hasMore: result.hasMore,
       });
@@ -135,19 +121,9 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
 
     get: async (c) => {
       const realmId = c.req.param("realmId");
-      const rawTicketId = c.req.param("ticketId");
-      const ticketId = rawTicketId.startsWith("ticket:") ? rawTicketId.slice(7) : rawTicketId;
+      const ticketId = c.req.param("ticketId");
 
-      // Check if using Ticket auth - only allow accessing own ticket
-      const auth = c.get("auth");
-      if (auth.identityType === "ticket") {
-        const authTicketId = extractTokenId(auth.token.pk);
-        if (authTicketId !== ticketId) {
-          return c.json({ error: "forbidden", message: "Can only access own ticket" }, 403);
-        }
-      }
-
-      const ticket = await tokensDb.getTicket(ticketId);
+      const ticket = await ticketsDb.get(ticketId);
       if (!ticket || ticket.realm !== realmId) {
         return c.json({ error: "not_found", message: "Ticket not found" }, 404);
       }
@@ -155,116 +131,99 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
       return c.json(formatTicketResponse(ticket, true));
     },
 
-    commit: async (c) => {
+    submit: async (c) => {
       const realmId = c.req.param("realmId");
-      const rawTicketId = c.req.param("ticketId");
-      const ticketId = rawTicketId.startsWith("ticket:") ? rawTicketId.slice(7) : rawTicketId;
-      const { output } = TicketCommitSchema.parse(await c.req.json());
+      const ticketId = c.req.param("ticketId");
+      const body = await c.req.json();
 
-      // Only Ticket auth can commit
-      const auth = c.get("auth");
-      if (auth.identityType !== "ticket") {
-        return c.json({ error: "forbidden", message: "Only Ticket can commit" }, 403);
-      }
-
-      // Can only commit own ticket
-      const authTicketId = extractTokenId(auth.token.pk);
-      if (authTicketId !== ticketId) {
-        return c.json({ error: "forbidden", message: "Can only commit own ticket" }, 403);
-      }
-
-      const ticket = await tokensDb.getTicket(ticketId);
+      const ticket = await ticketsDb.get(ticketId);
       if (!ticket || ticket.realm !== realmId) {
         return c.json({ error: "not_found", message: "Ticket not found" }, 404);
       }
 
-      // Check if writable
-      if (!ticket.commit) {
-        return c.json({ error: "forbidden", message: "Ticket is read-only" }, 403);
-      }
-
-      // Check if already committed
-      if (ticket.commit.root) {
-        return c.json({ error: "conflict", message: "Ticket already committed" }, 409);
+      // Check if already submitted
+      if (ticket.status === "submitted") {
+        return c.json({ error: "conflict", message: "Ticket already submitted" }, 409);
       }
 
       // Check if revoked or expired
-      if (ticket.isRevoked || ticket.expiresAt < Date.now()) {
+      if (ticket.status === "revoked" || ticket.expiresAt < Date.now()) {
         return c.json({ error: "gone", message: "Ticket is revoked or expired" }, 410);
       }
 
-      // TODO: Verify output node exists in storage
+      // Check if writable
+      if (!ticket.canUpload) {
+        return c.json({ error: "forbidden", message: "Ticket is read-only" }, 403);
+      }
 
-      const success = await tokensDb.markTicketCommitted(ticketId, output);
+      const success = await ticketsDb.submit(ticketId, body.output);
       if (!success) {
-        return c.json({ error: "conflict", message: "Ticket already committed" }, 409);
+        return c.json({ error: "conflict", message: "Failed to submit ticket" }, 409);
       }
 
       return c.json({
         success: true,
-        status: "committed",
-        output,
-        isRevoked: false,
+        status: "submitted",
+        output: body.output,
       });
     },
 
     revoke: async (c) => {
+      const auth = c.get("auth") as AccessTokenAuthContext;
       const realmId = c.req.param("realmId");
-      const rawTicketId = c.req.param("ticketId");
-      const ticketId = rawTicketId.startsWith("ticket:") ? rawTicketId.slice(7) : rawTicketId;
-      const auth = c.get("auth");
+      const ticketId = c.req.param("ticketId");
 
-      const ticket = await tokensDb.getTicket(ticketId);
+      const ticket = await ticketsDb.get(ticketId);
       if (!ticket || ticket.realm !== realmId) {
         return c.json({ error: "not_found", message: "Ticket not found" }, 404);
       }
 
       // Check if already revoked
-      if (ticket.isRevoked) {
+      if (ticket.status === "revoked") {
         return c.json({ error: "conflict", message: "Ticket already revoked" }, 409);
       }
 
-      // Permission check: only issuer can revoke (for agents, use issuerId)
-      const agentIssuerId = auth.isAgent ? auth.issuerId : undefined;
-      try {
-        await tokensDb.revokeTicket(realmId, ticketId, agentIssuerId);
-      } catch (error: unknown) {
-        const err = error as Error;
-        if (err.message.includes("Access denied")) {
-          return c.json({ error: "forbidden", message: "Not the ticket issuer" }, 403);
+      // Check permission: only creator can revoke
+      if (ticket.creatorIssuerId !== auth.tokenId) {
+        // Check if caller is in creator's issuer chain
+        const canRevoke = auth.issuerChain.includes(ticket.creatorIssuerId);
+        if (!canRevoke) {
+          return c.json({ error: "forbidden", message: "Not the ticket creator" }, 403);
         }
-        throw error;
       }
 
-      const hasOutput = !!ticket.commit?.root;
+      const success = await ticketsDb.revoke(ticketId);
+      if (!success) {
+        return c.json({ error: "conflict", message: "Failed to revoke ticket" }, 409);
+      }
+
       return c.json({
         success: true,
-        status: hasOutput ? "archived" : "revoked",
-        output: ticket.commit?.root,
-        isRevoked: true,
+        status: "revoked",
+        output: ticket.submittedRoot,
       });
     },
 
     delete: async (c) => {
+      const auth = c.get("auth") as AccessTokenAuthContext;
       const realmId = c.req.param("realmId");
-      const rawTicketId = c.req.param("ticketId");
-      const ticketId = rawTicketId.startsWith("ticket:") ? rawTicketId.slice(7) : rawTicketId;
-      const auth = c.get("auth");
+      const ticketId = c.req.param("ticketId");
 
-      // Only User Token can delete (not Agent Token)
-      if (auth.isAgent) {
-        return c.json(
-          { error: "forbidden", message: "Agent Token cannot delete, only revoke" },
-          403
-        );
-      }
-
-      const ticket = await tokensDb.getTicket(ticketId);
+      const ticket = await ticketsDb.get(ticketId);
       if (!ticket || ticket.realm !== realmId) {
         return c.json({ error: "not_found", message: "Ticket not found" }, 404);
       }
 
-      await tokensDb.deleteToken(ticketId);
+      // Check permission: only creator can delete
+      if (ticket.creatorIssuerId !== auth.tokenId) {
+        // Check if caller is in creator's issuer chain
+        const canDelete = auth.issuerChain.includes(ticket.creatorIssuerId);
+        if (!canDelete) {
+          return c.json({ error: "forbidden", message: "Not the ticket creator" }, 403);
+        }
+      }
+
+      await ticketsDb.delete(ticketId);
 
       return c.json({ success: true });
     },

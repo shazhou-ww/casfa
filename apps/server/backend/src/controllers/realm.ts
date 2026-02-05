@@ -5,7 +5,7 @@
 import type { Context } from "hono";
 import type { ServerConfig } from "../config.ts";
 import type { UsageDb } from "../db/usage.ts";
-import type { Env } from "../types.ts";
+import type { AccessTokenAuthContext, Env } from "../types.ts";
 
 export type RealmController = {
   getInfo: (c: Context<Env>) => Response;
@@ -22,13 +22,13 @@ export const createRealmController = (deps: RealmControllerDeps): RealmControlle
 
   return {
     getInfo: (c) => {
-      const auth = c.get("auth");
+      const auth = c.get("auth") as AccessTokenAuthContext;
       const realmId = c.req.param("realmId");
 
       return c.json({
         realm: realmId,
-        scope: undefined, // User/Agent tokens have full access
-        commit: auth.canWrite ? {} : undefined,
+        scope: undefined, // TODO: Return actual scope from token
+        commit: auth.canUpload ? {} : undefined,
         nodeLimit: serverConfig.nodeLimit,
         maxNameBytes: serverConfig.maxNameBytes,
       });

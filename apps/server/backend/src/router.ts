@@ -1,5 +1,7 @@
 /**
  * CASFA v2 - Hono Router
+ *
+ * Delegate Token model router.
  */
 
 import { zValidator } from "@hono/zod-validator";
@@ -8,8 +10,6 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { ZodError } from "zod";
 import type { AdminController } from "./controllers/admin.ts";
-import type { AuthClientsController } from "./controllers/auth-clients.ts";
-import type { AuthTokensController } from "./controllers/auth-tokens.ts";
 import type { ChunksController } from "./controllers/chunks.ts";
 import type { DepotsController } from "./controllers/depots.ts";
 import type { HealthController } from "./controllers/health.ts";
@@ -17,21 +17,22 @@ import type { InfoController } from "./controllers/info.ts";
 import type { OAuthController } from "./controllers/oauth.ts";
 import type { RealmController } from "./controllers/realm.ts";
 import type { TicketsController } from "./controllers/tickets.ts";
+import type { TokensController } from "./controllers/tokens.ts";
+import type { TokenRequestsController } from "./controllers/token-requests.ts";
 import type { McpController } from "./mcp/handler.ts";
 import {
-  ClientCompleteSchema,
-  ClientInitSchema,
-  DepotCommitSchema as CommitDepotSchema,
-  CreateDepotSchema,
-  CreateTicketSchema,
-  CreateTokenSchema,
   LoginSchema,
-  PrepareNodesSchema,
   RefreshSchema,
-  TicketCommitSchema,
   TokenExchangeSchema,
-  UpdateDepotSchema,
   UpdateUserRoleSchema,
+  CreateDelegateTokenSchema,
+  DelegateTokenSchema,
+  CreateTokenRequestSchema,
+  ApproveTokenRequestSchema,
+  PrepareNodesSchema,
+  CreateDepotSchema,
+  UpdateDepotSchema,
+  DepotCommitSchema,
 } from "./schemas/index.ts";
 import type { Env } from "./types.ts";
 
@@ -44,20 +45,24 @@ export type RouterDeps = {
   health: HealthController;
   info: InfoController;
   oauth: OAuthController;
-  authClients: AuthClientsController;
-  authTokens: AuthTokensController;
   admin: AdminController;
   realm: RealmController;
   tickets: TicketsController;
   chunks: ChunksController;
   depots: DepotsController;
   mcp: McpController;
+  tokens: TokensController;
+  tokenRequests: TokenRequestsController;
+
   // Middleware
-  authMiddleware: MiddlewareHandler<Env>;
-  ticketAuthMiddleware: MiddlewareHandler<Env>;
+  jwtAuthMiddleware: MiddlewareHandler<Env>;
+  delegateTokenMiddleware: MiddlewareHandler<Env>;
+  accessTokenMiddleware: MiddlewareHandler<Env>;
   realmAccessMiddleware: MiddlewareHandler<Env>;
-  writeAccessMiddleware: MiddlewareHandler<Env>;
   adminAccessMiddleware: MiddlewareHandler<Env>;
+  scopeValidationMiddleware: MiddlewareHandler<Env>;
+  canUploadMiddleware: MiddlewareHandler<Env>;
+  canManageDepotMiddleware: MiddlewareHandler<Env>;
 };
 
 // ============================================================================
@@ -99,13 +104,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
     "*",
     cors({
       origin: "*",
-      allowHeaders: [
-        "Content-Type",
-        "Authorization",
-        "X-AWP-Pubkey",
-        "X-AWP-Timestamp",
-        "X-AWP-Signature",
-      ],
+      allowHeaders: ["Content-Type", "Authorization", "X-CAS-Index-Path"],
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     })
   );
@@ -125,66 +124,97 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   app.post("/api/oauth/login", zValidator("json", LoginSchema), deps.oauth.login);
   app.post("/api/oauth/refresh", zValidator("json", RefreshSchema), deps.oauth.refresh);
   app.post("/api/oauth/token", zValidator("json", TokenExchangeSchema), deps.oauth.exchangeToken);
-  app.get("/api/oauth/me", deps.authMiddleware, deps.oauth.me);
-
-  // ============================================================================
-  // Auth Routes - Clients (P256 public key authentication)
-  // ============================================================================
-
-  app.post("/api/auth/clients/init", zValidator("json", ClientInitSchema), deps.authClients.init);
-  app.get("/api/auth/clients/:clientId", deps.authClients.get);
-  app.post(
-    "/api/auth/clients/complete",
-    deps.authMiddleware,
-    zValidator("json", ClientCompleteSchema),
-    deps.authClients.complete
-  );
-  app.get("/api/auth/clients", deps.authMiddleware, deps.authClients.list);
-  app.delete("/api/auth/clients/:clientId", deps.authMiddleware, deps.authClients.revoke);
-
-  // ============================================================================
-  // Auth Routes - Tokens (API access tokens)
-  // ============================================================================
-
-  app.post(
-    "/api/auth/tokens",
-    deps.authMiddleware,
-    zValidator("json", CreateTokenSchema),
-    deps.authTokens.create
-  );
-  app.get("/api/auth/tokens", deps.authMiddleware, deps.authTokens.list);
-  app.delete("/api/auth/tokens/:id", deps.authMiddleware, deps.authTokens.revoke);
-
-  // ============================================================================
-  // MCP Route
-  // ============================================================================
-
-  app.post("/api/mcp", deps.authMiddleware, deps.mcp.handle);
+  app.get("/api/oauth/me", deps.jwtAuthMiddleware, deps.oauth.me);
 
   // ============================================================================
   // Admin Routes
   // ============================================================================
 
-  app.get(
-    "/api/admin/users",
-    deps.authMiddleware,
-    deps.adminAccessMiddleware,
-    deps.admin.listUsers
-  );
+  app.get("/api/admin/users", deps.jwtAuthMiddleware, deps.adminAccessMiddleware, deps.admin.listUsers);
   app.patch(
     "/api/admin/users/:userId",
-    deps.authMiddleware,
+    deps.jwtAuthMiddleware,
     deps.adminAccessMiddleware,
     zValidator("json", UpdateUserRoleSchema),
     deps.admin.updateRole
   );
 
   // ============================================================================
-  // Realm Routes
+  // MCP Route
+  // ============================================================================
+
+  app.post("/api/mcp", deps.jwtAuthMiddleware, deps.mcp.handle);
+
+  // ============================================================================
+  // Delegate Token Routes
+  // ============================================================================
+
+  const tokensRouter = new Hono<Env>();
+
+  // User creates initial delegate token (JWT auth required)
+  tokensRouter.post(
+    "/",
+    deps.jwtAuthMiddleware,
+    zValidator("json", CreateDelegateTokenSchema),
+    deps.tokens.create
+  );
+
+  // List tokens (JWT auth)
+  tokensRouter.get("/", deps.jwtAuthMiddleware, deps.tokens.list);
+
+  // Get specific token
+  tokensRouter.get("/:tokenId", deps.jwtAuthMiddleware, deps.tokens.get);
+
+  // Revoke token (JWT auth)
+  tokensRouter.delete("/:tokenId", deps.jwtAuthMiddleware, deps.tokens.revoke);
+
+  // Re-delegate a token (requires delegate token auth)
+  tokensRouter.post(
+    "/:tokenId/delegate",
+    deps.delegateTokenMiddleware,
+    zValidator("json", DelegateTokenSchema),
+    deps.tokens.delegate
+  );
+
+  app.route("/api/tokens", tokensRouter);
+
+  // ============================================================================
+  // Token Request Routes (Client Authorization Flow)
+  // ============================================================================
+
+  const tokenRequestsRouter = new Hono<Env>();
+
+  // Client initiates authorization request (no auth required)
+  tokenRequestsRouter.post("/", zValidator("json", CreateTokenRequestSchema), deps.tokenRequests.create);
+
+  // Client polls for request status (no auth required, uses clientSecret)
+  tokenRequestsRouter.get("/:requestId/poll", deps.tokenRequests.poll);
+
+  // User views pending requests (JWT auth required)
+  tokenRequestsRouter.get("/", deps.jwtAuthMiddleware, deps.tokenRequests.list);
+
+  // User gets specific request details (JWT auth required)
+  tokenRequestsRouter.get("/:requestId", deps.jwtAuthMiddleware, deps.tokenRequests.get);
+
+  // User approves request (JWT auth required)
+  tokenRequestsRouter.post(
+    "/:requestId/approve",
+    deps.jwtAuthMiddleware,
+    zValidator("json", ApproveTokenRequestSchema),
+    deps.tokenRequests.approve
+  );
+
+  // User rejects request (JWT auth required)
+  tokenRequestsRouter.post("/:requestId/reject", deps.jwtAuthMiddleware, deps.tokenRequests.reject);
+
+  app.route("/api/tokens/requests", tokenRequestsRouter);
+
+  // ============================================================================
+  // Realm Routes (Access Token authenticated)
   // ============================================================================
 
   const realmRouter = new Hono<Env>();
-  realmRouter.use("*", deps.authMiddleware);
+  realmRouter.use("*", deps.accessTokenMiddleware);
   realmRouter.use("/:realmId/*", deps.realmAccessMiddleware);
 
   // Realm info
@@ -192,52 +222,39 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   realmRouter.get("/:realmId/usage", deps.realm.getUsage);
 
   // Tickets
-  realmRouter.post(
-    "/:realmId/tickets",
-    deps.writeAccessMiddleware,
-    zValidator("json", CreateTicketSchema),
-    deps.tickets.create
-  );
+  realmRouter.post("/:realmId/tickets", deps.canUploadMiddleware, deps.tickets.create);
   realmRouter.get("/:realmId/tickets", deps.tickets.list);
   realmRouter.get("/:realmId/tickets/:ticketId", deps.tickets.get);
-  realmRouter.post(
-    "/:realmId/tickets/:ticketId/commit",
-    zValidator("json", TicketCommitSchema),
-    deps.tickets.commit
-  );
+  realmRouter.post("/:realmId/tickets/:ticketId/submit", deps.tickets.submit);
   realmRouter.post("/:realmId/tickets/:ticketId/revoke", deps.tickets.revoke);
   realmRouter.delete("/:realmId/tickets/:ticketId", deps.tickets.delete);
 
   // Nodes
-  realmRouter.post(
-    "/:realmId/nodes/prepare",
-    zValidator("json", PrepareNodesSchema),
-    deps.chunks.prepareNodes
-  );
-  realmRouter.put("/:realmId/nodes/:key", deps.writeAccessMiddleware, deps.chunks.put);
-  realmRouter.get("/:realmId/nodes/:key", deps.chunks.get);
-  realmRouter.get("/:realmId/nodes/:key/metadata", deps.chunks.getMetadata);
+  realmRouter.post("/:realmId/nodes/prepare", zValidator("json", PrepareNodesSchema), deps.chunks.prepareNodes);
+  realmRouter.put("/:realmId/nodes/:key", deps.canUploadMiddleware, deps.scopeValidationMiddleware, deps.chunks.put);
+  realmRouter.get("/:realmId/nodes/:key", deps.scopeValidationMiddleware, deps.chunks.get);
+  realmRouter.get("/:realmId/nodes/:key/metadata", deps.scopeValidationMiddleware, deps.chunks.getMetadata);
 
   // Depots
   realmRouter.get("/:realmId/depots", deps.depots.list);
   realmRouter.post(
     "/:realmId/depots",
-    deps.writeAccessMiddleware,
+    deps.canManageDepotMiddleware,
     zValidator("json", CreateDepotSchema),
     deps.depots.create
   );
   realmRouter.get("/:realmId/depots/:depotId", deps.depots.get);
   realmRouter.patch(
     "/:realmId/depots/:depotId",
-    deps.writeAccessMiddleware,
+    deps.canManageDepotMiddleware,
     zValidator("json", UpdateDepotSchema),
     deps.depots.update
   );
-  realmRouter.delete("/:realmId/depots/:depotId", deps.writeAccessMiddleware, deps.depots.delete);
+  realmRouter.delete("/:realmId/depots/:depotId", deps.canManageDepotMiddleware, deps.depots.delete);
   realmRouter.post(
     "/:realmId/depots/:depotId/commit",
-    deps.writeAccessMiddleware,
-    zValidator("json", CommitDepotSchema),
+    deps.canUploadMiddleware,
+    zValidator("json", DepotCommitSchema),
     deps.depots.commit
   );
 

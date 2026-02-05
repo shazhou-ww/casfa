@@ -1,5 +1,8 @@
 /**
  * MCP (Model Context Protocol) Handler
+ *
+ * This controller is accessed by Delegate Token holders (typically AI agents)
+ * to interact with the CAS system via the MCP protocol.
  */
 
 import type { StorageProvider } from "@casfa/storage-core";
@@ -7,9 +10,10 @@ import type { Context } from "hono";
 import { z } from "zod";
 import type { ServerConfig } from "../config.ts";
 import type { OwnershipDb } from "../db/ownership.ts";
-import type { TokensDb } from "../db/tokens.ts";
-import type { AuthContext, Env } from "../types.ts";
-import { extractTokenId } from "../util/token-id.ts";
+import type { TicketsDb } from "../db/tickets.ts";
+import type { Env } from "../types.ts";
+import type { DelegateTokenAuthContext } from "../types/delegate-token.ts";
+import { generateTicketId } from "../util/token-id.ts";
 import { MCP_TOOLS } from "./tools.ts";
 
 // ============================================================================
@@ -46,9 +50,8 @@ const MCP_INTERNAL_ERROR = -32603;
 // ============================================================================
 
 const GetTicketSchema = z.object({
-  scope: z.union([z.string(), z.array(z.string())]),
+  title: z.string().max(255).optional(),
   writable: z.boolean().default(false),
-  expiresIn: z.number().positive().optional(),
 });
 
 const ReadBlobSchema = z.object({
@@ -89,7 +92,7 @@ const mcpError = (
 // ============================================================================
 
 export type McpHandlerDeps = {
-  tokensDb: TokensDb;
+  ticketsDb: TicketsDb;
   ownershipDb: OwnershipDb;
   storage: StorageProvider;
   serverConfig: ServerConfig;
@@ -100,7 +103,7 @@ export type McpController = {
 };
 
 export const createMcpController = (deps: McpHandlerDeps): McpController => {
-  const { tokensDb, ownershipDb, storage, serverConfig } = deps;
+  const { ticketsDb, ownershipDb, storage, serverConfig } = deps;
 
   const handleInitialize = (id: string | number): McpResponse => {
     return mcpSuccess(id, {
@@ -117,26 +120,31 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
   const handleGetTicket = async (
     id: string | number,
     args: unknown,
-    auth: AuthContext
+    auth: DelegateTokenAuthContext
   ): Promise<McpResponse> => {
     const parsed = GetTicketSchema.safeParse(args);
     if (!parsed.success) {
       return mcpError(id, MCP_INVALID_PARAMS, "Invalid parameters", parsed.error.issues);
     }
 
-    const normalizedScope = Array.isArray(parsed.data.scope)
-      ? parsed.data.scope
-      : [parsed.data.scope];
+    // Check if the delegate token can upload (required for creating tickets)
+    if (!auth.canUpload) {
+      return mcpError(id, MCP_INVALID_PARAMS, "Token does not have upload permission");
+    }
 
-    // Use the caller's issuerId directly
-    const ticket = await tokensDb.createTicket(auth.realm, auth.issuerId, {
-      scope: normalizedScope,
-      commit: parsed.data.writable ? {} : undefined,
-      expiresIn: parsed.data.expiresIn,
+    // Generate a new ticket ID
+    const ticketId = generateTicketId();
+
+    // Create the ticket
+    const ticket = await ticketsDb.create({
+      ticketId,
+      realm: auth.realm,
+      title: parsed.data.title,
+      accessTokenId: auth.tokenId, // The delegate token's ID will be used to derive an access token
+      creatorTokenId: auth.tokenId,
     });
 
-    const ticketId = extractTokenId(ticket.pk);
-    const endpoint = `${serverConfig.baseUrl}/api/ticket/${ticketId}`;
+    const endpoint = `${serverConfig.baseUrl}/api/realm/${auth.realm}/tickets/${ticketId}`;
 
     return mcpSuccess(id, {
       content: [
@@ -144,8 +152,8 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
           type: "text",
           text: JSON.stringify({
             endpoint,
-            scope: ticket.scope,
-            expiresAt: new Date(ticket.expiresAt).toISOString(),
+            ticketId: ticket.ticketId,
+            createdAt: new Date(ticket.createdAt).toISOString(),
           }),
         },
       ],
@@ -167,14 +175,14 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
       );
     }
 
-    // Parse endpoint to get ticket ID
-    const match = parsed.data.endpoint.match(/\/api\/ticket\/([^/]+)$/);
+    // Parse endpoint to get realm and ticket ID
+    const match = parsed.data.endpoint.match(/\/api\/realm\/([^/]+)\/tickets\/([^/]+)$/);
     if (!match) {
       return mcpError(id, MCP_INVALID_PARAMS, "Invalid endpoint URL format");
     }
 
-    const ticketId = match[1]!;
-    const ticket = await tokensDb.getTicket(ticketId);
+    const [, realm, ticketId] = match;
+    const ticket = await ticketsDb.get(realm!, ticketId!);
     if (!ticket) {
       return mcpError(id, MCP_INVALID_PARAMS, "Invalid or expired ticket");
     }
@@ -215,23 +223,20 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
     }
 
     // Parse endpoint
-    const match = parsed.data.endpoint.match(/\/api\/ticket\/([^/]+)$/);
+    const match = parsed.data.endpoint.match(/\/api\/realm\/([^/]+)\/tickets\/([^/]+)$/);
     if (!match) {
       return mcpError(id, MCP_INVALID_PARAMS, "Invalid endpoint URL format");
     }
 
-    const ticketId = match[1]!;
-    const ticket = await tokensDb.getTicket(ticketId);
+    const [, realm, ticketId] = match;
+    const ticket = await ticketsDb.get(realm!, ticketId!);
     if (!ticket) {
       return mcpError(id, MCP_INVALID_PARAMS, "Invalid or expired ticket");
     }
 
-    if (!ticket.commit || ticket.commit.root) {
-      return mcpError(id, MCP_INVALID_PARAMS, "Ticket has no commit permission or already used");
+    if (ticket.status !== "pending") {
+      return mcpError(id, MCP_INVALID_PARAMS, "Ticket already submitted");
     }
-
-    // Decode and store content
-    const _content = Buffer.from(parsed.data.content, "base64");
 
     // For simplicity, we'd need to implement full chunk creation here
     // This is a placeholder
@@ -245,7 +250,7 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
   const handleToolsCall = async (
     id: string | number,
     params: { name: string; arguments?: unknown } | undefined,
-    auth: AuthContext
+    auth: DelegateTokenAuthContext
   ): Promise<McpResponse> => {
     if (!params?.name) {
       return mcpError(id, MCP_INVALID_PARAMS, "Missing tool name");
@@ -267,9 +272,9 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
     handle: async (c) => {
       const auth = c.get("auth");
 
-      // Must have ticket issuing capability
-      if (!auth.canIssueTicket) {
-        return c.json({ error: "Agent or User token required for MCP access" }, 403);
+      // MCP requires Delegate Token authentication
+      if (auth.type !== "delegate-token") {
+        return c.json({ error: "Delegate Token required for MCP access" }, 403);
       }
 
       // Parse request

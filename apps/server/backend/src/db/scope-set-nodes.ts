@@ -35,6 +35,15 @@ export type ScopeSetNodesDb = {
   getOrCreate: (children: string[]) => Promise<ScopeSetNodeRecord>;
 
   /**
+   * Create a set-node or increment its reference count if it exists.
+   * Convenience method combining getOrCreate + incrementRef.
+   *
+   * @param setNodeId - The set-node ID
+   * @param children - The child hashes
+   */
+  createOrIncrement: (setNodeId: string, children: string[]) => Promise<void>;
+
+  /**
    * Get a set-node by ID
    */
   get: (setNodeId: string) => Promise<ScopeSetNodeRecord | null>;
@@ -164,6 +173,49 @@ export const createScopeSetNodesDb = (config: ScopeSetNodesDbConfig): ScopeSetNo
     );
   };
 
+  const createOrIncrement = async (setNodeId: string, children: string[]): Promise<void> => {
+    // Sort and deduplicate children
+    const sortedChildren = [...new Set(children)].sort();
+
+    // First, try to get or create the node
+    const existing = await get(setNodeId);
+    if (existing) {
+      // Node exists, just increment
+      await incrementRef(setNodeId);
+      return;
+    }
+
+    // Create new node with refCount = 1
+    const now = Date.now();
+    const record: ScopeSetNodeRecord = {
+      pk: toSetNodePk(setNodeId),
+      sk: toSetNodeSk(),
+      setNodeId,
+      children: sortedChildren,
+      refCount: 1, // Start with 1 since we're creating and referencing
+      createdAt: now,
+      lastUpdated: now,
+    };
+
+    try {
+      await client.send(
+        new PutCommand({
+          TableName: tableName,
+          Item: record,
+          ConditionExpression: "attribute_not_exists(pk)",
+        })
+      );
+    } catch (error: unknown) {
+      const err = error as { name?: string };
+      if (err.name === "ConditionalCheckFailedException") {
+        // Race condition: another process created it, just increment
+        await incrementRef(setNodeId);
+      } else {
+        throw error;
+      }
+    }
+  };
+
   const decrementRef = async (setNodeId: string): Promise<void> => {
     const now = Date.now();
 
@@ -217,6 +269,7 @@ export const createScopeSetNodesDb = (config: ScopeSetNodesDbConfig): ScopeSetNo
 
   return {
     getOrCreate,
+    createOrIncrement,
     get,
     incrementRef,
     decrementRef,

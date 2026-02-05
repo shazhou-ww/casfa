@@ -31,6 +31,13 @@ const DEFAULT_REQUEST_EXPIRES_IN = 5 * 60; // seconds
 // Types
 // ============================================================================
 
+/** Simple approve input used by TokenRequestsController */
+export type SimpleApproveInput = {
+  encryptedToken: string;
+  approvedBy: string;
+  approvedAt: number;
+};
+
 export type TokenRequestsDb = {
   /**
    * Create a new token request
@@ -43,9 +50,14 @@ export type TokenRequestsDb = {
   get: (requestId: string) => Promise<TokenRequestRecord | null>;
 
   /**
-   * Approve a token request
+   * List all pending requests
    */
-  approve: (
+  listPending: () => Promise<TokenRequestRecord[]>;
+
+  /**
+   * Approve a token request (full version with config)
+   */
+  approveWithConfig: (
     requestId: string,
     approverId: string,
     config: ApproveTokenRequestConfig,
@@ -53,9 +65,24 @@ export type TokenRequestsDb = {
   ) => Promise<TokenRequestRecord | null>;
 
   /**
+   * Approve a token request (simple version with just encrypted token)
+   */
+  approve: (requestId: string, input: SimpleApproveInput) => Promise<boolean>;
+
+  /**
    * Reject a token request
    */
   reject: (requestId: string) => Promise<boolean>;
+
+  /**
+   * Update request status
+   */
+  updateStatus: (requestId: string, status: TokenRequestRecord["status"]) => Promise<boolean>;
+
+  /**
+   * Clear the encrypted token after it's been delivered
+   */
+  clearEncryptedToken: (requestId: string) => Promise<void>;
 
   /**
    * Set the encrypted token after approval
@@ -130,7 +157,75 @@ export const createTokenRequestsDb = (config: TokenRequestsDbConfig): TokenReque
     return result.Item as TokenRequestRecord;
   };
 
-  const approve = async (
+  const listPending = async (): Promise<TokenRequestRecord[]> => {
+    const now = Date.now();
+    const results: TokenRequestRecord[] = [];
+    let lastEvaluatedKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await client.send(
+        new ScanCommand({
+          TableName: tableName,
+          FilterExpression:
+            "begins_with(pk, :prefix) AND #status = :pending AND expiresAt > :now",
+          ExpressionAttributeNames: {
+            "#status": "status",
+          },
+          ExpressionAttributeValues: {
+            ":prefix": "TOKENREQ#",
+            ":pending": "pending",
+            ":now": now,
+          },
+          ExclusiveStartKey: lastEvaluatedKey,
+        })
+      );
+
+      for (const item of result.Items ?? []) {
+        results.push(item as TokenRequestRecord);
+      }
+
+      lastEvaluatedKey = result.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+
+    return results;
+  };
+
+  const approve = async (requestId: string, input: SimpleApproveInput): Promise<boolean> => {
+    try {
+      await client.send(
+        new UpdateCommand({
+          TableName: tableName,
+          Key: { pk: toTokenReqPk(requestId), sk: toTokenReqSk() },
+          UpdateExpression: `
+            SET #status = :approved,
+                approvedAt = :approvedAt,
+                approvedBy = :approvedBy,
+                encryptedToken = :encryptedToken
+          `,
+          ConditionExpression: "attribute_exists(pk) AND #status = :pending",
+          ExpressionAttributeNames: {
+            "#status": "status",
+          },
+          ExpressionAttributeValues: {
+            ":approved": "approved",
+            ":pending": "pending",
+            ":approvedAt": input.approvedAt,
+            ":approvedBy": input.approvedBy,
+            ":encryptedToken": input.encryptedToken,
+          },
+        })
+      );
+      return true;
+    } catch (error: unknown) {
+      const err = error as { name?: string };
+      if (err.name === "ConditionalCheckFailedException") {
+        return false;
+      }
+      throw error;
+    }
+  };
+
+  const approveWithConfig = async (
     requestId: string,
     approverId: string,
     config: ApproveTokenRequestConfig,
@@ -239,6 +334,46 @@ export const createTokenRequestsDb = (config: TokenRequestsDbConfig): TokenReque
     );
   };
 
+  const updateStatus = async (
+    requestId: string,
+    status: TokenRequestRecord["status"]
+  ): Promise<boolean> => {
+    try {
+      await client.send(
+        new UpdateCommand({
+          TableName: tableName,
+          Key: { pk: toTokenReqPk(requestId), sk: toTokenReqSk() },
+          UpdateExpression: "SET #status = :status",
+          ConditionExpression: "attribute_exists(pk)",
+          ExpressionAttributeNames: {
+            "#status": "status",
+          },
+          ExpressionAttributeValues: {
+            ":status": status,
+          },
+        })
+      );
+      return true;
+    } catch (error: unknown) {
+      const err = error as { name?: string };
+      if (err.name === "ConditionalCheckFailedException") {
+        return false;
+      }
+      throw error;
+    }
+  };
+
+  const clearEncryptedToken = async (requestId: string): Promise<void> => {
+    await client.send(
+      new UpdateCommand({
+        TableName: tableName,
+        Key: { pk: toTokenReqPk(requestId), sk: toTokenReqSk() },
+        UpdateExpression: "REMOVE encryptedToken",
+        ConditionExpression: "attribute_exists(pk)",
+      })
+    );
+  };
+
   const cleanupExpired = async (): Promise<number> => {
     // Note: TTL handles automatic deletion, this is for manual cleanup if needed
     // Scan for expired pending requests and delete them
@@ -287,8 +422,12 @@ export const createTokenRequestsDb = (config: TokenRequestsDbConfig): TokenReque
   return {
     create,
     get,
+    listPending,
     approve,
+    approveWithConfig,
     reject,
+    updateStatus,
+    clearEncryptedToken,
     setEncryptedToken,
     cleanupExpired,
   };

@@ -2,7 +2,7 @@
  * Zod schemas exports
  *
  * Re-exports from @casfa/protocol for shared API contract,
- * plus local legacy schemas for backward compatibility.
+ * plus local schemas and legacy schemas for backward compatibility.
  */
 
 // ============================================================================
@@ -97,6 +97,46 @@ export {
   UserRoleSchema,
   WritableConfigSchema,
 } from "@casfa/protocol";
+
+// ============================================================================
+// New Delegate Token Schemas
+// ============================================================================
+
+// Token schemas
+export {
+  CreateDelegateTokenSchema,
+  type CreateDelegateToken,
+  DELEGATE_TOKEN_ID_REGEX,
+  DelegateTokenIdSchema,
+  DelegateTokenSchema,
+  type DelegateToken,
+  ListTokensQuerySchema,
+  type ListTokensQuery,
+  TokenTypeSchema,
+  type TokenType,
+} from "./token.ts";
+
+// Token request schemas
+export {
+  ApproveTokenRequestSchema,
+  type ApproveTokenRequest,
+  CreateTokenRequestSchema,
+  type CreateTokenRequest,
+  TOKEN_REQUEST_ID_REGEX,
+  TokenRequestIdSchema,
+} from "./token-request.ts";
+
+// New ticket schemas (for Delegate Token flow)
+export {
+  ListTicketsQuerySchema as NewListTicketsQuerySchema,
+  type ListTicketsQuery as NewListTicketsQuery,
+  NewCreateTicketSchema,
+  type NewCreateTicket,
+  TicketIdSchema as NewTicketIdSchema,
+  TICKET_ID_REGEX as NEW_TICKET_ID_REGEX,
+  TicketSubmitSchema,
+  type TicketSubmit,
+} from "./ticket.ts";
 
 // ============================================================================
 // Legacy schemas (for backward compatibility)

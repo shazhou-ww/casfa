@@ -2,9 +2,27 @@
  * Controllers exports
  */
 
+// ============================================================================
+// Delegate Token Controllers
+// ============================================================================
+
+export {
+  createTokensController,
+  type TokensController,
+  type TokensControllerDeps,
+} from "./tokens.ts";
+
+export {
+  createTokenRequestsController,
+  type TokenRequestsController,
+  type TokenRequestsControllerDeps,
+} from "./token-requests.ts";
+
+// ============================================================================
+// Core Controllers
+// ============================================================================
+
 export { type AdminController, createAdminController } from "./admin.ts";
-export { type AuthClientsController, createAuthClientsController } from "./auth-clients.ts";
-export { type AuthTokensController, createAuthTokensController } from "./auth-tokens.ts";
 export { type ChunksController, createChunksController } from "./chunks.ts";
 export { createDepotsController, type DepotsController } from "./depots.ts";
 export { createHealthController, type HealthController } from "./health.ts";

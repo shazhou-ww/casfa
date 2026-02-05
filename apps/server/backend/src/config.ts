@@ -14,7 +14,9 @@ export type ServerConfig = {
   maxCollectionChildren: number;
   maxPayloadSize: number;
   maxTicketTtl: number;
-  maxAgentTokenTtl: number;
+  maxDelegateTokenTtl: number;
+  maxAccessTokenTtl: number;
+  maxTokenDepth: number;
   baseUrl: string;
 };
 
@@ -24,7 +26,9 @@ export const loadServerConfig = (): ServerConfig => ({
   maxCollectionChildren: Number.parseInt(process.env.CAS_MAX_COLLECTION_CHILDREN ?? "10000", 10),
   maxPayloadSize: Number.parseInt(process.env.CAS_MAX_PAYLOAD_SIZE ?? "10485760", 10),
   maxTicketTtl: Number.parseInt(process.env.CAS_MAX_TICKET_TTL ?? "86400", 10),
-  maxAgentTokenTtl: Number.parseInt(process.env.CAS_MAX_AGENT_TOKEN_TTL ?? "2592000", 10),
+  maxDelegateTokenTtl: Number.parseInt(process.env.CAS_MAX_DELEGATE_TOKEN_TTL ?? "2592000", 10), // 30 days
+  maxAccessTokenTtl: Number.parseInt(process.env.CAS_MAX_ACCESS_TOKEN_TTL ?? "86400", 10), // 24 hours
+  maxTokenDepth: Number.parseInt(process.env.CAS_MAX_TOKEN_DEPTH ?? "10", 10),
   baseUrl: process.env.CAS_BASE_URL ?? "http://localhost:3560",
 });
 

@@ -12,32 +12,33 @@ import type { AppConfig } from "./config.ts";
 // Controllers
 import {
   createAdminController,
-  createAuthClientsController,
-  createAuthTokensController,
   createChunksController,
   createDepotsController,
   createHealthController,
   createInfoController,
   createOAuthController,
   createRealmController,
+  createTicketsController,
+  createTokensController,
+  createTokenRequestsController,
 } from "./controllers/index.ts";
-import { createTicketsController } from "./controllers/tickets.ts";
 // MCP
 import { createMcpController } from "./mcp/index.ts";
 
 // Middleware
 import {
+  createAccessTokenMiddleware,
   createAdminAccessMiddleware,
-  createAuthMiddleware,
+  createCanManageDepotMiddleware,
+  createCanUploadMiddleware,
+  createDelegateTokenMiddleware,
+  createJwtAuthMiddleware,
   createRealmAccessMiddleware,
-  createTicketAuthMiddleware,
-  createWriteAccessMiddleware,
+  createScopeValidationMiddleware,
   type JwtVerifier,
 } from "./middleware/index.ts";
 // Router
 import { createRouter } from "./router.ts";
-// Services
-import type { AuthService } from "./services/auth.ts";
 import type { Env } from "./types.ts";
 import type { CombinedHashProvider } from "./util/hash-provider.ts";
 
@@ -59,14 +60,13 @@ export type AppDependencies = {
   config: AppConfig;
   db: DbInstances;
   storage: StorageProvider;
-  authService: AuthService;
   hashProvider: CombinedHashProvider;
-  /** Optional JWT verifier for Bearer token auth. If not provided, JWT auth is disabled. */
-  jwtVerifier?: JwtVerifier;
+  /** JWT verifier for Bearer token auth */
+  jwtVerifier: JwtVerifier;
   /** Runtime configuration for /api/info endpoint */
   runtimeInfo?: {
     storageType: "memory" | "fs" | "s3";
-    authType: "mock" | "cognito" | "tokens-only";
+    authType: "mock" | "cognito" | "jwt";
     databaseType: "local" | "aws";
   };
 };
@@ -81,30 +81,38 @@ export type AppDependencies = {
  * This is a pure assembly function - all dependencies must be provided.
  */
 export const createApp = (deps: AppDependencies): Hono<Env> => {
-  const { config, db, storage, authService, hashProvider, jwtVerifier, runtimeInfo } = deps;
+  const { config, db, storage, hashProvider, jwtVerifier, runtimeInfo } = deps;
   const {
-    tokensDb,
+    delegateTokensDb,
+    ticketsDb,
+    scopeSetNodesDb,
+    tokenRequestsDb,
     ownershipDb,
     depotsDb,
     refCountDb,
     usageDb,
     userRolesDb,
-    awpPubkeysDb,
-    clientPendingDb,
-    clientPubkeysDb,
   } = db;
 
   // Middleware
-  const authMiddleware = createAuthMiddleware({
-    tokensDb,
-    userRolesDb,
-    awpPubkeysDb,
+  const jwtAuthMiddleware = createJwtAuthMiddleware({
     jwtVerifier,
+    userRolesDb,
   });
-  const ticketAuthMiddleware = createTicketAuthMiddleware({ tokensDb });
+  const delegateTokenMiddleware = createDelegateTokenMiddleware({
+    delegateTokensDb,
+  });
+  const accessTokenMiddleware = createAccessTokenMiddleware({
+    delegateTokensDb,
+  });
   const realmAccessMiddleware = createRealmAccessMiddleware();
-  const writeAccessMiddleware = createWriteAccessMiddleware();
   const adminAccessMiddleware = createAdminAccessMiddleware();
+  const scopeValidationMiddleware = createScopeValidationMiddleware({
+    storage,
+    scopeSetNodesDb,
+  });
+  const canUploadMiddleware = createCanUploadMiddleware();
+  const canManageDepotMiddleware = createCanManageDepotMiddleware();
 
   // Controllers
   const health = createHealthController();
@@ -112,18 +120,12 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     serverConfig: config.server,
     featuresConfig: config.features,
     storageType: runtimeInfo?.storageType ?? "memory",
-    authType: runtimeInfo?.authType ?? "tokens-only",
+    authType: runtimeInfo?.authType ?? "jwt",
     databaseType: runtimeInfo?.databaseType ?? "aws",
   });
   const oauth = createOAuthController({
     cognitoConfig: config.cognito,
-    authService,
   });
-  const authClients = createAuthClientsController({
-    clientPendingDb,
-    clientPubkeysDb,
-  });
-  const authTokens = createAuthTokensController({ tokensDb });
   const admin = createAdminController({
     userRolesDb,
     cognitoConfig: config.cognito,
@@ -133,8 +135,8 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     serverConfig: config.server,
   });
   const tickets = createTicketsController({
-    tokensDb,
-    serverConfig: config.server,
+    ticketsDb,
+    depotsDb,
   });
   const chunks = createChunksController({
     storage,
@@ -147,8 +149,20 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     depotsDb,
     storage,
   });
+  const tokens = createTokensController({
+    delegateTokensDb,
+    scopeSetNodesDb,
+    depotsDb,
+  });
+  const tokenRequests = createTokenRequestsController({
+    tokenRequestsDb,
+    delegateTokensDb,
+    scopeSetNodesDb,
+    depotsDb,
+    authorizeUrlBase: config.server.baseUrl ?? "http://localhost:3500",
+  });
   const mcp = createMcpController({
-    tokensDb,
+    delegateTokensDb,
     ownershipDb,
     storage,
     serverConfig: config.server,
@@ -159,18 +173,21 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     health,
     info,
     oauth,
-    authClients,
-    authTokens,
     admin,
     realm,
     tickets,
     chunks,
     depots,
+    tokens,
+    tokenRequests,
     mcp,
-    authMiddleware,
-    ticketAuthMiddleware,
+    jwtAuthMiddleware,
+    delegateTokenMiddleware,
+    accessTokenMiddleware,
     realmAccessMiddleware,
-    writeAccessMiddleware,
     adminAccessMiddleware,
+    scopeValidationMiddleware,
+    canUploadMiddleware,
+    canManageDepotMiddleware,
   });
 };

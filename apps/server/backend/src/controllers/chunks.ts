@@ -18,9 +18,7 @@ import type { Context } from "hono";
 import type { OwnershipDb } from "../db/ownership.ts";
 import type { RefCountDb } from "../db/refcount.ts";
 import type { UsageDb } from "../db/usage.ts";
-import { checkTicketWriteQuota } from "../middleware/ticket-auth.ts";
-import type { Env } from "../types.ts";
-import { extractTokenId } from "../util/token-id.ts";
+import type { AccessTokenAuthContext, Env } from "../types.ts";
 
 export type ChunksController = {
   prepareNodes: (c: Context<Env>) => Promise<Response>;
@@ -70,7 +68,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
     },
 
     put: async (c) => {
-      const auth = c.get("auth");
+      const auth = c.get("auth") as AccessTokenAuthContext;
       const realm = getRealm(c);
       const nodeKey = decodeURIComponent(c.req.param("key"));
       const storageKey = toStorageKey(nodeKey);
@@ -81,17 +79,6 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
 
       if (bytes.length === 0) {
         return c.json({ error: "Empty body" }, 400);
-      }
-
-      // Check ticket quota
-      if (!checkTicketWriteQuota(auth, bytes.length)) {
-        return c.json(
-          {
-            error: "TICKET_QUOTA_EXCEEDED",
-            message: "Upload size exceeds ticket quota",
-          },
-          413
-        );
       }
 
       // Quick structure validation
@@ -164,13 +151,11 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       // Store the node
       await storage.put(storageKey, bytes);
 
-      // Add ownership
-      const tokenId = extractTokenId(auth.token.pk);
-      // NodeKind from cas-core matches our local type
+      // Add ownership using token ID
       await ownershipDb.addOwnership(
         realm,
         storageKey,
-        tokenId,
+        auth.tokenId,
         "application/octet-stream",
         validationResult.size ?? bytes.length,
         validationResult.kind

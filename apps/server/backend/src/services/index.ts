@@ -1,10 +1,9 @@
 /**
  * Services exports
+ *
+ * Note: The AuthService has been removed as authentication is now handled
+ * directly via Cognito in the OAuth controller.
  */
 
-export {
-  type AuthService,
-  createAuthService,
-  type LoginResult,
-  type RefreshResult,
-} from "./auth.ts";
+// Currently empty - add service exports as needed
+export {};

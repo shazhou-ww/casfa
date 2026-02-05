@@ -376,8 +376,7 @@ export const createDelegateTokensDb = (config: DelegateTokensDbConfig): Delegate
     // Check if any ancestor in issuerChain is revoked
     // issuerChain[0] is typically the root user ID, so we start from index 1
     // for token IDs (those starting with "dlt1_")
-    for (let i = 0; i < token.issuerChain.length; i++) {
-      const ancestorId = token.issuerChain[i];
+    for (const ancestorId of token.issuerChain) {
       // Check if this is a token ID (delegate tokens start with "dlt1_")
       if (ancestorId.startsWith("dlt1_")) {
         const ancestor = await get(ancestorId);
