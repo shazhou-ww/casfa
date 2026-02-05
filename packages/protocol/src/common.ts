@@ -146,10 +146,10 @@ export function nodeKeyToHex(nodeKey: string): string {
 export const EMPTY_DICT_NODE_KEY = hexToNodeKey("0000b2da2b8398251c05e6a73a6f1918");
 
 /**
- * User ID format: user:{base32(uuid)}
- * Example: user:A6JCHNMFWRT90AXMYWHJ8HKS90
+ * User ID format: usr_{base32}
+ * Example: usr_A6JCHNMFWRT90AXMYWHJ8HKS90
  */
-export const USER_ID_REGEX = new RegExp(`^user:[${CROCKFORD_BASE32}]{26}$`);
+export const USER_ID_REGEX = new RegExp(`^usr_[${CROCKFORD_BASE32}]{26}$`);
 
 /**
  * Ticket ID format: ticket:{ulid}
@@ -158,22 +158,35 @@ export const USER_ID_REGEX = new RegExp(`^user:[${CROCKFORD_BASE32}]{26}$`);
 export const TICKET_ID_REGEX = new RegExp(`^ticket:[${CROCKFORD_BASE32}]{26}$`);
 
 /**
- * Depot ID format: depot:{ulid}
- * Example: depot:01HQXK5V8N3Y7M2P4R6T9W0ABC
+ * Depot ID format: depot:{name} or depot:{ulid}
+ * Examples: depot:MAIN, depot:01HQXK5V8N3Y7M2P4R6T9W0ABC
  */
-export const DEPOT_ID_REGEX = new RegExp(`^depot:[${CROCKFORD_BASE32}]{26}$`);
+export const DEPOT_ID_REGEX = /^depot:[A-Za-z0-9_-]+$/;
 
 /**
- * Client ID format: client:{blake3s(pubkey)}
- * Example: client:A6JCHNMFWRT90AXMYWHJ8HKS90
+ * @deprecated Use DELEGATE_TOKEN_ID_REGEX instead
+ * Old client ID format: client:{blake3s(pubkey)}
  */
 export const CLIENT_ID_REGEX = new RegExp(`^client:[${CROCKFORD_BASE32}]{26}$`);
 
 /**
- * Token ID format: token:{blake3s(token)}
- * Example: token:A6JCHNMFWRT90AXMYWHJ8HKS90
+ * @deprecated Use DELEGATE_TOKEN_ID_REGEX instead
+ * Old token ID format: token:{blake3s(token)}
  */
 export const TOKEN_ID_REGEX = new RegExp(`^token:[${CROCKFORD_BASE32}]{26}$`);
+
+/**
+ * Delegate Token ID format: dlt1_{base32}
+ * Example: dlt1_4xzrt7y2m5k9bqwp3fnhjc6d
+ * Note: Uses lowercase Crockford Base32 (24 characters for 120 bits)
+ */
+export const DELEGATE_TOKEN_ID_REGEX = /^dlt1_[0-9a-hjkmnp-tv-z]{24}$/;
+
+/**
+ * Authorization Request ID format: req_{base64url}
+ * Example: req_xxxxxxxxxxxxxxxxxxxxxxxx
+ */
+export const REQUEST_ID_REGEX = /^req_[A-Za-z0-9_-]{22,}$/;
 
 /**
  * Node key format: node:{crockford_base32(blake3s(content))}
@@ -183,9 +196,11 @@ export const TOKEN_ID_REGEX = new RegExp(`^token:[${CROCKFORD_BASE32}]{26}$`);
 export const NODE_KEY_REGEX = new RegExp(`^node:[${CROCKFORD_BASE32}]{26}$`);
 
 /**
- * Issuer ID format: can be client:{hash}, user:{id}, or token:{hash}
+ * Issuer ID format: can be usr_{id} or dlt1_{hash}
+ * - usr_{base32}: User ID (for user-issued tokens)
+ * - dlt1_{base32}: Delegate Token ID (for delegated tokens)
  */
-export const ISSUER_ID_REGEX = new RegExp(`^(client|user|token):[${CROCKFORD_BASE32}]{26}$`);
+export const ISSUER_ID_REGEX = /^(usr_[0-9A-HJKMNP-TV-Z]{26}|dlt1_[0-9a-hjkmnp-tv-z]{24})$/i;
 
 // ============================================================================
 // Zod Schemas for IDs
@@ -194,10 +209,16 @@ export const ISSUER_ID_REGEX = new RegExp(`^(client|user|token):[${CROCKFORD_BAS
 export const UserIdSchema = z.string().regex(USER_ID_REGEX, "Invalid user ID format");
 export const TicketIdSchema = z.string().regex(TICKET_ID_REGEX, "Invalid ticket ID format");
 export const DepotIdSchema = z.string().regex(DEPOT_ID_REGEX, "Invalid depot ID format");
+/** @deprecated Use DelegateTokenIdSchema instead */
 export const ClientIdSchema = z.string().regex(CLIENT_ID_REGEX, "Invalid client ID format");
+/** @deprecated Use DelegateTokenIdSchema instead */
 export const TokenIdSchema = z.string().regex(TOKEN_ID_REGEX, "Invalid token ID format");
 export const NodeKeySchema = z.string().regex(NODE_KEY_REGEX, "Invalid node key format");
 export const IssuerIdSchema = z.string().regex(ISSUER_ID_REGEX, "Invalid issuer ID format");
+export const DelegateTokenIdSchema = z
+  .string()
+  .regex(DELEGATE_TOKEN_ID_REGEX, "Invalid delegate token ID format");
+export const RequestIdSchema = z.string().regex(REQUEST_ID_REGEX, "Invalid request ID format");
 
 // ============================================================================
 // User Role
@@ -217,14 +238,38 @@ export type UserRole = z.infer<typeof UserRoleSchema>;
 // ============================================================================
 
 /**
- * Ticket status derived from output and isRevoked fields:
- * - issued: output=null, isRevoked=false (active)
- * - committed: output=exists, isRevoked=false (completed)
- * - revoked: output=null, isRevoked=true (abandoned)
- * - archived: output=exists, isRevoked=true (completed then revoked)
+ * Ticket status:
+ * - pending: Waiting for submission, task in progress
+ * - submitted: Task completed, root node set
  */
-export const TicketStatusSchema = z.enum(["issued", "committed", "revoked", "archived"]);
+export const TicketStatusSchema = z.enum(["pending", "submitted"]);
 export type TicketStatus = z.infer<typeof TicketStatusSchema>;
+
+// ============================================================================
+// Token Type
+// ============================================================================
+
+/**
+ * Delegate Token types:
+ * - delegate: Re-authorization token, can issue child tokens and create tickets
+ * - access: Access token, can read/write data but cannot issue tokens
+ */
+export const TokenTypeSchema = z.enum(["delegate", "access"]);
+export type TokenType = z.infer<typeof TokenTypeSchema>;
+
+// ============================================================================
+// Authorization Request Status
+// ============================================================================
+
+/**
+ * Client authorization request status:
+ * - pending: Waiting for user approval
+ * - approved: User approved, token issued
+ * - rejected: User rejected the request
+ * - expired: Request expired (10 min timeout)
+ */
+export const AuthRequestStatusSchema = z.enum(["pending", "approved", "rejected", "expired"]);
+export type AuthRequestStatus = z.infer<typeof AuthRequestStatusSchema>;
 
 // ============================================================================
 // Node Kind

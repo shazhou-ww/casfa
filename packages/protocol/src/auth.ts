@@ -31,9 +31,13 @@ export const TokenExchangeSchema = z.object({
 export type TokenExchange = z.infer<typeof TokenExchangeSchema>;
 
 // ============================================================================
-// Client Auth Schemas (P256 public key authentication)
+// Client Auth Schemas (DEPRECATED - use Client Authorization Request instead)
 // ============================================================================
 
+/**
+ * @deprecated Use CreateAuthRequestSchema from request.ts instead
+ * Old P256 public key authentication init schema
+ */
 export const ClientInitSchema = z.object({
   pubkey: z.string().min(1),
   clientName: z.string().min(1),
@@ -41,6 +45,10 @@ export const ClientInitSchema = z.object({
 
 export type ClientInit = z.infer<typeof ClientInitSchema>;
 
+/**
+ * @deprecated Use ApproveRequestSchema from request.ts instead
+ * Old client authentication completion schema
+ */
 export const ClientCompleteSchema = z.object({
   clientId: z.string().min(1),
   verificationCode: z.string().min(1),
@@ -53,7 +61,8 @@ export type ClientComplete = z.infer<typeof ClientCompleteSchema>;
 // ============================================================================
 
 /**
- * Writable configuration for ticket
+ * @deprecated Use new CreateTicketSchema below
+ * Old writable configuration for ticket
  */
 export const WritableConfigSchema = z.object({
   quota: z.number().positive().optional(),
@@ -64,36 +73,46 @@ export type WritableConfig = z.infer<typeof WritableConfigSchema>;
 
 /**
  * Schema for POST /api/realm/{realmId}/tickets
- * Create a new ticket with input scope, purpose, and optional write access
+ * Create a new ticket with associated Access Token
+ *
+ * Note: Requires Delegate Token authentication
  */
 export const CreateTicketSchema = z.object({
-  /** Input node keys defining readable scope. Omit for full read access */
-  input: z.array(z.string()).optional(),
-  /** Human-readable task description */
-  purpose: z.string().max(500).optional(),
-  /** Write permission config. Omit for read-only ticket */
-  writable: WritableConfigSchema.optional(),
-  /** Expiration time in seconds, default 24 hours */
+  /** Ticket title (human-readable task description) */
+  title: z.string().min(1).max(256),
+  /** Expiration time in seconds, default 1 hour */
   expiresIn: z.number().positive().optional(),
+  /** Whether the associated Access Token can upload nodes */
+  canUpload: z.boolean().optional(),
+  /** Relative index-path scope (subset of creator's scope) */
+  scope: z.array(z.string()).optional(),
 });
 
 export type CreateTicket = z.infer<typeof CreateTicketSchema>;
 
 // ============================================================================
-// Token Schemas (API access tokens)
+// Token Schemas (Delegate Token management via User JWT)
 // ============================================================================
 
 /**
- * Schema for POST /api/auth/tokens
- * Create a new API Token
+ * Schema for POST /api/tokens
+ * Create a new Delegate Token (requires User JWT authentication)
  */
 export const CreateTokenSchema = z.object({
+  /** Authorized Realm ID */
+  realm: z.string().min(1),
   /** Token name (required) */
-  name: z.string().min(1).max(100),
-  /** Optional description */
-  description: z.string().max(500).optional(),
+  name: z.string().min(1).max(64),
+  /** Token type: delegate or access */
+  type: z.enum(["delegate", "access"]),
   /** Expiration time in seconds, default 30 days */
   expiresIn: z.number().positive().optional(),
+  /** Whether the token can upload nodes */
+  canUpload: z.boolean().optional(),
+  /** Whether the token can manage depots */
+  canManageDepot: z.boolean().optional(),
+  /** Authorization scope (CAS URI array, e.g., ["cas://depot:MAIN"]) */
+  scope: z.array(z.string()).optional(),
 });
 
 export type CreateToken = z.infer<typeof CreateTokenSchema>;

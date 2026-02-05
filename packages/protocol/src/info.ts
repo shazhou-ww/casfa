@@ -34,8 +34,16 @@ export const ServiceLimitsSchema = z.object({
   maxPayloadSize: z.number().int().positive(),
   /** Maximum ticket TTL in seconds */
   maxTicketTtl: z.number().int().positive(),
-  /** Maximum agent token TTL in seconds */
-  maxAgentTokenTtl: z.number().int().positive(),
+  /** Maximum Delegate Token TTL in seconds */
+  maxDelegateTokenTtl: z.number().int().positive(),
+  /** Maximum Access Token TTL in seconds */
+  maxAccessTokenTtl: z.number().int().positive(),
+  /** Maximum token delegation depth (from root user token) */
+  maxTokenDepth: z.number().int().positive(),
+  /**
+   * @deprecated Use maxDelegateTokenTtl instead
+   */
+  maxAgentTokenTtl: z.number().int().positive().optional(),
 });
 export type ServiceLimits = z.infer<typeof ServiceLimitsSchema>;
 

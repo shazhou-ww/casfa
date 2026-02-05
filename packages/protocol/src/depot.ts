@@ -71,10 +71,61 @@ export type DepotCommit = z.infer<typeof DepotCommitSchema>;
  * Schema for GET /api/realm/{realmId}/depots query params
  */
 export const ListDepotsQuerySchema = z.object({
-  /** Number of results to return, default 100 */
-  limit: z.coerce.number().int().min(1).max(1000).optional().default(100),
+  /** Number of results to return, default 20, max 100 */
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
   /** Pagination cursor */
   cursor: z.string().optional(),
 });
 
 export type ListDepotsQuery = z.infer<typeof ListDepotsQuerySchema>;
+
+// ============================================================================
+// Depot Response Schemas
+// ============================================================================
+
+/**
+ * Depot list item schema
+ */
+export const DepotListItemSchema = z.object({
+  depotId: z.string(),
+  title: z.string().nullable(),
+  root: z.string().nullable(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+
+export type DepotListItem = z.infer<typeof DepotListItemSchema>;
+
+/**
+ * Depot detail schema (for GET /api/realm/{realmId}/depots/:depotId)
+ * Includes creatorIssuerId for visibility tracking
+ */
+export const DepotDetailSchema = z.object({
+  depotId: z.string(),
+  title: z.string().nullable(),
+  root: z.string().nullable(),
+  maxHistory: z.number().int(),
+  history: z.array(z.string()),
+  /** The Issuer ID that created this depot (Token or User ID) */
+  creatorIssuerId: z.string(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+
+export type DepotDetail = z.infer<typeof DepotDetailSchema>;
+
+/**
+ * Create depot response schema
+ */
+export const CreateDepotResponseSchema = z.object({
+  depotId: z.string(),
+  title: z.string().nullable(),
+  root: z.null(),
+  maxHistory: z.number().int(),
+  history: z.array(z.string()),
+  creatorIssuerId: z.string(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+
+export type CreateDepotResponse = z.infer<typeof CreateDepotResponseSchema>;

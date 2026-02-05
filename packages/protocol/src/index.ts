@@ -8,13 +8,27 @@
 // Common schemas and types
 // ============================================================================
 
-export type { NodeKind, PaginationQuery, TicketStatus, UserRole } from "./common.ts";
+export type {
+  AuthRequestStatus,
+  NodeKind,
+  PaginationQuery,
+  TicketStatus,
+  TokenType,
+  UserRole,
+} from "./common.ts";
 export {
-  // ID regex patterns
+  // Enum schemas
+  AuthRequestStatusSchema,
+  // Deprecated (for backward compatibility)
+  /** @deprecated Use DELEGATE_TOKEN_ID_REGEX instead */
   CLIENT_ID_REGEX,
-  // ID schemas
+  /** @deprecated Use DelegateTokenIdSchema instead */
   ClientIdSchema,
+  // ID regex patterns (new format)
+  DELEGATE_TOKEN_ID_REGEX,
   DEPOT_ID_REGEX,
+  // ID schemas (new format)
+  DelegateTokenIdSchema,
   DepotIdSchema,
   // Crockford Base32 encoding
   decodeCrockfordBase32,
@@ -28,17 +42,20 @@ export {
   IssuerIdSchema,
   NODE_KEY_REGEX,
   NodeKeySchema,
-  // Enum schemas
   NodeKindSchema,
   nodeKeyToHash,
   nodeKeyToHex,
-  // Pagination
   PaginationQuerySchema,
+  REQUEST_ID_REGEX,
+  RequestIdSchema,
   TICKET_ID_REGEX,
   TicketIdSchema,
   TicketStatusSchema,
+  /** @deprecated Use DELEGATE_TOKEN_ID_REGEX instead */
   TOKEN_ID_REGEX,
+  /** @deprecated Use DelegateTokenIdSchema instead */
   TokenIdSchema,
+  TokenTypeSchema,
   USER_ID_REGEX,
   UserIdSchema,
   UserRoleSchema,
@@ -84,20 +101,66 @@ export {
 // Ticket schemas
 // ============================================================================
 
-export type { ListTicketsQuery, TicketCommit } from "./ticket.ts";
-export { ListTicketsQuerySchema, TicketCommitSchema } from "./ticket.ts";
+export type {
+  CreateTicketResponse,
+  ListTicketsQuery,
+  TicketCommit,
+  TicketDetail,
+  TicketListItem,
+  TicketSubmit,
+} from "./ticket.ts";
+export {
+  CreateTicketResponseSchema,
+  ListTicketsQuerySchema,
+  /** @deprecated Use TicketSubmitSchema instead */
+  TicketCommitSchema,
+  TicketDetailSchema,
+  TicketListItemSchema,
+  TicketSubmitSchema,
+} from "./ticket.ts";
+
+// ============================================================================
+// Token schemas
+// ============================================================================
+
+export type {
+  CreateTokenResponse,
+  ListTokensQuery,
+  RevokeTokenResponse,
+  TokenDetail,
+  TokenListItem,
+} from "./token.ts";
+export {
+  CreateTokenResponseSchema,
+  ListTokensQuerySchema,
+  RevokeTokenResponseSchema,
+  TokenDetailSchema,
+  TokenListItemSchema,
+} from "./token.ts";
 
 // ============================================================================
 // Depot schemas
 // ============================================================================
 
-export type { CreateDepot, DepotCommit, ListDepotsQuery, UpdateDepot } from "./depot.ts";
+export type {
+  CreateDepot,
+  CreateDepotResponse,
+  DepotCommit,
+  DepotDetail,
+  DepotListItem,
+  ListDepotsQuery,
+  UpdateDepot,
+} from "./depot.ts";
 export {
+  CreateDepotResponseSchema,
   // Schemas
   CreateDepotSchema,
   // Constants
   DEFAULT_MAX_HISTORY,
   DepotCommitSchema,
+  DepotDetailSchema,
+  // Response schemas
+  DepotListItemSchema,
   ListDepotsQuerySchema,
   MAX_HISTORY_LIMIT,
   MAX_TITLE_LENGTH,
@@ -150,3 +213,72 @@ export {
   ServiceLimitsSchema,
   StorageTypeSchema,
 } from "./info.ts";
+
+// ============================================================================
+// Authorization Request schemas
+// ============================================================================
+
+export type {
+  ApproveRequest,
+  ApproveRequestResponse,
+  CreateAuthRequest,
+  CreateAuthRequestResponse,
+  DenyRequest,
+  DenyRequestResponse,
+  ListRequestsQuery,
+  PollRequestResponse,
+  RequestListItem,
+} from "./request.ts";
+export {
+  ApproveRequestResponseSchema,
+  ApproveRequestSchema,
+  CreateAuthRequestResponseSchema,
+  CreateAuthRequestSchema,
+  DenyRequestResponseSchema,
+  DenyRequestSchema,
+  ListRequestsQuerySchema,
+  MAX_REQUEST_NAME_LENGTH,
+  PollRequestResponseSchema,
+  RequestListItemSchema,
+} from "./request.ts";
+
+// ============================================================================
+// Error schemas and codes
+// ============================================================================
+
+export type { ErrorCode, ErrorResponse } from "./errors.ts";
+export {
+  // Error codes
+  ACCESS_TOKEN_REQUIRED,
+  DELEGATE_TOKEN_REQUIRED,
+  DEPOT_MANAGEMENT_NOT_ALLOWED,
+  DEPOT_NOT_FOUND,
+  // Schemas
+  ErrorCodeSchema,
+  ErrorResponseSchema,
+  FORBIDDEN,
+  INDEX_PATH_REQUIRED,
+  INTERNAL_ERROR,
+  INVALID_ID_FORMAT,
+  INVALID_NODE_KEY,
+  MAX_DEPTH_EXCEEDED,
+  NODE_NOT_FOUND,
+  RATE_LIMIT_EXCEEDED,
+  REALM_MISMATCH,
+  REALM_NOT_FOUND,
+  REQUEST_DENIED,
+  REQUEST_EXPIRED,
+  REQUEST_NOT_FOUND,
+  REQUEST_NOT_PENDING,
+  SCOPE_MISMATCH,
+  TICKET_EXPIRED,
+  TICKET_NOT_FOUND,
+  TICKET_NOT_PENDING,
+  TOKEN_EXPIRED,
+  TOKEN_INVALID,
+  TOKEN_NOT_FOUND,
+  TOKEN_REVOKED,
+  UNAUTHORIZED,
+  UPLOAD_NOT_ALLOWED,
+  VALIDATION_ERROR,
+} from "./errors.ts";
