@@ -119,6 +119,23 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 | GET | `/api/admin/users` | 列出所有用户 | Admin |
 | PATCH | `/api/admin/users/:userId` | 修改用户角色 | Admin |
 
+### 文件系统操作 API
+
+[详细文档](./05-filesystem.md)
+
+| 方法 | 路径 | 描述 | 认证 |
+|------|------|------|------|
+| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/stat` | 获取文件/目录元信息 | Access Token |
+| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/read` | 读取文件内容 | Access Token |
+| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/ls` | 列出目录内容 | Access Token |
+| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/tree` | BFS 展开目录树 | Access Token |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/write` | 创建或覆盖文件 | Access Token (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mkdir` | 创建目录 | Access Token (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rm` | 删除文件或目录 | Access Token (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mv` | 移动/重命名 | Access Token (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/cp` | 复制文件或目录 | Access Token (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rewrite` | 声明式树重写 | Access Token (canUpload) |
+
 ### Realm CAS 操作 API
 
 [详细文档](./06-realm/README.md)
@@ -167,6 +184,14 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 | `NODE_NOT_IN_SCOPE` | 403 | 节点不在授权范围 |
 | `DEPOT_ACCESS_DENIED` | 403 | 无权访问该 Depot |
 | `NOT_FOUND` | 404 | 资源不存在 |
+| `PATH_NOT_FOUND` | 404 | 文件系统路径不存在 |
+| `NOT_A_FILE` | 400 | 目标不是文件 |
+| `NOT_A_DIRECTORY` | 400 | 目标不是目录 |
+| `FILE_TOO_LARGE` | 400 | 文件有多 block（不支持） |
+| `TARGET_EXISTS` | 409 | 目标路径已存在 |
+| `EXISTS_AS_FILE` | 409 | 路径已存在且是文件 |
+| `TOO_MANY_ENTRIES` | 400 | rewrite entries + deletes 条目超限 |
+| `EMPTY_REWRITE` | 400 | rewrite 的 entries 和 deletes 都为空 |
 | `REQUEST_NOT_FOUND` | 404 | 授权申请不存在 |
 | `CONFLICT` | 409 | 资源状态冲突 |
 | `GONE` | 410 | 资源已过期或已撤销 |
@@ -198,6 +223,7 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 | Token 管理 | 30 req | 1 min | Per user |
 | Realm 操作 | 100 req | 1 min | Per token |
 | Node 上传 | 60 req | 1 min | Per realm |
+| 文件系统操作 | 60 req | 1 min | Per token |
 | Admin 操作 | 30 req | 1 min | Per admin |
 
 超出限制时返回 `429 Too Many Requests`：
@@ -238,4 +264,5 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 - [Token 管理 API](./02-tokens.md)
 - [客户端授权申请](./03-client-auth.md)
 - [Admin 管理 API](./04-admin.md)
+- [文件系统操作 API](./05-filesystem.md)
 - [Realm CAS 操作 API](./06-realm/README.md)
