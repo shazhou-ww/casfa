@@ -21,7 +21,7 @@ import { createMemoryStorage } from "@casfa/storage-memory";
 import { createS3Storage } from "@casfa/storage-s3";
 import { createApp, createNodeHashProvider } from "./src/app.ts";
 import { createCognitoJwtVerifier, createMockJwtVerifier } from "./src/auth/index.ts";
-import { createAuthServiceFromConfig, createDbInstances } from "./src/bootstrap.ts";
+import { createDbInstances } from "./src/bootstrap.ts";
 import { loadConfig } from "./src/config.ts";
 
 // ============================================================================
@@ -74,23 +74,20 @@ const createJwtVerifier = () => {
   if (config.cognito.userPoolId) {
     return createCognitoJwtVerifier(config.cognito);
   }
-  // No JWT verification (stored tokens only)
-  return undefined;
+  // No JWT verification - always reject (stored tokens only mode)
+  return async () => null;
 };
 
 const jwtVerifier = createJwtVerifier();
-
-// Create auth service
-const authService = createAuthServiceFromConfig(db, config);
 
 // Create hash provider
 const hashProvider = createNodeHashProvider();
 
 // Determine runtime info for /api/info endpoint
-const getAuthType = (): "mock" | "cognito" | "tokens-only" => {
+const getAuthType = (): "mock" | "cognito" | "jwt" => {
   if (mockJwtSecret) return "mock";
   if (config.cognito.userPoolId) return "cognito";
-  return "tokens-only";
+  return "jwt";
 };
 
 const getDatabaseType = (): "local" | "aws" => {
@@ -105,7 +102,6 @@ const app = createApp({
   config,
   db,
   storage,
-  authService,
   hashProvider,
   jwtVerifier,
   runtimeInfo: {

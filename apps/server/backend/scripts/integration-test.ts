@@ -83,7 +83,7 @@ function startContainer(): boolean {
 
   // Try docker compose up first
   const result = spawnSync("docker", ["compose", "up", "-d", CONTAINER_NAME], {
-    cwd: process.cwd().replace(/[/\\]apps[/\\]casfa-v2$/, ""), // Go to repo root
+    cwd: process.cwd(),
     encoding: "utf-8",
     shell: true,
     stdio: "inherit",
@@ -95,11 +95,9 @@ function startContainer(): boolean {
 function stopAndRemoveContainer(): void {
   console.log(`Stopping and removing ${CONTAINER_NAME} container...`);
 
-  const repoRoot = process.cwd().replace(/[/\\]apps[/\\]casfa-v2$/, "");
-
   // Stop the container
   spawnSync("docker", ["compose", "stop", CONTAINER_NAME], {
-    cwd: repoRoot,
+    cwd: process.cwd(),
     encoding: "utf-8",
     shell: true,
     stdio: "inherit",
@@ -107,7 +105,7 @@ function stopAndRemoveContainer(): void {
 
   // Remove the container
   spawnSync("docker", ["compose", "rm", "-f", CONTAINER_NAME], {
-    cwd: repoRoot,
+    cwd: process.cwd(),
     encoding: "utf-8",
     shell: true,
     stdio: "inherit",

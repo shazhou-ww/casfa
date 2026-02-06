@@ -134,9 +134,8 @@ async function promptYesNo(question: string): Promise<boolean> {
 function startDynamoDBContainer(containerName: string): boolean {
   console.log(`\nStarting ${containerName} container...`);
 
-  const repoRoot = process.cwd().replace(/[/\\]apps[/\\]casfa-v2$/, "");
   const result = spawnSync("docker", ["compose", "up", "-d", containerName], {
-    cwd: repoRoot,
+    cwd: process.cwd(),
     encoding: "utf-8",
     shell: true,
     stdio: "inherit",
