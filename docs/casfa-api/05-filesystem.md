@@ -341,7 +341,7 @@ X-CAS-Index-Path: 0
 | `key` | `string` | 当前目录的 CAS key |
 | `children` | `array` | 子节点列表（按名称 UTF-8 字节序排列） |
 | `children[].name` | `string` | 子节点名称 |
-| `children[].index` | `number` | 子节点在 children 数组中的索引 |
+| `children[].index` | `number` | 子节点在当前 d-node 的 children 中的全局索引（不随分页变化），可直接用于 `indexPath` 定位 |
 | `children[].type` | `"file" \| "dir"` | 子节点类型 |
 | `children[].key` | `string` | 子节点的 CAS key |
 | `children[].size` | `number` | 文件大小（仅 `file`） |
@@ -391,12 +391,14 @@ Content-Length: 2048
 
 | Header | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| `Content-Type` | `string` | 否 | MIME 类型，默认 `application/octet-stream` |
+| `Content-Type` | `string` | 否 | MIME 类型，默认 `application/octet-stream`（上限 256 字节） |
 | `Content-Length` | `number` | 是 | 文件大小（字节） |
 
 ### 请求体
 
 原始文件二进制内容（非 Base64、非 JSON）。
+
+> **Body 校验**：服务端在流式读取 body 时进行字节计数。若实际读取字节数超过 `maxNodeSize` 则立即中断连接并返回 `413 FILE_TOO_LARGE`；若读取完成后实际字节数与 `Content-Length` 不一致，则拒绝写入并返回 `400 CONTENT_LENGTH_MISMATCH`。
 
 > **注意**：`indexPath` 只能用于覆盖已存在的文件，不能用于创建新文件（因为新文件没有预先存在的索引位置）。创建新文件必须使用 `path`。
 
@@ -432,6 +434,7 @@ Content-Length: 2048
 | `UPLOAD_NOT_ALLOWED` | 403 | Token 没有 `canUpload` 权限 |
 | `NOT_A_DIRECTORY` | 400 | 路径中间节点不是目录 |
 | `FILE_TOO_LARGE` | 413 | 请求体超过 `maxNodeSize`，请使用底层 Node API 分块上传 |
+| `CONTENT_LENGTH_MISMATCH` | 400 | 实际 body 字节数与 `Content-Length` 不一致 |
 | `INVALID_PATH` | 400 | 路径无效（空段、非法字符等） |
 | `NAME_TOO_LONG` | 400 | 文件名超过 `maxNameBytes` |
 | `COLLECTION_FULL` | 400 | 目录子节点数达到上限 |
@@ -1038,7 +1041,7 @@ await fetch(`/api/realm/${realmId}/depots/depot:MAIN`, {
 ## 安全考量
 
 1. **路径遍历防护**：`path` 中不允许 `..` 和绝对路径，仅支持向下的相对路径
-2. **大小限制**：read/write 均限制单 block 文件（≤ `maxNodeSize`），防止 Lambda 超限
+2. **大小限制**：read/write 均限制单 block 文件（≤ `maxNodeSize`），防止 Lambda 超限。write 端点对 body 进行流式字节计数（超限立即中断），并在完成后校验实际大小与 `Content-Length` 一致性
 3. **分页控制**：`ls` API 通过 cursor 分页和 limit 控制响应大小，防止资源耗尽
 4. **Scope 验证**：所有操作的 root 必须在 Token scope 内，与底层 Node API 保持一致
 5. **写操作审计**：所有写操作通过 `canUpload` 权限控制，不可变存储自带审计追踪

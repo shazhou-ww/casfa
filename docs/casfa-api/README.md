@@ -187,6 +187,7 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 | `NOT_A_FILE` | 400 | 目标不是文件 |
 | `NOT_A_DIRECTORY` | 400 | 目标不是目录 |
 | `FILE_TOO_LARGE` | 400/413 | 读取时表示多 block 不支持（400），写入时表示超过大小限制（413） |
+| `CONTENT_LENGTH_MISMATCH` | 400 | fs/write 实际 body 字节数与 Content-Length 不一致 |
 | `TARGET_EXISTS` | 409 | 目标路径已存在 |
 | `EXISTS_AS_FILE` | 409 | 路径已存在且是文件 |
 | `TOO_MANY_ENTRIES` | 400 | rewrite entries + deletes 条目超限 |
@@ -251,6 +252,8 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 | `GET` 所有端点 | ✅ 幂等 | 读取操作 |
 | `PUT /nodes/:key` | ✅ 幂等 | 相同内容产生相同 key |
 | `DELETE` 资源 | ✅ 幂等 | 重复删除返回成功 |
+| `fs/stat`, `fs/read`, `fs/ls` | ✅ 幂等 | 读取操作 |
+| `fs/mkdir` | ⚠️ 条件幂等 | 目录已存在时返回当前 root，不产生新 root |
 
 ### 非幂等操作
 
@@ -260,6 +263,8 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 | `POST /tickets` | ❌ 非幂等 | 每次创建新 Ticket |
 | `POST /tokens/delegate` | ❌ 非幂等 | 每次创建新 Token |
 | `POST /tickets/:id/submit` | ⚠️ 仅一次 | 成功后不可重复 |
+| `fs/write`, `fs/rm`, `fs/mv`, `fs/cp` | ❌ 非幂等 | 每次产生新 root（但相同内容的 CAS hash 相同） |
+| `fs/rewrite` | ❌ 非幂等 | 声明式重写，每次产生新 root |
 
 ## 相关文档
 
