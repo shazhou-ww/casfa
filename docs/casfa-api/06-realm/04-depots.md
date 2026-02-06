@@ -271,9 +271,9 @@ Depot 的访问权限通过 Issuer Chain 验证：
 
 ```
 User (usr_abc)
-  └── Token A (dlt1_aaa)  ← 创建了 depot:X
-        └── Token B (dlt1_bbb)  ← 可以访问 depot:X
-              └── Token C (dlt1_ccc)  ← 可以访问 depot:X
+  └── Token A (dlt1_aaa)  ← created depot:X
+      └── Token B (dlt1_bbb)  ← can access depot:X
+          └── Token C (dlt1_ccc)  ← can access depot:X
 ```
 
 - Token A 创建的 depot:X，其 `creatorIssuerId` = `dlt1_aaa`

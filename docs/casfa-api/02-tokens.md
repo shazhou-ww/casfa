@@ -255,11 +255,11 @@ Authorization: Bearer {jwt}
 撤销 Token 会自动撤销其所有子 Token：
 
 ```
-Token A (撤销)
-├── Token B (级联撤销)
-│   ├── Token D (级联撤销)
-│   └── Token E (级联撤销)
-└── Token C (级联撤销)
+Token A (revoked)
+├── Token B (cascade revoked)
+│   ├── Token D (cascade revoked)
+│   └── Token E (cascade revoked)
+└── Token C (cascade revoked)
 ```
 
 ### 错误

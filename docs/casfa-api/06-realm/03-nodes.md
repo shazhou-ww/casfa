@@ -122,9 +122,9 @@ X-CAS-Index-Path: 0:1:2
 scope
 ├── [0] depot:MAIN root
 │   ├── [0] file1.txt
-│   └── [1] subdir
-│       ├── [0] a.txt      ← indexPath: 0:1:0
-│       └── [1] b.txt      ← indexPath: 0:1:1
+│   └── [1] subdir/
+│       ├── [0] a.txt        (indexPath: 0:1:0)
+│       └── [1] b.txt        (indexPath: 0:1:1)
 └── [1] depot:BACKUP root
     └── ...
 ```
@@ -247,11 +247,11 @@ key = "node:" + hex(blake3(node_bytes))
 
 ```
 ┌──────────────┐
-│ Magic (4B)   │  固定值标识节点类型
+│ Magic (4B)   │  Node type identifier
 ├──────────────┤
-│ Header       │  元数据（content-type, 子节点数等）
+│ Header       │  Metadata (content-type, child count, etc.)
 ├──────────────┤
-│ Payload      │  实际数据
+│ Payload      │  Actual data
 └──────────────┘
 ```
 

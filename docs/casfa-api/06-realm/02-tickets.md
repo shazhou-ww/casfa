@@ -20,26 +20,18 @@ Ticket 是一个工作空间概念，代表一个具体的任务。每个 Ticket
 ### 生命周期
 
 ```
-        ┌───────────────┐
-        │ 预签发 Token  │  使用 Delegate Token 签发 Access Token
-        └────┬──────────┘
-             │
-             │ 获得 tokenId + tokenBase64
-             ▼
-        ┌───────────────┐
-        │  创建 Ticket  │  使用 Access Token 创建，绑定预签发的 Token
-        └────┬──────────┘
-             │
-             ▼
-        ┌───────────┐
-        │  pending  │  Tool 使用绑定的 Token 读写数据
-        └────┬──────┘
-             │
-             │ submit
-             ▼
-        ┌───────────┐
-        │ submitted │  关联的 Access Token 自动撤销
-        └───────────┘
+  Step 1                     Step 2                    Status
+┌────────────────────┐     ┌────────────────────┐     ┌───────────┐
+│ Issue Access Token │ ──> │ Create Ticket      │ ──> │  pending  │
+│ (got tokenId &     │     │ (bind accessTokenId│     └─────┬─────┘
+│  tokenBase64)      │     └────────────────────┘           │
+└────────────────────┘                                Submit (root)
+                                                            │
+                                                      ┌─────┴─────┐
+                                                      │ submitted │
+                                                      └───────────┘
+                                                      (Access Token
+                                                       auto-revoked)
 ```
 
 | 状态 | 描述 | 关联 Token 状态 |

@@ -24,56 +24,56 @@
 ## 流程概述
 
 ```
-┌──────────┐                    ┌──────────┐                    ┌──────────┐
-│  Client  │                    │  Server  │                    │   User   │
-└────┬─────┘                    └────┬─────┘                    └────┬─────┘
-     │                               │                               │
-     │ 1. 生成 clientSecret (本地)   │                               │
-     │                               │                               │
-     │ 2. POST /tokens/requests      │                               │
-     │    {clientName}               │                               │
-     │──────────────────────────────>│                               │
-     │                               │                               │
-     │ 3. {requestId, displayCode,   │                               │
-     │     authorizeUrl, expiresAt}  │                               │
-     │<──────────────────────────────│                               │
-     │                               │                               │
-     │ 4. 构造完整 URL (添加 hash)   │                               │
-     │    authorizeUrl#secret=xxx    │                               │
-     │                               │                               │
-     │ 5. 显示授权链接和验证码       │                               │
-     │   "请打开链接并核对 ABCD-1234"│                               │
-     │────────────────────────────────────────────────────────────>│
-     │                               │                               │
-     │                               │  6. 用户打开链接，选择权限并批准
-     │                               │     POST /tokens/requests/:id/approve
-     │                               │<──────────────────────────────│
-     │                               │                               │
-     │ 7. GET /tokens/requests/:id/poll                              │
-     │    (轮询)                     │                               │
-     │──────────────────────────────>│                               │
-     │                               │                               │
-     │ 8. status: "approved"         │                               │
-     │    encryptedToken             │                               │
-     │<──────────────────────────────│                               │
-     │                               │                               │
-     │ 9. 用本地 clientSecret 解密   │                               │
-     │    保存 Token 并使用          │                               │
+┌───────────┐                    ┌───────────┐                    ┌────────┐
+│  Client   │                    │  Server   │                    │  User  │
+└─────┬─────┘                    └─────┬─────┘                    └────┬───┘
+      │                                │                               │
+      │ 1. Generate clientSecret       │                               │
+      │    (local)                     │                               │
+      │                                │                               │
+      │ 2. POST /tokens/requests       │                               │
+      │    {clientName}                │                               │
+      │───────────────────────────────>│                               │
+      │                                │                               │
+      │ 3. {requestId, displayCode,    │                               │
+      │     authorizeUrl, expiresAt}   │                               │
+      │<───────────────────────────────│                               │
+      │                                │                               │
+      │ 4. Build full URL (add hash)   │                               │
+      │    authorizeUrl#secret=xxx     │                               │
+      │                                │                               │
+      │ 5. Show link & display code    │                               │
+      │    "Verify code: ABCD-1234"    │                               │
+      │───────────────────────────────────────────────────────────────>│
+      │                                │                               │
+      │                                │ 6. User opens link, approves  │
+      │                                │    POST /requests/:id/approve │
+      │                                │<──────────────────────────────│
+      │                                │                               │
+      │ 7. GET /requests/:id/poll      │                               │
+      │    (polling)                   │                               │
+      │───────────────────────────────>│                               │
+      │                                │                               │
+      │ 8. status: "approved"          │                               │
+      │    encryptedToken              │                               │
+      │<───────────────────────────────│                               │
+      │                                │                               │
+      │ 9. Decrypt with clientSecret   │                               │
+      │    Save & use token            │                               │
 ```
 
 ### 状态流转
 
 ```
-                ┌─────────┐
-                │ pending │
-                └────┬────┘
-                     │
-         ┌───────────┼───────────┐
-         │           │           │
-         ▼           ▼           ▼
-    ┌─────────┐ ┌─────────┐ ┌─────────┐
-    │approved │ │rejected │ │ expired │
-    └─────────┘ └─────────┘ └─────────┘
+            ┌───────────┐
+            │  pending  │
+            └─────┬─────┘
+                  │
+        ┌─────────┼─────────┐
+        │         │         │
+   ┌────┴─────┐  ┌┴────────┐  ┌────┴─────┐
+   │ approved │  │ rejected │  │  expired │
+   └──────────┘  └──────────┘  └──────────┘
 ```
 
 | 状态 | 说明 | 触发条件 |
@@ -369,16 +369,16 @@ Authorization: Bearer {jwt}
 客户端必须清晰展示验证码和授权链接：
 
 ```
-╔══════════════════════════════════════════════════════════════════════╗
-║                                                                      ║
-║  请打开以下链接完成授权                                              ║
-║                                                                      ║
-║  https://casfa.app/authorize/req_xxxxx#secret=0A1B2C3D4E5F6G7H8J9K   ║
-║                                                                      ║
-║  验证码: ABCD-1234                                                   ║
-║  请核对验证码后批准此请求                                            ║
-║                                                                      ║
-╚══════════════════════════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════════════════════════╗
+║                                                                  ║
+║  Open the link below to authorize:                               ║
+║                                                                  ║
+║  https://casfa.app/authorize/req_xxxxx#secret=0A1B2C3D4E5F6G7H   ║
+║                                                                  ║
+║  Display Code: ABCD-1234                                         ║
+║  Please verify the code before approving.                        ║
+║                                                                  ║
+╚════════════════════════════════════════════════════════════════════╝
 ```
 
 ---
