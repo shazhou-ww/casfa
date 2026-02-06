@@ -128,7 +128,6 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 | GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/stat` | 获取文件/目录元信息 | Access Token |
 | GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/read` | 读取文件内容 | Access Token |
 | GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/ls` | 列出目录内容 | Access Token |
-| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/tree` | BFS 展开目录树 | Access Token |
 | POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/write` | 创建或覆盖文件 | Access Token (canUpload) |
 | POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mkdir` | 创建目录 | Access Token (canUpload) |
 | POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rm` | 删除文件或目录 | Access Token (canUpload) |
@@ -187,11 +186,14 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 | `PATH_NOT_FOUND` | 404 | 文件系统路径不存在 |
 | `NOT_A_FILE` | 400 | 目标不是文件 |
 | `NOT_A_DIRECTORY` | 400 | 目标不是目录 |
-| `FILE_TOO_LARGE` | 400 | 文件有多 block（不支持） |
+| `FILE_TOO_LARGE` | 400/413 | 读取时表示多 block 不支持（400），写入时表示超过大小限制（413） |
 | `TARGET_EXISTS` | 409 | 目标路径已存在 |
 | `EXISTS_AS_FILE` | 409 | 路径已存在且是文件 |
 | `TOO_MANY_ENTRIES` | 400 | rewrite entries + deletes 条目超限 |
 | `EMPTY_REWRITE` | 400 | rewrite 的 entries 和 deletes 都为空 |
+| `ROOT_NOT_AUTHORIZED` | 403 | PATCH depot root 引用验证失败 |
+| `LINK_NOT_AUTHORIZED` | 403 | link 引用验证失败（非本 Token 上传且无有效 proof） |
+| `CHILD_NOT_AUTHORIZED` | 403 | PUT node 子节点引用验证失败 |
 | `REQUEST_NOT_FOUND` | 404 | 授权申请不存在 |
 | `CONFLICT` | 409 | 资源状态冲突 |
 | `GONE` | 410 | 资源已过期或已撤销 |
@@ -215,6 +217,8 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 ```
 
 ## 限流策略
+
+> **TODO**：限流策略待后续完善。以下为初步规划，实际参数可能根据压测结果调整。尤其需要考虑多 Token 聚合限流（Per realm 维度）以防止通过签发多个 Access Token 绕过 Per token 限流。
 
 | 端点类别 | 限制 | 窗口 | 维度 |
 |---------|------|------|------|

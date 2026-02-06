@@ -38,7 +38,6 @@
 | 文件名长度上限 | `maxNameBytes`（255 字节） | UTF-8 编码后的字节数 |
 | 目录子节点上限 | `maxCollectionChildren`（10000） | 单个 d-node 的最大 children 数 |
 | rewrite 条目上限 | 100 | 单次 rewrite 请求的最大映射 + 删除条目总数 |
-| tree 展开节点上限 | 1000 | 单次 tree 请求返回的最大节点数 |
 
 ---
 
@@ -93,7 +92,6 @@ X-CAS-Index-Path: 0:1
 | GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/stat` | 获取文件/目录元信息 | Access Token |
 | GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/read` | 读取文件内容 | Access Token |
 | GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/ls` | 列出目录内容 | Access Token |
-| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/tree` | BFS 展开目录树 | Access Token |
 | POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/write` | 创建或覆盖文件 | Access Token (canUpload) |
 | POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mkdir` | 创建目录 | Access Token (canUpload) |
 | POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rm` | 删除文件或目录 | Access Token (canUpload) |
@@ -114,17 +112,27 @@ X-CAS-Index-Path: 0:1
 
 ### 查询参数：路径定位
 
-文件/目录在树内的位置通过以下查询参数之一指定：
+文件/目录在树内的位置通过查询参数指定，对应 CAS URI 的 `path` 和 `#index-path` 部分：
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
 | `path` | `string` | 基于名称的相对路径，如 `src/main.ts` |
 | `indexPath` | `string` | 基于索引的路径，如 `1:0`（对应 children 数组的索引） |
 
-- `path` 和 `indexPath` **互斥**，不能同时提供
-- 省略时表示根节点自身
+**组合语义**（与 CAS URI `cas://root/path#index-path` 一致）：
+
+| `path` | `indexPath` | 含义 |
+|--------|-------------|------|
+| 省略 | 省略 | 根节点自身 |
+| `src/main.ts` | 省略 | 按名称定位到 `src/main.ts` |
+| 省略 | `1:0` | 从根节点按索引 `1:0` 定位 |
+| `src` | `0:1` | 先按名称定位到 `src`，再从 `src` 按索引 `0:1` 继续向下 |
+
 - `path` 使用 `/` 分隔，不以 `/` 开头（相对于 root）
 - `indexPath` 使用 `:` 分隔
+- 两者可同时提供：先按 `path` 定位到中间节点，再从该节点按 `indexPath` 继续向下
+
+> **典型场景**：`path=src&indexPath=2` 表示「`src` 目录下第 2 个子节点」。当客户端通过 `ls` 拿到了 children 的 index，可以用 `path` + `indexPath` 组合精确定位，而不必拼出完整名称路径。
 
 ### 写操作的通用响应字段
 
@@ -286,7 +294,9 @@ X-CAS-Index-Path: 0
 | `path` | `string` | 否 | 名称路径 |
 | `indexPath` | `string` | 否 | 索引路径 |
 | `limit` | `number` | 否 | 每页数量，默认 100，最大 1000 |
-| `offset` | `number` | 否 | 起始偏移量，默认 0 |
+| `cursor` | `string` | 否 | 分页游标（首次请求时不提供） |
+
+> **分页一致性说明**：当 `nodeKey` 使用 `depot:xxx` 或 `ticket:xxx` 时，两次请求之间 root 可能被更新，导致分页结果不一致。建议在需要分页的场景下使用 `node:xxx`（不可变 hash）以确保一致性。
 
 ### 响应
 
@@ -319,8 +329,7 @@ X-CAS-Index-Path: 0
     }
   ],
   "total": 3,
-  "offset": 0,
-  "limit": 100
+  "nextCursor": null
 }
 ```
 
@@ -338,120 +347,7 @@ X-CAS-Index-Path: 0
 | `children[].size` | `number` | 文件大小（仅 `file`） |
 | `children[].contentType` | `string` | MIME 类型（仅 `file`） |
 | `total` | `number` | 子节点总数 |
-| `offset` | `number` | 当前偏移量 |
-| `limit` | `number` | 每页数量 |
-
-### 错误
-
-| 错误码 | HTTP Status | 说明 |
-|--------|-------------|------|
-| `INVALID_ROOT` | 400 | nodeKey 无效 |
-| `PATH_NOT_FOUND` | 404 | 路径不存在 |
-| `NOT_A_DIRECTORY` | 400 | 目标不是目录 |
-| `NODE_NOT_IN_SCOPE` | 403 | 根节点不在 Token scope 内 |
-
----
-
-## GET /api/realm/{realmId}/nodes/{nodeKey}/fs/tree
-
-以 BFS（广度优先）展开目录树结构。使用 `limit` 控制返回的总节点数，而非粗粒度的层数限制，更精确地控制响应体大小。
-
-### BFS 展开策略
-
-遍历从指定路径（或根节点）开始，按广度优先顺序展开子目录：
-1. 先返回当前目录的所有直接子节点
-2. 再依次展开各子目录的子节点
-3. 直到达到 `limit` 上限或所有节点均已展开
-
-这保证了「先看到全貌，再看到细节」，比深度限制更实用。
-
-### 请求
-
-```http
-GET /api/realm/usr_abc123/nodes/depot:MAIN/fs/tree?path=src&limit=100
-Authorization: Bearer {access_token}
-X-CAS-Index-Path: 0
-```
-
-### 查询参数
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `path` | `string` | 否 | 名称路径 |
-| `indexPath` | `string` | 否 | 索引路径 |
-| `limit` | `number` | 否 | 展开的最大节点数，默认 200，最大 1000 |
-
-### 响应
-
-```json
-{
-  "path": "src",
-  "key": "node:def456...",
-  "type": "dir",
-  "children": [
-    {
-      "name": "cli.ts",
-      "type": "file",
-      "key": "node:aaa...",
-      "size": 1024,
-      "contentType": "text/typescript"
-    },
-    {
-      "name": "commands",
-      "type": "dir",
-      "key": "node:bbb...",
-      "childCount": 3,
-      "children": [
-        {
-          "name": "auth.ts",
-          "type": "file",
-          "key": "node:ddd...",
-          "size": 512,
-          "contentType": "text/typescript"
-        },
-        {
-          "name": "config.ts",
-          "type": "file",
-          "key": "node:eee...",
-          "size": 256,
-          "contentType": "text/typescript"
-        },
-        {
-          "name": "node.ts",
-          "type": "file",
-          "key": "node:fff...",
-          "size": 768,
-          "contentType": "text/typescript"
-        }
-      ]
-    },
-    {
-      "name": "lib",
-      "type": "dir",
-      "key": "node:ccc...",
-      "childCount": 7,
-      "children": null
-    }
-  ],
-  "nodeCount": 8,
-  "truncated": true
-}
-```
-
-### 响应字段
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `path` | `string` | 起始目录路径 |
-| `key` | `string` | 起始目录 CAS key |
-| `type` | `"dir"` | 固定为 `dir` |
-| `children` | `array` | 嵌套的子节点树 |
-| `children[].children` | `array \| null` | 子目录的子节点（`null` = 未展开，`[]` = 空目录） |
-| `children[].childCount` | `number` | 子节点总数（仅 `dir`，在展开和未展开时均返回） |
-| `nodeCount` | `number` | 本次实际返回的节点总数 |
-| `truncated` | `boolean` | 是否因 limit 截断（`true` = 还有未展开的子目录） |
-
-> **`children` 为 `null` vs `[]`**：`null` 表示目录因 limit 未被展开（可通过后续请求展开），`[]` 表示目录确实为空。
+| `nextCursor` | `string \| null` | 下一页游标（`null` = 无更多数据） |
 
 ### 错误
 
@@ -468,29 +364,39 @@ X-CAS-Index-Path: 0
 
 创建或覆盖文件。如果文件已存在则替换内容；如果不存在则创建（自动创建中间目录）。
 
-> **大小限制**：`content` 解码后不得超过 `maxNodeSize`（4MB）。更大的文件应使用底层 `PUT /api/realm/{realmId}/nodes/:key` API 分块上传，然后通过 `rewrite` 的 `link` 操作将节点引用挂载到目录树中。
+> **大小限制**：请求体不得超过 `maxNodeSize`（4MB）。更大的文件应使用底层 `PUT /api/realm/{realmId}/nodes/:key` API 分块上传，然后通过 `rewrite` 的 `link` 操作将节点引用挂载到目录树中。
 
 ### 请求
 
+文件路径和元信息通过查询参数和 Header 传递，文件内容通过 binary body 传递：
+
 ```http
-POST /api/realm/usr_abc123/nodes/depot:MAIN/fs/write
+POST /api/realm/usr_abc123/nodes/depot:MAIN/fs/write?path=src/utils/helper.ts
 Authorization: Bearer {access_token}
 X-CAS-Index-Path: 0
-Content-Type: application/json
+Content-Type: text/typescript
+Content-Length: 2048
 
-{
-  "path": "src/utils/helper.ts",
-  "contentType": "text/typescript",
-  "content": "base64_encoded_content..."
-}
+(文件二进制内容)
 ```
 
-| 字段 | 类型 | 必填 | 说明 |
+### 查询参数
+
+| 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `path` | `string` | *二选一 | 名称路径 |
 | `indexPath` | `string` | *二选一 | 索引路径（仅用于覆盖已有文件） |
-| `contentType` | `string` | 否 | MIME 类型，默认 `application/octet-stream` |
-| `content` | `string` | 是 | Base64 编码的文件内容 |
+
+### 请求头
+
+| Header | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| `Content-Type` | `string` | 否 | MIME 类型，默认 `application/octet-stream` |
+| `Content-Length` | `number` | 是 | 文件大小（字节） |
+
+### 请求体
+
+原始文件二进制内容（非 Base64、非 JSON）。
 
 > **注意**：`indexPath` 只能用于覆盖已存在的文件，不能用于创建新文件（因为新文件没有预先存在的索引位置）。创建新文件必须使用 `path`。
 
@@ -525,7 +431,7 @@ Content-Type: application/json
 | `INVALID_ROOT` | 400 | nodeKey 无效 |
 | `UPLOAD_NOT_ALLOWED` | 403 | Token 没有 `canUpload` 权限 |
 | `NOT_A_DIRECTORY` | 400 | 路径中间节点不是目录 |
-| `FILE_TOO_LARGE` | 413 | 文件内容超过 `maxNodeSize`，请使用底层 Node API 分块上传 |
+| `FILE_TOO_LARGE` | 413 | 请求体超过 `maxNodeSize`，请使用底层 Node API 分块上传 |
 | `INVALID_PATH` | 400 | 路径无效（空段、非法字符等） |
 | `NAME_TOO_LONG` | 400 | 文件名超过 `maxNameBytes` |
 | `COLLECTION_FULL` | 400 | 目录子节点数达到上限 |
@@ -756,7 +662,7 @@ Content-Type: application/json
 与命令式的「先 mkdir、再 mv、再 rm」不同，`rewrite` 采用**声明式**设计：你描述的是「新树长什么样」，而非「怎么一步步改」。
 
 请求包含两部分：
-1. **`entries`**：新树中每个变更路径的**来源映射**（从旧路径来 / 新内容 / 空目录 / 已有节点）
+1. **`entries`**：新树中每个变更路径的**来源映射**（从旧路径来 / 空目录 / 已有节点）
 2. **`deletes`**：旧树中需要移除的路径列表
 
 服务端根据映射关系，以原树为基础一次性计算出新树，只产生一个 Root。
@@ -780,10 +686,6 @@ Content-Type: application/json
     "src/new-module/utils.ts": { "from": "src/old-utils.ts" },
     "src/new-module/template.ts": { "from": "src/template.ts" },
     "src/new-module": { "dir": true },
-    "src/new-module/index.ts": {
-      "content": "base64...",
-      "contentType": "text/typescript"
-    },
     "data/large-file.bin": { "link": "node:abc123..." }
   },
   "deletes": [
@@ -804,14 +706,15 @@ Content-Type: application/json
 
 ### Entry 类型
 
-每个 entry 的 value 是以下四种之一：
+每个 entry 的 value 是以下三种之一：
 
 | 类型 | 字段 | 说明 |
 |------|------|------|
 | **from（移动/复制）** | `{ "from": "旧路径" }` | 从旧树的指定路径引用节点（文件或目录均可） |
 | **dir（空目录）** | `{ "dir": true }` | 创建空目录 |
-| **content（写文件）** | `{ "content": "base64...", "contentType?": "..." }` | 创建新文件（单 block，≤ `maxNodeSize`） |
-| **link（挂载节点）** | `{ "link": "node:xxx" }` | 挂载一个已存在的 CAS 节点（用于大文件等场景） |
+| **link（挂载节点）** | `{ "link": "node:xxx", "proof?": "index-path" }` | 挂载一个已存在的 CAS 节点（需通过引用验证） |
+
+> **如何创建新文件？** 使用 `fs/write` 端点先创建文件获取新 Root，或通过底层 `PUT /nodes/:key` 上传 f-node 后用 `link` 挂载。`rewrite` 专注于树的结构变更（移动、复制、删除、挂载），不内嵌文件内容。
 
 #### 详细说明
 
@@ -837,30 +740,29 @@ Content-Type: application/json
 - 如果路径已存在且是目录，忽略（幂等）
 - 如果路径已存在且是文件，报错
 
-**`content` — 写入新文件**
-
-```json
-"src/new-module/index.ts": {
-  "content": "base64...",
-  "contentType": "text/typescript"
-}
-```
-
-- `content`：Base64 编码的文件内容，解码后不得超过 `maxNodeSize`（4MB）
-- `contentType`：可选，MIME 类型，默认 `application/octet-stream`
-- 如果路径已存在文件，则覆盖
-- 中间路径的父目录会自动创建
-
 **`link` — 挂载已有节点**
 
 ```json
 "data/large-file.bin": { "link": "node:abc123..." }
+"data/ref-file.bin":   { "link": "node:def456...", "proof": "0:3:1" }
 ```
 
 - 将一个已存在于存储中的 CAS 节点挂载到指定路径
 - 典型场景：大文件先通过底层 `PUT /nodes/:key` 分块上传，再通过 `link` 挂载到目录树
 - 服务端验证节点存在性
 - 可以挂载 f-node（文件）或 d-node（目录）
+- **`proof` 字段**（可选）：提供目标节点在 Token scope 内的 index-path 证明
+
+**引用验证**：服务端按以下顺序验证客户端有权引用该节点，满足其一即可：
+
+| 验证方式 | 条件 | 典型场景 |
+|----------|------|----------|
+| **uploader 验证** | 该节点的 `uploaderTokenId` == 当前请求的 Token ID | 刚通过 `PUT /nodes/:key` 上传的节点 |
+| **scope 验证** | 提供 `proof`（index-path），证明节点在 Token scope 内 | 引用 scope 内已有的节点 |
+
+> **安全说明**：如果不做引用验证，hash 泄漏会导致内容泄漏——攻击者可以将别人的节点挂载到自己的树中，再通过 `fs/read` 读取内容。uploader 验证附着在已有的节点存在性检查上（只需多比较一个字段），零额外 IO。
+>
+> **注意**：底层 `PUT /nodes/:key` 上传 d-node 时同样执行此验证——d-node 的每个 child 引用都必须满足 uploader 验证或 scope 验证。这是 CAS 系统的通用安全机制，不仅限于 `link`。
 
 ### 执行语义
 
@@ -873,6 +775,8 @@ Content-Type: application/json
 > **冲突处理**：如果同一路径同时出现在 `deletes` 和 `entries` 中，先删后写（即最终结果是 entry 指定的新内容）。
 
 > **`from` 引用时机**：所有 `from` 引用都基于**原树**（而非中间状态）。即使 `from` 的源路径也出现在 `deletes` 中，引用仍然有效——`from` 拷贝的是原树中的节点引用，`deletes` 只影响最终树中该路径是否保留。
+
+> **Refcount 原子性**：写操作（包括 `rewrite`、`rm`、`mv` 等）可能导致节点的引用计数变化（删除会 unlink，复制会新增引用）。服务端在整个操作完成后**统一更新 refcount**，而非在中间步骤逐个更新。这确保了即使后台 GC 并发运行，也不会因中间状态的 refcount 为 0 而误删仍在使用的节点。
 
 ### 响应
 
@@ -901,8 +805,8 @@ Content-Type: application/json
 | `INVALID_PATH` | 400 | 某个路径无效（空段、`..`、绝对路径等） |
 | `PATH_NOT_FOUND` | 404 | `from` 引用的源路径在原树中不存在 |
 | `NODE_NOT_FOUND` | 404 | `link` 指定的节点在存储中不存在 |
+| `LINK_NOT_AUTHORIZED` | 403 | `link` 引用验证失败：既非本 Token 上传，`proof` 也无效或未提供 |
 | `EXISTS_AS_FILE` | 409 | 目标路径的中间段是文件，无法作为目录 |
-| `FILE_TOO_LARGE` | 413 | `content` 解码后超过 `maxNodeSize` |
 | `NAME_TOO_LONG` | 400 | 路径中某段名称超过 `maxNameBytes` |
 | `COLLECTION_FULL` | 400 | 某目录子节点数达到上限 |
 | `NODE_NOT_IN_SCOPE` | 403 | 根节点不在 Token scope 内 |
@@ -954,7 +858,7 @@ Content-Type: application/json
   "entries": {
     "lib/core/index.ts":   { "from": "src/core.ts" },
     "lib/core/utils.ts":   { "from": "src/utils/core-utils.ts" },
-    "lib/core/types.ts":   { "content": "base64...", "contentType": "text/typescript" },
+    "lib/core/types.ts":   { "link": "node:types-node..." },
     "lib/plugins":         { "from": "src/plugins" },
     "assets/logo.png":     { "link": "node:abc123..." }
   },
@@ -980,14 +884,16 @@ Content-Type: application/json
    GET /api/realm/{realmId}/nodes/depot:MAIN/fs/read?path=src/config.ts
    → 文件内容
 
-3. 修改文件
-   POST /api/realm/{realmId}/nodes/depot:MAIN/fs/write
-   { path: "src/config.ts", content: "base64..." }
+3. 修改文件（binary body）
+   POST /api/realm/{realmId}/nodes/depot:MAIN/fs/write?path=src/config.ts
+   Content-Type: text/typescript
+   Body: (文件二进制内容)
    → newRoot: "node:modified..."
 
 4. 可选：继续修改其他文件（使用上一步的 newRoot）
-   POST /api/realm/{realmId}/nodes/node:modified.../fs/write
-   { path: "src/app.ts", content: "base64..." }
+   POST /api/realm/{realmId}/nodes/node:modified.../fs/write?path=src/app.ts
+   Content-Type: text/typescript
+   Body: (文件二进制内容)
    → newRoot: "node:modified2..."
 
 5. 提交 Ticket
@@ -998,14 +904,17 @@ Content-Type: application/json
 ### 场景 2：Agent 浏览项目结构
 
 ```
-1. BFS 展开项目树
-   GET /api/realm/{realmId}/nodes/depot:MAIN/fs/tree?limit=200
-   → 前 200 个节点的目录树
+1. 列出项目根目录
+   GET /api/realm/{realmId}/nodes/depot:MAIN/fs/ls
+   → 根目录子节点列表
 
 2. 深入查看某个子目录
    GET /api/realm/{realmId}/nodes/depot:MAIN/fs/ls?path=src/commands
 
-3. 读取具体文件
+3. 如果目录子节点很多，使用 cursor 分页
+   GET /api/realm/{realmId}/nodes/depot:MAIN/fs/ls?path=src&cursor=xxx
+
+4. 读取具体文件
    GET /api/realm/{realmId}/nodes/depot:MAIN/fs/read?path=src/commands/auth.ts
 ```
 
@@ -1014,8 +923,25 @@ Content-Type: application/json
 使用 `rewrite` 一次完成目录重构，声明最终状态而非中间步骤：
 
 ```typescript
+// 1. 先写入新文件，获取新 Root
+const writeResult = await fetch(
+  `/api/realm/${realmId}/nodes/depot:MAIN/fs/write?path=src/new-module/index.ts`,
+  {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "X-CAS-Index-Path": "0",
+      "Content-Type": "text/typescript",
+    },
+    body: new TextEncoder().encode("export const hello = 'world';"),
+  }
+);
+
+const { newRoot: rootAfterWrite } = await writeResult.json();
+
+// 2. 基于新 Root 进行树结构重构
 const result = await fetch(
-  `/api/realm/${realmId}/nodes/depot:MAIN/fs/rewrite`,
+  `/api/realm/${realmId}/nodes/${rootAfterWrite}/fs/rewrite`,
   {
     method: "POST",
     headers: {
@@ -1025,10 +951,6 @@ const result = await fetch(
     },
     body: JSON.stringify({
       entries: {
-        "src/new-module/index.ts": {
-          content: btoa("export const hello = 'world';"),
-          contentType: "text/typescript",
-        },
         "src/new-module/helper.ts": { from: "src/utils/helper.ts" },
       },
       deletes: [
@@ -1041,7 +963,7 @@ const result = await fetch(
 
 const { newRoot } = await result.json();
 
-// 一次性提交最终结果
+// 3. 一次性提交最终结果
 await fetch(`/api/realm/${realmId}/depots/depot:MAIN`, {
   method: "PATCH",
   body: JSON.stringify({ root: newRoot }),
@@ -1075,6 +997,7 @@ await fetch(`/api/realm/${realmId}/depots/depot:MAIN`, {
 2. 使用 rewrite 将已上传的 f-node 挂载到目录树
    POST /api/realm/{realmId}/nodes/depot:MAIN/fs/rewrite
    { entries: { "data/large-file.bin": { "link": "node:file..." } } }
+   （无需 proof——node:file... 是本 Token 刚上传的，自动通过 uploader 验证）
 ```
 
 > **注意**：`link` 是 rewrite 专有的操作类型，用于将一个已存在的节点挂载到指定路径。不在单独端点中提供。
@@ -1116,8 +1039,10 @@ await fetch(`/api/realm/${realmId}/depots/depot:MAIN`, {
 
 1. **路径遍历防护**：`path` 中不允许 `..` 和绝对路径，仅支持向下的相对路径
 2. **大小限制**：read/write 均限制单 block 文件（≤ `maxNodeSize`），防止 Lambda 超限
-3. **节点数限制**：`tree` API 通过 BFS limit 控制响应大小，防止资源耗尽
+3. **分页控制**：`ls` API 通过 cursor 分页和 limit 控制响应大小，防止资源耗尽
 4. **Scope 验证**：所有操作的 root 必须在 Token scope 内，与底层 Node API 保持一致
 5. **写操作审计**：所有写操作通过 `canUpload` 权限控制，不可变存储自带审计追踪
 6. **rewrite 原子性**：声明式重写全部成功或不产生新 Root，不存在部分应用的中间状态
+7. **节点引用验证**：`link` 引用和底层 `PUT /nodes/:key` 的子节点引用均需通过 uploader 验证（`uploaderTokenId` 匹配）或 scope 验证（提供 `proof` index-path），防止 hash 泄漏导致内容泄漏
+8. **Refcount 原子更新**：写操作引起的节点引用计数变化在操作完成后统一更新，避免并发 GC 导致的中间状态节点误删
 

@@ -195,7 +195,18 @@ Content-Type: application/json
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `name` | `string` | 否 | 新名称（1-128 字符） |
-| `root` | `string` | 否 | 新的根节点 key（必须已存在） |
+| `root` | `string` | 否 | 新的根节点 key（必须已存在，且需通过引用验证） |
+
+### Root 引用验证
+
+更新 `root` 时，服务端验证调用方有权引用该节点，与 `rewrite` 的 `link` 和底层 `PUT /nodes/:key` 的子节点引用验证规则一致：
+
+| 验证方式 | 条件 | 典型场景 |
+|----------|------|----------|
+| **uploader 验证** | 节点的 `uploaderTokenId` == 当前 Token ID | fs/write 或 rewrite 产生的 newRoot |
+| **scope 验证** | 节点在当前 Token 的 scope 树内 | 回退到已知的历史 root |
+
+> **安全说明**：如果不做引用验证，攻击者可以猜测/泄漏一个 node hash，将其设为自己 Depot 的 root，再通过 `fs/read` 等路径读取其内容——hash 泄漏即等于内容泄漏。
 
 ### 响应
 
@@ -218,6 +229,7 @@ Content-Type: application/json
 | `DEPOT_ACCESS_DENIED` | 403 | 无权访问该 Depot |
 | `NOT_FOUND` | 404 | Depot 不存在 |
 | `INVALID_ROOT` | 400 | root 节点不存在 |
+| `ROOT_NOT_AUTHORIZED` | 403 | root 引用验证失败：既非本 Token 上传，也不在 Token scope 内 |
 
 ---
 

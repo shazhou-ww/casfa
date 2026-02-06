@@ -164,6 +164,7 @@ scope
 - Magic bytes 和头部结构
 - Hash 验证（节点 key = content hash）
 - 子节点存在性验证
+- 子节点引用验证（见下方说明）
 
 ### 请求示例
 
@@ -200,6 +201,7 @@ Content-Length: 12345
 | `INVALID_REQUEST` | 400 | 节点格式无效 |
 | `CHECKSUM_MISMATCH` | 400 | 校验和不匹配 |
 | `MISSING_NODES` | 400 | 引用的子节点不存在 |
+| `CHILD_NOT_AUTHORIZED` | 403 | 引用的子节点未通过引用验证 |
 | `QUOTA_EXCEEDED` | 413 | 配额超限 |
 
 **子节点缺失错误示例**：
@@ -213,6 +215,21 @@ Content-Length: 12345
   }
 }
 ```
+
+### 子节点引用验证
+
+上传包含 children 的节点（d-node、带 successor 的 f-node/s-node）时，服务端验证每个子节点引用的合法性，防止通过构造包含任意 hash 的节点来窃取内容。
+
+每个 child 引用必须满足以下条件之一：
+
+| 验证方式 | 条件 | 说明 |
+|----------|------|------|
+| **uploader 验证** | 子节点的 `uploaderTokenId` == 当前 Token ID | 本 Token 上传的节点，当然可以引用 |
+| **scope 验证** | 子节点在当前 Token 的 scope 树内 | scope 内已有的节点，客户端本来就能读取 |
+
+> **性能影响**：uploader 验证附着在已有的存在性检查流程上——读取子节点记录时顺便比较 `uploaderTokenId` 字段，零额外 IO。scope 验证仅在 uploader 验证失败时回退执行。
+>
+> **安全说明**：如果不做引用验证，攻击者可以构造一个 d-node，children 里包含别人的节点 hash，上传后 commit 到自己的 depot，再通过正常读取路径获取该节点的内容——hash 泄漏即等于内容泄漏。
 
 ---
 
