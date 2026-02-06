@@ -12,6 +12,7 @@ import { ZodError } from "zod";
 import type { AdminController } from "./controllers/admin.ts";
 import type { ChunksController } from "./controllers/chunks.ts";
 import type { DepotsController } from "./controllers/depots.ts";
+import type { FilesystemController } from "./controllers/filesystem.ts";
 import type { HealthController } from "./controllers/health.ts";
 import type { InfoController } from "./controllers/info.ts";
 import type { OAuthController } from "./controllers/oauth.ts";
@@ -50,6 +51,7 @@ export type RouterDeps = {
   tickets: TicketsController;
   chunks: ChunksController;
   depots: DepotsController;
+  filesystem: FilesystemController;
   mcp: McpController;
   tokens: TokensController;
   tokenRequests: TokenRequestsController;
@@ -234,6 +236,17 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   realmRouter.put("/:realmId/nodes/:key", deps.canUploadMiddleware, deps.chunks.put);
   realmRouter.get("/:realmId/nodes/:key", deps.scopeValidationMiddleware, deps.chunks.get);
   realmRouter.get("/:realmId/nodes/:key/metadata", deps.scopeValidationMiddleware, deps.chunks.getMetadata);
+
+  // Filesystem operations (mounted under nodes/:key/fs/*)
+  realmRouter.get("/:realmId/nodes/:key/fs/stat", deps.scopeValidationMiddleware, deps.filesystem.stat);
+  realmRouter.get("/:realmId/nodes/:key/fs/read", deps.scopeValidationMiddleware, deps.filesystem.read);
+  realmRouter.get("/:realmId/nodes/:key/fs/ls", deps.scopeValidationMiddleware, deps.filesystem.ls);
+  realmRouter.post("/:realmId/nodes/:key/fs/write", deps.scopeValidationMiddleware, deps.canUploadMiddleware, deps.filesystem.write);
+  realmRouter.post("/:realmId/nodes/:key/fs/mkdir", deps.scopeValidationMiddleware, deps.canUploadMiddleware, deps.filesystem.mkdir);
+  realmRouter.post("/:realmId/nodes/:key/fs/rm", deps.scopeValidationMiddleware, deps.canUploadMiddleware, deps.filesystem.rm);
+  realmRouter.post("/:realmId/nodes/:key/fs/mv", deps.scopeValidationMiddleware, deps.canUploadMiddleware, deps.filesystem.mv);
+  realmRouter.post("/:realmId/nodes/:key/fs/cp", deps.scopeValidationMiddleware, deps.canUploadMiddleware, deps.filesystem.cp);
+  realmRouter.post("/:realmId/nodes/:key/fs/rewrite", deps.scopeValidationMiddleware, deps.canUploadMiddleware, deps.filesystem.rewrite);
 
   // Depots
   realmRouter.get("/:realmId/depots", deps.depots.list);

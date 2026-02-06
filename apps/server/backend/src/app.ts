@@ -14,6 +14,7 @@ import {
   createAdminController,
   createChunksController,
   createDepotsController,
+  createFilesystemController,
   createHealthController,
   createInfoController,
   createOAuthController,
@@ -24,6 +25,9 @@ import {
 } from "./controllers/index.ts";
 // MCP
 import { createMcpController } from "./mcp/index.ts";
+
+// Services
+import { createFsService } from "./services/fs/index.ts";
 
 // Middleware
 import {
@@ -170,6 +174,17 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     serverConfig: config.server,
   });
 
+  // Filesystem service & controller
+  const fsService = createFsService({
+    storage,
+    hashProvider,
+    ownershipDb,
+    refCountDb,
+    usageDb,
+    depotsDb,
+  });
+  const filesystem = createFilesystemController({ fsService });
+
   // Create router
   return createRouter({
     health,
@@ -180,6 +195,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     tickets,
     chunks,
     depots,
+    filesystem,
     tokens,
     tokenRequests,
     mcp,
