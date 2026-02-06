@@ -2,7 +2,7 @@
 
 CASFA (Content-Addressable Storage for Agents) 是一个为 AI Agent 设计的内容寻址存储服务 API。
 
-> **日期**: 2026-02-05
+> **日期**: 2026-02-06
 
 ## 概述
 
@@ -150,7 +150,7 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 | PATCH | `/api/realm/{realmId}/depots/:depotId` | 修改 Depot | Access Token |
 | DELETE | `/api/realm/{realmId}/depots/:depotId` | 删除 Depot | Access Token |
 | GET | `/api/realm/{realmId}/tickets` | 列出 Ticket | Access Token |
-| POST | `/api/realm/{realmId}/tickets` | 创建 Ticket | Delegate Token |
+| POST | `/api/realm/{realmId}/tickets` | 创建 Ticket | Access Token |
 | GET | `/api/realm/{realmId}/tickets/:ticketId` | 查询 Ticket | Access Token |
 | POST | `/api/realm/{realmId}/tickets/:ticketId/submit` | 提交 Ticket | Access Token |
 
@@ -188,6 +188,14 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 | `NOT_A_DIRECTORY` | 400 | 目标不是目录 |
 | `FILE_TOO_LARGE` | 400/413 | 读取时表示多 block 不支持（400），写入时表示超过大小限制（413） |
 | `CONTENT_LENGTH_MISMATCH` | 400 | fs/write 实际 body 字节数与 Content-Length 不一致 |
+| `INVALID_ROOT` | 400 | nodeKey 无效或引用的节点不存在 |
+| `INVALID_PATH` | 400 | 文件路径无效（空段、`..`、绝对路径等） |
+| `INDEX_OUT_OF_BOUNDS` | 400 | indexPath 中的索引超出范围 |
+| `NAME_TOO_LONG` | 400 | 文件/目录名超过 maxNameBytes |
+| `COLLECTION_FULL` | 400 | 目录子节点数达到 maxCollectionChildren 上限 |
+| `CANNOT_REMOVE_ROOT` | 400 | 不能删除根节点 |
+| `CANNOT_MOVE_ROOT` | 400 | 不能移动根节点 |
+| `MOVE_INTO_SELF` | 400 | 不能将目录移入自身或其子目录 |
 | `TARGET_EXISTS` | 409 | 目标路径已存在 |
 | `EXISTS_AS_FILE` | 409 | 路径已存在且是文件 |
 | `TOO_MANY_ENTRIES` | 400 | rewrite entries + deletes 条目超限 |
