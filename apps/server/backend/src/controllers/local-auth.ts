@@ -85,7 +85,12 @@ export const createLocalAuthController = (deps: LocalAuthControllerDeps): LocalA
       try {
         await localUsersDb.createUser(email, passwordHash, userId, name);
       } catch (err: unknown) {
-        if (err && typeof err === "object" && "name" in err && err.name === "ConditionalCheckFailedException") {
+        if (
+          err &&
+          typeof err === "object" &&
+          "name" in err &&
+          err.name === "ConditionalCheckFailedException"
+        ) {
           return c.json({ error: "EMAIL_EXISTS", message: "Email already registered" }, 409);
         }
         throw err;
@@ -97,12 +102,15 @@ export const createLocalAuthController = (deps: LocalAuthControllerDeps): LocalA
       // Issue tokens
       const tokens = issueTokens(userId);
 
-      return c.json({
-        userId,
-        email,
-        name,
-        ...tokens,
-      }, 201);
+      return c.json(
+        {
+          userId,
+          email,
+          name,
+          ...tokens,
+        },
+        201
+      );
     },
 
     login: async (c) => {
@@ -159,7 +167,7 @@ export const createLocalAuthController = (deps: LocalAuthControllerDeps): LocalA
         const padding = payloadB64.length % 4 === 0 ? "" : "=".repeat(4 - (payloadB64.length % 4));
         const payloadJson = Buffer.from(
           payloadB64.replace(/-/g, "+").replace(/_/g, "/") + padding,
-          "base64",
+          "base64"
         ).toString("utf-8");
         const payload = JSON.parse(payloadJson);
 

@@ -2,7 +2,7 @@
  * Token validity and issuer consistency checks tests.
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import type {
   StoredAccessToken,
   StoredDelegateToken,
@@ -36,7 +36,9 @@ const createUserToken = (overrides: Partial<StoredUserToken> = {}): StoredUserTo
   ...overrides,
 });
 
-const createDelegateToken = (overrides: Partial<StoredDelegateToken> = {}): StoredDelegateToken => ({
+const createDelegateToken = (
+  overrides: Partial<StoredDelegateToken> = {}
+): StoredDelegateToken => ({
   tokenId: "dlt1_delegate123",
   tokenBase64: "base64-delegate-token",
   type: "delegate",

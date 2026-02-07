@@ -174,14 +174,16 @@ export type FsMkdirResponse = z.infer<typeof FsMkdirResponseSchema>;
 // ============================================================================
 
 /** Request body for POST .../fs/rm */
-export const FsRmRequestSchema = z.object({
-  /** Name-based path */
-  path: z.string().optional(),
-  /** Index-based path */
-  indexPath: z.string().optional(),
-}).refine((d) => d.path || d.indexPath, {
-  message: "Either path or indexPath must be provided",
-});
+export const FsRmRequestSchema = z
+  .object({
+    /** Name-based path */
+    path: z.string().optional(),
+    /** Index-based path */
+    indexPath: z.string().optional(),
+  })
+  .refine((d) => d.path || d.indexPath, {
+    message: "Either path or indexPath must be provided",
+  });
 
 export type FsRmRequest = z.infer<typeof FsRmRequestSchema>;
 
@@ -268,21 +270,21 @@ export const FsRewriteEntrySchema = z.union([
 export type FsRewriteEntry = z.infer<typeof FsRewriteEntrySchema>;
 
 /** Request body for POST .../fs/rewrite */
-export const FsRewriteRequestSchema = z.object({
-  /** Path → entry mappings describing the new tree */
-  entries: z.record(z.string(), FsRewriteEntrySchema).optional(),
-  /** Paths to remove from the tree */
-  deletes: z.array(z.string()).optional(),
-}).refine(
-  (d) =>
-    (d.entries && Object.keys(d.entries).length > 0) ||
-    (d.deletes && d.deletes.length > 0),
-  { message: "entries and deletes cannot both be empty" }
-).refine(
-  (d) =>
-    (Object.keys(d.entries ?? {}).length + (d.deletes?.length ?? 0)) <= FS_MAX_REWRITE_ENTRIES,
-  { message: `Total entries + deletes must not exceed ${FS_MAX_REWRITE_ENTRIES}` }
-);
+export const FsRewriteRequestSchema = z
+  .object({
+    /** Path → entry mappings describing the new tree */
+    entries: z.record(z.string(), FsRewriteEntrySchema).optional(),
+    /** Paths to remove from the tree */
+    deletes: z.array(z.string()).optional(),
+  })
+  .refine(
+    (d) => (d.entries && Object.keys(d.entries).length > 0) || (d.deletes && d.deletes.length > 0),
+    { message: "entries and deletes cannot both be empty" }
+  )
+  .refine(
+    (d) => Object.keys(d.entries ?? {}).length + (d.deletes?.length ?? 0) <= FS_MAX_REWRITE_ENTRIES,
+    { message: `Total entries + deletes must not exceed ${FS_MAX_REWRITE_ENTRIES}` }
+  );
 
 export type FsRewriteRequest = z.infer<typeof FsRewriteRequestSchema>;
 

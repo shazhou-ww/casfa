@@ -5,21 +5,16 @@
  * encoding/decoding from @casfa/core with an in-memory storage backend.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import {
-  decodeNode,
-  encodeDictNode,
-  encodeFileNode,
-  EMPTY_DICT_KEY,
-  type HashProvider,
-} from "@casfa/core";
+import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { encodeDictNode, encodeFileNode, type HashProvider } from "@casfa/core";
 import { hashToNodeKey, nodeKeyToHex } from "@casfa/protocol";
 import type { StorageProvider } from "@casfa/storage-core";
-import { createFsService, type FsError, type FsServiceDeps } from "../../src/services/fs/index.ts";
+import type { DepotsDb } from "../../src/db/depots.ts";
 import type { OwnershipDb } from "../../src/db/ownership.ts";
 import type { RefCountDb } from "../../src/db/refcount.ts";
+import type { ScopeSetNodesDb } from "../../src/db/scope-set-nodes.ts";
 import type { UsageDb } from "../../src/db/usage.ts";
-import type { DepotsDb } from "../../src/db/depots.ts";
+import { createFsService, type FsError, type FsServiceDeps } from "../../src/services/fs/index.ts";
 import { createNodeHashProvider } from "../../src/util/hash-provider.ts";
 
 // ============================================================================
@@ -34,7 +29,9 @@ const hashProvider: HashProvider = createNodeHashProvider();
 
 /** Convert Uint8Array hash → hex key (for in-memory storage) */
 const hashToHex = (hash: Uint8Array): string =>
-  Array.from(hash).map((b) => b.toString(16).padStart(2, "0")).join("");
+  Array.from(hash)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 
 /** Convert hex → Uint8Array */
 const hexToHash = (hex: string): Uint8Array => {
@@ -138,7 +135,16 @@ function createMockDepotsDb(depots: Map<string, { root: string }> = new Map()): 
     get: mock(async (_realm: string, depotId: string) => {
       const d = depots.get(depotId);
       if (!d) return null;
-      return { realm: _realm, depotId, root: d.root, title: "", maxHistory: 10, history: [], createdAt: 0, updatedAt: 0 } as never;
+      return {
+        realm: _realm,
+        depotId,
+        root: d.root,
+        title: "",
+        maxHistory: 10,
+        history: [],
+        createdAt: 0,
+        updatedAt: 0,
+      } as never;
     }),
     getByName: mock(() => Promise.resolve(null)),
     getByTitle: mock(() => Promise.resolve(null)),
@@ -150,6 +156,20 @@ function createMockDepotsDb(depots: Map<string, { root: string }> = new Map()): 
     listVisibleToToken: mock(() => Promise.resolve({ items: [], hasMore: false })),
     checkAccess: mock(() => Promise.resolve(true)),
   } as unknown as DepotsDb;
+}
+
+function createMockScopeSetNodesDb(): ScopeSetNodesDb {
+  return {
+    getOrCreate: mock(() =>
+      Promise.resolve({ setNodeId: "mock", children: [], refCount: 0, createdAt: 0 })
+    ),
+    createOrIncrement: mock(() => Promise.resolve()),
+    get: mock(() => Promise.resolve(null)),
+    incrementRef: mock(() => Promise.resolve()),
+    decrementRef: mock(() => Promise.resolve()),
+    deleteZeroRefNodes: mock(() => Promise.resolve(0)),
+    computeId: mock(() => "mock-set-node-id"),
+  } as unknown as ScopeSetNodesDb;
 }
 
 // ============================================================================
@@ -191,7 +211,10 @@ async function buildTreeNode(
       hashes.push(encoded.hash);
     } else {
       // Directory (recurse)
-      const childHex = await buildTreeNode(storage, value as Record<string, string | Record<string, unknown>>);
+      const childHex = await buildTreeNode(
+        storage,
+        value as Record<string, string | Record<string, unknown>>
+      );
       names.push(name);
       hashes.push(hexToHash(childHex));
     }
@@ -214,6 +237,7 @@ function createTestService() {
   const refCountDb = createMockRefCountDb();
   const usageDb = createMockUsageDb();
   const depotsDb = createMockDepotsDb();
+  const scopeSetNodesDb = createMockScopeSetNodesDb();
 
   const deps: FsServiceDeps = {
     storage,
@@ -222,6 +246,7 @@ function createTestService() {
     refCountDb,
     usageDb,
     depotsDb,
+    scopeSetNodesDb,
   };
 
   const service = createFsService(deps);
@@ -263,13 +288,13 @@ describe("Filesystem Service", () => {
 
     rootHex = await buildTree(storage, {
       "README.md": "# Hello",
-      "src": {
+      src: {
         "main.ts": "console.log('hi')",
-        "lib": {
+        lib: {
           "utils.ts": "export const x = 1",
         },
       },
-      "docs": {
+      docs: {
         "guide.md": "Guide content",
       },
     });
@@ -498,7 +523,12 @@ describe("Filesystem Service", () => {
 
       // Get second page
       const page2 = await service.ls(
-        REALM, rootNodeKey, undefined, undefined, 2, page1.nextCursor!
+        REALM,
+        rootNodeKey,
+        undefined,
+        undefined,
+        2,
+        page1.nextCursor!
       );
       if (isFsError(page2)) throw new Error("page2 failed");
 
@@ -527,7 +557,13 @@ describe("Filesystem Service", () => {
     it("should create a new file at root", async () => {
       const content = new TextEncoder().encode("new file content");
       const result = await service.write(
-        REALM, TOKEN_ID, rootNodeKey, "new.txt", undefined, content, "text/plain"
+        REALM,
+        TOKEN_ID,
+        rootNodeKey,
+        "new.txt",
+        undefined,
+        content,
+        "text/plain"
       );
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
@@ -537,7 +573,7 @@ describe("Filesystem Service", () => {
       expect(result.file.size).toBe(content.length);
 
       // Verify new root has the new file
-      const newRootHex = nodeKeyToHex(result.newRoot);
+      const _newRootHex = nodeKeyToHex(result.newRoot);
       const lsResult = await service.ls(REALM, result.newRoot);
       if (isFsError(lsResult)) throw new Error("ls failed");
 
@@ -549,7 +585,13 @@ describe("Filesystem Service", () => {
     it("should overwrite an existing file", async () => {
       const content = new TextEncoder().encode("updated content");
       const result = await service.write(
-        REALM, TOKEN_ID, rootNodeKey, "README.md", undefined, content, "text/markdown"
+        REALM,
+        TOKEN_ID,
+        rootNodeKey,
+        "README.md",
+        undefined,
+        content,
+        "text/markdown"
       );
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
@@ -566,7 +608,13 @@ describe("Filesystem Service", () => {
     it("should create file in nested path with auto-mkdir", async () => {
       const content = new TextEncoder().encode("deep content");
       const result = await service.write(
-        REALM, TOKEN_ID, rootNodeKey, "a/b/c/deep.txt", undefined, content, "text/plain"
+        REALM,
+        TOKEN_ID,
+        rootNodeKey,
+        "a/b/c/deep.txt",
+        undefined,
+        content,
+        "text/plain"
       );
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
@@ -583,7 +631,13 @@ describe("Filesystem Service", () => {
     it("should write file into existing nested directory", async () => {
       const content = new TextEncoder().encode("another file");
       const result = await service.write(
-        REALM, TOKEN_ID, rootNodeKey, "src/new.ts", undefined, content, "text/typescript"
+        REALM,
+        TOKEN_ID,
+        rootNodeKey,
+        "src/new.ts",
+        undefined,
+        content,
+        "text/typescript"
       );
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
@@ -599,7 +653,13 @@ describe("Filesystem Service", () => {
     it("should return error when writing exceeds max size", async () => {
       const content = new Uint8Array(5 * 1024 * 1024); // 5MB > 4MB max
       const result = await service.write(
-        REALM, TOKEN_ID, rootNodeKey, "huge.bin", undefined, content, "application/octet-stream"
+        REALM,
+        TOKEN_ID,
+        rootNodeKey,
+        "huge.bin",
+        undefined,
+        content,
+        "application/octet-stream"
       );
       expect(isFsError(result)).toBe(true);
       if (!isFsError(result)) return;
@@ -610,7 +670,13 @@ describe("Filesystem Service", () => {
     it("should return error when path is missing", async () => {
       const content = new TextEncoder().encode("no path");
       const result = await service.write(
-        REALM, TOKEN_ID, rootNodeKey, undefined, undefined, content, "text/plain"
+        REALM,
+        TOKEN_ID,
+        rootNodeKey,
+        undefined,
+        undefined,
+        content,
+        "text/plain"
       );
       expect(isFsError(result)).toBe(true);
       if (!isFsError(result)) return;
@@ -621,7 +687,13 @@ describe("Filesystem Service", () => {
     it("should not overwrite directory with file", async () => {
       const content = new TextEncoder().encode("should fail");
       const result = await service.write(
-        REALM, TOKEN_ID, rootNodeKey, "src", undefined, content, "text/plain"
+        REALM,
+        TOKEN_ID,
+        rootNodeKey,
+        "src",
+        undefined,
+        content,
+        "text/plain"
       );
       expect(isFsError(result)).toBe(true);
       if (!isFsError(result)) return;
@@ -632,7 +704,13 @@ describe("Filesystem Service", () => {
     it("should preserve Merkle tree integrity after write", async () => {
       const content = new TextEncoder().encode("integrity test");
       const result = await service.write(
-        REALM, TOKEN_ID, rootNodeKey, "src/lib/new.ts", undefined, content, "text/plain"
+        REALM,
+        TOKEN_ID,
+        rootNodeKey,
+        "src/lib/new.ts",
+        undefined,
+        content,
+        "text/plain"
       );
       if (isFsError(result)) throw new Error("write failed");
 
@@ -880,14 +958,16 @@ describe("Filesystem Service", () => {
 
     it("should copy to nested path with auto-mkdir", async () => {
       const result = await service.cp(
-        REALM, TOKEN_ID, rootNodeKey, "README.md", "archive/2024/README.md"
+        REALM,
+        TOKEN_ID,
+        rootNodeKey,
+        "README.md",
+        "archive/2024/README.md"
       );
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
-      const readCopy = await service.read(
-        REALM, result.newRoot, "archive/2024/README.md"
-      );
+      const readCopy = await service.read(REALM, result.newRoot, "archive/2024/README.md");
       if (isFsError(readCopy)) throw new Error("read copy failed");
       expect(new TextDecoder().decode(readCopy.data)).toBe("# Hello");
     });
@@ -907,11 +987,7 @@ describe("Filesystem Service", () => {
 
   describe("rewrite", () => {
     it("should apply delete entries", async () => {
-      const result = await service.rewrite(
-        REALM, TOKEN_ID, rootNodeKey,
-        undefined,
-        ["README.md"]
-      );
+      const result = await service.rewrite(REALM, TOKEN_ID, rootNodeKey, undefined, ["README.md"]);
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
@@ -924,7 +1000,9 @@ describe("Filesystem Service", () => {
 
     it("should apply from entries (move semantics)", async () => {
       const result = await service.rewrite(
-        REALM, TOKEN_ID, rootNodeKey,
+        REALM,
+        TOKEN_ID,
+        rootNodeKey,
         { "renamed.md": { from: "README.md" } },
         undefined
       );
@@ -941,7 +1019,9 @@ describe("Filesystem Service", () => {
 
     it("should apply dir entries (create empty directory)", async () => {
       const result = await service.rewrite(
-        REALM, TOKEN_ID, rootNodeKey,
+        REALM,
+        TOKEN_ID,
+        rootNodeKey,
         { "empty-dir": { dir: true } },
         undefined
       );
@@ -956,7 +1036,9 @@ describe("Filesystem Service", () => {
 
     it("should combine entries and deletes", async () => {
       const result = await service.rewrite(
-        REALM, TOKEN_ID, rootNodeKey,
+        REALM,
+        TOKEN_ID,
+        rootNodeKey,
         { "new-dir": { dir: true } },
         ["README.md"]
       );
@@ -995,13 +1077,14 @@ describe("Filesystem Service", () => {
       const ctx = createTestService();
       // Manually override the depots db to return our depot
       const depotsDb = createMockDepotsDb(depots);
-      const service2 = createFsService({
+      const _service2 = createFsService({
         storage: ctx.storage,
         hashProvider,
         ownershipDb: ctx.ownershipDb,
         refCountDb: ctx.refCountDb,
         usageDb: ctx.usageDb,
         depotsDb,
+        scopeSetNodesDb: createMockScopeSetNodesDb(),
       });
 
       // We need to populate the storage with the tree too
@@ -1013,6 +1096,7 @@ describe("Filesystem Service", () => {
         refCountDb: ctx.refCountDb,
         usageDb: ctx.usageDb,
         depotsDb,
+        scopeSetNodesDb: createMockScopeSetNodesDb(),
       });
 
       const result = await service3.stat(REALM, "depot:test-depot");
@@ -1040,7 +1124,13 @@ describe("Filesystem Service", () => {
     it("should return different newRoot after write", async () => {
       const content = new TextEncoder().encode("new");
       const result = await service.write(
-        REALM, TOKEN_ID, rootNodeKey, "new.txt", undefined, content, "text/plain"
+        REALM,
+        TOKEN_ID,
+        rootNodeKey,
+        "new.txt",
+        undefined,
+        content,
+        "text/plain"
       );
       if (isFsError(result)) throw new Error("write failed");
 
@@ -1065,13 +1155,25 @@ describe("Filesystem Service", () => {
       // Perform multiple writes
       const content1 = new TextEncoder().encode("file1");
       const r1 = await service.write(
-        REALM, TOKEN_ID, rootNodeKey, "file1.txt", undefined, content1, "text/plain"
+        REALM,
+        TOKEN_ID,
+        rootNodeKey,
+        "file1.txt",
+        undefined,
+        content1,
+        "text/plain"
       );
       if (isFsError(r1)) throw new Error("write1 failed");
 
       const content2 = new TextEncoder().encode("file2");
       const r2 = await service.write(
-        REALM, TOKEN_ID, rootNodeKey, "file2.txt", undefined, content2, "text/plain"
+        REALM,
+        TOKEN_ID,
+        rootNodeKey,
+        "file2.txt",
+        undefined,
+        content2,
+        "text/plain"
       );
       if (isFsError(r2)) throw new Error("write2 failed");
 
@@ -1118,7 +1220,13 @@ describe("Filesystem Service", () => {
     it("should write to empty root", async () => {
       const content = new TextEncoder().encode("hello");
       const result = await service.write(
-        REALM, TOKEN_ID, emptyRootNodeKey, "hello.txt", undefined, content, "text/plain"
+        REALM,
+        TOKEN_ID,
+        emptyRootNodeKey,
+        "hello.txt",
+        undefined,
+        content,
+        "text/plain"
       );
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;

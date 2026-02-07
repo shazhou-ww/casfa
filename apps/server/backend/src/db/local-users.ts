@@ -6,7 +6,7 @@
  */
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { createDocClient } from "./client.ts";
 
 // ============================================================================
@@ -43,7 +43,7 @@ export const createLocalUsersDb = (config: LocalUsersDbConfig): LocalUsersDb => 
     email: string,
     passwordHash: string,
     userId: string,
-    name: string,
+    name: string
   ): Promise<void> => {
     const now = Date.now();
     await client.send(
@@ -59,7 +59,7 @@ export const createLocalUsersDb = (config: LocalUsersDbConfig): LocalUsersDb => 
           createdAt: now,
         },
         ConditionExpression: "attribute_not_exists(pk)",
-      }),
+      })
     );
   };
 
@@ -68,7 +68,7 @@ export const createLocalUsersDb = (config: LocalUsersDbConfig): LocalUsersDb => 
       new GetCommand({
         TableName: tableName,
         Key: { pk: `USER_LOCAL#${email}`, sk: "PROFILE" },
-      }),
+      })
     );
 
     if (!result.Item) return null;

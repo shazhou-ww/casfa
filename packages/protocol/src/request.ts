@@ -34,7 +34,10 @@ export const CreateTokenRequestSchema = z.object({
   /** Optional description of what the client does */
   description: z.string().max(256).optional(),
   /** Hash of client-generated secret (SHA-256 hex) */
-  clientSecretHash: z.string().length(64).regex(/^[0-9a-f]+$/i),
+  clientSecretHash: z
+    .string()
+    .length(64)
+    .regex(/^[0-9a-f]+$/i),
 });
 export type CreateTokenRequest = z.infer<typeof CreateTokenRequestSchema>;
 

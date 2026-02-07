@@ -20,16 +20,12 @@ import {
   createOAuthController,
   createRealmController,
   createTicketsController,
-  createTokensController,
   createTokenRequestsController,
+  createTokensController,
 } from "./controllers/index.ts";
 import { createLocalAuthController } from "./controllers/local-auth.ts";
 // MCP
 import { createMcpController } from "./mcp/index.ts";
-
-// Services
-import { createFsService } from "./services/fs/index.ts";
-
 // Middleware
 import {
   createAccessTokenMiddleware,
@@ -44,6 +40,8 @@ import {
 } from "./middleware/index.ts";
 // Router
 import { createRouter } from "./router.ts";
+// Services
+import { createFsService } from "./services/fs/index.ts";
 import type { Env } from "./types.ts";
 import type { CombinedHashProvider } from "./util/hash-provider.ts";
 
@@ -73,7 +71,7 @@ export type AppDependencies = {
   /** Runtime configuration for /api/info endpoint */
   runtimeInfo?: {
     storageType: "memory" | "fs" | "s3";
-    authType: "mock" | "cognito" | "jwt";
+    authType: "mock" | "cognito" | "tokens-only";
     databaseType: "local" | "aws";
   };
 };
@@ -117,8 +115,8 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   const realmAccessMiddleware = createRealmAccessMiddleware();
   const adminAccessMiddleware = createAdminAccessMiddleware();
   const scopeValidationMiddleware = createScopeValidationMiddleware({
-    storage,
     scopeSetNodesDb,
+    getNode: (realm: string, hash: string) => storage.get(hash),
   });
   const canUploadMiddleware = createCanUploadMiddleware();
   const canManageDepotMiddleware = createCanManageDepotMiddleware();
@@ -129,7 +127,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     serverConfig: config.server,
     featuresConfig: config.features,
     storageType: runtimeInfo?.storageType ?? "memory",
-    authType: runtimeInfo?.authType ?? "jwt",
+    authType: runtimeInfo?.authType ?? "tokens-only",
     databaseType: runtimeInfo?.databaseType ?? "aws",
   });
   const oauth = createOAuthController({
@@ -153,16 +151,19 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     ownershipDb,
     refCountDb,
     usageDb,
+    scopeSetNodesDb,
   });
   const depots = createDepotsController({
     depotsDb,
     storage,
+    ownershipDb,
   });
   const tokens = createTokensController({
     delegateTokensDb,
     scopeSetNodesDb,
     tokenAuditDb,
     depotsDb,
+    getNode: (realm: string, hash: string) => storage.get(hash),
   });
   const tokenRequests = createTokenRequestsController({
     tokenRequestsDb,
@@ -172,7 +173,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     authorizeUrlBase: config.server.baseUrl ?? "http://localhost:3500",
   });
   const mcp = createMcpController({
-    delegateTokensDb,
+    ticketsDb,
     ownershipDb,
     storage,
     serverConfig: config.server,
@@ -195,6 +196,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     refCountDb,
     usageDb,
     depotsDb,
+    scopeSetNodesDb,
   });
   const filesystem = createFilesystemController({ fsService });
 

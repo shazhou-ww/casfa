@@ -19,22 +19,10 @@ import {
   QueryCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
+import type { DelegateTokenRecord, ListOptions, PaginatedResult } from "../types/delegate-token.ts";
 import type { Depot } from "../types.ts";
-import type {
-  DepotRecord,
-  DelegateTokenRecord,
-  ListOptions,
-  PaginatedResult,
-} from "../types/delegate-token.ts";
+import { decodeCursor, encodeCursor, toCreatorGsi3Pk, toDepotGsi3Sk } from "../util/db-keys.ts";
 import { generateDepotId } from "../util/token-id.ts";
-import {
-  toRealmPk,
-  toDepotSk,
-  toCreatorGsi3Pk,
-  toDepotGsi3Sk,
-  encodeCursor,
-  decodeCursor,
-} from "../util/db-keys.ts";
 import { createDocClient } from "./client.ts";
 
 // ============================================================================
@@ -203,7 +191,6 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
     // Build the item with both old and new key formats during transition
     const item: Record<string, unknown> = {
       // Legacy keys (for backward compatibility with existing queries)
-      realm,
       key: toLegacyDepotKey(depotId),
       gsi1pk: `${realm}#DEPOT_TITLE`,
       gsi1sk: name,

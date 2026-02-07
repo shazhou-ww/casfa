@@ -25,12 +25,19 @@ export type PrepareNodes = z.infer<typeof PrepareNodesSchema>;
 
 /**
  * Response schema for nodes/prepare
+ *
+ * Three-way classification:
+ * - missing: node does not exist in CAS, must be uploaded
+ * - owned: node exists and is owned by the current token's family, no upload needed
+ * - unowned: node exists but not owned by the current token, must be re-uploaded to gain ownership
  */
 export const PrepareNodesResponseSchema = z.object({
-  /** Node keys that need to be uploaded */
+  /** Node keys that need to be uploaded (not in CAS) */
   missing: z.array(z.string()),
-  /** Node keys that already exist (and have been touched) */
-  exists: z.array(z.string()),
+  /** Node keys that exist and are owned by current token family */
+  owned: z.array(z.string()),
+  /** Node keys that exist but are NOT owned by current token family (need re-upload) */
+  unowned: z.array(z.string()),
 });
 
 export type PrepareNodesResponse = z.infer<typeof PrepareNodesResponseSchema>;

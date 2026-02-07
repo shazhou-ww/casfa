@@ -28,13 +28,7 @@ export async function deriveKey(
   info: string = "casfa-token-encryption"
 ): Promise<CryptoKey> {
   // Import secret as base key material
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    secret,
-    "HKDF",
-    false,
-    ["deriveKey"]
-  );
+  const keyMaterial = await crypto.subtle.importKey("raw", secret, "HKDF", false, ["deriveKey"]);
 
   // Derive AES key using HKDF
   const encoder = new TextEncoder();
@@ -59,10 +53,7 @@ export async function deriveKey(
  * @param key - AES-256 CryptoKey
  * @returns Encrypted token package
  */
-export async function encryptAesGcm(
-  data: Uint8Array,
-  key: CryptoKey
-): Promise<EncryptedToken> {
+export async function encryptAesGcm(data: Uint8Array, key: CryptoKey): Promise<EncryptedToken> {
   // Generate random IV
   const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 
@@ -101,9 +92,7 @@ export async function decryptAesGcm(
 ): Promise<Uint8Array> {
   // Decode from Base64
   const iv = Uint8Array.from(atob(encrypted.iv), (c) => c.charCodeAt(0));
-  const ciphertext = Uint8Array.from(atob(encrypted.ciphertext), (c) =>
-    c.charCodeAt(0)
-  );
+  const ciphertext = Uint8Array.from(atob(encrypted.ciphertext), (c) => c.charCodeAt(0));
   const tag = Uint8Array.from(atob(encrypted.tag), (c) => c.charCodeAt(0));
 
   // Combine ciphertext and tag (Web Crypto expects them together)
@@ -177,9 +166,7 @@ export function formatEncryptedToken(encrypted: EncryptedToken): string {
 export function parseEncryptedToken(str: string): EncryptedToken {
   const parts = str.split(".");
   if (parts.length !== 3) {
-    throw new Error(
-      `Invalid encrypted token format: expected 3 parts, got ${parts.length}`
-    );
+    throw new Error(`Invalid encrypted token format: expected 3 parts, got ${parts.length}`);
   }
 
   return {

@@ -5,25 +5,17 @@
  * Merkle path rebuild, child insertion / removal, and parent-dir creation.
  */
 
-import {
-  decodeNode,
-  encodeDictNode,
-  type CasNode,
-  type HashProvider,
-} from "@casfa/core";
-import {
-  nodeKeyToHex,
-  FS_MAX_NAME_BYTES,
-  FS_MAX_COLLECTION_CHILDREN,
-} from "@casfa/protocol";
-import type { StorageProvider } from "@casfa/storage-core";
-import type { OwnershipDb } from "../../db/ownership.ts";
-import type { RefCountDb } from "../../db/refcount.ts";
-import type { UsageDb } from "../../db/usage.ts";
-import type { DepotsDb } from "../../db/depots.ts";
+import { type CasNode, decodeNode, encodeDictNode } from "@casfa/core";
+import { FS_MAX_COLLECTION_CHILDREN, FS_MAX_NAME_BYTES, nodeKeyToHex } from "@casfa/protocol";
 
-import { hashToHex, hexToHash, findChildByName, findChildByIndex, parsePath, parseIndexPath } from "./helpers.ts";
-import { fsError, type FsError, type FsServiceDeps, type ResolvedNode } from "./types.ts";
+import {
+  findChildByIndex,
+  findChildByName,
+  hashToHex,
+  parseIndexPath,
+  parsePath,
+} from "./helpers.ts";
+import { type FsError, type FsServiceDeps, fsError, type ResolvedNode } from "./types.ts";
 
 const textEncoder = new TextEncoder();
 
@@ -59,14 +51,16 @@ export const createTreeOps = (deps: FsServiceDeps) => {
   /**
    * Store a new node, update ownership / refcount / usage.
    * Returns the hex key of the stored node.
+   *
+   * @param ownerId - The DT issuerId or User ID for ownership tracking
    */
   const storeNode = async (
     realm: string,
-    tokenId: string,
+    ownerId: string,
     bytes: Uint8Array,
     hash: Uint8Array,
     kind: "dict" | "file",
-    logicalSize: number,
+    logicalSize: number
   ): Promise<string> => {
     const hexKey = hashToHex(hash);
 
@@ -74,9 +68,19 @@ export const createTreeOps = (deps: FsServiceDeps) => {
     if (!exists) {
       await storage.put(hexKey, bytes);
       await ownershipDb.addOwnership(
-        realm, hexKey, tokenId, "application/octet-stream", logicalSize, kind,
+        realm,
+        hexKey,
+        ownerId,
+        "application/octet-stream",
+        logicalSize,
+        kind
       );
-      const { isNewToRealm } = await refCountDb.incrementRef(realm, hexKey, bytes.length, logicalSize);
+      const { isNewToRealm } = await refCountDb.incrementRef(
+        realm,
+        hexKey,
+        bytes.length,
+        logicalSize
+      );
       if (isNewToRealm) {
         await usageDb.updateUsage(realm, {
           physicalBytes: bytes.length,
@@ -126,7 +130,7 @@ export const createTreeOps = (deps: FsServiceDeps) => {
   const resolvePath = async (
     rootHex: string,
     pathStr?: string,
-    indexPathStr?: string,
+    indexPathStr?: string
   ): Promise<ResolvedNode | FsError> => {
     const rootNode = await getAndDecodeNode(rootHex);
     if (!rootNode) {
@@ -224,9 +228,9 @@ export const createTreeOps = (deps: FsServiceDeps) => {
    */
   const rebuildMerklePath = async (
     realm: string,
-    tokenId: string,
+    ownerId: string,
     parentPath: ResolvedNode["parentPath"],
-    newChildHash: Uint8Array,
+    newChildHash: Uint8Array
   ): Promise<string> => {
     let currentChildHash = newChildHash;
 
@@ -237,10 +241,10 @@ export const createTreeOps = (deps: FsServiceDeps) => {
 
       const encoded = await encodeDictNode(
         { children: newChildren, childNames: parent.node.childNames ?? [] },
-        hashProvider,
+        hashProvider
       );
 
-      await storeNode(realm, tokenId, encoded.bytes, encoded.hash, "dict", 0);
+      await storeNode(realm, ownerId, encoded.bytes, encoded.hash, "dict", 0);
       currentChildHash = encoded.hash;
     }
 
@@ -257,12 +261,12 @@ export const createTreeOps = (deps: FsServiceDeps) => {
    */
   const insertChild = async (
     realm: string,
-    tokenId: string,
+    ownerId: string,
     parentPath: ResolvedNode["parentPath"],
     _parentHash: string,
     parentNode: CasNode,
     childName: string,
-    childHash: Uint8Array,
+    childHash: Uint8Array
   ): Promise<string | FsError> => {
     const existingNames = parentNode.childNames ?? [];
     const existingChildren = parentNode.children ?? [];
@@ -281,11 +285,11 @@ export const createTreeOps = (deps: FsServiceDeps) => {
 
     const encoded = await encodeDictNode(
       { children: newChildren, childNames: newNames },
-      hashProvider,
+      hashProvider
     );
 
-    await storeNode(realm, tokenId, encoded.bytes, encoded.hash, "dict", 0);
-    return rebuildMerklePath(realm, tokenId, parentPath, encoded.hash);
+    await storeNode(realm, ownerId, encoded.bytes, encoded.hash, "dict", 0);
+    return rebuildMerklePath(realm, ownerId, parentPath, encoded.hash);
   };
 
   /**
@@ -294,10 +298,10 @@ export const createTreeOps = (deps: FsServiceDeps) => {
    */
   const removeChild = async (
     realm: string,
-    tokenId: string,
+    ownerId: string,
     parentPath: ResolvedNode["parentPath"],
     parentNode: CasNode,
-    childIndex: number,
+    childIndex: number
   ): Promise<string> => {
     const existingNames = [...(parentNode.childNames ?? [])];
     const existingChildren = [...(parentNode.children ?? [])];
@@ -307,11 +311,11 @@ export const createTreeOps = (deps: FsServiceDeps) => {
 
     const encoded = await encodeDictNode(
       { children: existingChildren, childNames: existingNames },
-      hashProvider,
+      hashProvider
     );
 
-    await storeNode(realm, tokenId, encoded.bytes, encoded.hash, "dict", 0);
-    return rebuildMerklePath(realm, tokenId, parentPath, encoded.hash);
+    await storeNode(realm, ownerId, encoded.bytes, encoded.hash, "dict", 0);
+    return rebuildMerklePath(realm, ownerId, parentPath, encoded.hash);
   };
 
   // --------------------------------------------------------------------------
@@ -325,12 +329,11 @@ export const createTreeOps = (deps: FsServiceDeps) => {
    */
   const ensureParentDirs = async (
     realm: string,
-    tokenId: string,
+    ownerId: string,
     rootHex: string,
-    segments: string[],
+    segments: string[]
   ): Promise<
-    | { parentHash: string; parentNode: CasNode; parentPath: ResolvedNode["parentPath"] }
-    | FsError
+    { parentHash: string; parentNode: CasNode; parentPath: ResolvedNode["parentPath"] } | FsError
   > => {
     let currentHash = rootHex;
     let currentNode = await getAndDecodeNode(rootHex);
@@ -370,18 +373,15 @@ export const createTreeOps = (deps: FsServiceDeps) => {
               children: newDirHash ? [newDirHash] : [],
               childNames: newDirHash ? [segments[j + 1]!] : [],
             },
-            hashProvider,
+            hashProvider
           );
-          await storeNode(realm, tokenId, emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
+          await storeNode(realm, ownerId, emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
           newDirHash = emptyEncoded.hash;
         }
 
         if (!newDirHash) {
-          const emptyEncoded = await encodeDictNode(
-            { children: [], childNames: [] },
-            hashProvider,
-          );
-          await storeNode(realm, tokenId, emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
+          const emptyEncoded = await encodeDictNode({ children: [], childNames: [] }, hashProvider);
+          await storeNode(realm, ownerId, emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
           newDirHash = emptyEncoded.hash;
         }
 
@@ -389,13 +389,18 @@ export const createTreeOps = (deps: FsServiceDeps) => {
         const newChildren = [...(currentNode.children ?? []), newDirHash];
         const parentEncoded = await encodeDictNode(
           { children: newChildren, childNames: newNames },
-          hashProvider,
+          hashProvider
         );
-        await storeNode(realm, tokenId, parentEncoded.bytes, parentEncoded.hash, "dict", 0);
+        await storeNode(realm, ownerId, parentEncoded.bytes, parentEncoded.hash, "dict", 0);
 
-        const newRootHex = await rebuildMerklePath(realm, tokenId, builtParentPath, parentEncoded.hash);
+        const newRootHex = await rebuildMerklePath(
+          realm,
+          ownerId,
+          builtParentPath,
+          parentEncoded.hash
+        );
         // Re-resolve from the new root
-        return ensureParentDirs(realm, tokenId, newRootHex, segments);
+        return ensureParentDirs(realm, ownerId, newRootHex, segments);
       }
     }
 

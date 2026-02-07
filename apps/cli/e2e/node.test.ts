@@ -19,9 +19,9 @@ import {
 } from "./helpers.ts";
 import {
   type CliTestContext,
-  type TestUserSetup,
   createCliTestContext,
   createTestUserWithToken,
+  type TestUserSetup,
 } from "./setup.ts";
 
 describe("CLI Node Commands", () => {
@@ -99,11 +99,7 @@ describe("CLI Node Commands", () => {
     });
 
     it("should fail for non-existent file", async () => {
-      const result = await runCliWithAuth(
-        ["node", "put", "/nonexistent/path/file.txt"],
-        ctx,
-        user
-      );
+      const result = await runCliWithAuth(["node", "put", "/nonexistent/path/file.txt"], ctx, user);
 
       expect(result.code).not.toBe(0);
       expect(result.output.toLowerCase()).toContain("not found");
@@ -116,7 +112,7 @@ describe("CLI Node Commands", () => {
 
   describe("node put/get roundtrip", () => {
     it("should upload and then download a file with matching content", async () => {
-      const content = "Roundtrip test content - " + Date.now();
+      const content = `Roundtrip test content - ${Date.now()}`;
       const testFile = createTestFile(content);
 
       // Upload
@@ -154,11 +150,7 @@ describe("CLI Node Commands", () => {
       expect(nodeKey).not.toBeNull();
 
       // Check if the node exists
-      const existsResult = await runCliWithAuth(
-        ["node", "exists", nodeKey as string],
-        ctx,
-        user
-      );
+      const existsResult = await runCliWithAuth(["node", "exists", nodeKey as string], ctx, user);
 
       expectSuccess(existsResult, "node exists should succeed");
 
@@ -168,7 +160,7 @@ describe("CLI Node Commands", () => {
 
     it("should show non-existent nodes", async () => {
       // Use a fake node key (26 chars Crockford Base32)
-      const fakeNodeKey = "node:" + "A".repeat(26);
+      const fakeNodeKey = `node:${"A".repeat(26)}`;
 
       const result = await runCliWithAuth(["node", "exists", fakeNodeKey], ctx, user);
 
@@ -191,7 +183,7 @@ describe("CLI Node Commands", () => {
 
       const key1 = extractNodeKey(put1.stdout);
       const key2 = extractNodeKey(put2.stdout);
-      const fakeKey = "node:" + "B".repeat(26);
+      const fakeKey = `node:${"B".repeat(26)}`;
 
       expect(key1).not.toBeNull();
       expect(key2).not.toBeNull();
@@ -220,11 +212,7 @@ describe("CLI Node Commands", () => {
       const content = "json format test";
       const testFile = createTestFile(content);
 
-      const result = await runCliWithAuth(
-        ["--format", "json", "node", "put", testFile],
-        ctx,
-        user
-      );
+      const result = await runCliWithAuth(["--format", "json", "node", "put", testFile], ctx, user);
 
       expectSuccess(result, "node put with --format json should succeed");
 

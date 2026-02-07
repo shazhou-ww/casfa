@@ -5,29 +5,25 @@
  * Each operation produces a new immutable root.
  */
 
+import { encodeDictNode, encodeFileNode } from "@casfa/core";
 import {
-  encodeDictNode,
-  encodeFileNode,
-  type HashProvider,
-} from "@casfa/core";
-import {
-  nodeKeyToHex,
   FS_MAX_NODE_SIZE,
   FS_MAX_REWRITE_ENTRIES,
-  type FsWriteResponse,
-  type FsMkdirResponse,
-  type FsRmResponse,
-  type FsMvResponse,
   type FsCpResponse,
+  type FsMkdirResponse,
+  type FsMvResponse,
   type FsRewriteEntry,
   type FsRewriteResponse,
+  type FsRmResponse,
+  type FsWriteResponse,
+  nodeKeyToHex,
 } from "@casfa/protocol";
-import type { StorageProvider } from "@casfa/storage-core";
-import type { OwnershipDb } from "../../db/ownership.ts";
+import type { AccessTokenAuthContext } from "../../types.ts";
+import { type ScopeProofDeps, validateProofAgainstScope } from "../../util/scope-proof.ts";
+import { findChildByName, hashToHex, hexToHash, hexToNodeKey, parsePath } from "./helpers.ts";
 import type { TreeOps } from "./tree-ops.ts";
 import type { FsError, FsServiceDeps } from "./types.ts";
 import { fsError } from "./types.ts";
-import { hashToHex, hexToHash, hexToNodeKey, findChildByName, parsePath } from "./helpers.ts";
 
 // ============================================================================
 // Write Operations Factory
@@ -43,12 +39,12 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
    */
   const write = async (
     realm: string,
-    tokenId: string,
+    ownerId: string,
     rootNodeKey: string,
     pathStr: string | undefined,
     indexPathStr: string | undefined,
     fileContent: Uint8Array,
-    contentType: string,
+    contentType: string
   ): Promise<FsWriteResponse | FsError> => {
     if (fileContent.length > FS_MAX_NODE_SIZE) {
       return fsError("FILE_TOO_LARGE", 413, "File exceeds maxNodeSize (4MB). Use the Node API.");
@@ -60,11 +56,16 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
     // Encode file node
     const fileEncoded = await encodeFileNode(
       { data: fileContent, contentType, fileSize: fileContent.length },
-      hashProvider,
+      hashProvider
     );
 
     const fileHex = await tree.storeNode(
-      realm, tokenId, fileEncoded.bytes, fileEncoded.hash, "file", fileContent.length,
+      realm,
+      ownerId,
+      fileEncoded.bytes,
+      fileEncoded.hash,
+      "file",
+      fileContent.length
     );
 
     // ---------- indexPath-only overwrite ----------
@@ -73,19 +74,31 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
       if ("code" in resolved) return resolved;
 
       if (resolved.node.kind !== "file") {
-        return fsError("NOT_A_FILE", 400, "Target is not a file (cannot overwrite directory with indexPath)");
+        return fsError(
+          "NOT_A_FILE",
+          400,
+          "Target is not a file (cannot overwrite directory with indexPath)"
+        );
       }
       if (resolved.parentPath.length === 0) {
         return fsError("INVALID_PATH", 400, "Cannot replace root node");
       }
 
       const newRootHex = await tree.rebuildMerklePath(
-        realm, tokenId, resolved.parentPath, fileEncoded.hash,
+        realm,
+        ownerId,
+        resolved.parentPath,
+        fileEncoded.hash
       );
 
       return {
         newRoot: hexToNodeKey(newRootHex),
-        file: { path: indexPathStr, key: hexToNodeKey(fileHex), size: fileContent.length, contentType },
+        file: {
+          path: indexPathStr,
+          key: hexToNodeKey(fileHex),
+          size: fileContent.length,
+          contentType,
+        },
         created: false,
       };
     }
@@ -107,13 +120,18 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
       // Writing directly under root
       const rootNode = await tree.getAndDecodeNode(rootHex);
       if (!rootNode) return fsError("INVALID_ROOT", 400, "Root node not found");
-      if (rootNode.kind !== "dict") return fsError("NOT_A_DIRECTORY", 400, "Root is not a directory");
+      if (rootNode.kind !== "dict")
+        return fsError("NOT_A_DIRECTORY", 400, "Root is not a directory");
 
       const existing = findChildByName(rootNode, fileName);
       if (existing) {
         const existingNode = await tree.getAndDecodeNode(hashToHex(existing.hash));
         if (existingNode?.kind === "dict") {
-          return fsError("NOT_A_FILE", 400, `'${fileName}' is a directory, cannot overwrite with file`);
+          return fsError(
+            "NOT_A_FILE",
+            400,
+            `'${fileName}' is a directory, cannot overwrite with file`
+          );
         }
 
         const newChildren = [...(rootNode.children ?? [])];
@@ -121,22 +139,38 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
 
         const newRootEncoded = await encodeDictNode(
           { children: newChildren, childNames: rootNode.childNames ?? [] },
-          hashProvider,
+          hashProvider
         );
         const newRootHex = await tree.storeNode(
-          realm, tokenId, newRootEncoded.bytes, newRootEncoded.hash, "dict", 0,
+          realm,
+          ownerId,
+          newRootEncoded.bytes,
+          newRootEncoded.hash,
+          "dict",
+          0
         );
 
         return {
           newRoot: hexToNodeKey(newRootHex),
-          file: { path: pathStr, key: hexToNodeKey(fileHex), size: fileContent.length, contentType },
+          file: {
+            path: pathStr,
+            key: hexToNodeKey(fileHex),
+            size: fileContent.length,
+            contentType,
+          },
           created: false,
         };
       }
 
       // Insert new
       const result = await tree.insertChild(
-        realm, tokenId, [], rootHex, rootNode, fileName, fileEncoded.hash,
+        realm,
+        ownerId,
+        [],
+        rootHex,
+        rootNode,
+        fileName,
+        fileEncoded.hash
       );
       if (typeof result === "object" && "code" in result) return result;
 
@@ -148,7 +182,7 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
     }
 
     // Multi-segment: ensure parent dirs
-    const parentResult = await tree.ensureParentDirs(realm, tokenId, rootHex, segments);
+    const parentResult = await tree.ensureParentDirs(realm, ownerId, rootHex, segments);
     if ("code" in parentResult) return parentResult;
 
     const { parentHash, parentNode, parentPath } = parentResult;
@@ -156,7 +190,11 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
     if (existing) {
       const existingNode = await tree.getAndDecodeNode(hashToHex(existing.hash));
       if (existingNode?.kind === "dict") {
-        return fsError("NOT_A_FILE", 400, `'${fileName}' is a directory, cannot overwrite with file`);
+        return fsError(
+          "NOT_A_FILE",
+          400,
+          `'${fileName}' is a directory, cannot overwrite with file`
+        );
       }
 
       const newChildren = [...(parentNode.children ?? [])];
@@ -164,11 +202,21 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
 
       const newParentEncoded = await encodeDictNode(
         { children: newChildren, childNames: parentNode.childNames ?? [] },
-        hashProvider,
+        hashProvider
       );
-      await tree.storeNode(realm, tokenId, newParentEncoded.bytes, newParentEncoded.hash, "dict", 0);
+      await tree.storeNode(
+        realm,
+        ownerId,
+        newParentEncoded.bytes,
+        newParentEncoded.hash,
+        "dict",
+        0
+      );
       const newRootHex = await tree.rebuildMerklePath(
-        realm, tokenId, parentPath, newParentEncoded.hash,
+        realm,
+        ownerId,
+        parentPath,
+        newParentEncoded.hash
       );
 
       return {
@@ -179,7 +227,13 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
     }
 
     const result = await tree.insertChild(
-      realm, tokenId, parentPath, parentHash, parentNode, fileName, fileEncoded.hash,
+      realm,
+      ownerId,
+      parentPath,
+      parentHash,
+      parentNode,
+      fileName,
+      fileEncoded.hash
     );
     if (typeof result === "object" && "code" in result) return result;
 
@@ -195,9 +249,9 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
    */
   const mkdir = async (
     realm: string,
-    tokenId: string,
+    ownerId: string,
     rootNodeKey: string,
-    pathStr: string,
+    pathStr: string
   ): Promise<FsMkdirResponse | FsError> => {
     const rootHex = await tree.resolveNodeKey(realm, rootNodeKey);
     if (typeof rootHex === "object") return rootHex;
@@ -221,21 +275,25 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
       return fsError("EXISTS_AS_FILE", 409, `Path '${pathStr}' already exists as a file`);
     }
 
-    const emptyDirEncoded = await encodeDictNode(
-      { children: [], childNames: [] },
-      hashProvider,
-    );
-    await tree.storeNode(realm, tokenId, emptyDirEncoded.bytes, emptyDirEncoded.hash, "dict", 0);
+    const emptyDirEncoded = await encodeDictNode({ children: [], childNames: [] }, hashProvider);
+    await tree.storeNode(realm, ownerId, emptyDirEncoded.bytes, emptyDirEncoded.hash, "dict", 0);
     const dirHex = hashToHex(emptyDirEncoded.hash);
     const dirName = segments[segments.length - 1]!;
 
     if (segments.length === 1) {
       const rootNode = await tree.getAndDecodeNode(rootHex);
       if (!rootNode) return fsError("INVALID_ROOT", 400, "Root node not found");
-      if (rootNode.kind !== "dict") return fsError("NOT_A_DIRECTORY", 400, "Root is not a directory");
+      if (rootNode.kind !== "dict")
+        return fsError("NOT_A_DIRECTORY", 400, "Root is not a directory");
 
       const result = await tree.insertChild(
-        realm, tokenId, [], rootHex, rootNode, dirName, emptyDirEncoded.hash,
+        realm,
+        ownerId,
+        [],
+        rootHex,
+        rootNode,
+        dirName,
+        emptyDirEncoded.hash
       );
       if (typeof result === "object" && "code" in result) return result;
 
@@ -246,12 +304,18 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
       };
     }
 
-    const parentResult = await tree.ensureParentDirs(realm, tokenId, rootHex, segments);
+    const parentResult = await tree.ensureParentDirs(realm, ownerId, rootHex, segments);
     if ("code" in parentResult) return parentResult;
 
     const { parentHash, parentNode, parentPath } = parentResult;
     const result = await tree.insertChild(
-      realm, tokenId, parentPath, parentHash, parentNode, dirName, emptyDirEncoded.hash,
+      realm,
+      ownerId,
+      parentPath,
+      parentHash,
+      parentNode,
+      dirName,
+      emptyDirEncoded.hash
     );
     if (typeof result === "object" && "code" in result) return result;
 
@@ -267,10 +331,10 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
    */
   const rm = async (
     realm: string,
-    tokenId: string,
+    ownerId: string,
     rootNodeKey: string,
     pathStr?: string,
-    indexPathStr?: string,
+    indexPathStr?: string
   ): Promise<FsRmResponse | FsError> => {
     const rootHex = await tree.resolveNodeKey(realm, rootNodeKey);
     if (typeof rootHex === "object") return rootHex;
@@ -288,10 +352,11 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
 
     const lastParent = resolved.parentPath[resolved.parentPath.length - 1]!;
     const newRootHex = await tree.removeChild(
-      realm, tokenId,
+      realm,
+      ownerId,
       resolved.parentPath.slice(0, -1),
       lastParent.node,
-      lastParent.childIndex,
+      lastParent.childIndex
     );
 
     return {
@@ -309,10 +374,10 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
    */
   const mv = async (
     realm: string,
-    tokenId: string,
+    ownerId: string,
     rootNodeKey: string,
     fromPath: string,
-    toPath: string,
+    toPath: string
   ): Promise<FsMvResponse | FsError> => {
     const rootHex = await tree.resolveNodeKey(realm, rootNodeKey);
     if (typeof rootHex === "object") return rootHex;
@@ -325,8 +390,12 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
     if ("code" in toSegments) return toSegments;
     if (toSegments.length === 0) return fsError("INVALID_PATH", 400, "Target path cannot be empty");
 
-    if (toPath.startsWith(fromPath + "/")) {
-      return fsError("MOVE_INTO_SELF", 400, "Cannot move a directory into itself or its subdirectory");
+    if (toPath.startsWith(`${fromPath}/`)) {
+      return fsError(
+        "MOVE_INTO_SELF",
+        400,
+        "Cannot move a directory into itself or its subdirectory"
+      );
     }
 
     const source = await tree.resolvePath(rootHex, fromPath);
@@ -340,10 +409,11 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
 
     const lastParent = source.parentPath[source.parentPath.length - 1]!;
     const afterRemoveRootHex = await tree.removeChild(
-      realm, tokenId,
+      realm,
+      ownerId,
       source.parentPath.slice(0, -1),
       lastParent.node,
-      lastParent.childIndex,
+      lastParent.childIndex
     );
 
     const toName = toSegments[toSegments.length - 1]!;
@@ -353,9 +423,13 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
     if (!("code" in targetCheck)) {
       if (targetCheck.node.kind === "dict" && source.node.kind !== "dict") {
         const result = await tree.insertChild(
-          realm, tokenId, targetCheck.parentPath,
-          targetCheck.hash, targetCheck.node,
-          source.name, sourceNodeHash,
+          realm,
+          ownerId,
+          targetCheck.parentPath,
+          targetCheck.hash,
+          targetCheck.node,
+          source.name,
+          sourceNodeHash
         );
         if (typeof result === "object" && "code" in result) return result;
         return { newRoot: hexToNodeKey(result), from: fromPath, to: `${toPath}/${source.name}` };
@@ -366,22 +440,38 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
     if (toSegments.length === 1) {
       const rootNode = await tree.getAndDecodeNode(afterRemoveRootHex);
       if (!rootNode) return fsError("INVALID_ROOT", 400, "Root node not found after remove");
-      if (rootNode.kind !== "dict") return fsError("NOT_A_DIRECTORY", 400, "Root is not a directory");
+      if (rootNode.kind !== "dict")
+        return fsError("NOT_A_DIRECTORY", 400, "Root is not a directory");
 
       const result = await tree.insertChild(
-        realm, tokenId, [], afterRemoveRootHex, rootNode, toName, sourceNodeHash,
+        realm,
+        ownerId,
+        [],
+        afterRemoveRootHex,
+        rootNode,
+        toName,
+        sourceNodeHash
       );
       if (typeof result === "object" && "code" in result) return result;
       return { newRoot: hexToNodeKey(result), from: fromPath, to: toPath };
     }
 
-    const parentResult = await tree.ensureParentDirs(realm, tokenId, afterRemoveRootHex, toSegments);
+    const parentResult = await tree.ensureParentDirs(
+      realm,
+      ownerId,
+      afterRemoveRootHex,
+      toSegments
+    );
     if ("code" in parentResult) return parentResult;
 
     const result = await tree.insertChild(
-      realm, tokenId, parentResult.parentPath,
-      parentResult.parentHash, parentResult.parentNode,
-      toName, sourceNodeHash,
+      realm,
+      ownerId,
+      parentResult.parentPath,
+      parentResult.parentHash,
+      parentResult.parentNode,
+      toName,
+      sourceNodeHash
     );
     if (typeof result === "object" && "code" in result) return result;
 
@@ -393,10 +483,10 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
    */
   const cp = async (
     realm: string,
-    tokenId: string,
+    ownerId: string,
     rootNodeKey: string,
     fromPath: string,
-    toPath: string,
+    toPath: string
   ): Promise<FsCpResponse | FsError> => {
     const rootHex = await tree.resolveNodeKey(realm, rootNodeKey);
     if (typeof rootHex === "object") return rootHex;
@@ -419,22 +509,33 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
     if (toSegments.length === 1) {
       const rootNode = await tree.getAndDecodeNode(rootHex);
       if (!rootNode) return fsError("INVALID_ROOT", 400, "Root node not found");
-      if (rootNode.kind !== "dict") return fsError("NOT_A_DIRECTORY", 400, "Root is not a directory");
+      if (rootNode.kind !== "dict")
+        return fsError("NOT_A_DIRECTORY", 400, "Root is not a directory");
 
       const result = await tree.insertChild(
-        realm, tokenId, [], rootHex, rootNode, toName, sourceNodeHash,
+        realm,
+        ownerId,
+        [],
+        rootHex,
+        rootNode,
+        toName,
+        sourceNodeHash
       );
       if (typeof result === "object" && "code" in result) return result;
       return { newRoot: hexToNodeKey(result), from: fromPath, to: toPath };
     }
 
-    const parentResult = await tree.ensureParentDirs(realm, tokenId, rootHex, toSegments);
+    const parentResult = await tree.ensureParentDirs(realm, ownerId, rootHex, toSegments);
     if ("code" in parentResult) return parentResult;
 
     const result = await tree.insertChild(
-      realm, tokenId, parentResult.parentPath,
-      parentResult.parentHash, parentResult.parentNode,
-      toName, sourceNodeHash,
+      realm,
+      ownerId,
+      parentResult.parentPath,
+      parentResult.parentHash,
+      parentResult.parentNode,
+      toName,
+      sourceNodeHash
     );
     if (typeof result === "object" && "code" in result) return result;
     return { newRoot: hexToNodeKey(result), from: fromPath, to: toPath };
@@ -442,13 +543,20 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
 
   /**
    * rewrite — Declarative batch rewrite (entries + deletes).
+   *
+   * @param issuerChain - Current AT's issuerChain (for ownership verification)
+   * @param issuerId - Current AT's issuerId (DT ID or User ID)
+   * @param auth - Full auth context (for scope proof validation)
    */
   const rewrite = async (
     realm: string,
-    tokenId: string,
+    ownerId: string,
     rootNodeKey: string,
     entries?: Record<string, FsRewriteEntry>,
     deletes?: string[],
+    issuerChain?: string[],
+    issuerId?: string,
+    auth?: AccessTokenAuthContext
   ): Promise<FsRewriteResponse | FsError> => {
     const rootHex = await tree.resolveNodeKey(realm, rootNodeKey);
     if (typeof rootHex === "object") return rootHex;
@@ -460,7 +568,11 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
       return fsError("EMPTY_REWRITE", 400, "entries and deletes cannot both be empty");
     }
     if (entryCount + deleteCount > FS_MAX_REWRITE_ENTRIES) {
-      return fsError("TOO_MANY_ENTRIES", 400, `Total entries + deletes exceeds ${FS_MAX_REWRITE_ENTRIES}`);
+      return fsError(
+        "TOO_MANY_ENTRIES",
+        400,
+        `Total entries + deletes exceeds ${FS_MAX_REWRITE_ENTRIES}`
+      );
     }
 
     let currentRootHex = rootHex;
@@ -482,10 +594,11 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
 
         const lastParent = resolved.parentPath[resolved.parentPath.length - 1]!;
         currentRootHex = await tree.removeChild(
-          realm, tokenId,
+          realm,
+          ownerId,
           resolved.parentPath.slice(0, -1),
           lastParent.node,
-          lastParent.childIndex,
+          lastParent.childIndex
         );
         actualDeleted++;
       }
@@ -506,18 +619,20 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
         if ("from" in entry) {
           const source = await tree.resolvePath(originalRootHex, entry.from);
           if ("code" in source) {
-            return fsError("PATH_NOT_FOUND", 404, `Entry '${targetPath}' references non-existent source path`, {
-              entry: targetPath,
-              from: entry.from,
-            });
+            return fsError(
+              "PATH_NOT_FOUND",
+              404,
+              `Entry '${targetPath}' references non-existent source path`,
+              {
+                entry: targetPath,
+                from: entry.from,
+              }
+            );
           }
           nodeHash = hexToHash(source.hash);
         } else if ("dir" in entry) {
-          const emptyEncoded = await encodeDictNode(
-            { children: [], childNames: [] },
-            hashProvider,
-          );
-          await tree.storeNode(realm, tokenId, emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
+          const emptyEncoded = await encodeDictNode({ children: [], childNames: [] }, hashProvider);
+          await tree.storeNode(realm, ownerId, emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
           nodeHash = emptyEncoded.hash;
         } else if ("link" in entry) {
           const linkKey = entry.link;
@@ -531,16 +646,40 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
             return fsError("NODE_NOT_FOUND", 404, `Linked node not found: ${linkKey}`);
           }
 
-          const ownership = await ownershipDb.getOwnership(realm, linkHex);
-          if (!ownership || ownership.createdBy !== tokenId) {
-            if (!entry.proof) {
-              return fsError(
-                "LINK_NOT_AUTHORIZED",
-                403,
-                `Not authorized to reference node: ${linkKey}. Provide proof or upload the node first.`,
+          // Step 1: uploader verification using new multi-owner model
+          let authorized = false;
+          if (issuerChain && issuerId) {
+            const myFamily = [...issuerChain, issuerId];
+            for (const id of myFamily) {
+              if (await ownershipDb.hasOwnershipByToken(realm, linkHex, id)) {
+                authorized = true;
+                break;
+              }
+            }
+          }
+
+          // Step 2: scope verification (proof) — only if uploader verification failed
+          if (!authorized && entry.proof) {
+            if (auth) {
+              const scopeProofDeps: ScopeProofDeps = {
+                storage: deps.storage,
+                scopeSetNodesDb: deps.scopeSetNodesDb,
+              };
+              authorized = await validateProofAgainstScope(
+                entry.proof,
+                linkHex,
+                auth,
+                scopeProofDeps
               );
             }
-            // TODO: validate proof against scope
+          }
+
+          if (!authorized) {
+            return fsError(
+              "LINK_NOT_AUTHORIZED",
+              403,
+              `Not authorized to reference node: ${linkKey}. Upload the node first or provide a valid proof (index-path).`
+            );
           }
 
           nodeHash = hexToHash(linkHex);
@@ -554,7 +693,8 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
         if (targetSegments.length === 1) {
           const rootNode = await tree.getAndDecodeNode(currentRootHex);
           if (!rootNode) return fsError("INVALID_ROOT", 400, "Root node not found");
-          if (rootNode.kind !== "dict") return fsError("NOT_A_DIRECTORY", 400, "Root is not a directory");
+          if (rootNode.kind !== "dict")
+            return fsError("NOT_A_DIRECTORY", 400, "Root is not a directory");
 
           const existingChild = findChildByName(rootNode, targetName);
           if (existingChild) {
@@ -562,18 +702,36 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
             newChildren[existingChild.index] = nodeHash;
             const encoded = await encodeDictNode(
               { children: newChildren, childNames: rootNode.childNames ?? [] },
-              hashProvider,
+              hashProvider
             );
-            currentRootHex = await tree.storeNode(realm, tokenId, encoded.bytes, encoded.hash, "dict", 0);
+            currentRootHex = await tree.storeNode(
+              realm,
+              ownerId,
+              encoded.bytes,
+              encoded.hash,
+              "dict",
+              0
+            );
           } else {
             const result = await tree.insertChild(
-              realm, tokenId, [], currentRootHex, rootNode, targetName, nodeHash,
+              realm,
+              ownerId,
+              [],
+              currentRootHex,
+              rootNode,
+              targetName,
+              nodeHash
             );
             if (typeof result === "object" && "code" in result) return result;
             currentRootHex = result;
           }
         } else {
-          const parentResult = await tree.ensureParentDirs(realm, tokenId, currentRootHex, targetSegments);
+          const parentResult = await tree.ensureParentDirs(
+            realm,
+            ownerId,
+            currentRootHex,
+            targetSegments
+          );
           if ("code" in parentResult) return parentResult;
 
           const { parentHash, parentNode, parentPath } = parentResult;
@@ -583,13 +741,19 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
             newChildren[existingChild.index] = nodeHash;
             const encoded = await encodeDictNode(
               { children: newChildren, childNames: parentNode.childNames ?? [] },
-              hashProvider,
+              hashProvider
             );
-            await tree.storeNode(realm, tokenId, encoded.bytes, encoded.hash, "dict", 0);
-            currentRootHex = await tree.rebuildMerklePath(realm, tokenId, parentPath, encoded.hash);
+            await tree.storeNode(realm, ownerId, encoded.bytes, encoded.hash, "dict", 0);
+            currentRootHex = await tree.rebuildMerklePath(realm, ownerId, parentPath, encoded.hash);
           } else {
             const result = await tree.insertChild(
-              realm, tokenId, parentPath, parentHash, parentNode, targetName, nodeHash,
+              realm,
+              ownerId,
+              parentPath,
+              parentHash,
+              parentNode,
+              targetName,
+              nodeHash
             );
             if (typeof result === "object" && "code" in result) return result;
             currentRootHex = result;

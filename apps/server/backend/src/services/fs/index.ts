@@ -5,16 +5,16 @@
  * Re-exports all types needed by consumers (controller, app, tests).
  */
 
-import { createTreeOps } from "./tree-ops.ts";
 import { createReadOps } from "./read-ops.ts";
-import { createWriteOps } from "./write-ops.ts";
+import { createTreeOps } from "./tree-ops.ts";
 import type { FsServiceDeps } from "./types.ts";
+import { createWriteOps } from "./write-ops.ts";
 
 // ============================================================================
 // Re-exports
 // ============================================================================
 
-export { type FsServiceDeps, type FsError, isFsError, fsError } from "./types.ts";
+export { type FsError, type FsServiceDeps, fsError, isFsError } from "./types.ts";
 
 // ============================================================================
 // Service Factory

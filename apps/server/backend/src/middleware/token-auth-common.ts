@@ -9,7 +9,12 @@ import type { Context } from "hono";
 import type { DelegateTokensDb } from "../db/delegate-tokens.ts";
 import type { DelegateTokenRecord } from "../types/delegate-token.ts";
 import type { Env } from "../types.ts";
-import { computeTokenId, decodeToken, TOKEN_SIZE, type DecodedDelegateToken } from "../util/token.ts";
+import {
+  computeTokenId,
+  type DecodedDelegateToken,
+  decodeToken,
+  TOKEN_SIZE,
+} from "../util/token.ts";
 
 // ============================================================================
 // Types

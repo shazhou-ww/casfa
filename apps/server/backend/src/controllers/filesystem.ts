@@ -7,16 +7,16 @@
  * Based on docs/casfa-api/05-filesystem.md
  */
 
-import type { Context } from "hono";
 import type {
+  FsCpRequest,
   FsMkdirRequest,
   FsMvRequest,
-  FsCpRequest,
-  FsRewriteEntry,
+  FsRewriteRequest,
   FsRmRequest,
 } from "@casfa/protocol";
+import type { Context } from "hono";
+import type { FsError, FsService } from "../services/fs/index.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
-import type { FsService, FsError } from "../services/fs/index.ts";
 
 // ============================================================================
 // Types
@@ -65,9 +65,14 @@ const getNodeKey = (c: Context<Env>): string => {
   return decodeURIComponent(c.req.param("key"));
 };
 
-const getTokenId = (c: Context<Env>): string => {
-  const auth = c.get("auth") as AccessTokenAuthContext;
-  return auth.tokenId;
+const getAuth = (c: Context<Env>): AccessTokenAuthContext => {
+  return c.get("auth") as AccessTokenAuthContext;
+};
+
+/** Get the ownerId for write operations (DT issuerId, not AT tokenId) */
+const getOwnerId = (c: Context<Env>): string => {
+  const auth = getAuth(c);
+  return auth.tokenRecord.issuerId;
 };
 
 // ============================================================================
@@ -140,7 +145,7 @@ export const createFilesystemController = (
     write: async (c) => {
       const realm = getRealm(c);
       const nodeKey = getNodeKey(c);
-      const tokenId = getTokenId(c);
+      const ownerId = getOwnerId(c);
       const path = c.req.query("path");
       const indexPath = c.req.query("indexPath");
       const contentType = c.req.header("Content-Type") ?? "application/octet-stream";
@@ -165,7 +170,13 @@ export const createFilesystemController = (
       }
 
       const result = await fsService.write(
-        realm, tokenId, nodeKey, path, indexPath, fileContent, contentType
+        realm,
+        ownerId,
+        nodeKey,
+        path,
+        indexPath,
+        fileContent,
+        contentType
       );
       if (isFsError(result)) return fsErrorResponse(c, result);
 
@@ -178,20 +189,10 @@ export const createFilesystemController = (
     mkdir: async (c) => {
       const realm = getRealm(c);
       const nodeKey = getNodeKey(c);
-      const tokenId = getTokenId(c);
+      const ownerId = getOwnerId(c);
+      const body = c.req.valid("json" as never) as FsMkdirRequest;
 
-      let body: FsMkdirRequest;
-      try {
-        body = await c.req.json();
-      } catch {
-        return c.json({ error: "INVALID_REQUEST", message: "Invalid JSON body" }, 400);
-      }
-
-      if (!body.path || typeof body.path !== "string") {
-        return c.json({ error: "INVALID_PATH", message: "path is required" }, 400);
-      }
-
-      const result = await fsService.mkdir(realm, tokenId, nodeKey, body.path);
+      const result = await fsService.mkdir(realm, ownerId, nodeKey, body.path);
       if (isFsError(result)) return fsErrorResponse(c, result);
 
       return c.json(result);
@@ -203,20 +204,10 @@ export const createFilesystemController = (
     rm: async (c) => {
       const realm = getRealm(c);
       const nodeKey = getNodeKey(c);
-      const tokenId = getTokenId(c);
+      const ownerId = getOwnerId(c);
+      const body = c.req.valid("json" as never) as FsRmRequest;
 
-      let body: FsRmRequest;
-      try {
-        body = await c.req.json();
-      } catch {
-        return c.json({ error: "INVALID_REQUEST", message: "Invalid JSON body" }, 400);
-      }
-
-      if (!body.path && !body.indexPath) {
-        return c.json({ error: "INVALID_PATH", message: "path or indexPath is required" }, 400);
-      }
-
-      const result = await fsService.rm(realm, tokenId, nodeKey, body.path, body.indexPath);
+      const result = await fsService.rm(realm, ownerId, nodeKey, body.path, body.indexPath);
       if (isFsError(result)) return fsErrorResponse(c, result);
 
       return c.json(result);
@@ -228,20 +219,10 @@ export const createFilesystemController = (
     mv: async (c) => {
       const realm = getRealm(c);
       const nodeKey = getNodeKey(c);
-      const tokenId = getTokenId(c);
+      const ownerId = getOwnerId(c);
+      const body = c.req.valid("json" as never) as FsMvRequest;
 
-      let body: FsMvRequest;
-      try {
-        body = await c.req.json();
-      } catch {
-        return c.json({ error: "INVALID_REQUEST", message: "Invalid JSON body" }, 400);
-      }
-
-      if (!body.from || !body.to) {
-        return c.json({ error: "INVALID_PATH", message: "from and to are required" }, 400);
-      }
-
-      const result = await fsService.mv(realm, tokenId, nodeKey, body.from, body.to);
+      const result = await fsService.mv(realm, ownerId, nodeKey, body.from, body.to);
       if (isFsError(result)) return fsErrorResponse(c, result);
 
       return c.json(result);
@@ -253,20 +234,10 @@ export const createFilesystemController = (
     cp: async (c) => {
       const realm = getRealm(c);
       const nodeKey = getNodeKey(c);
-      const tokenId = getTokenId(c);
+      const ownerId = getOwnerId(c);
+      const body = c.req.valid("json" as never) as FsCpRequest;
 
-      let body: FsCpRequest;
-      try {
-        body = await c.req.json();
-      } catch {
-        return c.json({ error: "INVALID_REQUEST", message: "Invalid JSON body" }, 400);
-      }
-
-      if (!body.from || !body.to) {
-        return c.json({ error: "INVALID_PATH", message: "from and to are required" }, 400);
-      }
-
-      const result = await fsService.cp(realm, tokenId, nodeKey, body.from, body.to);
+      const result = await fsService.cp(realm, ownerId, nodeKey, body.from, body.to);
       if (isFsError(result)) return fsErrorResponse(c, result);
 
       return c.json(result);
@@ -278,17 +249,19 @@ export const createFilesystemController = (
     rewrite: async (c) => {
       const realm = getRealm(c);
       const nodeKey = getNodeKey(c);
-      const tokenId = getTokenId(c);
-
-      let body: { entries?: Record<string, FsRewriteEntry>; deletes?: string[] };
-      try {
-        body = await c.req.json();
-      } catch {
-        return c.json({ error: "INVALID_REQUEST", message: "Invalid JSON body" }, 400);
-      }
+      const ownerId = getOwnerId(c);
+      const auth = getAuth(c);
+      const body = c.req.valid("json" as never) as FsRewriteRequest;
 
       const result = await fsService.rewrite(
-        realm, tokenId, nodeKey, body.entries, body.deletes
+        realm,
+        ownerId,
+        nodeKey,
+        body.entries,
+        body.deletes,
+        auth.issuerChain,
+        auth.tokenRecord.issuerId,
+        auth
       );
       if (isFsError(result)) return fsErrorResponse(c, result);
 

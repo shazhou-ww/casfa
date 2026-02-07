@@ -149,13 +149,7 @@ describe("CLI Config Commands", () => {
       const profileName = "e2e-test-profile";
       const baseUrl = "http://e2e-test.example.com";
 
-      const result = await runConfigCli([
-        "config",
-        "create",
-        profileName,
-        "--url",
-        baseUrl,
-      ]);
+      const result = await runConfigCli(["config", "create", profileName, "--url", baseUrl]);
 
       expectSuccess(result, "profile create should succeed");
 
@@ -172,13 +166,7 @@ describe("CLI Config Commands", () => {
       await runConfigCli(["config", "create", profileName, "--url", baseUrl]);
 
       // Try to create again
-      const result = await runConfigCli([
-        "config",
-        "create",
-        profileName,
-        "--url",
-        baseUrl,
-      ]);
+      const result = await runConfigCli(["config", "create", profileName, "--url", baseUrl]);
 
       // Should fail because profile already exists
       expect(result.code).not.toBe(0);

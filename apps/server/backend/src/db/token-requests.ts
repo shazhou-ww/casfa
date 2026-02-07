@@ -6,16 +6,16 @@
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import {
+  DeleteCommand,
   GetCommand,
   PutCommand,
-  UpdateCommand,
-  DeleteCommand,
   ScanCommand,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type {
-  TokenRequestRecord,
-  CreateTokenRequestInput,
   ApproveTokenRequestConfig,
+  CreateTokenRequestInput,
+  TokenRequestRecord,
 } from "../types/delegate-token.ts";
 import { toTokenReqPk, toTokenReqSk, toTtl } from "../util/db-keys.ts";
 import { createDocClient } from "./client.ts";
@@ -167,8 +167,7 @@ export const createTokenRequestsDb = (config: TokenRequestsDbConfig): TokenReque
       const result = await client.send(
         new ScanCommand({
           TableName: tableName,
-          FilterExpression:
-            "begins_with(pk, :prefix) AND #status = :pending AND expiresAt > :now",
+          FilterExpression: "begins_with(pk, :prefix) AND #status = :pending AND expiresAt > :now",
           ExpressionAttributeNames: {
             "#status": "status",
           },
@@ -386,8 +385,7 @@ export const createTokenRequestsDb = (config: TokenRequestsDbConfig): TokenReque
       const result = await client.send(
         new ScanCommand({
           TableName: tableName,
-          FilterExpression:
-            "begins_with(pk, :prefix) AND #status = :pending AND expiresAt < :now",
+          FilterExpression: "begins_with(pk, :prefix) AND #status = :pending AND expiresAt < :now",
           ExpressionAttributeNames: {
             "#status": "status",
           },

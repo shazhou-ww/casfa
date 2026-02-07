@@ -53,9 +53,7 @@ export function encodeDelegateToken(input: DelegateTokenInput): Uint8Array {
   // Calculate depth
   const depth = input.isUserIssued ? 0 : (input.parentDepth ?? 0) + 1;
   if (depth > MAX_DEPTH) {
-    throw new Error(
-      `Maximum token delegation depth exceeded: ${depth} > ${MAX_DEPTH}`
-    );
+    throw new Error(`Maximum token delegation depth exceeded: ${depth} > ${MAX_DEPTH}`);
   }
 
   // Allocate buffer

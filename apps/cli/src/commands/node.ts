@@ -26,18 +26,14 @@ async function ensureAccessToken(
 
   // Issue a temporary access token
   if (state.delegate) {
-    const result = await api.delegateToken(
-      resolved.baseUrl,
-      state.delegate.tokenBase64,
-      {
-        name: "cli-node-operation",
-        type: "access",
-        expiresIn: 3600, // 1 hour
-        canUpload,
-        canManageDepot: false,
-        scope: ["."], // Inherit parent scope
-      }
-    );
+    const result = await api.delegateToken(resolved.baseUrl, state.delegate.tokenBase64, {
+      name: "cli-node-operation",
+      type: "access",
+      expiresIn: 3600, // 1 hour
+      canUpload,
+      canManageDepot: false,
+      scope: ["."], // Inherit parent scope
+    });
 
     if (!result.ok) {
       throw new Error(`Failed to get access token: ${result.error.message}`);
@@ -74,7 +70,10 @@ export function registerNodeCommands(program: Command): void {
     .description("Download a file from a node key")
     .option("-o, --output <path>", "output file path")
     .option("--raw", "save raw node bytes without decoding")
-    .requiredOption("-i, --index-path <path>", "CAS index path for scope verification (e.g., depot:MAIN:0:1)")
+    .requiredOption(
+      "-i, --index-path <path>",
+      "CAS index path for scope verification (e.g., depot:MAIN:0:1)"
+    )
     .action(async (key: string, cmdOpts: { output?: string; raw?: boolean; indexPath: string }) => {
       const opts = program.opts();
       const formatter = createFormatter(opts);
@@ -223,7 +222,10 @@ export function registerNodeCommands(program: Command): void {
           setCachedNode(nodeKey, Buffer.from(encoded.bytes));
         }
 
-        formatter.output({ key: nodeKey, size: data.length, status: result.data.status }, () => nodeKey);
+        formatter.output(
+          { key: nodeKey, size: data.length, status: result.data.status },
+          () => nodeKey
+        );
       } catch (error) {
         formatter.error((error as Error).message);
         process.exit(1);

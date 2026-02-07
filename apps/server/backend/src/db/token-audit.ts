@@ -7,20 +7,20 @@
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type {
-  TokenAuditRecord,
   CreateTokenAuditInput,
   ListOptions,
   PaginatedResult,
+  TokenAuditRecord,
 } from "../types/delegate-token.ts";
 import {
-  toAuditPk,
-  toAuditSk,
+  decodeCursor,
+  encodeCursor,
   toAuditDate,
   toAuditGsi4Pk,
   toAuditGsi4Sk,
+  toAuditPk,
+  toAuditSk,
   toAuditTtl,
-  encodeCursor,
-  decodeCursor,
 } from "../util/db-keys.ts";
 import { createDocClient } from "./client.ts";
 
@@ -145,13 +145,13 @@ export const createTokenAuditDb = (config: TokenAuditDbConfig): TokenAuditDb => 
     if (options?.startTime && options?.endTime) {
       keyCondition += " AND gsi4sk BETWEEN :start AND :end";
       expressionValues[":start"] = options.startTime.toString().padStart(13, "0");
-      expressionValues[":end"] = options.endTime.toString().padStart(13, "0") + "~"; // ~ is after all tokenIds
+      expressionValues[":end"] = `${options.endTime.toString().padStart(13, "0")}~`; // ~ is after all tokenIds
     } else if (options?.startTime) {
       keyCondition += " AND gsi4sk >= :start";
       expressionValues[":start"] = options.startTime.toString().padStart(13, "0");
     } else if (options?.endTime) {
       keyCondition += " AND gsi4sk <= :end";
-      expressionValues[":end"] = options.endTime.toString().padStart(13, "0") + "~";
+      expressionValues[":end"] = `${options.endTime.toString().padStart(13, "0")}~`;
     }
 
     const result = await client.send(

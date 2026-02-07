@@ -1,8 +1,7 @@
 import { api } from "@casfa/client";
 import type { Command } from "commander";
-import { parseSize } from "../lib/cache";
 import { createClient, requireAuth, requireRealm } from "../lib/client";
-import { createFormatter, formatRelativeTime, formatSize } from "../lib/output";
+import { createFormatter, formatRelativeTime } from "../lib/output";
 
 export function registerTicketCommands(program: Command): void {
   const ticket = program.command("ticket").description("Ticket management (temporary access)");
@@ -16,12 +15,7 @@ export function registerTicketCommands(program: Command): void {
     .option("--no-can-upload", "disallow upload operations")
     .option("--scope <paths>", "scope paths (comma-separated)")
     .action(
-      async (cmdOpts: {
-        title?: string;
-        ttl: string;
-        canUpload: boolean;
-        scope?: string;
-      }) => {
+      async (cmdOpts: { title?: string; ttl: string; canUpload: boolean; scope?: string }) => {
         const opts = program.opts();
         const formatter = createFormatter(opts);
 
@@ -60,19 +54,15 @@ export function registerTicketCommands(program: Command): void {
             accessTokenId = tokenResult.data.tokenId;
           } else if (state.user) {
             // Use User JWT to create Access Token
-            const tokenResult = await api.createToken(
-              resolved.baseUrl,
-              state.user.accessToken,
-              {
-                realm: resolved.realm,
-                name: cmdOpts.title || "ticket-access-token",
-                type: "access",
-                expiresIn: parseInt(cmdOpts.ttl, 10),
-                canUpload: cmdOpts.canUpload,
-                canManageDepot: false,
-                scope: cmdOpts.scope ? cmdOpts.scope.split(",").map((s) => s.trim()) : undefined,
-              }
-            );
+            const tokenResult = await api.createToken(resolved.baseUrl, state.user.accessToken, {
+              realm: resolved.realm,
+              name: cmdOpts.title || "ticket-access-token",
+              type: "access",
+              expiresIn: parseInt(cmdOpts.ttl, 10),
+              canUpload: cmdOpts.canUpload,
+              canManageDepot: false,
+              scope: cmdOpts.scope ? cmdOpts.scope.split(",").map((s) => s.trim()) : undefined,
+            });
 
             if (!tokenResult.ok) {
               formatter.error(`Failed to create access token: ${tokenResult.error.message}`);
@@ -107,20 +97,17 @@ export function registerTicketCommands(program: Command): void {
           }
 
           const ticketInfo = ticketResult.data;
-          formatter.output(
-            { ...ticketInfo, accessToken: accessTokenBase64 },
-            () => {
-              const lines = [
-                `Ticket ID:    ${ticketInfo.ticketId}`,
-                `Realm ID:     ${resolved.realm}`,
-                `Access Token: ${accessTokenBase64}`,
-                `Expires At:   ${ticketInfo.expiresAt ? new Date(ticketInfo.expiresAt * 1000).toISOString() : "N/A"}`,
-                "",
-                "Use with: casfa --ticket <ticket-id> --realm <realm> node get <key>",
-              ];
-              return lines.join("\n");
-            }
-          );
+          formatter.output({ ...ticketInfo, accessToken: accessTokenBase64 }, () => {
+            const lines = [
+              `Ticket ID:    ${ticketInfo.ticketId}`,
+              `Realm ID:     ${resolved.realm}`,
+              `Access Token: ${accessTokenBase64}`,
+              `Expires At:   ${ticketInfo.expiresAt ? new Date(ticketInfo.expiresAt * 1000).toISOString() : "N/A"}`,
+              "",
+              "Use with: casfa --ticket <ticket-id> --realm <realm> node get <key>",
+            ];
+            return lines.join("\n");
+          });
         } catch (error) {
           formatter.error((error as Error).message);
           process.exit(1);
@@ -169,18 +156,14 @@ export function registerTicketCommands(program: Command): void {
           accessToken = tokenResult.data.token;
         } else if (state.user) {
           // Create access token using user JWT
-          const tokenResult = await api.createToken(
-            resolved.baseUrl,
-            state.user.accessToken,
-            {
-              realm: resolved.realm,
-              name: "cli-list-tickets",
-              type: "access",
-              expiresIn: 300,
-              canUpload: false,
-              canManageDepot: false,
-            }
-          );
+          const tokenResult = await api.createToken(resolved.baseUrl, state.user.accessToken, {
+            realm: resolved.realm,
+            name: "cli-list-tickets",
+            type: "access",
+            expiresIn: 300,
+            canUpload: false,
+            canManageDepot: false,
+          });
 
           if (!tokenResult.ok) {
             formatter.error(`Failed to get access token: ${tokenResult.error.message}`);
@@ -194,7 +177,11 @@ export function registerTicketCommands(program: Command): void {
         }
 
         const params: { status?: "issued" | "submitted" | "revoked" } = {};
-        if (cmdOpts.status === "issued" || cmdOpts.status === "submitted" || cmdOpts.status === "revoked") {
+        if (
+          cmdOpts.status === "issued" ||
+          cmdOpts.status === "submitted" ||
+          cmdOpts.status === "revoked"
+        ) {
           params.status = cmdOpts.status;
         }
 
@@ -249,7 +236,13 @@ export function registerTicketCommands(program: Command): void {
           const tokenResult = await api.delegateToken(
             resolved.baseUrl,
             state.delegate.tokenBase64,
-            { name: "cli-show-ticket", type: "access", expiresIn: 300, canUpload: false, canManageDepot: false }
+            {
+              name: "cli-show-ticket",
+              type: "access",
+              expiresIn: 300,
+              canUpload: false,
+              canManageDepot: false,
+            }
           );
           if (!tokenResult.ok) {
             formatter.error(`Failed to get access token: ${tokenResult.error.message}`);
@@ -257,11 +250,14 @@ export function registerTicketCommands(program: Command): void {
           }
           accessToken = tokenResult.data.token;
         } else if (state.user) {
-          const tokenResult = await api.createToken(
-            resolved.baseUrl,
-            state.user.accessToken,
-            { realm: resolved.realm, name: "cli-show-ticket", type: "access", expiresIn: 300, canUpload: false, canManageDepot: false }
-          );
+          const tokenResult = await api.createToken(resolved.baseUrl, state.user.accessToken, {
+            realm: resolved.realm,
+            name: "cli-show-ticket",
+            type: "access",
+            expiresIn: 300,
+            canUpload: false,
+            canManageDepot: false,
+          });
           if (!tokenResult.ok) {
             formatter.error(`Failed to get access token: ${tokenResult.error.message}`);
             process.exit(1);

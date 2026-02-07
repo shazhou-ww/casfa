@@ -6,7 +6,7 @@
  */
 
 import type { MiddlewareHandler } from "hono";
-import type { AuthContext, Env, JwtAuthContext, isJwtAuth } from "../types.ts";
+import type { Env } from "../types.ts";
 
 /**
  * Create realm access check middleware

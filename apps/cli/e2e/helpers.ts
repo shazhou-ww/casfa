@@ -370,9 +370,7 @@ export function expectFailure(result: CliResult, expectedCode?: number): void {
  */
 export function expectOutput(result: CliResult, pattern: string | RegExp): void {
   const match =
-    typeof pattern === "string"
-      ? result.output.includes(pattern)
-      : pattern.test(result.output);
+    typeof pattern === "string" ? result.output.includes(pattern) : pattern.test(result.output);
 
   if (!match) {
     throw new Error(

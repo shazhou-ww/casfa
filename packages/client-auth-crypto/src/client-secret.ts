@@ -4,7 +4,7 @@
  * Used for desktop/CLI client authentication flow
  */
 
-import { encodeCrockfordBase32, decodeCrockfordBase32 } from "@casfa/protocol";
+import { decodeCrockfordBase32, encodeCrockfordBase32 } from "@casfa/protocol";
 import type { ClientSecret, DisplayCode } from "./types.ts";
 
 /**
@@ -66,9 +66,7 @@ export function parseClientSecret(encoded: string): ClientSecret {
  * @param secret - Client secret
  * @returns Display code with raw and formatted strings
  */
-export async function generateDisplayCode(
-  secret: ClientSecret
-): Promise<DisplayCode> {
+export async function generateDisplayCode(secret: ClientSecret): Promise<DisplayCode> {
   // SHA-256 hash of the secret bytes
   const hashBuffer = await crypto.subtle.digest("SHA-256", secret.bytes);
   const hashArray = new Uint8Array(hashBuffer);

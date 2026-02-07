@@ -2,11 +2,11 @@
  * Token types utility functions tests.
  */
 
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import type {
-  StoredUserToken,
-  StoredDelegateToken,
   StoredAccessToken,
+  StoredDelegateToken,
+  StoredUserToken,
   TokenState,
 } from "./tokens.ts";
 import {
@@ -28,7 +28,9 @@ const createUserToken = (overrides: Partial<StoredUserToken> = {}): StoredUserTo
   ...overrides,
 });
 
-const createDelegateToken = (overrides: Partial<StoredDelegateToken> = {}): StoredDelegateToken => ({
+const createDelegateToken = (
+  overrides: Partial<StoredDelegateToken> = {}
+): StoredDelegateToken => ({
   tokenId: "dlt1_delegate123",
   tokenBase64: "base64-delegate-token",
   type: "delegate",

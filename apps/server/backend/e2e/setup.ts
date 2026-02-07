@@ -31,13 +31,13 @@ import { type AppConfig, loadConfig } from "../src/config.ts";
 // DB factories - aligned with bootstrap.ts DbInstances
 import {
   createDelegateTokensDb,
-  createTicketsDb,
-  createScopeSetNodesDb,
-  createTokenRequestsDb,
-  createTokenAuditDb,
   createDepotsDb,
   createOwnershipDb,
   createRefCountDb,
+  createScopeSetNodesDb,
+  createTicketsDb,
+  createTokenAuditDb,
+  createTokenRequestsDb,
   createUsageDb,
   createUserRolesDb,
 } from "../src/db/index.ts";
@@ -47,8 +47,8 @@ import { createLocalUsersDb } from "../src/db/local-users.ts";
 // Test Utilities
 // ============================================================================
 
-import { hexToNodeKey } from "@casfa/protocol";
 import { randomUUID } from "node:crypto";
+import { hexToNodeKey } from "@casfa/protocol";
 import { uuidToUserId } from "../src/util/encoding.ts";
 
 /** Generate a unique test ID (UUID format like Cognito) */
@@ -204,8 +204,8 @@ export type TestHelpers = {
     userUuid: string,
     role?: "admin" | "authorized"
   ) => Promise<{
-    userId: string;      // user:base32 format (internal format)
-    userUuid: string;    // UUID format (JWT sub claim)
+    userId: string; // user:base32 format (internal format)
+    userUuid: string; // UUID format (JWT sub claim)
     token: string;
     realm: string;
     mainDepotId: string; // The depot ID to use in scope URIs
@@ -248,7 +248,7 @@ export type TestHelpers = {
       expiresIn?: number;
       canUpload?: boolean;
       canManageDepot?: boolean;
-      scope?: string[];  // Optional - defaults to MAIN depot
+      scope?: string[]; // Optional - defaults to MAIN depot
     }
   ) => Promise<DelegateTokenResult>;
 
@@ -261,7 +261,7 @@ export type TestHelpers = {
       expiresIn?: number;
       canUpload?: boolean;
       canManageDepot?: boolean;
-      scope?: string[];  // Optional - defaults to MAIN depot
+      scope?: string[]; // Optional - defaults to MAIN depot
     }
   ) => Promise<AccessTokenResult>;
 
@@ -407,11 +407,11 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
       const token = helpers.createUserToken(userUuid);
 
       return {
-        userId,    // user:base32 format (what the system uses internally)
-        userUuid,  // UUID format (what's in the JWT sub claim)
+        userId, // user:base32 format (what the system uses internally)
+        userUuid, // UUID format (what's in the JWT sub claim)
         token,
         realm,
-        mainDepotId: mainDepot.depotId,  // The actual depot ID to use in scope
+        mainDepotId: mainDepot.depotId, // The actual depot ID to use in scope
       };
     },
 
@@ -486,7 +486,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
         expiresIn,
         canUpload = false,
         canManageDepot = false,
-        scope,  // Optional - if not provided, will use main depot
+        scope, // Optional - if not provided, will use main depot
       } = options;
 
       // If scope not provided, get the main depot for this realm
@@ -523,7 +523,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
         expiresIn,
         canUpload = false,
         canManageDepot = false,
-        scope,  // Optional - if not provided, will use main depot
+        scope, // Optional - if not provided, will use main depot
       } = options;
 
       // If scope not provided, get the main depot for this realm
@@ -615,7 +615,13 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
       const { clientName = "Test Client", description, clientSecret: providedSecret } = options;
 
       // Generate a client secret if not provided (32 bytes = 64 hex chars)
-      const clientSecret = providedSecret ?? Array.from({ length: 32 }, () => Math.floor(Math.random() * 256).toString(16).padStart(2, "0")).join("");
+      const clientSecret =
+        providedSecret ??
+        Array.from({ length: 32 }, () =>
+          Math.floor(Math.random() * 256)
+            .toString(16)
+            .padStart(2, "0")
+        ).join("");
 
       // Hash the client secret using SHA-256 (produces 64 hex chars)
       const encoder = new TextEncoder();
@@ -636,7 +642,10 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
         throw new Error(`Failed to create client auth request: ${response.status} - ${error}`);
       }
 
-      const result = (await response.json()) as Omit<ClientAuthRequestResult, "clientSecret" | "clientSecretHash">;
+      const result = (await response.json()) as Omit<
+        ClientAuthRequestResult,
+        "clientSecret" | "clientSecretHash"
+      >;
       return {
         ...result,
         clientSecret,

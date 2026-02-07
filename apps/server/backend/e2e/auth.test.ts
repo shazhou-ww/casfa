@@ -94,11 +94,7 @@ describe("Authentication", () => {
       const { token } = await ctx.helpers.createTestUser(userId, "admin");
 
       // Admin endpoints use jwtAuthMiddleware, so User JWT works
-      const response = await ctx.helpers.authRequest(
-        token,
-        "GET",
-        "/api/admin/users"
-      );
+      const response = await ctx.helpers.authRequest(token, "GET", "/api/admin/users");
 
       expect(response.status).toBe(200);
     });
@@ -108,34 +104,30 @@ describe("Authentication", () => {
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Admin endpoints use jwtAuthMiddleware, so User JWT works
-      const response = await ctx.helpers.authRequest(
-        token,
-        "GET",
-        "/api/admin/users"
-      );
+      const response = await ctx.helpers.authRequest(token, "GET", "/api/admin/users");
 
       expect(response.status).toBe(403);
     });
 
     it("should reject unauthorized users from most endpoints", async () => {
       const userId = uniqueId();
-      const { token, userId: userIdBase32, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const {
+        token,
+        userId: userIdBase32,
+        realm,
+        mainDepotId,
+      } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Set user to unauthorized role using user:base32 format
       await ctx.db.userRolesDb.setRole(userIdBase32, "unauthorized");
 
       // Try to create a token - unauthorized users should be rejected
-      const response = await ctx.helpers.authRequest(
-        token,
-        "POST",
-        "/api/tokens",
-        {
-          realm,
-          name: "Test Token",
-          type: "delegate",
-          scope: [`cas://depot:${mainDepotId}`],
-        }
-      );
+      const response = await ctx.helpers.authRequest(token, "POST", "/api/tokens", {
+        realm,
+        name: "Test Token",
+        type: "delegate",
+        scope: [`cas://depot:${mainDepotId}`],
+      });
 
       // Service may return 401 or 403 for unauthorized role
       expect([401, 403]).toContain(response.status);
@@ -148,17 +140,12 @@ describe("Authentication", () => {
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // User JWT can access /api/tokens (uses jwtAuthMiddleware)
-      const response = await ctx.helpers.authRequest(
-        token,
-        "POST",
-        "/api/tokens",
-        {
-          realm,
-          name: "Test Token",
-          type: "delegate",
-          scope: [`cas://depot:${mainDepotId}`],
-        }
-      );
+      const response = await ctx.helpers.authRequest(token, "POST", "/api/tokens", {
+        realm,
+        name: "Test Token",
+        type: "delegate",
+        scope: [`cas://depot:${mainDepotId}`],
+      });
 
       expect(response.status).toBe(201);
     });
@@ -238,17 +225,12 @@ describe("Authentication", () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const response = await ctx.helpers.authRequest(
-        token,
-        "POST",
-        "/api/tokens",
-        {
-          realm,
-          name: "Test Token",
-          type: "delegate",
-          scope: [`cas://depot:${mainDepotId}`],
-        }
-      );
+      const response = await ctx.helpers.authRequest(token, "POST", "/api/tokens", {
+        realm,
+        name: "Test Token",
+        type: "delegate",
+        scope: [`cas://depot:${mainDepotId}`],
+      });
 
       expect(response.status).toBe(201);
       const data = (await response.json()) as { tokenId: string; tokenBase64: string };
@@ -388,7 +370,8 @@ describe("Authentication", () => {
       const response = await fetch(`${ctx.baseUrl}/api/tokens`, {
         method: "GET",
         headers: {
-          Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0IiwiZXhwIjoxfQ.invalid",
+          Authorization:
+            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0IiwiZXhwIjoxfQ.invalid",
         },
       });
 
@@ -396,4 +379,3 @@ describe("Authentication", () => {
     });
   });
 });
-

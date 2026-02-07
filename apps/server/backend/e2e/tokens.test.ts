@@ -306,10 +306,16 @@ describe("Token Management", () => {
       );
       const { token: token2 } = await ctx.helpers.createTestUser(userId2, "authorized");
 
-      const created = await ctx.helpers.createDelegateToken(token1, realm1, { name: "User1 Token" });
+      const created = await ctx.helpers.createDelegateToken(token1, realm1, {
+        name: "User1 Token",
+      });
 
       // User2 tries to access User1's token
-      const response = await ctx.helpers.authRequest(token2, "GET", `/api/tokens/${created.tokenId}`);
+      const response = await ctx.helpers.authRequest(
+        token2,
+        "GET",
+        `/api/tokens/${created.tokenId}`
+      );
 
       expect(response.status).toBe(404);
     });
@@ -368,7 +374,7 @@ describe("Token Management", () => {
       );
 
       if (childResponse.status === 200) {
-        const child = await childResponse.json();
+        const _child = await childResponse.json();
 
         // Revoke parent
         const revokeResponse = await ctx.helpers.authRequest(

@@ -25,7 +25,7 @@ describe("Realm API", () => {
     it("should return realm endpoint info", async () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
-      
+
       // Realm API requires Access Token, not User JWT
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
@@ -37,7 +37,7 @@ describe("Realm API", () => {
       );
 
       expect(response.status).toBe(200);
-      const data = ((await response.json()) as any) as {
+      const data = (await response.json()) as any as {
         realm?: string;
         realmId?: string;
         nodeLimit?: number;
@@ -58,7 +58,7 @@ describe("Realm API", () => {
       const userId2 = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
       const { realm: otherRealm } = await ctx.helpers.createTestUser(userId2, "authorized");
-      
+
       // Create access token for user1's realm
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
@@ -77,7 +77,7 @@ describe("Realm API", () => {
     it("should return usage statistics", async () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
-      
+
       // Realm API requires Access Token
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
@@ -88,7 +88,7 @@ describe("Realm API", () => {
       );
 
       expect(response.status).toBe(200);
-      const data = ((await response.json()) as any) as {
+      const data = (await response.json()) as any as {
         realm?: string;
         realmId?: string;
         physicalBytes?: number;
@@ -103,7 +103,7 @@ describe("Realm API", () => {
     it("should return zero usage for new realm", async () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
-      
+
       // Realm API requires Access Token
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
@@ -114,7 +114,7 @@ describe("Realm API", () => {
       );
 
       expect(response.status).toBe(200);
-      const data = ((await response.json()) as any) as {
+      const data = (await response.json()) as any as {
         physicalBytes?: number;
         totalBytes?: number;
         nodeCount?: number;
@@ -133,7 +133,7 @@ describe("Realm API", () => {
       const userId2 = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
       const { realm: otherRealm } = await ctx.helpers.createTestUser(userId2, "authorized");
-      
+
       // Create access token for user1's realm
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
@@ -190,11 +190,7 @@ describe("Realm API", () => {
 
       // Note: The actual route is /:realmId (not /:realmId/info)
       // User JWT should be rejected for realm API
-      const response = await ctx.helpers.authRequest(
-        token,
-        "GET",
-        `/api/realm/${realm}`
-      );
+      const response = await ctx.helpers.authRequest(token, "GET", `/api/realm/${realm}`);
 
       expect(response.status).toBe(401); // Invalid token format for realm API
     });

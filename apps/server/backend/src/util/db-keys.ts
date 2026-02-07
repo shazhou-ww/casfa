@@ -139,8 +139,7 @@ export const toDepotGsi3Sk = (depotId: string): string => `DEPOT#${depotId}`;
 export const toTtl = (expiresAtMs: number): number => Math.floor(expiresAtMs / 1000);
 
 /** 计算 Ticket TTL（创建时间 + 24 小时） */
-export const toTicketTtl = (createdAtMs: number): number =>
-  Math.floor(createdAtMs / 1000) + 86400; // 24 hours
+export const toTicketTtl = (createdAtMs: number): number => Math.floor(createdAtMs / 1000) + 86400; // 24 hours
 
 /** 计算审计日志 TTL（时间戳 + 90 天） */
 export const toAuditTtl = (timestampMs: number): number =>

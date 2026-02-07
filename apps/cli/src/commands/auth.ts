@@ -1,7 +1,7 @@
 import { api } from "@casfa/client";
 import type { Command } from "commander";
 import { createClient, requireUserAuth } from "../lib/client";
-import { loadConfig, getProfile } from "../lib/config";
+import { getProfile, loadConfig } from "../lib/config";
 import {
   clearDelegateToken,
   clearUserToken,
@@ -144,7 +144,7 @@ export function registerAuthCommands(program: Command): void {
       }
 
       const authType = getAuthType(credentials);
-      const expInfo = getExpirationInfo(credentials);
+      const _expInfo = getExpirationInfo(credentials);
 
       const status = {
         profile: profileName,
@@ -613,7 +613,7 @@ export function registerAuthCommands(program: Command): void {
               "Open this URL to approve the request:",
               authUrl,
               "",
-              "Or use: casfa auth request approve " + requestId,
+              `Or use: casfa auth request approve ${requestId}`,
             ];
             return lines.join("\n");
           });

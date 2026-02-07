@@ -10,8 +10,8 @@
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import type { RealmUsage } from "../types.ts";
 import type { UserQuotaRecord } from "../types/delegate-token.ts";
+import type { RealmUsage } from "../types.ts";
 import { toQuotaPk, toQuotaSk } from "../util/db-keys.ts";
 import { createDocClient } from "./client.ts";
 

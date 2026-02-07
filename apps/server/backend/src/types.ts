@@ -153,7 +153,8 @@ export type CasOwnership = {
   key: string;
   kind?: NodeKind;
   createdAt: number;
-  createdBy: string;
+  /** Delegate Token ID or User ID that owns this node */
+  ownerId: string;
   contentType?: string;
   size: number;
 };

@@ -57,7 +57,8 @@ describe("Node Operations", () => {
       expect(response.status).toBe(200);
       const data = (await response.json()) as any;
       expect(data.missing).toEqual(expect.arrayContaining(testKeys));
-      expect(data.exists).toEqual([]);
+      expect(data.owned).toEqual([]);
+      expect(data.unowned).toEqual([]);
     });
 
     it("should handle empty keys array", async () => {
@@ -76,7 +77,8 @@ describe("Node Operations", () => {
       // Accept either success with empty result or 400 for empty input
       if (response.status === 200) {
         const data = (await response.json()) as any;
-        expect(data.exists).toEqual([]);
+        expect(data.owned).toEqual([]);
+        expect(data.unowned).toEqual([]);
         expect(data.missing).toEqual([]);
       } else {
         expect(response.status).toBe(400);

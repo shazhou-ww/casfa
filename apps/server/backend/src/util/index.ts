@@ -27,15 +27,16 @@ export { createNodeHashProvider } from "./hash-provider.ts";
 export { blake3Hash, blake3s128, blake3sBase32 } from "./hashing.ts";
 export { binaryResponse, corsResponse, errorResponse, jsonResponse } from "./response.ts";
 export { err, flatMap, map, ok, type Result, unwrap, unwrapOr } from "./result.ts";
-
+// Scope utilities
 export {
-  extractTokenId,
-  generateAgentTokenId,
-  generateDepotId,
-  generateTicketId,
-  generateTokenId,
-  toTokenPk,
-} from "./token-id.ts";
+  isValidCasUri,
+  type ParsedIndexNode,
+  parseCasUri,
+  parseIndexNode,
+  resolveRelativeScope,
+  type ScopeResolution,
+  verifyIndexPath,
+} from "./scope.ts";
 
 // New Delegate Token utilities
 export {
@@ -44,11 +45,11 @@ export {
   computeTokenId,
   computeTokenIdHash,
   computeUserIdHash,
-  decodeToken,
   type DecodedDelegateToken,
   type DelegateTokenFlags,
-  generateToken,
+  decodeToken,
   type GenerateTokenOptions,
+  generateToken,
   isValidTokenFormat,
   isValidTokenId,
   parseTokenBase64,
@@ -56,17 +57,14 @@ export {
   TOKEN_MAGIC,
   TOKEN_SIZE,
 } from "./token.ts";
-
-// Scope utilities
 export {
-  isValidCasUri,
-  parseCasUri,
-  parseIndexNode,
-  type ParsedIndexNode,
-  resolveRelativeScope,
-  type ScopeResolution,
-  verifyIndexPath,
-} from "./scope.ts";
+  extractTokenId,
+  generateAgentTokenId,
+  generateDepotId,
+  generateTicketId,
+  generateTokenId,
+  toTokenPk,
+} from "./token-id.ts";
 
 // Token request utilities
 export {

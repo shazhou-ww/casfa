@@ -38,11 +38,11 @@ export function formatCasUri(uri: CasUri): string {
   let result = formatRoot(uri.root);
 
   if (uri.path.length > 0) {
-    result += "/" + uri.path.join("/");
+    result += `/${uri.path.join("/")}`;
   }
 
   if (uri.indexPath !== null) {
-    result += "#" + uri.indexPath;
+    result += `#${uri.indexPath}`;
   }
 
   return result;
@@ -86,11 +86,7 @@ export function nodeUri(
  * @param path - Optional path segments
  * @param indexPath - Optional index path
  */
-export function depotUri(
-  id: string,
-  path: string[] = [],
-  indexPath: string | null = null
-): CasUri {
+export function depotUri(id: string, path: string[] = [], indexPath: string | null = null): CasUri {
   return createCasUri({ type: "depot", id }, path, indexPath);
 }
 

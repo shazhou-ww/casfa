@@ -1,16 +1,13 @@
 import {
   type CasfaClient,
-  type TokenState,
-  type TokenStorageProvider,
   createClient as createCasfaClient,
   emptyTokenState,
-  api,
+  type TokenState,
+  type TokenStorageProvider,
 } from "@casfa/client";
 import { getProfile, loadConfig } from "./config";
 import {
   type Credentials,
-  type DelegateTokenCredential,
-  type UserTokenCredential,
   getCredentials,
   isDelegateTokenExpired,
   isUserTokenExpired,
@@ -147,8 +144,7 @@ export async function createClient(options: ClientOptions): Promise<ResolvedClie
   }
 
   // Handle legacy --token option
-  const delegateTokenStr =
-    options.delegateToken || options.token || process.env.CASFA_TOKEN;
+  const delegateTokenStr = options.delegateToken || options.token || process.env.CASFA_TOKEN;
   const accessTokenStr = options.accessToken;
   const ticketId = options.ticket || process.env.CASFA_TICKET;
 
@@ -165,7 +161,7 @@ export async function createClient(options: ClientOptions): Promise<ResolvedClie
       baseUrl,
       realm,
     });
-    
+
     // For ticket auth, we need to handle it at the API level
     // Store ticket ID in client state for later use
     return {

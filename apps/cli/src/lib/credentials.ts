@@ -235,7 +235,10 @@ export function clearUserToken(profileName: string): void {
 // Delegate Token Operations
 // ============================================================================
 
-export function setDelegateToken(profileName: string, delegateToken: DelegateTokenCredential): void {
+export function setDelegateToken(
+  profileName: string,
+  delegateToken: DelegateTokenCredential
+): void {
   const store = loadCredentials();
   const existing = store[profileName] ?? { version: 2 as const };
   store[profileName] = {

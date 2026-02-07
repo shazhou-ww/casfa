@@ -33,9 +33,7 @@ program
 program.hook("preAction", (thisCommand) => {
   const opts = thisCommand.opts();
   if (opts.token && !opts.delegateToken) {
-    console.warn(
-      "\x1b[33mWarning: --token is deprecated, use --delegate-token instead\x1b[0m"
-    );
+    console.warn("\x1b[33mWarning: --token is deprecated, use --delegate-token instead\x1b[0m");
     // Copy token to delegateToken for backward compatibility
     opts.delegateToken = opts.token;
   }

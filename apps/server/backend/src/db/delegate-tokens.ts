@@ -9,27 +9,26 @@ import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import {
   GetCommand,
   PutCommand,
-  UpdateCommand,
   QueryCommand,
   TransactWriteCommand,
   type TransactWriteCommandInput,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type {
-  DelegateTokenRecord,
   CreateDelegateTokenInput,
+  DelegateTokenRecord,
   ListOptions,
   PaginatedResult,
 } from "../types/delegate-token.ts";
 import {
-  toTokenPk,
-  toTokenSk,
+  decodeCursor,
+  encodeCursor,
+  toIssuerGsi2Pk,
   toRealmGsi1Pk,
   toTokenGsi1Sk,
-  toIssuerGsi2Pk,
   toTokenGsi2Sk,
-  toTtl,
-  encodeCursor,
-  decodeCursor,
+  toTokenPk,
+  toTokenSk,
 } from "../util/db-keys.ts";
 import { createDocClient } from "./client.ts";
 
@@ -124,8 +123,8 @@ export const createDelegateTokensDb = (config: DelegateTokensDbConfig): Delegate
       // Timestamps
       createdAt: now,
 
-      // TTL
-      ttl: toTtl(input.expiresAt),
+      // DT records no longer set ttl — they are retained permanently
+      // for ownership tracing (see put-node-children-auth.md §3.3)
 
       // GSI keys
       gsi1pk: toRealmGsi1Pk(input.realm),
@@ -247,7 +246,7 @@ export const createDelegateTokensDb = (config: DelegateTokensDbConfig): Delegate
         );
 
         revokedCount += batch.length;
-      } catch (error) {
+      } catch (_error) {
         // Log error but continue - cascade revocation should be best effort
         // Security is maintained because validation checks issuerChain
         console.error(`Cascade revocation batch failed for tokens: ${batch.join(", ")}`);
@@ -306,9 +305,7 @@ export const createDelegateTokensDb = (config: DelegateTokensDbConfig): Delegate
         TableName: tableName,
         IndexName: "gsi1",
         KeyConditionExpression: "gsi1pk = :pk AND begins_with(gsi1sk, :prefix)",
-        FilterExpression: includeRevoked
-          ? undefined
-          : "isRevoked = :false AND expiresAt > :now",
+        FilterExpression: includeRevoked ? undefined : "isRevoked = :false AND expiresAt > :now",
         ExpressionAttributeValues: {
           ":pk": toRealmGsi1Pk(realm),
           ":prefix": "TOKEN#",
