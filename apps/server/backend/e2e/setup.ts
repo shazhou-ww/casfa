@@ -41,6 +41,7 @@ import {
   createUsageDb,
   createUserRolesDb,
 } from "../src/db/index.ts";
+import { createLocalUsersDb } from "../src/db/local-users.ts";
 
 // ============================================================================
 // Test Utilities
@@ -340,6 +341,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
     refCountDb: createRefCountDb({ tableName: config.db.refCountTable }),
     usageDb: createUsageDb({ tableName: config.db.usageTable }),
     userRolesDb: createUserRolesDb({ tableName: config.db.tokensTable }),
+    localUsersDb: createLocalUsersDb({ tableName: config.db.tokensTable }),
   };
 
   // Create storage

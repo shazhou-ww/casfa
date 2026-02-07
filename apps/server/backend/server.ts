@@ -104,6 +104,7 @@ const app = createApp({
   storage,
   hashProvider,
   jwtVerifier,
+  mockJwtSecret,
   runtimeInfo: {
     storageType: storageType as "memory" | "fs" | "s3",
     authType: getAuthType(),

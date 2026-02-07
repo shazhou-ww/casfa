@@ -18,7 +18,8 @@ import {
   computeUserIdHash,
   generateToken,
 } from "../util/token.ts";
-import { encryptToken, generateDisplayCode, generateRequestId } from "../util/token-request.ts";
+import { generateDisplayCode, generateRequestId } from "../util/token-request.ts";
+import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { parseCasUri } from "../util/scope.ts";
 import { blake3Hash } from "../util/hashing.ts";
 
@@ -242,14 +243,22 @@ export const createTokenRequestsController = (
       }
 
       if (parsed.type === "depot") {
-        const depot = await depotsDb.get(body.realm, parsed.depotId);
-        if (!depot) {
-          return c.json(
-            { error: "INVALID_SCOPE", message: `Depot not found: ${parsed.depotId}` },
-            400
-          );
+        if (parsed.depotId === "*") {
+          // Wildcard: include all depot roots in this realm
+          const result = await depotsDb.list(body.realm);
+          for (const depot of result.depots) {
+            resolvedHashes.push(depot.root);
+          }
+        } else {
+          const depot = await depotsDb.get(body.realm, parsed.depotId);
+          if (!depot) {
+            return c.json(
+              { error: "INVALID_SCOPE", message: `Depot not found: ${parsed.depotId}` },
+              400
+            );
+          }
+          resolvedHashes.push(depot.root);
         }
-        resolvedHashes.push(depot.root);
       } else {
         resolvedHashes.push(parsed.hash);
       }
@@ -308,9 +317,14 @@ export const createTokenRequestsController = (
       scopeSetNodeId,
     });
 
-    // Encrypt token using client secret hash (client will decrypt with their secret)
-    // Note: In production, we should use a proper key derivation from the clientSecretHash
-    const encryptedToken = encryptToken(tokenBytes, request.clientSecretHash.slice(0, 26));
+    // Encrypt raw token bytes with AES-256-GCM.
+    // Key = SHA256(clientSecretHash hex string) — client recomputes from raw secret.
+    const encKey = createHash("sha256").update(request.clientSecretHash).digest();
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", encKey, iv);
+    const encrypted = Buffer.concat([cipher.update(tokenBytes), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+    const encryptedToken = Buffer.concat([iv, encrypted, authTag]).toString("base64");
 
     // Update request status
     await tokenRequestsDb.approve(requestId, {

@@ -28,6 +28,7 @@ import {
   type UsageDb,
   type UserRolesDb,
 } from "./db/index.ts";
+import { createLocalUsersDb, type LocalUsersDb } from "./db/local-users.ts";
 
 // ============================================================================
 // Types
@@ -44,6 +45,7 @@ export type DbInstances = {
   refCountDb: RefCountDb;
   usageDb: UsageDb;
   userRolesDb: UserRolesDb;
+  localUsersDb: LocalUsersDb;
 };
 
 // ============================================================================
@@ -64,4 +66,5 @@ export const createDbInstances = (config: AppConfig): DbInstances => ({
   refCountDb: createRefCountDb({ tableName: config.db.refCountTable }),
   usageDb: createUsageDb({ tableName: config.db.usageTable }),
   userRolesDb: createUserRolesDb({ tableName: config.db.tokensTable }),
+  localUsersDb: createLocalUsersDb({ tableName: config.db.tokensTable }),
 });
