@@ -1,5 +1,8 @@
 /**
  * Chunks controller
+ *
+ * Handles node upload (PUT), prepare-nodes check, and node retrieval (GET).
+ * Implements ownership model with multi-owner tracking and children reference validation.
  */
 
 import { decodeNode, type HashProvider, validateNode, validateNodeStructure } from "@casfa/core";
@@ -17,8 +20,10 @@ import type { StorageProvider } from "@casfa/storage-core";
 import type { Context } from "hono";
 import type { OwnershipDb } from "../db/ownership.ts";
 import type { RefCountDb } from "../db/refcount.ts";
+import type { ScopeSetNodesDb } from "../db/scope-set-nodes.ts";
 import type { UsageDb } from "../db/usage.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
+import { parseChildProofsHeader, validateProofAgainstScope } from "../util/scope-proof.ts";
 
 export type ChunksController = {
   prepareNodes: (c: Context<Env>) => Promise<Response>;
@@ -33,10 +38,11 @@ type ChunksControllerDeps = {
   ownershipDb: OwnershipDb;
   refCountDb: RefCountDb;
   usageDb: UsageDb;
+  scopeSetNodesDb: ScopeSetNodesDb;
 };
 
 export const createChunksController = (deps: ChunksControllerDeps): ChunksController => {
-  const { storage, hashProvider, ownershipDb, refCountDb, usageDb } = deps;
+  const { storage, hashProvider, ownershipDb, refCountDb, usageDb, scopeSetNodesDb } = deps;
 
   const getRealm = (c: Context<Env>): string => {
     return c.req.param("realmId") ?? c.get("auth").realm;
@@ -47,24 +53,45 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
 
   return {
     prepareNodes: async (c) => {
+      const auth = c.get("auth") as AccessTokenAuthContext;
       const realm = getRealm(c);
       const { keys } = PrepareNodesSchema.parse(await c.req.json());
 
-      // Check which nodes are missing
+      // Build the "family" of IDs that count as owned:
+      // issuerChain (from root user to parent DT) + current AT's issuerId
+      const myFamily = [...auth.issuerChain, auth.tokenRecord.issuerId];
+
       const missing: string[] = [];
-      const exists: string[] = [];
+      const owned: string[] = [];
+      const unowned: string[] = [];
 
       for (const key of keys) {
         const storageKey = toStorageKey(key);
-        const hasNode = await ownershipDb.hasOwnership(realm, storageKey);
-        if (hasNode) {
-          exists.push(key);
-        } else {
+
+        // First check if the node physically exists in storage
+        const exists = await storage.has(storageKey);
+        if (!exists) {
           missing.push(key);
+          continue;
+        }
+
+        // Node exists — check if any of our family IDs own it
+        let isOwned = false;
+        for (const id of myFamily) {
+          if (await ownershipDb.hasOwnershipByToken(realm, storageKey, id)) {
+            isOwned = true;
+            break;
+          }
+        }
+
+        if (isOwned) {
+          owned.push(key);
+        } else {
+          unowned.push(key);
         }
       }
 
-      return c.json<PrepareNodesResponse>({ missing, exists });
+      return c.json<PrepareNodesResponse>({ missing, owned, unowned });
     },
 
     put: async (c) => {
@@ -126,6 +153,58 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
         structureResult.kind !== "dict" ? (validationResult.size ?? bytes.length) : 0;
       const childKeys = validationResult.childKeys ?? [];
 
+      // ---- Children reference validation (see put-node-children-auth.md §4) ----
+      // Owner ID: use the DT that issued this Access Token (not the AT itself)
+      const ownerId = auth.tokenRecord.issuerId;
+
+      if (childKeys.length > 0) {
+        // Build the "family" of IDs that count as owners for this token:
+        // issuerChain contains [userId, ..., ancestorDT IDs] + issuerId (the direct issuer)
+        const myFamily = [...auth.issuerChain, ownerId];
+
+        // Parse X-CAS-Child-Proofs header for scope proofs
+        const childProofs = parseChildProofsHeader(c.req.header("X-CAS-Child-Proofs"));
+
+        const unauthorized: string[] = [];
+
+        for (const childKey of childKeys) {
+          // Step 1: uploader verification — check if any family ID owns this child
+          let authorized = false;
+          for (const id of myFamily) {
+            if (await ownershipDb.hasOwnershipByToken(realm, childKey, id)) {
+              authorized = true;
+              break;
+            }
+          }
+
+          // Step 2: scope verification (proof) — only if uploader verification failed
+          if (!authorized) {
+            const proof = childProofs.get(childKey);
+            if (proof) {
+              authorized = await validateProofAgainstScope(proof, childKey, auth, {
+                storage,
+                scopeSetNodesDb,
+              });
+            }
+          }
+
+          if (!authorized) {
+            unauthorized.push(childKey);
+          }
+        }
+
+        if (unauthorized.length > 0) {
+          return c.json(
+            {
+              error: "CHILD_NOT_AUTHORIZED",
+              message: "Not authorized to reference these child nodes",
+              unauthorized,
+            },
+            403
+          );
+        }
+      }
+
       // Check realm quota
       const existingRef = await refCountDb.getRefCount(realm, storageKey);
       const estimatedNewBytes = existingRef ? 0 : physicalSize;
@@ -151,11 +230,11 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       // Store the node
       await storage.put(storageKey, bytes);
 
-      // Add ownership using token ID
+      // Add ownership using DT ID (not AT ID)
       await ownershipDb.addOwnership(
         realm,
         storageKey,
-        auth.tokenId,
+        ownerId,
         "application/octet-stream",
         validationResult.size ?? bytes.length,
         validationResult.kind

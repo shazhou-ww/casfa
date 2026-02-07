@@ -203,7 +203,8 @@ export async function createAllTables(dbClient: DynamoDBClient = client): Promis
     console.log(`Enabled TTL on table: ${tokensTable}`);
   } catch (err: unknown) {
     // TTL may already be enabled or not supported in local DynamoDB
-    const errName = err && typeof err === "object" && "name" in err ? (err as { name: string }).name : "";
+    const errName =
+      err && typeof err === "object" && "name" in err ? (err as { name: string }).name : "";
     if (errName !== "ValidationException") {
       console.log(`Note: Could not enable TTL on ${tokensTable}: ${errName}`);
     }

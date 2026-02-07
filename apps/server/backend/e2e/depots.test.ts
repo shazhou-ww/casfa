@@ -16,7 +16,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createE2EContext, type E2EContext, testNodeKey, uniqueId } from "./setup.ts";
+import { createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
 
 describe("Depot Management", () => {
   let ctx: E2EContext;

@@ -62,7 +62,7 @@ export async function verifyIndexPath(
 ): Promise<ScopeVerificationResult> {
   // Parse index path
   const indices = indexPath.split(":").map((s) => parseInt(s, 10));
-  if (indices.some(isNaN)) {
+  if (indices.some(Number.isNaN)) {
     return { valid: false, reason: "Invalid index path format" };
   }
 
@@ -185,7 +185,7 @@ export async function resolveRelativeScope(
 
     // Parse and resolve relative path
     const indices = indexPart.split(":").map((s) => parseInt(s, 10));
-    if (indices.some(isNaN)) {
+    if (indices.some(Number.isNaN)) {
       return { valid: false, error: `Invalid scope path format: ${scopePath}` };
     }
 

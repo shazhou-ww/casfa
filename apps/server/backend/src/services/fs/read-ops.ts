@@ -4,15 +4,11 @@
  * Read-only filesystem operations: stat, read, ls.
  */
 
-import type {
-  FsStatResponse,
-  FsLsChild,
-  FsLsResponse,
-} from "@casfa/protocol";
+import type { FsLsChild, FsLsResponse, FsStatResponse } from "@casfa/protocol";
+import { hashToHex, hexToNodeKey } from "./helpers.ts";
 import type { TreeOps } from "./tree-ops.ts";
 import type { FsError } from "./types.ts";
 import { fsError } from "./types.ts";
-import { hashToHex, hexToNodeKey } from "./helpers.ts";
 
 // ============================================================================
 // Read Operations Factory
@@ -28,7 +24,7 @@ export const createReadOps = (tree: TreeOps) => {
     realm: string,
     rootNodeKey: string,
     pathStr?: string,
-    indexPathStr?: string,
+    indexPathStr?: string
   ): Promise<FsStatResponse | FsError> => {
     const rootHex = await tree.resolveNodeKey(realm, rootNodeKey);
     if (typeof rootHex === "object") return rootHex;
@@ -73,7 +69,7 @@ export const createReadOps = (tree: TreeOps) => {
     realm: string,
     rootNodeKey: string,
     pathStr?: string,
-    indexPathStr?: string,
+    indexPathStr?: string
   ): Promise<{ data: Uint8Array; contentType: string; size: number; key: string } | FsError> => {
     const rootHex = await tree.resolveNodeKey(realm, rootNodeKey);
     if (typeof rootHex === "object") return rootHex;
@@ -93,7 +89,7 @@ export const createReadOps = (tree: TreeOps) => {
       return fsError(
         "FILE_TOO_LARGE",
         400,
-        "File has successor nodes (multi-block). Use the Node API to read.",
+        "File has successor nodes (multi-block). Use the Node API to read."
       );
     }
 
@@ -114,7 +110,7 @@ export const createReadOps = (tree: TreeOps) => {
     pathStr?: string,
     indexPathStr?: string,
     limit = 100,
-    cursor?: string,
+    cursor?: string
   ): Promise<FsLsResponse | FsError> => {
     const rootHex = await tree.resolveNodeKey(realm, rootNodeKey);
     if (typeof rootHex === "object") return rootHex;

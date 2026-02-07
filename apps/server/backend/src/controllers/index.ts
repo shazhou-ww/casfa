@@ -7,16 +7,15 @@
 // ============================================================================
 
 export {
-  createTokensController,
-  type TokensController,
-  type TokensControllerDeps,
-} from "./tokens.ts";
-
-export {
   createTokenRequestsController,
   type TokenRequestsController,
   type TokenRequestsControllerDeps,
 } from "./token-requests.ts";
+export {
+  createTokensController,
+  type TokensController,
+  type TokensControllerDeps,
+} from "./tokens.ts";
 
 // ============================================================================
 // Core Controllers

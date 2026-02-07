@@ -36,8 +36,8 @@ export type {
 // Encoding/Decoding
 // ============================================================================
 
-export { encodeDelegateToken } from "./encode.ts";
 export { decodeDelegateToken } from "./decode.ts";
+export { encodeDelegateToken } from "./encode.ts";
 
 // ============================================================================
 // Token ID
@@ -46,8 +46,8 @@ export { decodeDelegateToken } from "./decode.ts";
 export {
   computeTokenId,
   formatTokenId,
-  parseTokenId,
   isValidTokenIdFormat,
+  parseTokenId,
 } from "./token-id.ts";
 
 // ============================================================================

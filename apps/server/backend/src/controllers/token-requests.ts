@@ -5,12 +5,15 @@
  * Based on docs/delegate-token-refactor/impl/04-controller-refactor.md
  */
 
+import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import type { Context } from "hono";
 import type { DelegateTokensDb } from "../db/delegate-tokens.ts";
+import type { DepotsDb } from "../db/depots.ts";
 import type { ScopeSetNodesDb } from "../db/scope-set-nodes.ts";
 import type { TokenRequestsDb } from "../db/token-requests.ts";
-import type { DepotsDb } from "../db/depots.ts";
 import type { Env, JwtAuthContext } from "../types.ts";
+import { blake3Hash } from "../util/hashing.ts";
+import { parseCasUri } from "../util/scope.ts";
 import {
   computeRealmHash,
   computeScopeHash,
@@ -19,9 +22,6 @@ import {
   generateToken,
 } from "../util/token.ts";
 import { generateDisplayCode, generateRequestId } from "../util/token-request.ts";
-import { createCipheriv, createHash, randomBytes } from "node:crypto";
-import { parseCasUri } from "../util/scope.ts";
-import { blake3Hash } from "../util/hashing.ts";
 
 // ============================================================================
 // Types
@@ -121,7 +121,7 @@ export const createTokenRequestsController = (
           requestExpiresAt: request.expiresAt,
         });
 
-      case "approved":
+      case "approved": {
         // Only return encryptedToken on first poll after approval
         const response: Record<string, unknown> = {
           requestId,
@@ -135,6 +135,7 @@ export const createTokenRequestsController = (
         }
 
         return c.json(response);
+      }
 
       case "rejected":
         return c.json({ requestId, status: "rejected" });
@@ -152,7 +153,7 @@ export const createTokenRequestsController = (
    * User lists pending authorization requests
    */
   const list = async (c: Context<Env>): Promise<Response> => {
-    const auth = c.get("auth") as JwtAuthContext;
+    const _auth = c.get("auth") as JwtAuthContext;
 
     // List all pending requests (in a real implementation, might filter by targeted realm)
     const requests = await tokenRequestsDb.listPending();

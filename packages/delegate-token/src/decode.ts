@@ -2,13 +2,7 @@
  * Delegate Token decoding
  */
 
-import {
-  DELEGATE_TOKEN_SIZE,
-  FLAGS,
-  MAGIC_NUMBER,
-  OFFSETS,
-  SIZES,
-} from "./constants.ts";
+import { DELEGATE_TOKEN_SIZE, FLAGS, MAGIC_NUMBER, OFFSETS, SIZES } from "./constants.ts";
 import type { DelegateToken, DelegateTokenFlags } from "./types.ts";
 
 /**

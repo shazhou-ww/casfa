@@ -4,6 +4,30 @@
  * Delegate Token model router.
  */
 
+import {
+  ApproveTokenRequestSchema,
+  CreateDelegateTokenSchema,
+  CreateDepotSchema,
+  // Ticket request schemas
+  CreateTicketSchema,
+  CreateTokenRequestSchema,
+  DelegateTokenSchema,
+  DepotCommitSchema,
+  FsCpRequestSchema,
+  // Filesystem request schemas
+  FsMkdirRequestSchema,
+  FsMvRequestSchema,
+  FsRewriteRequestSchema,
+  FsRmRequestSchema,
+  LoginSchema,
+  PrepareNodesSchema,
+  RefreshSchema,
+  RegisterSchema,
+  TicketSubmitSchema,
+  TokenExchangeSchema,
+  UpdateDepotSchema,
+  UpdateUserRoleSchema,
+} from "@casfa/protocol";
 import { zValidator } from "@hono/zod-validator";
 import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
@@ -19,24 +43,9 @@ import type { LocalAuthController } from "./controllers/local-auth.ts";
 import type { OAuthController } from "./controllers/oauth.ts";
 import type { RealmController } from "./controllers/realm.ts";
 import type { TicketsController } from "./controllers/tickets.ts";
-import type { TokensController } from "./controllers/tokens.ts";
 import type { TokenRequestsController } from "./controllers/token-requests.ts";
+import type { TokensController } from "./controllers/tokens.ts";
 import type { McpController } from "./mcp/handler.ts";
-import {
-  LoginSchema,
-  RefreshSchema,
-  RegisterSchema,
-  TokenExchangeSchema,
-  UpdateUserRoleSchema,
-  CreateDelegateTokenSchema,
-  DelegateTokenSchema,
-  CreateTokenRequestSchema,
-  ApproveTokenRequestSchema,
-  PrepareNodesSchema,
-  CreateDepotSchema,
-  UpdateDepotSchema,
-  DepotCommitSchema,
-} from "@casfa/protocol";
 import type { Env } from "./types.ts";
 
 // ============================================================================
@@ -145,7 +154,12 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   // Admin Routes
   // ============================================================================
 
-  app.get("/api/admin/users", deps.jwtAuthMiddleware, deps.adminAccessMiddleware, deps.admin.listUsers);
+  app.get(
+    "/api/admin/users",
+    deps.jwtAuthMiddleware,
+    deps.adminAccessMiddleware,
+    deps.admin.listUsers
+  );
   app.patch(
     "/api/admin/users/:userId",
     deps.jwtAuthMiddleware,
@@ -200,7 +214,11 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   const tokenRequestsRouter = new Hono<Env>();
 
   // Client initiates authorization request (no auth required)
-  tokenRequestsRouter.post("/", zValidator("json", CreateTokenRequestSchema), deps.tokenRequests.create);
+  tokenRequestsRouter.post(
+    "/",
+    zValidator("json", CreateTokenRequestSchema),
+    deps.tokenRequests.create
+  );
 
   // Client polls for request status (no auth required, uses clientSecret)
   tokenRequestsRouter.get("/:requestId/poll", deps.tokenRequests.poll);
@@ -237,29 +255,89 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   realmRouter.get("/:realmId/usage", deps.realm.getUsage);
 
   // Tickets
-  realmRouter.post("/:realmId/tickets", deps.canUploadMiddleware, deps.tickets.create);
+  realmRouter.post(
+    "/:realmId/tickets",
+    deps.canUploadMiddleware,
+    zValidator("json", CreateTicketSchema),
+    deps.tickets.create
+  );
   realmRouter.get("/:realmId/tickets", deps.tickets.list);
   realmRouter.get("/:realmId/tickets/:ticketId", deps.tickets.get);
-  realmRouter.post("/:realmId/tickets/:ticketId/submit", deps.tickets.submit);
+  realmRouter.post(
+    "/:realmId/tickets/:ticketId/submit",
+    zValidator("json", TicketSubmitSchema),
+    deps.tickets.submit
+  );
   realmRouter.post("/:realmId/tickets/:ticketId/revoke", deps.tickets.revoke);
   realmRouter.delete("/:realmId/tickets/:ticketId", deps.tickets.delete);
 
   // Nodes
-  realmRouter.post("/:realmId/nodes/prepare", zValidator("json", PrepareNodesSchema), deps.chunks.prepareNodes);
+  realmRouter.post(
+    "/:realmId/nodes/prepare",
+    zValidator("json", PrepareNodesSchema),
+    deps.chunks.prepareNodes
+  );
   realmRouter.put("/:realmId/nodes/:key", deps.canUploadMiddleware, deps.chunks.put);
   realmRouter.get("/:realmId/nodes/:key", deps.scopeValidationMiddleware, deps.chunks.get);
-  realmRouter.get("/:realmId/nodes/:key/metadata", deps.scopeValidationMiddleware, deps.chunks.getMetadata);
+  realmRouter.get(
+    "/:realmId/nodes/:key/metadata",
+    deps.scopeValidationMiddleware,
+    deps.chunks.getMetadata
+  );
 
   // Filesystem operations (mounted under nodes/:key/fs/*)
-  realmRouter.get("/:realmId/nodes/:key/fs/stat", deps.scopeValidationMiddleware, deps.filesystem.stat);
-  realmRouter.get("/:realmId/nodes/:key/fs/read", deps.scopeValidationMiddleware, deps.filesystem.read);
+  realmRouter.get(
+    "/:realmId/nodes/:key/fs/stat",
+    deps.scopeValidationMiddleware,
+    deps.filesystem.stat
+  );
+  realmRouter.get(
+    "/:realmId/nodes/:key/fs/read",
+    deps.scopeValidationMiddleware,
+    deps.filesystem.read
+  );
   realmRouter.get("/:realmId/nodes/:key/fs/ls", deps.scopeValidationMiddleware, deps.filesystem.ls);
-  realmRouter.post("/:realmId/nodes/:key/fs/write", deps.scopeValidationMiddleware, deps.canUploadMiddleware, deps.filesystem.write);
-  realmRouter.post("/:realmId/nodes/:key/fs/mkdir", deps.scopeValidationMiddleware, deps.canUploadMiddleware, deps.filesystem.mkdir);
-  realmRouter.post("/:realmId/nodes/:key/fs/rm", deps.scopeValidationMiddleware, deps.canUploadMiddleware, deps.filesystem.rm);
-  realmRouter.post("/:realmId/nodes/:key/fs/mv", deps.scopeValidationMiddleware, deps.canUploadMiddleware, deps.filesystem.mv);
-  realmRouter.post("/:realmId/nodes/:key/fs/cp", deps.scopeValidationMiddleware, deps.canUploadMiddleware, deps.filesystem.cp);
-  realmRouter.post("/:realmId/nodes/:key/fs/rewrite", deps.scopeValidationMiddleware, deps.canUploadMiddleware, deps.filesystem.rewrite);
+  realmRouter.post(
+    "/:realmId/nodes/:key/fs/write",
+    deps.scopeValidationMiddleware,
+    deps.canUploadMiddleware,
+    deps.filesystem.write
+  );
+  realmRouter.post(
+    "/:realmId/nodes/:key/fs/mkdir",
+    deps.scopeValidationMiddleware,
+    deps.canUploadMiddleware,
+    zValidator("json", FsMkdirRequestSchema),
+    deps.filesystem.mkdir
+  );
+  realmRouter.post(
+    "/:realmId/nodes/:key/fs/rm",
+    deps.scopeValidationMiddleware,
+    deps.canUploadMiddleware,
+    zValidator("json", FsRmRequestSchema),
+    deps.filesystem.rm
+  );
+  realmRouter.post(
+    "/:realmId/nodes/:key/fs/mv",
+    deps.scopeValidationMiddleware,
+    deps.canUploadMiddleware,
+    zValidator("json", FsMvRequestSchema),
+    deps.filesystem.mv
+  );
+  realmRouter.post(
+    "/:realmId/nodes/:key/fs/cp",
+    deps.scopeValidationMiddleware,
+    deps.canUploadMiddleware,
+    zValidator("json", FsCpRequestSchema),
+    deps.filesystem.cp
+  );
+  realmRouter.post(
+    "/:realmId/nodes/:key/fs/rewrite",
+    deps.scopeValidationMiddleware,
+    deps.canUploadMiddleware,
+    zValidator("json", FsRewriteRequestSchema),
+    deps.filesystem.rewrite
+  );
 
   // Depots
   realmRouter.get("/:realmId/depots", deps.depots.list);
@@ -276,7 +354,11 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
     zValidator("json", UpdateDepotSchema),
     deps.depots.update
   );
-  realmRouter.delete("/:realmId/depots/:depotId", deps.canManageDepotMiddleware, deps.depots.delete);
+  realmRouter.delete(
+    "/:realmId/depots/:depotId",
+    deps.canManageDepotMiddleware,
+    deps.depots.delete
+  );
   realmRouter.post(
     "/:realmId/depots/:depotId/commit",
     deps.canUploadMiddleware,

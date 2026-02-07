@@ -3,28 +3,23 @@
  */
 
 import { z } from "zod";
-import { DELEGATE_TOKEN_ID_REGEX, NODE_KEY_REGEX, TicketStatusSchema } from "./common.ts";
+import { NODE_KEY_REGEX, TicketStatusSchema } from "./common.ts";
 
 // ============================================================================
 // Ticket Create Schemas
 // ============================================================================
 
 /**
- * Schema for creating a new Ticket (new two-step flow)
+ * Schema for creating a new Ticket
  *
  * Used by: POST /api/realm/:realmId/tickets
  *
- * New flow (two-step):
- *   1. First, delegate an Access Token via POST /api/tokens/delegate
- *   2. Then create a Ticket with that accessTokenId
+ * The accessTokenId is derived server-side from the authenticated Access Token.
+ * The client only needs to provide the ticket title.
  */
 export const CreateTicketSchema = z.object({
   /** Human-readable title for the ticket */
   title: z.string().min(1).max(256),
-  /** ID of the pre-issued Access Token to bind to this ticket */
-  accessTokenId: z.string().regex(DELEGATE_TOKEN_ID_REGEX, {
-    message: "Invalid accessTokenId format",
-  }),
 });
 export type CreateTicket = z.infer<typeof CreateTicketSchema>;
 

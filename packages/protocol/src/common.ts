@@ -277,11 +277,12 @@ export type AuthRequestStatus = z.infer<typeof AuthRequestStatusSchema>;
 
 /**
  * Node types in CAS:
+ * - set: Scope-set node (unordered set of node hashes)
  * - dict: Directory node with child mappings
  * - file: File top-level node with content-type
  * - successor: File continuation node for large files
  */
-export const NodeKindSchema = z.enum(["dict", "file", "successor"]);
+export const NodeKindSchema = z.enum(["set", "dict", "file", "successor"]);
 export type NodeKind = z.infer<typeof NodeKindSchema>;
 
 // ============================================================================

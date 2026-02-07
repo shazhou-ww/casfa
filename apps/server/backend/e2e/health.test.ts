@@ -24,7 +24,7 @@ describe("Health Check", () => {
 
     expect(response.status).toBe(200);
 
-    const data = ((await response.json()) as any) as { status: string };
+    const data = (await response.json()) as any as { status: string };
     expect(data.status).toBe("ok");
   });
 
@@ -33,7 +33,7 @@ describe("Health Check", () => {
 
     expect(response.status).toBe(200);
 
-    const data = ((await response.json()) as any) as {
+    const data = (await response.json()) as any as {
       service?: string;
       name?: string;
       version?: string;

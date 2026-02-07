@@ -57,8 +57,9 @@ export type DelegateTokenRecord = {
   // 时间戳
   createdAt: number;
 
-  // TTL（DynamoDB 自动删除）
-  ttl: number; // Unix epoch 秒，= expiresAt / 1000
+  // TTL — DT 记录不再设置 ttl，永久保留（用于 ownership 追溯）
+  // 旧记录可能仍有 ttl 值，DynamoDB 会自动删除它们
+  ttl?: number; // Unix epoch 秒，新记录不设置此字段
 
   // GSI 键
   gsi1pk: string; // REALM#{realm}

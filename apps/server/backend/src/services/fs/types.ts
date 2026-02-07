@@ -6,10 +6,11 @@
 
 import type { CasNode, HashProvider } from "@casfa/core";
 import type { StorageProvider } from "@casfa/storage-core";
+import type { DepotsDb } from "../../db/depots.ts";
 import type { OwnershipDb } from "../../db/ownership.ts";
 import type { RefCountDb } from "../../db/refcount.ts";
+import type { ScopeSetNodesDb } from "../../db/scope-set-nodes.ts";
 import type { UsageDb } from "../../db/usage.ts";
-import type { DepotsDb } from "../../db/depots.ts";
 
 // ============================================================================
 // Service Dependencies
@@ -22,6 +23,7 @@ export type FsServiceDeps = {
   refCountDb: RefCountDb;
   usageDb: UsageDb;
   depotsDb: DepotsDb;
+  scopeSetNodesDb: ScopeSetNodesDb;
 };
 
 // ============================================================================
@@ -74,7 +76,7 @@ export function fsError(
   code: string,
   status: number,
   message: string,
-  details?: Record<string, unknown>,
+  details?: Record<string, unknown>
 ): FsError {
   return { code, status, message, details };
 }

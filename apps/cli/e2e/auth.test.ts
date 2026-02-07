@@ -18,9 +18,9 @@ import {
 } from "./helpers.ts";
 import {
   type CliTestContext,
-  type TestUserSetup,
   createCliTestContext,
   createTestUserWithToken,
+  type TestUserSetup,
 } from "./setup.ts";
 
 describe("CLI Authentication", () => {
@@ -123,16 +123,13 @@ describe("CLI Authentication", () => {
       // Set wrong URL in env, correct URL in option
       const wrongUrl = "http://localhost:99999";
 
-      const result = await runCli(
-        ["--base-url", ctx.baseUrl, "--realm", user.realm, "info"],
-        {
-          env: {
-            HOME: ctx.tempHome,
-            CASFA_BASE_URL: wrongUrl, // This should be overridden
-            NO_COLOR: "1",
-          },
-        }
-      );
+      const result = await runCli(["--base-url", ctx.baseUrl, "--realm", user.realm, "info"], {
+        env: {
+          HOME: ctx.tempHome,
+          CASFA_BASE_URL: wrongUrl, // This should be overridden
+          NO_COLOR: "1",
+        },
+      });
 
       // Should succeed because command line overrides env
       expectSuccess(result, "command line options should override env vars");

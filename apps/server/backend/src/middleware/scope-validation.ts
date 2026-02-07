@@ -105,11 +105,12 @@ export const createScopeValidationMiddleware = (
 
     if (!verification.valid) {
       // Return 400 for format errors, 403 for scope violations
-      const isFormatError = verification.reason?.includes("Invalid index path format") ||
-                            verification.reason?.includes("Empty index path");
+      const isFormatError =
+        verification.reason?.includes("Invalid index path format") ||
+        verification.reason?.includes("Empty index path");
       const statusCode = isFormatError ? 400 : 403;
       const errorCode = isFormatError ? "INVALID_INDEX_PATH" : "NODE_NOT_IN_SCOPE";
-      const errorMessage = isFormatError 
+      const errorMessage = isFormatError
         ? "Invalid X-CAS-Index-Path header format"
         : "The requested node is not within the authorized scope";
 

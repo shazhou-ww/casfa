@@ -23,10 +23,7 @@ export function generateCodeVerifier(length = 64): string {
 
   // Convert to URL-safe Base64
   const base64 = btoa(String.fromCharCode(...bytes));
-  const urlSafe = base64
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=/g, "");
+  const urlSafe = base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 
   return urlSafe.slice(0, length);
 }
@@ -55,9 +52,7 @@ export async function generateCodeChallenge(verifier: string): Promise<string> {
  * @param verifierLength - Length of code verifier (default 64)
  * @returns PKCE challenge with verifier, challenge, and method
  */
-export async function generatePkceChallenge(
-  verifierLength = 64
-): Promise<PkceChallenge> {
+export async function generatePkceChallenge(verifierLength = 64): Promise<PkceChallenge> {
   const verifier = generateCodeVerifier(verifierLength);
   const challenge = await generateCodeChallenge(verifier);
 
@@ -75,10 +70,7 @@ export async function generatePkceChallenge(
  * @param challenge - Expected challenge
  * @returns true if verifier produces the challenge
  */
-export async function verifyPkceChallenge(
-  verifier: string,
-  challenge: string
-): Promise<boolean> {
+export async function verifyPkceChallenge(verifier: string, challenge: string): Promise<boolean> {
   const computed = await generateCodeChallenge(verifier);
   return computed === challenge;
 }

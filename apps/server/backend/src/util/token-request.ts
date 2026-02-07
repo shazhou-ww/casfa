@@ -5,8 +5,8 @@
  * Based on docs/delegate-token-refactor/06-client-auth-flow.md
  */
 
-import { randomBytes, createCipheriv, createDecipheriv, createHash } from "node:crypto";
-import { toCrockfordBase32, fromCrockfordBase32 } from "./encoding.ts";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { fromCrockfordBase32, toCrockfordBase32 } from "./encoding.ts";
 
 // ============================================================================
 // Request ID Generation

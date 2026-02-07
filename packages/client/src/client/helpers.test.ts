@@ -2,20 +2,16 @@
  * Client helper functions tests.
  */
 
-import { describe, it, expect, mock } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import type { FetchResult } from "../types/client.ts";
-import type {
-  StoredAccessToken,
-  StoredDelegateToken,
-  StoredUserToken,
-} from "../types/tokens.ts";
+import type { StoredAccessToken, StoredDelegateToken, StoredUserToken } from "../types/tokens.ts";
 import {
   ERRORS,
+  type TokenGetter,
+  withAccessToken,
+  withDelegateToken,
   withToken,
   withUserToken,
-  withDelegateToken,
-  withAccessToken,
-  type TokenGetter,
 } from "./helpers.ts";
 
 // ============================================================================
@@ -84,11 +80,13 @@ describe("withToken", () => {
   it("should call fn with token when token exists", async () => {
     const token = { id: "test-token" };
     const getToken: TokenGetter<typeof token> = async () => token;
-    const fn = mock(async (t: typeof token): Promise<FetchResult<string>> => ({
-      ok: true,
-      data: `received-${t.id}`,
-      status: 200,
-    }));
+    const fn = mock(
+      async (t: typeof token): Promise<FetchResult<string>> => ({
+        ok: true,
+        data: `received-${t.id}`,
+        status: 200,
+      })
+    );
 
     const wrapped = withToken(getToken, { code: "ERROR", message: "Error" });
     const result = await wrapped(fn);
@@ -102,11 +100,13 @@ describe("withToken", () => {
 
   it("should return error when token is null", async () => {
     const getToken: TokenGetter<string> = async () => null;
-    const fn = mock(async (): Promise<FetchResult<string>> => ({
-      ok: true,
-      data: "should not reach",
-      status: 200,
-    }));
+    const fn = mock(
+      async (): Promise<FetchResult<string>> => ({
+        ok: true,
+        data: "should not reach",
+        status: 200,
+      })
+    );
     const error = { code: "MISSING_TOKEN", message: "Token is required" };
 
     const wrapped = withToken(getToken, error);
@@ -122,11 +122,13 @@ describe("withToken", () => {
   it("should propagate fn result", async () => {
     const token = "valid-token";
     const getToken: TokenGetter<string> = async () => token;
-    const fn = mock(async (): Promise<FetchResult<number>> => ({
-      ok: true,
-      data: 42,
-      status: 200,
-    }));
+    const fn = mock(
+      async (): Promise<FetchResult<number>> => ({
+        ok: true,
+        data: 42,
+        status: 200,
+      })
+    );
 
     const wrapped = withToken(getToken, { code: "ERROR", message: "Error" });
     const result = await wrapped(fn);
@@ -141,10 +143,12 @@ describe("withToken", () => {
     const token = "valid-token";
     const getToken: TokenGetter<string> = async () => token;
     const fnError = { code: "FN_ERROR", message: "Function failed" };
-    const fn = mock(async (): Promise<FetchResult<number>> => ({
-      ok: false,
-      error: fnError,
-    }));
+    const fn = mock(
+      async (): Promise<FetchResult<number>> => ({
+        ok: false,
+        error: fnError,
+      })
+    );
 
     const wrapped = withToken(getToken, { code: "ERROR", message: "Error" });
     const result = await wrapped(fn);
@@ -164,11 +168,13 @@ describe("withUserToken", () => {
   it("should call fn with user token when available", async () => {
     const userToken = createUserToken();
     const getToken: TokenGetter<StoredUserToken> = async () => userToken;
-    const fn = mock(async (token: StoredUserToken): Promise<FetchResult<string>> => ({
-      ok: true,
-      data: token.userId,
-      status: 200,
-    }));
+    const fn = mock(
+      async (token: StoredUserToken): Promise<FetchResult<string>> => ({
+        ok: true,
+        data: token.userId,
+        status: 200,
+      })
+    );
 
     const wrapped = withUserToken(getToken);
     const result = await wrapped(fn);
@@ -182,11 +188,13 @@ describe("withUserToken", () => {
 
   it("should return USER_REQUIRED error when token is null", async () => {
     const getToken: TokenGetter<StoredUserToken> = async () => null;
-    const fn = mock(async (): Promise<FetchResult<string>> => ({
-      ok: true,
-      data: "should not reach",
-      status: 200,
-    }));
+    const fn = mock(
+      async (): Promise<FetchResult<string>> => ({
+        ok: true,
+        data: "should not reach",
+        status: 200,
+      })
+    );
 
     const wrapped = withUserToken(getToken);
     const result = await wrapped(fn);
@@ -207,11 +215,13 @@ describe("withDelegateToken", () => {
   it("should call fn with delegate token when available", async () => {
     const delegateToken = createDelegateToken();
     const getToken: TokenGetter<StoredDelegateToken> = async () => delegateToken;
-    const fn = mock(async (token: StoredDelegateToken): Promise<FetchResult<string>> => ({
-      ok: true,
-      data: token.tokenId,
-      status: 200,
-    }));
+    const fn = mock(
+      async (token: StoredDelegateToken): Promise<FetchResult<string>> => ({
+        ok: true,
+        data: token.tokenId,
+        status: 200,
+      })
+    );
 
     const wrapped = withDelegateToken(getToken);
     const result = await wrapped(fn);
@@ -225,11 +235,13 @@ describe("withDelegateToken", () => {
 
   it("should return DELEGATE_REQUIRED error when token is null", async () => {
     const getToken: TokenGetter<StoredDelegateToken> = async () => null;
-    const fn = mock(async (): Promise<FetchResult<string>> => ({
-      ok: true,
-      data: "should not reach",
-      status: 200,
-    }));
+    const fn = mock(
+      async (): Promise<FetchResult<string>> => ({
+        ok: true,
+        data: "should not reach",
+        status: 200,
+      })
+    );
 
     const wrapped = withDelegateToken(getToken);
     const result = await wrapped(fn);
@@ -250,11 +262,13 @@ describe("withAccessToken", () => {
   it("should call fn with access token when available", async () => {
     const accessToken = createAccessToken();
     const getToken: TokenGetter<StoredAccessToken> = async () => accessToken;
-    const fn = mock(async (token: StoredAccessToken): Promise<FetchResult<string>> => ({
-      ok: true,
-      data: token.tokenBase64,
-      status: 200,
-    }));
+    const fn = mock(
+      async (token: StoredAccessToken): Promise<FetchResult<string>> => ({
+        ok: true,
+        data: token.tokenBase64,
+        status: 200,
+      })
+    );
 
     const wrapped = withAccessToken(getToken);
     const result = await wrapped(fn);
@@ -268,11 +282,13 @@ describe("withAccessToken", () => {
 
   it("should return ACCESS_REQUIRED error when token is null", async () => {
     const getToken: TokenGetter<StoredAccessToken> = async () => null;
-    const fn = mock(async (): Promise<FetchResult<string>> => ({
-      ok: true,
-      data: "should not reach",
-      status: 200,
-    }));
+    const fn = mock(
+      async (): Promise<FetchResult<string>> => ({
+        ok: true,
+        data: "should not reach",
+        status: 200,
+      })
+    );
 
     const wrapped = withAccessToken(getToken);
     const result = await wrapped(fn);
@@ -294,11 +310,13 @@ describe("edge cases", () => {
     const getToken: TokenGetter<string> = async () => {
       throw new Error("Token getter failed");
     };
-    const fn = mock(async (): Promise<FetchResult<string>> => ({
-      ok: true,
-      data: "should not reach",
-      status: 200,
-    }));
+    const fn = mock(
+      async (): Promise<FetchResult<string>> => ({
+        ok: true,
+        data: "should not reach",
+        status: 200,
+      })
+    );
 
     const wrapped = withToken(getToken, { code: "ERROR", message: "Error" });
 

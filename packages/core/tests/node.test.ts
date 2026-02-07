@@ -139,10 +139,7 @@ describe("Node", () => {
       const child2 = new Uint8Array(HASH_SIZE).fill(0x11);
       const child3 = new Uint8Array(HASH_SIZE).fill(0x22);
 
-      const result = await encodeSetNode(
-        { children: [child1, child2, child3] },
-        mockHashProvider
-      );
+      const result = await encodeSetNode({ children: [child1, child2, child3] }, mockHashProvider);
 
       const decoded = decodeNode(result.bytes);
       expect(decoded.kind).toBe("set");
@@ -157,10 +154,7 @@ describe("Node", () => {
       const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
       const child2 = new Uint8Array(HASH_SIZE).fill(0x22);
 
-      const result = await encodeSetNode(
-        { children: [child1, child2] },
-        mockHashProvider
-      );
+      const result = await encodeSetNode({ children: [child1, child2] }, mockHashProvider);
 
       // Header(16) + 2 children(32) = 48
       expect(result.bytes.length).toBe(HEADER_SIZE + 2 * HASH_SIZE);
@@ -175,22 +169,22 @@ describe("Node", () => {
     it("should throw on less than 2 children", async () => {
       const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
 
-      await expect(
-        encodeSetNode({ children: [child1] }, mockHashProvider)
-      ).rejects.toThrow(/at least 2 children/);
+      await expect(encodeSetNode({ children: [child1] }, mockHashProvider)).rejects.toThrow(
+        /at least 2 children/
+      );
 
-      await expect(
-        encodeSetNode({ children: [] }, mockHashProvider)
-      ).rejects.toThrow(/at least 2 children/);
+      await expect(encodeSetNode({ children: [] }, mockHashProvider)).rejects.toThrow(
+        /at least 2 children/
+      );
     });
 
     it("should throw on duplicate children", async () => {
       const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
       const child2 = new Uint8Array(HASH_SIZE).fill(0x11); // duplicate
 
-      await expect(
-        encodeSetNode({ children: [child1, child2] }, mockHashProvider)
-      ).rejects.toThrow(/unique|duplicate/i);
+      await expect(encodeSetNode({ children: [child1, child2] }, mockHashProvider)).rejects.toThrow(
+        /unique|duplicate/i
+      );
     });
 
     it("should produce same hash regardless of input order", async () => {
@@ -198,14 +192,8 @@ describe("Node", () => {
       const childB = new Uint8Array(HASH_SIZE).fill(0xbb);
       const childC = new Uint8Array(HASH_SIZE).fill(0xcc);
 
-      const result1 = await encodeSetNode(
-        { children: [childA, childB, childC] },
-        realHashProvider
-      );
-      const result2 = await encodeSetNode(
-        { children: [childC, childA, childB] },
-        realHashProvider
-      );
+      const result1 = await encodeSetNode({ children: [childA, childB, childC] }, realHashProvider);
+      const result2 = await encodeSetNode({ children: [childC, childA, childB] }, realHashProvider);
 
       // After sorting, should be identical
       expect(result1.hash).toEqual(result2.hash);
@@ -313,10 +301,7 @@ describe("Node", () => {
     it("should decode set-node correctly", async () => {
       const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
       const child2 = new Uint8Array(HASH_SIZE).fill(0x22);
-      const encoded = await encodeSetNode(
-        { children: [child1, child2] },
-        mockHashProvider
-      );
+      const encoded = await encodeSetNode({ children: [child1, child2] }, mockHashProvider);
       const decoded = decodeNode(encoded.bytes);
 
       expect(decoded.kind).toBe("set");
@@ -388,10 +373,7 @@ describe("Node", () => {
     it("should return set for set-node", async () => {
       const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
       const child2 = new Uint8Array(HASH_SIZE).fill(0x22);
-      const result = await encodeSetNode(
-        { children: [child1, child2] },
-        mockHashProvider
-      );
+      const result = await encodeSetNode({ children: [child1, child2] }, mockHashProvider);
       expect(getNodeKind(result.bytes)).toBe("set");
     });
 

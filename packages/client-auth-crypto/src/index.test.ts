@@ -2,26 +2,26 @@
  * Client auth crypto tests
  */
 
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import {
-  // PKCE
-  generateCodeVerifier,
-  generateCodeChallenge,
-  generatePkceChallenge,
-  verifyPkceChallenge,
-  // Client Secret
-  generateClientSecret,
-  parseClientSecret,
-  generateDisplayCode,
-  verifyDisplayCode,
+  decryptAesGcm,
+  decryptToken,
   // Encryption
   deriveKey,
   encryptAesGcm,
-  decryptAesGcm,
   encryptToken,
-  decryptToken,
   formatEncryptedToken,
+  // Client Secret
+  generateClientSecret,
+  generateCodeChallenge,
+  // PKCE
+  generateCodeVerifier,
+  generateDisplayCode,
+  generatePkceChallenge,
+  parseClientSecret,
   parseEncryptedToken,
+  verifyDisplayCode,
+  verifyPkceChallenge,
 } from "./index.ts";
 
 // ============================================================================

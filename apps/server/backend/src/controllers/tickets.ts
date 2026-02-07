@@ -5,9 +5,10 @@
  * Tickets are created by Access Token holders to allow temporary access to specific nodes.
  */
 
+import type { CreateTicket, TicketSubmit } from "@casfa/protocol";
 import type { Context } from "hono";
-import type { TicketsDb } from "../db/tickets.ts";
 import type { DepotsDb } from "../db/depots.ts";
+import type { TicketsDb } from "../db/tickets.ts";
 import type { TicketRecord } from "../types/delegate-token.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
 import { generateTicketId } from "../util/token-id.ts";
@@ -59,12 +60,7 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
     create: async (c) => {
       const auth = c.get("auth") as AccessTokenAuthContext;
       const realmId = c.req.param("realmId");
-      const body = await c.req.json();
-
-      // Validate required fields
-      if (!body.title || typeof body.title !== "string" || body.title.trim() === "") {
-        return c.json({ error: "bad_request", message: "title is required" }, 400);
-      }
+      const body = c.req.valid("json" as never) as CreateTicket;
 
       const ticketId = generateTicketId();
 
@@ -122,11 +118,7 @@ export const createTicketsController = (deps: TicketsControllerDeps): TicketsCon
     submit: async (c) => {
       const realmId = c.req.param("realmId");
       const ticketId = c.req.param("ticketId");
-      const body = await c.req.json();
-
-      if (!body.root) {
-        return c.json({ error: "bad_request", message: "Missing root in request body" }, 400);
-      }
+      const body = c.req.valid("json" as never) as TicketSubmit;
 
       const ticket = await ticketsDb.get(realmId, ticketId);
       if (!ticket) {

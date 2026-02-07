@@ -2,15 +2,19 @@
  * HTTP utilities tests.
  */
 
-import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from "bun:test";
+import { afterEach, describe, expect, it, mock } from "bun:test";
 import {
-  statusToErrorCode,
   createErrorFromResponse,
   createNetworkError,
   fetchApi,
   fetchWithAuth,
-  type FetchOptions,
+  statusToErrorCode,
 } from "./http.ts";
+
+// Helper to create a mock fetch that satisfies the typeof fetch constraint
+function mockFetch(fn: (...args: any[]) => any): typeof fetch {
+  return mock(fn) as unknown as typeof fetch;
+}
 
 // ============================================================================
 // statusToErrorCode Tests
@@ -174,9 +178,9 @@ describe("fetchApi", () => {
   });
 
   it("should make GET request by default", async () => {
-    let capturedRequest: Request | undefined;
-    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
-      capturedRequest = input as Request;
+    let _capturedRequest: Request | undefined;
+    globalThis.fetch = mockFetch(async (input: Request | URL) => {
+      _capturedRequest = input as Request;
       return new Response(JSON.stringify({ data: "test" }), { status: 200 });
     });
 
@@ -186,7 +190,7 @@ describe("fetchApi", () => {
   });
 
   it("should return ok: true with data on success", async () => {
-    globalThis.fetch = mock(async () => {
+    globalThis.fetch = mockFetch(async () => {
       return new Response(JSON.stringify({ id: 1, name: "Test" }), { status: 200 });
     });
 
@@ -200,7 +204,7 @@ describe("fetchApi", () => {
   });
 
   it("should return ok: false with error on failure", async () => {
-    globalThis.fetch = mock(async () => {
+    globalThis.fetch = mockFetch(async () => {
       return new Response(JSON.stringify({ message: "Not found" }), {
         status: 404,
         statusText: "Not Found",
@@ -217,7 +221,7 @@ describe("fetchApi", () => {
   });
 
   it("should handle network errors", async () => {
-    globalThis.fetch = mock(async () => {
+    globalThis.fetch = mockFetch(async () => {
       throw new Error("Network failure");
     });
 
@@ -232,7 +236,7 @@ describe("fetchApi", () => {
 
   it("should add Content-Type header for JSON body", async () => {
     let capturedInit: RequestInit | undefined;
-    globalThis.fetch = mock(async (_, init) => {
+    globalThis.fetch = mockFetch(async (_, init) => {
       capturedInit = init as RequestInit;
       return new Response(JSON.stringify({}), { status: 200 });
     });
@@ -249,7 +253,7 @@ describe("fetchApi", () => {
 
   it("should not override existing Content-Type header", async () => {
     let capturedInit: RequestInit | undefined;
-    globalThis.fetch = mock(async (_, init) => {
+    globalThis.fetch = mockFetch(async (_, init) => {
       capturedInit = init as RequestInit;
       return new Response(JSON.stringify({}), { status: 200 });
     });
@@ -265,7 +269,7 @@ describe("fetchApi", () => {
 
   it("should stringify JSON body", async () => {
     let capturedInit: RequestInit | undefined;
-    globalThis.fetch = mock(async (_, init) => {
+    globalThis.fetch = mockFetch(async (_, init) => {
       capturedInit = init as RequestInit;
       return new Response(JSON.stringify({}), { status: 200 });
     });
@@ -280,7 +284,7 @@ describe("fetchApi", () => {
 
   it("should handle blob response type", async () => {
     const blobContent = new Blob(["test content"], { type: "text/plain" });
-    globalThis.fetch = mock(async () => {
+    globalThis.fetch = mockFetch(async () => {
       return new Response(blobContent, { status: 200 });
     });
 
@@ -295,7 +299,7 @@ describe("fetchApi", () => {
   });
 
   it("should handle text response type", async () => {
-    globalThis.fetch = mock(async () => {
+    globalThis.fetch = mockFetch(async () => {
       return new Response("plain text response", { status: 200 });
     });
 
@@ -310,7 +314,7 @@ describe("fetchApi", () => {
   });
 
   it("should handle none response type", async () => {
-    globalThis.fetch = mock(async () => {
+    globalThis.fetch = mockFetch(async () => {
       return new Response(null, { status: 204 });
     });
 
@@ -329,7 +333,7 @@ describe("fetchApi", () => {
 
     for (const method of methods) {
       let capturedInit: RequestInit | undefined;
-      globalThis.fetch = mock(async (_, init) => {
+      globalThis.fetch = mockFetch(async (_, init) => {
         capturedInit = init as RequestInit;
         return new Response(JSON.stringify({}), { status: 200 });
       });
@@ -354,7 +358,7 @@ describe("fetchWithAuth", () => {
 
   it("should add Authorization header when authHeader is provided", async () => {
     let capturedInit: RequestInit | undefined;
-    globalThis.fetch = mock(async (_, init) => {
+    globalThis.fetch = mockFetch(async (_, init) => {
       capturedInit = init as RequestInit;
       return new Response(JSON.stringify({}), { status: 200 });
     });
@@ -368,7 +372,7 @@ describe("fetchWithAuth", () => {
 
   it("should not add Authorization header when authHeader is null", async () => {
     let capturedInit: RequestInit | undefined;
-    globalThis.fetch = mock(async (_, init) => {
+    globalThis.fetch = mockFetch(async (_, init) => {
       capturedInit = init as RequestInit;
       return new Response(JSON.stringify({}), { status: 200 });
     });
@@ -380,7 +384,7 @@ describe("fetchWithAuth", () => {
 
   it("should merge auth header with other headers", async () => {
     let capturedInit: RequestInit | undefined;
-    globalThis.fetch = mock(async (_, init) => {
+    globalThis.fetch = mockFetch(async (_, init) => {
       capturedInit = init as RequestInit;
       return new Response(JSON.stringify({}), { status: 200 });
     });
@@ -396,7 +400,7 @@ describe("fetchWithAuth", () => {
 
   it("should pass other options through to fetchApi", async () => {
     let capturedInit: RequestInit | undefined;
-    globalThis.fetch = mock(async (_, init) => {
+    globalThis.fetch = mockFetch(async (_, init) => {
       capturedInit = init as RequestInit;
       return new Response(JSON.stringify({}), { status: 200 });
     });

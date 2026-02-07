@@ -202,7 +202,9 @@ export const decodeToken = (tokenBytes: Uint8Array): DecodedDelegateToken => {
   // Magic number check
   const magic = view.getUint32(0, false);
   if (magic !== TOKEN_MAGIC) {
-    throw new Error(`Invalid token magic: expected 0x${TOKEN_MAGIC.toString(16)}, got 0x${magic.toString(16)}`);
+    throw new Error(
+      `Invalid token magic: expected 0x${TOKEN_MAGIC.toString(16)}, got 0x${magic.toString(16)}`
+    );
   }
 
   // Parse flags (byte 4)

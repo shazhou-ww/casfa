@@ -11,8 +11,7 @@ import { z } from "zod";
 import type { ServerConfig } from "../config.ts";
 import type { OwnershipDb } from "../db/ownership.ts";
 import type { TicketsDb } from "../db/tickets.ts";
-import type { Env } from "../types.ts";
-import type { DelegateTokenAuthContext } from "../types/delegate-token.ts";
+import type { DelegateTokenAuthContext, Env } from "../types.ts";
 import { generateTicketId } from "../util/token-id.ts";
 import { MCP_TOOLS } from "./tools.ts";
 
@@ -139,9 +138,9 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
     const ticket = await ticketsDb.create({
       ticketId,
       realm: auth.realm,
-      title: parsed.data.title,
+      title: parsed.data.title ?? "",
       accessTokenId: auth.tokenId, // The delegate token's ID will be used to derive an access token
-      creatorTokenId: auth.tokenId,
+      creatorIssuerId: auth.tokenRecord.issuerId,
     });
 
     const endpoint = `${serverConfig.baseUrl}/api/realm/${auth.realm}/tickets/${ticketId}`;
@@ -273,7 +272,7 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
       const auth = c.get("auth");
 
       // MCP requires Delegate Token authentication
-      if (auth.type !== "delegate-token") {
+      if (auth.type !== "delegate") {
         return c.json({ error: "Delegate Token required for MCP access" }, 403);
       }
 

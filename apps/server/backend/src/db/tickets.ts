@@ -7,24 +7,19 @@
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import {
+  DeleteCommand,
   GetCommand,
   PutCommand,
-  UpdateCommand,
-  DeleteCommand,
   QueryCommand,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type {
-  TicketRecord,
   CreateTicketInput,
   ListOptions,
   PaginatedResult,
+  TicketRecord,
 } from "../types/delegate-token.ts";
-import {
-  toTicketSk,
-  toTicketTtl,
-  encodeCursor,
-  decodeCursor,
-} from "../util/db-keys.ts";
+import { decodeCursor, encodeCursor, toTicketSk, toTicketTtl } from "../util/db-keys.ts";
 import { createDocClient } from "./client.ts";
 
 // ============================================================================
@@ -202,7 +197,8 @@ export const createTicketsDb = (config: TicketsDbConfig): TicketsDb => {
       new QueryCommand({
         TableName: tableName,
         KeyConditionExpression: "#realm = :realm AND begins_with(#key, :prefix)",
-        FilterExpression: filterExpressions.length > 0 ? filterExpressions.join(" AND ") : undefined,
+        FilterExpression:
+          filterExpressions.length > 0 ? filterExpressions.join(" AND ") : undefined,
         ExpressionAttributeNames: {
           "#realm": "realm",
           "#key": "key",

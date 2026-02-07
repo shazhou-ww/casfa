@@ -13,9 +13,7 @@ export const baseConfig: Options = {
   // Skip bundling node_modules and workspace dependencies
   skipNodeModulesBundle: true,
   // External packages for dts generation
-  external: [
-    /^@casfa\/.*/,
-  ],
+  external: [/^@casfa\/.*/],
 };
 
 export default defineConfig(baseConfig);

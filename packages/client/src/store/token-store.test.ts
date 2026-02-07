@@ -2,8 +2,8 @@
  * Token store tests.
  */
 
-import { describe, it, expect, beforeEach, mock, spyOn } from "bun:test";
-import type { TokenStorageProvider, OnTokenChangeCallback } from "../types/client.ts";
+import { describe, expect, it, mock } from "bun:test";
+import type { TokenStorageProvider } from "../types/client.ts";
 import type {
   StoredAccessToken,
   StoredDelegateToken,
@@ -11,7 +11,7 @@ import type {
   TokenState,
 } from "../types/tokens.ts";
 import { emptyTokenState } from "../types/tokens.ts";
-import { createTokenStore, type TokenStore } from "./token-store.ts";
+import { createTokenStore } from "./token-store.ts";
 
 // ============================================================================
 // Test Helpers
@@ -25,7 +25,9 @@ const createUserToken = (overrides: Partial<StoredUserToken> = {}): StoredUserTo
   ...overrides,
 });
 
-const createDelegateToken = (overrides: Partial<StoredDelegateToken> = {}): StoredDelegateToken => ({
+const createDelegateToken = (
+  overrides: Partial<StoredDelegateToken> = {}
+): StoredDelegateToken => ({
   tokenId: "dlt1_delegate123",
   tokenBase64: "base64-delegate-token",
   type: "delegate",

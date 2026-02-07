@@ -4,7 +4,7 @@
 
 export {
   createFsService,
+  type FsError,
   type FsService,
   type FsServiceDeps,
-  type FsError,
 } from "./fs/index.ts";

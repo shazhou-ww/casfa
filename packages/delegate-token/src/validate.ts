@@ -12,10 +12,7 @@ import type { DelegateToken, ValidationResult } from "./types.ts";
  * @param now - Current timestamp in milliseconds (defaults to Date.now())
  * @returns Validation result
  */
-export function validateToken(
-  token: DelegateToken,
-  now: number = Date.now()
-): ValidationResult {
+export function validateToken(token: DelegateToken, now: number = Date.now()): ValidationResult {
   // Check expiration
   if (token.ttl <= now) {
     return {

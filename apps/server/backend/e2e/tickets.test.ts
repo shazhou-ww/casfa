@@ -396,13 +396,17 @@ describe("Ticket Management", () => {
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // User creates access token with canUpload permission
-      const userAccessToken = await ctx.helpers.createAccessToken(token, realm, { canUpload: true });
+      const userAccessToken = await ctx.helpers.createAccessToken(token, realm, {
+        canUpload: true,
+      });
       const ticket1 = await ctx.helpers.createTicket(userAccessToken.tokenBase64, realm, {
         title: "User Direct Ticket",
       });
 
       // User creates delegate token with canUpload, then access token from it
-      const delegateToken = await ctx.helpers.createDelegateToken(token, realm, { canUpload: true });
+      const delegateToken = await ctx.helpers.createDelegateToken(token, realm, {
+        canUpload: true,
+      });
       const delegatedAccessResult = await ctx.helpers.delegateToken(delegateToken.tokenBase64, {
         type: "access",
         scope: [".:"],
@@ -410,7 +414,7 @@ describe("Ticket Management", () => {
       });
       const delegatedAccessToken = delegatedAccessResult as { tokenBase64: string };
 
-      const ticket2 = await ctx.helpers.createTicket(delegatedAccessToken.tokenBase64, realm, {
+      const _ticket2 = await ctx.helpers.createTicket(delegatedAccessToken.tokenBase64, realm, {
         title: "Delegated Ticket",
       });
 

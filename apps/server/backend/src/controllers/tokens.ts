@@ -7,10 +7,12 @@
 
 import type { Context } from "hono";
 import type { DelegateTokensDb } from "../db/delegate-tokens.ts";
+import type { DepotsDb } from "../db/depots.ts";
 import type { ScopeSetNodesDb } from "../db/scope-set-nodes.ts";
 import type { TokenAuditDb } from "../db/token-audit.ts";
-import type { DepotsDb } from "../db/depots.ts";
 import type { DelegateTokenAuthContext, Env, JwtAuthContext } from "../types.ts";
+import { blake3Hash } from "../util/hashing.ts";
+import { parseCasUri, resolveRelativeScope } from "../util/scope.ts";
 import {
   computeRealmHash,
   computeScopeHash,
@@ -19,8 +21,6 @@ import {
   computeUserIdHash,
   generateToken,
 } from "../util/token.ts";
-import { parseCasUri, resolveRelativeScope } from "../util/scope.ts";
-import { blake3Hash } from "../util/hashing.ts";
 
 // ============================================================================
 // Types
@@ -63,7 +63,10 @@ export const createTokensController = (deps: TokensControllerDeps): TokensContro
   async function resolveScopeFromUris(
     scope: string[],
     realm: string
-  ): Promise<{ success: true; scopeNodeHash?: string; scopeSetNodeId?: string; scopeHash: Uint8Array } | { success: false; error: string }> {
+  ): Promise<
+    | { success: true; scopeNodeHash?: string; scopeSetNodeId?: string; scopeHash: Uint8Array }
+    | { success: false; error: string }
+  > {
     const resolvedHashes: string[] = [];
 
     for (const uri of scope) {
@@ -191,7 +194,7 @@ export const createTokensController = (deps: TokensControllerDeps): TokensContro
    */
   const list = async (c: Context<Env>): Promise<Response> => {
     const auth = c.get("auth") as JwtAuthContext;
-    const limit = parseInt(c.req.query("limit") ?? "20");
+    const limit = parseInt(c.req.query("limit") ?? "20", 10);
     const cursor = c.req.query("cursor");
     const includeRevoked = c.req.query("includeRevoked") === "true";
     const typeFilter = c.req.query("type"); // "delegate" or "access"

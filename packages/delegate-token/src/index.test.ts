@@ -2,27 +2,25 @@
  * Delegate Token tests
  */
 
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { blake3 } from "@noble/hashes/blake3";
 import {
-  // Constants
-  DELEGATE_TOKEN_SIZE,
-  MAGIC_NUMBER,
-  TOKEN_ID_PREFIX,
-  MAX_DEPTH,
-  FLAGS,
-  // Types
-  type DelegateToken,
-  type DelegateTokenInput,
-  type HashFunction,
-  // Encoding/Decoding
-  encodeDelegateToken,
-  decodeDelegateToken,
   // Token ID
   computeTokenId,
+  // Constants
+  DELEGATE_TOKEN_SIZE,
+  type DelegateTokenInput,
+  decodeDelegateToken,
+  // Encoding/Decoding
+  encodeDelegateToken,
+  FLAGS,
   formatTokenId,
-  parseTokenId,
+  type HashFunction,
   isValidTokenIdFormat,
+  MAGIC_NUMBER,
+  MAX_DEPTH,
+  parseTokenId,
+  TOKEN_ID_PREFIX,
   // Validation
   validateToken,
   validateTokenBytes,
@@ -273,9 +271,7 @@ describe("parseTokenId", () => {
   });
 
   it("should throw on missing prefix", () => {
-    expect(() => parseTokenId("0000000000000000000000000")).toThrow(
-      /must start with/
-    );
+    expect(() => parseTokenId("0000000000000000000000000")).toThrow(/must start with/);
   });
 
   it("should throw on wrong length", () => {

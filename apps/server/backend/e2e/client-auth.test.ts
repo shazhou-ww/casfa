@@ -22,7 +22,9 @@ import { createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
 /** Generate a valid clientSecretHash for testing */
 const generateClientSecretHash = async () => {
   const clientSecret = Array.from({ length: 32 }, () =>
-    Math.floor(Math.random() * 256).toString(16).padStart(2, "0")
+    Math.floor(Math.random() * 256)
+      .toString(16)
+      .padStart(2, "0")
   ).join("");
   const encoder = new TextEncoder();
   const data = encoder.encode(clientSecret);
@@ -171,9 +173,7 @@ describe("Client Authorization", () => {
     it("should reject unauthenticated request", async () => {
       const request = await ctx.helpers.createClientAuthRequest({ clientName: "Auth Test" });
 
-      const response = await fetch(
-        `${ctx.baseUrl}/api/tokens/requests/${request.requestId}`
-      );
+      const response = await fetch(`${ctx.baseUrl}/api/tokens/requests/${request.requestId}`);
 
       expect(response.status).toBe(401);
     });
@@ -401,10 +401,12 @@ describe("Client Authorization", () => {
 
       // Create a request that's already expired by directly using the db
       const requestId = `req_${Date.now().toString(36)}`;
-      const clientSecret = Array.from({ length: 32 }, () => 
-        Math.floor(Math.random() * 256).toString(16).padStart(2, "0")
+      const clientSecret = Array.from({ length: 32 }, () =>
+        Math.floor(Math.random() * 256)
+          .toString(16)
+          .padStart(2, "0")
       ).join("");
-      
+
       // Hash the client secret
       const encoder = new TextEncoder();
       const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(clientSecret));
@@ -458,10 +460,8 @@ describe("Client Authorization", () => {
       });
 
       // Poll should return expired status
-      const response = await fetch(
-        `${ctx.baseUrl}/api/tokens/requests/${requestId}/poll`
-      );
-      
+      const response = await fetch(`${ctx.baseUrl}/api/tokens/requests/${requestId}/poll`);
+
       // Could be 200 with status: "expired" or a 400/410 error
       // Depends on implementation - let's check the actual behavior
       if (response.status === 200) {

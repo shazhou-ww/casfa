@@ -84,10 +84,10 @@ const jwtVerifier = createJwtVerifier();
 const hashProvider = createNodeHashProvider();
 
 // Determine runtime info for /api/info endpoint
-const getAuthType = (): "mock" | "cognito" | "jwt" => {
+const getAuthType = (): "mock" | "cognito" | "tokens-only" => {
   if (mockJwtSecret) return "mock";
   if (config.cognito.userPoolId) return "cognito";
-  return "jwt";
+  return "tokens-only";
 };
 
 const getDatabaseType = (): "local" | "aws" => {

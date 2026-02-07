@@ -5,7 +5,7 @@
  */
 
 import { z } from "zod";
-import { DELEGATE_TOKEN_ID_REGEX, TokenTypeSchema } from "./common.ts";
+import { TokenTypeSchema } from "./common.ts";
 
 // ============================================================================
 // Create Token Schemas

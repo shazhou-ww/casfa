@@ -38,18 +38,11 @@ export type CasUri = {
  * CAS URI parse error
  */
 export type CasUriParseError = {
-  code:
-    | "invalid_format"
-    | "invalid_root"
-    | "invalid_hash"
-    | "invalid_id"
-    | "empty_uri";
+  code: "invalid_format" | "invalid_root" | "invalid_hash" | "invalid_id" | "empty_uri";
   message: string;
 };
 
 /**
  * CAS URI parse result
  */
-export type CasUriParseResult =
-  | { ok: true; uri: CasUri }
-  | { ok: false; error: CasUriParseError };
+export type CasUriParseResult = { ok: true; uri: CasUri } | { ok: false; error: CasUriParseError };

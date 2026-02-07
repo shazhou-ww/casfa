@@ -16,11 +16,13 @@ async function ensureAccessToken(
   }
 
   if (state.delegate) {
-    const result = await api.delegateToken(
-      resolved.baseUrl,
-      state.delegate.tokenBase64,
-      { name: "cli-realm-info", type: "access", expiresIn: 300, canUpload: false, canManageDepot: false }
-    );
+    const result = await api.delegateToken(resolved.baseUrl, state.delegate.tokenBase64, {
+      name: "cli-realm-info",
+      type: "access",
+      expiresIn: 300,
+      canUpload: false,
+      canManageDepot: false,
+    });
     if (!result.ok) {
       throw new Error(`Failed to get access token: ${result.error.message}`);
     }

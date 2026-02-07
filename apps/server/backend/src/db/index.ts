@@ -21,29 +21,25 @@ export { createUserRolesDb, type UserRoleRecord, type UserRolesDb } from "./user
 export {
   createDelegateTokensDb,
   type DelegateTokensDb,
-  type TokenValidationResult,
   type TokenInvalidReason,
+  type TokenValidationResult,
 } from "./delegate-tokens.ts";
-
-// Ticket operations
-export { createTicketsDb, type TicketsDb } from "./tickets.ts";
-
 // ScopeSetNode operations
 export {
   createScopeSetNodesDb,
-  type ScopeSetNodesDb,
   EMPTY_SET_NODE_ID,
+  type ScopeSetNodesDb,
 } from "./scope-set-nodes.ts";
-
+// Ticket operations
+export { createTicketsDb, type TicketsDb } from "./tickets.ts";
+// TokenAudit operations
+export { createTokenAuditDb, type TokenAuditDb } from "./token-audit.ts";
 // TokenRequest operations
 export {
   createTokenRequestsDb,
-  type TokenRequestsDb,
   type SimpleApproveInput,
+  type TokenRequestsDb,
 } from "./token-requests.ts";
-
-// TokenAudit operations
-export { createTokenAuditDb, type TokenAuditDb } from "./token-audit.ts";
 
 // ============================================================================
 // Other modules
@@ -51,16 +47,16 @@ export { createTokenAuditDb, type TokenAuditDb } from "./token-audit.ts";
 
 // Depots
 export {
+  type CreateDepotOptions,
   createDepotsDb,
   DEFAULT_MAX_HISTORY,
   type DepotsDb,
-  type CreateDepotOptions,
-  type UpdateDepotOptions,
   type ExtendedDepot,
   MAIN_DEPOT_NAME,
   MAIN_DEPOT_TITLE,
   SYSTEM_MAX_HISTORY,
+  type UpdateDepotOptions,
 } from "./depots.ts";
 
 // Usage
-export { createUsageDb, type UsageDb, type ResourceType } from "./usage.ts";
+export { createUsageDb, type ResourceType, type UsageDb } from "./usage.ts";

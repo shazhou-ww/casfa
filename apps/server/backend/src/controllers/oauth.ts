@@ -62,11 +62,18 @@ export const createOAuthController = (deps: OAuthControllerDeps): OAuthControlle
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = (await response.json()) as { message?: string };
         return c.json({ error: error.message || "Authentication failed" }, 401);
       }
 
-      const result = await response.json();
+      const result = (await response.json()) as {
+        AuthenticationResult?: {
+          AccessToken: string;
+          IdToken: string;
+          RefreshToken?: string;
+          ExpiresIn: number;
+        };
+      };
       if (!result.AuthenticationResult) {
         return c.json({ error: "Authentication incomplete" }, 401);
       }
@@ -100,11 +107,17 @@ export const createOAuthController = (deps: OAuthControllerDeps): OAuthControlle
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = (await response.json()) as { message?: string };
         return c.json({ error: error.message || "Token refresh failed" }, 401);
       }
 
-      const result = await response.json();
+      const result = (await response.json()) as {
+        AuthenticationResult?: {
+          AccessToken: string;
+          IdToken: string;
+          ExpiresIn: number;
+        };
+      };
       if (!result.AuthenticationResult) {
         return c.json({ error: "Token refresh incomplete" }, 401);
       }

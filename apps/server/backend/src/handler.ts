@@ -39,7 +39,7 @@ const app = createApp({
   db,
   storage,
   hashProvider,
-  jwtVerifier,
+  jwtVerifier: jwtVerifier!,
   runtimeInfo: {
     storageType: "s3",
     authType: config.cognito.userPoolId ? "cognito" : "tokens-only",

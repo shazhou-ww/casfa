@@ -95,7 +95,7 @@ export function resolvePath(base: CasUri, relativePath: string): CasUri {
   // Split into segments
   const segments = relativePath.split("/").filter((s) => s !== "" && s !== ".");
 
-  let currentPath = [...base.path];
+  const currentPath = [...base.path];
 
   for (const segment of segments) {
     if (segment === "..") {
@@ -177,26 +177,17 @@ export function isAncestorOf(ancestor: CasUri, descendant: CasUri): boolean {
 
   switch (ancestor.root.type) {
     case "node":
-      if (
-        descendant.root.type !== "node" ||
-        ancestor.root.hash !== descendant.root.hash
-      ) {
+      if (descendant.root.type !== "node" || ancestor.root.hash !== descendant.root.hash) {
         return false;
       }
       break;
     case "depot":
-      if (
-        descendant.root.type !== "depot" ||
-        ancestor.root.id !== descendant.root.id
-      ) {
+      if (descendant.root.type !== "depot" || ancestor.root.id !== descendant.root.id) {
         return false;
       }
       break;
     case "ticket":
-      if (
-        descendant.root.type !== "ticket" ||
-        ancestor.root.id !== descendant.root.id
-      ) {
+      if (descendant.root.type !== "ticket" || ancestor.root.id !== descendant.root.id) {
         return false;
       }
       break;

@@ -15,7 +15,8 @@ import {
   MAIN_DEPOT_TITLE,
   SYSTEM_MAX_HISTORY,
 } from "../db/depots.ts";
-import type { Env } from "../types.ts";
+import type { OwnershipDb } from "../db/ownership.ts";
+import type { AccessTokenAuthContext, Env } from "../types.ts";
 
 // ============================================================================
 // Types
@@ -33,6 +34,7 @@ export type DepotsController = {
 type DepotsControllerDeps = {
   depotsDb: DepotsDb;
   storage: StorageProvider;
+  ownershipDb: OwnershipDb;
 };
 
 // ============================================================================
@@ -67,7 +69,7 @@ const formatDepotResponse = (depot: {
 // ============================================================================
 
 export const createDepotsController = (deps: DepotsControllerDeps): DepotsController => {
-  const { depotsDb, storage } = deps;
+  const { depotsDb, storage, ownershipDb } = deps;
 
   const getRealm = (c: Context<Env>): string => {
     return c.req.param("realmId") ?? c.get("auth").realm;
@@ -151,6 +153,7 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
 
     commit: async (c) => {
       // Permission check is done by middleware (canUploadMiddleware)
+      const auth = c.get("auth") as AccessTokenAuthContext;
       const realm = getRealm(c);
       const depotId = decodeURIComponent(c.req.param("depotId"));
 
@@ -169,6 +172,25 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
       const exists = await storage.has(normalizedRoot);
       if (!exists) {
         return c.json({ error: "Root node does not exist" }, 400);
+      }
+
+      // Ownership verification: root must be owned by current token's family
+      const myFamily = [...auth.issuerChain, auth.tokenRecord.issuerId];
+      let rootAuthorized = false;
+      for (const id of myFamily) {
+        if (await ownershipDb.hasOwnershipByToken(realm, normalizedRoot, id)) {
+          rootAuthorized = true;
+          break;
+        }
+      }
+      if (!rootAuthorized) {
+        return c.json(
+          {
+            error: "ROOT_NOT_AUTHORIZED",
+            message: "Not authorized to set this node as depot root. Upload the node first.",
+          },
+          403
+        );
       }
 
       const depot = await depotsDb.commit(realm, depotId, normalizedRoot);

@@ -2,28 +2,26 @@
  * CAS URI tests
  */
 
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import {
-  // Types
-  type CasUri,
+  // Path resolution
+  appendPath,
+  basename,
+  createCasUri,
+  depotUri,
+  // Formatting
+  formatCasUri,
+  isAncestorOf,
+  nodeUri,
+  parentUri,
   // Parsing
   parseCasUri,
   parseCasUriOrThrow,
-  // Formatting
-  formatCasUri,
-  createCasUri,
-  nodeUri,
-  depotUri,
-  ticketUri,
-  // Path resolution
-  appendPath,
-  parentUri,
-  rootUri,
-  withIndexPath,
-  basename,
   resolvePath,
+  rootUri,
+  ticketUri,
   uriEquals,
-  isAncestorOf,
+  withIndexPath,
 } from "./index.ts";
 
 // ============================================================================
@@ -233,11 +231,7 @@ describe("parse/format roundtrip", () => {
 
 describe("createCasUri", () => {
   it("should create URI with all components", () => {
-    const uri = createCasUri(
-      { type: "node", hash: VALID_HASH },
-      ["path", "to", "file"],
-      "index"
-    );
+    const uri = createCasUri({ type: "node", hash: VALID_HASH }, ["path", "to", "file"], "index");
     expect(uri.root).toEqual({ type: "node", hash: VALID_HASH });
     expect(uri.path).toEqual(["path", "to", "file"]);
     expect(uri.indexPath).toBe("index");

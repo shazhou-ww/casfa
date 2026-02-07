@@ -1,5 +1,9 @@
 /**
  * CAS Ownership database operations
+ *
+ * Multi-owner model: each PUT creates an ownership record keyed by ownerId.
+ * Sort Key format: OWN#{hex_key}##{ownerId}
+ * ownerId is typically a Delegate Token ID or User ID (NOT Access Token ID).
  */
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
@@ -12,16 +16,24 @@ import { createDocClient } from "./client.ts";
 // ============================================================================
 
 export type OwnershipDb = {
+  /** Check if any owner exists for this node in the realm */
   hasOwnership: (realm: string, key: string) => Promise<boolean>;
+  /** Check if a specific ownerId has ownership of this node */
+  hasOwnershipByToken: (realm: string, key: string, ownerId: string) => Promise<boolean>;
+  /** Get the first ownership record for this node (for backward compat) */
   getOwnership: (realm: string, key: string) => Promise<CasOwnership | null>;
+  /** List all ownerIds for a given node in a realm */
+  listOwners: (realm: string, key: string) => Promise<string[]>;
+  /** Add ownership for a node (ownerId is DT ID or User ID) */
   addOwnership: (
     realm: string,
     key: string,
-    createdBy: string,
+    ownerId: string,
     contentType: string,
     size: number,
     kind?: NodeKind
   ) => Promise<void>;
+  /** List all ownership records in a realm */
   listByRealm: (
     realm: string,
     options?: { limit?: number; startKey?: string }
@@ -29,12 +41,44 @@ export type OwnershipDb = {
     items: CasOwnership[];
     nextKey?: string;
   }>;
-  deleteOwnership: (realm: string, key: string) => Promise<void>;
+  /** Delete a specific ownership record */
+  deleteOwnership: (realm: string, key: string, ownerId: string) => Promise<void>;
 };
 
 type OwnershipDbConfig = {
   tableName: string;
   client?: DynamoDBDocumentClient;
+};
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/** Build the SK for a specific owner record */
+const toOwnerSk = (key: string, ownerId: string): string => `OWN#${key}##${ownerId}`;
+
+/** Build the SK prefix for all owners of a node */
+const toOwnerPrefix = (key: string): string => `OWN#${key}##`;
+
+/** Parse a CasOwnership from a DDB item with multi-owner SK format */
+const parseOwnershipItem = (item: Record<string, unknown>): CasOwnership => {
+  const sk = item.key as string;
+  // SK format: OWN#{hex_key}##{ownerId}
+  const withoutPrefix = sk.slice(4); // Remove "OWN#"
+  const separatorIdx = withoutPrefix.indexOf("##");
+  const nodeKey = separatorIdx >= 0 ? withoutPrefix.slice(0, separatorIdx) : withoutPrefix;
+  const ownerId =
+    separatorIdx >= 0 ? withoutPrefix.slice(separatorIdx + 2) : ((item.ownerId as string) ?? "");
+
+  return {
+    realm: item.realm as string,
+    key: nodeKey,
+    kind: item.kind as NodeKind | undefined,
+    createdAt: item.createdAt as number,
+    ownerId: ownerId,
+    contentType: item.contentType as string | undefined,
+    size: item.size as number,
+  };
 };
 
 // ============================================================================
@@ -47,9 +91,30 @@ export const createOwnershipDb = (config: OwnershipDbConfig): OwnershipDb => {
 
   const hasOwnership = async (realm: string, key: string): Promise<boolean> => {
     const result = await client.send(
+      new QueryCommand({
+        TableName: tableName,
+        KeyConditionExpression: "realm = :realm AND begins_with(#key, :prefix)",
+        ExpressionAttributeNames: { "#key": "key" },
+        ExpressionAttributeValues: {
+          ":realm": realm,
+          ":prefix": toOwnerPrefix(key),
+        },
+        Limit: 1,
+        ProjectionExpression: "realm",
+      })
+    );
+    return (result.Items?.length ?? 0) > 0;
+  };
+
+  const hasOwnershipByToken = async (
+    realm: string,
+    key: string,
+    ownerId: string
+  ): Promise<boolean> => {
+    const result = await client.send(
       new GetCommand({
         TableName: tableName,
-        Key: { realm, key: `OWN#${key}` },
+        Key: { realm, key: toOwnerSk(key, ownerId) },
         ProjectionExpression: "realm",
       })
     );
@@ -58,28 +123,49 @@ export const createOwnershipDb = (config: OwnershipDbConfig): OwnershipDb => {
 
   const getOwnership = async (realm: string, key: string): Promise<CasOwnership | null> => {
     const result = await client.send(
-      new GetCommand({
+      new QueryCommand({
         TableName: tableName,
-        Key: { realm, key: `OWN#${key}` },
+        KeyConditionExpression: "realm = :realm AND begins_with(#key, :prefix)",
+        ExpressionAttributeNames: { "#key": "key" },
+        ExpressionAttributeValues: {
+          ":realm": realm,
+          ":prefix": toOwnerPrefix(key),
+        },
+        Limit: 1,
       })
     );
-    if (!result.Item) return null;
+    if (!result.Items || result.Items.length === 0) return null;
+    return parseOwnershipItem(result.Items[0] as Record<string, unknown>);
+  };
 
-    return {
-      realm: result.Item.realm,
-      key: (result.Item.key as string).slice(4), // Remove "OWN#"
-      kind: result.Item.kind,
-      createdAt: result.Item.createdAt,
-      createdBy: result.Item.createdBy,
-      contentType: result.Item.contentType,
-      size: result.Item.size,
-    };
+  const listOwners = async (realm: string, key: string): Promise<string[]> => {
+    const result = await client.send(
+      new QueryCommand({
+        TableName: tableName,
+        KeyConditionExpression: "realm = :realm AND begins_with(#key, :prefix)",
+        ExpressionAttributeNames: { "#key": "key" },
+        ExpressionAttributeValues: {
+          ":realm": realm,
+          ":prefix": toOwnerPrefix(key),
+        },
+        ProjectionExpression: "#key",
+      })
+    );
+
+    return (result.Items ?? [])
+      .map((item) => {
+        const sk = item.key as string;
+        const withoutPrefix = sk.slice(4); // Remove "OWN#"
+        const separatorIdx = withoutPrefix.indexOf("##");
+        return separatorIdx >= 0 ? withoutPrefix.slice(separatorIdx + 2) : "";
+      })
+      .filter(Boolean);
   };
 
   const addOwnership = async (
     realm: string,
     key: string,
-    createdBy: string,
+    ownerId: string,
     contentType: string,
     size: number,
     kind?: NodeKind
@@ -89,10 +175,10 @@ export const createOwnershipDb = (config: OwnershipDbConfig): OwnershipDb => {
         TableName: tableName,
         Item: {
           realm,
-          key: `OWN#${key}`,
+          key: toOwnerSk(key, ownerId),
           kind,
           createdAt: Date.now(),
-          createdBy,
+          ownerId,
           contentType,
           size,
         },
@@ -114,37 +200,33 @@ export const createOwnershipDb = (config: OwnershipDbConfig): OwnershipDb => {
           ":prefix": "OWN#",
         },
         Limit: options.limit ?? 100,
-        ExclusiveStartKey: options.startKey ? { realm, key: `OWN#${options.startKey}` } : undefined,
+        ExclusiveStartKey: options.startKey ? { realm, key: options.startKey } : undefined,
       })
     );
 
-    const items = (result.Items ?? []).map((item) => ({
-      realm: item.realm as string,
-      key: (item.key as string).slice(4),
-      kind: item.kind,
-      createdAt: item.createdAt,
-      createdBy: item.createdBy,
-      contentType: item.contentType,
-      size: item.size,
-    }));
+    const items = (result.Items ?? []).map((item) =>
+      parseOwnershipItem(item as Record<string, unknown>)
+    );
 
-    const nextKey = result.LastEvaluatedKey?.key?.slice(4);
+    const nextKey = result.LastEvaluatedKey ? (result.LastEvaluatedKey.key as string) : undefined;
 
     return { items, nextKey };
   };
 
-  const deleteOwnership = async (realm: string, key: string): Promise<void> => {
+  const deleteOwnership = async (realm: string, key: string, ownerId: string): Promise<void> => {
     await client.send(
       new DeleteCommand({
         TableName: tableName,
-        Key: { realm, key: `OWN#${key}` },
+        Key: { realm, key: toOwnerSk(key, ownerId) },
       })
     );
   };
 
   return {
     hasOwnership,
+    hasOwnershipByToken,
     getOwnership,
+    listOwners,
     addOwnership,
     listByRealm,
     deleteOwnership,

@@ -6,7 +6,7 @@
  */
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { GetCommand, PutCommand, UpdateCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { ScopeSetNodeRecord } from "../types/delegate-token.ts";
 import { toSetNodePk, toSetNodeSk } from "../util/db-keys.ts";
 import { blake3s128 } from "../util/hashing.ts";
@@ -235,7 +235,7 @@ export const createScopeSetNodesDb = (config: ScopeSetNodesDbConfig): ScopeSetNo
   const deleteZeroRefNodes = async (): Promise<number> => {
     // Scan for nodes with refCount = 0
     // Note: This is a full table scan filtered by prefix, should be run periodically
-    let deletedCount = 0;
+    const deletedCount = 0;
     let lastEvaluatedKey: Record<string, unknown> | undefined;
 
     do {

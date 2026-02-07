@@ -11,10 +11,10 @@
  * - Test tables created in DynamoDB Local
  */
 
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 
 // Lazy imports to avoid triggering server setup on module load
 let serverSetup: typeof import("../../server/backend/e2e/setup.ts") | null = null;
@@ -233,10 +233,12 @@ export async function createTestUserWithToken(
   const { canUpload = true, canManageDepot = true } = options;
 
   const userUuid = uniqueId();
-  const { userId, token: userToken, realm, mainDepotId } = await ctx.helpers.createTestUser(
-    userUuid,
-    "authorized"
-  );
+  const {
+    userId,
+    token: userToken,
+    realm,
+    mainDepotId,
+  } = await ctx.helpers.createTestUser(userUuid, "authorized");
 
   // Create a delegate token for CLI operations
   const delegateResult = await ctx.helpers.createDelegateToken(userToken, realm, {
@@ -263,10 +265,7 @@ export async function createTestUserWithToken(
 /**
  * Create environment for CLI execution with authentication
  */
-export function createAuthEnv(
-  ctx: CliTestContext,
-  user: TestUserSetup
-): Record<string, string> {
+export function createAuthEnv(ctx: CliTestContext, user: TestUserSetup): Record<string, string> {
   return {
     ...ctx.baseEnv,
     CASFA_REALM: user.realm,

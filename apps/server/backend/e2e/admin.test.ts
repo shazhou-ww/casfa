@@ -29,7 +29,7 @@ describe("Admin API", () => {
       const response = await ctx.helpers.authRequest(token, "GET", "/api/admin/users");
 
       expect(response.status).toBe(200);
-      const data = ((await response.json()) as any) as { users: unknown[] };
+      const data = (await response.json()) as any as { users: unknown[] };
       expect(data.users).toBeInstanceOf(Array);
     });
 
@@ -63,7 +63,7 @@ describe("Admin API", () => {
       );
 
       expect(response.status).toBe(200);
-      const data = ((await response.json()) as any) as { role: string };
+      const data = (await response.json()) as any as { role: string };
       expect(data.role).toBe("admin");
     });
 

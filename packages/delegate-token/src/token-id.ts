@@ -4,10 +4,7 @@
  * Token ID = dlt1_{crockford_base32(blake3_128(token_bytes))}
  */
 
-import {
-  encodeCrockfordBase32,
-  decodeCrockfordBase32,
-} from "@casfa/protocol";
+import { decodeCrockfordBase32, encodeCrockfordBase32 } from "@casfa/protocol";
 import { TOKEN_ID_PREFIX } from "./constants.ts";
 import type { HashFunction } from "./types.ts";
 
@@ -28,10 +25,7 @@ const TOKEN_ID_BASE32_LENGTH = 26;
  * @param hashFn - Blake3-128 hash function
  * @returns 16-byte Token ID hash
  */
-export async function computeTokenId(
-  bytes: Uint8Array,
-  hashFn: HashFunction
-): Promise<Uint8Array> {
+export async function computeTokenId(bytes: Uint8Array, hashFn: HashFunction): Promise<Uint8Array> {
   const result = await hashFn(bytes);
   if (result.length !== TOKEN_ID_HASH_LENGTH) {
     throw new Error(
@@ -65,9 +59,7 @@ export function formatTokenId(id: Uint8Array): string {
  */
 export function parseTokenId(str: string): Uint8Array {
   if (!str.startsWith(TOKEN_ID_PREFIX)) {
-    throw new Error(
-      `Invalid Token ID format: must start with "${TOKEN_ID_PREFIX}"`
-    );
+    throw new Error(`Invalid Token ID format: must start with "${TOKEN_ID_PREFIX}"`);
   }
 
   const base32Part = str.slice(TOKEN_ID_PREFIX.length);
