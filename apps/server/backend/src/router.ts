@@ -15,6 +15,7 @@ import type { DepotsController } from "./controllers/depots.ts";
 import type { FilesystemController } from "./controllers/filesystem.ts";
 import type { HealthController } from "./controllers/health.ts";
 import type { InfoController } from "./controllers/info.ts";
+import type { LocalAuthController } from "./controllers/local-auth.ts";
 import type { OAuthController } from "./controllers/oauth.ts";
 import type { RealmController } from "./controllers/realm.ts";
 import type { TicketsController } from "./controllers/tickets.ts";
@@ -24,6 +25,7 @@ import type { McpController } from "./mcp/handler.ts";
 import {
   LoginSchema,
   RefreshSchema,
+  RegisterSchema,
   TokenExchangeSchema,
   UpdateUserRoleSchema,
   CreateDelegateTokenSchema,
@@ -46,6 +48,7 @@ export type RouterDeps = {
   health: HealthController;
   info: InfoController;
   oauth: OAuthController;
+  localAuth?: LocalAuthController;
   admin: AdminController;
   realm: RealmController;
   tickets: TicketsController;
@@ -127,6 +130,16 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   app.post("/api/oauth/refresh", zValidator("json", RefreshSchema), deps.oauth.refresh);
   app.post("/api/oauth/token", zValidator("json", TokenExchangeSchema), deps.oauth.exchangeToken);
   app.get("/api/oauth/me", deps.jwtAuthMiddleware, deps.oauth.me);
+
+  // ============================================================================
+  // Local Auth Routes (only when localAuth controller is provided)
+  // ============================================================================
+
+  if (deps.localAuth) {
+    app.post("/api/local/register", zValidator("json", RegisterSchema), deps.localAuth.register);
+    app.post("/api/local/login", zValidator("json", LoginSchema), deps.localAuth.login);
+    app.post("/api/local/refresh", zValidator("json", RefreshSchema), deps.localAuth.refresh);
+  }
 
   // ============================================================================
   // Admin Routes

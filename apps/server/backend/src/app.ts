@@ -23,6 +23,7 @@ import {
   createTokensController,
   createTokenRequestsController,
 } from "./controllers/index.ts";
+import { createLocalAuthController } from "./controllers/local-auth.ts";
 // MCP
 import { createMcpController } from "./mcp/index.ts";
 
@@ -67,6 +68,8 @@ export type AppDependencies = {
   hashProvider: CombinedHashProvider;
   /** JWT verifier for Bearer token auth */
   jwtVerifier: JwtVerifier;
+  /** Mock JWT secret for local auth (enables local register/login) */
+  mockJwtSecret?: string;
   /** Runtime configuration for /api/info endpoint */
   runtimeInfo?: {
     storageType: "memory" | "fs" | "s3";
@@ -85,7 +88,7 @@ export type AppDependencies = {
  * This is a pure assembly function - all dependencies must be provided.
  */
 export const createApp = (deps: AppDependencies): Hono<Env> => {
-  const { config, db, storage, hashProvider, jwtVerifier, runtimeInfo } = deps;
+  const { config, db, storage, hashProvider, jwtVerifier, mockJwtSecret, runtimeInfo } = deps;
   const {
     delegateTokensDb,
     ticketsDb,
@@ -97,6 +100,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     refCountDb,
     usageDb,
     userRolesDb,
+    localUsersDb,
   } = db;
 
   // Middleware
@@ -174,6 +178,15 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     serverConfig: config.server,
   });
 
+  // Local Auth controller (only in mock JWT mode)
+  const localAuth = mockJwtSecret
+    ? createLocalAuthController({
+        localUsersDb,
+        userRolesDb,
+        mockJwtSecret,
+      })
+    : undefined;
+
   // Filesystem service & controller
   const fsService = createFsService({
     storage,
@@ -190,6 +203,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     health,
     info,
     oauth,
+    localAuth,
     admin,
     realm,
     tickets,

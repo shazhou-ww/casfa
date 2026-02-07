@@ -78,6 +78,7 @@ export type {
   CreateToken,
   Login,
   Refresh,
+  Register,
   TokenExchange,
   WritableConfig,
 } from "./auth.ts";
@@ -90,6 +91,7 @@ export {
   // OAuth
   LoginSchema,
   RefreshSchema,
+  RegisterSchema,
   TokenExchangeSchema,
   WritableConfigSchema,
 } from "./auth.ts";
