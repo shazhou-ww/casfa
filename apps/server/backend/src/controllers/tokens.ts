@@ -73,12 +73,19 @@ export const createTokensController = (deps: TokensControllerDeps): TokensContro
       }
 
       if (parsed.type === "depot") {
-        // Get depot's current root
-        const depot = await depotsDb.get(realm, parsed.depotId);
-        if (!depot) {
-          return { success: false, error: `Depot not found: ${parsed.depotId}` };
+        if (parsed.depotId === "*") {
+          // Wildcard: include all depot roots in this realm
+          const result = await depotsDb.list(realm);
+          for (const depot of result.depots) {
+            resolvedHashes.push(depot.root);
+          }
+        } else {
+          const depot = await depotsDb.get(realm, parsed.depotId);
+          if (!depot) {
+            return { success: false, error: `Depot not found: ${parsed.depotId}` };
+          }
+          resolvedHashes.push(depot.root);
         }
-        resolvedHashes.push(depot.root);
       } else {
         resolvedHashes.push(parsed.hash);
       }
