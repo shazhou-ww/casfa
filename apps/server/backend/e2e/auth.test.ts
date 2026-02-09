@@ -3,14 +3,11 @@
  *
  * Tests authentication and authorization using different credential types:
  * - User JWT (Bearer token)
- * - Delegate Token
- * - Access Token
- *
- * These tests verify the three-tier token hierarchy and role-based access control.
+ * - Access Token (from Delegate model)
  *
  * Auth Flow:
- * - User JWT can call /api/tokens to create Delegate or Access Token
- * - Delegate Token can call /api/tokens/delegate to create child tokens
+ * - User JWT can call POST /api/tokens/root to create Root Delegate + AT
+ * - Access Token can call POST /api/realm/{realmId}/delegates to create child delegates
  * - Access Token can call /api/realm/{realmId}/... endpoints
  */
 
@@ -39,7 +36,6 @@ describe("Authentication", () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId);
 
-      // Realm endpoints require Access Token
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const response = await ctx.helpers.accessRequest(
@@ -55,13 +51,10 @@ describe("Authentication", () => {
       const userId1 = uniqueId();
       const userId2 = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId1);
-      // Get the realm for userId2 (without creating an account)
       const { realm: otherRealm } = await ctx.helpers.createTestUser(userId2);
 
-      // Create access token scoped to user1's realm
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
-      // Try to access another user's realm with user1's access token
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
         "GET",
@@ -77,7 +70,6 @@ describe("Authentication", () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Realm endpoints require Access Token
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const response = await ctx.helpers.accessRequest(
@@ -93,7 +85,6 @@ describe("Authentication", () => {
       const userId = uniqueId();
       const { token } = await ctx.helpers.createTestUser(userId, "admin");
 
-      // Admin endpoints use jwtAuthMiddleware, so User JWT works
       const response = await ctx.helpers.authRequest(token, "GET", "/api/admin/users");
 
       expect(response.status).toBe(200);
@@ -103,86 +94,74 @@ describe("Authentication", () => {
       const userId = uniqueId();
       const { token } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Admin endpoints use jwtAuthMiddleware, so User JWT works
       const response = await ctx.helpers.authRequest(token, "GET", "/api/admin/users");
 
       expect(response.status).toBe(403);
     });
 
-    it("should reject unauthorized users from most endpoints", async () => {
+    it("should reject unauthorized users from root token creation", async () => {
       const userId = uniqueId();
       const {
         token,
         userId: userIdBase32,
         realm,
-        mainDepotId,
       } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Set user to unauthorized role using user:base32 format
       await ctx.db.userRolesDb.setRole(userIdBase32, "unauthorized");
 
-      // Try to create a token - unauthorized users should be rejected
-      const response = await ctx.helpers.authRequest(token, "POST", "/api/tokens", {
+      const response = await ctx.helpers.authRequest(token, "POST", "/api/tokens/root", {
         realm,
-        name: "Test Token",
-        type: "delegate",
-        scope: [`cas://depot:${mainDepotId}`],
       });
 
-      // Service may return 401 or 403 for unauthorized role
       expect([401, 403]).toContain(response.status);
     });
   });
 
   describe("Token Types", () => {
-    it("should authenticate with User JWT on /api/tokens", async () => {
-      const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
-
-      // User JWT can access /api/tokens (uses jwtAuthMiddleware)
-      const response = await ctx.helpers.authRequest(token, "POST", "/api/tokens", {
-        realm,
-        name: "Test Token",
-        type: "delegate",
-        scope: [`cas://depot:${mainDepotId}`],
-      });
-
-      expect(response.status).toBe(201);
-    });
-
-    it("should authenticate with Delegate Token on /api/tokens/delegate", async () => {
+    it("should authenticate with User JWT on /api/tokens/root", async () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Create delegate token using user JWT
-      const delegateToken = await ctx.helpers.createDelegateToken(token, realm, {
-        name: "Test Delegate Token",
+      const response = await ctx.helpers.authRequest(token, "POST", "/api/tokens/root", {
+        realm,
       });
 
-      // Use delegate token to create child token via /api/tokens/delegate
-      const response = await ctx.helpers.delegateRequest(
-        delegateToken.tokenBase64,
+      expect(response.status).toBe(201);
+      const data = (await response.json()) as any;
+      expect(data.delegate).toBeDefined();
+      expect(data.accessToken).toBeDefined();
+      expect(data.refreshToken).toBeDefined();
+    });
+
+    it("should authenticate with Access Token to create child delegate", async () => {
+      const userId = uniqueId();
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      const rootToken = await ctx.helpers.createRootToken(token, realm);
+
+      const response = await ctx.helpers.accessRequest(
+        rootToken.accessToken,
         "POST",
-        "/api/tokens/delegate",
+        `/api/realm/${realm}/delegates`,
         {
-          type: "access",
-          scope: [".:"],
+          name: "Child Delegate",
+          canUpload: false,
+          canManageDepot: false,
         }
       );
 
       expect(response.status).toBe(201);
+      const data = (await response.json()) as any;
+      expect(data.delegate).toBeDefined();
+      expect(data.accessToken).toBeDefined();
     });
 
     it("should authenticate with Access Token on realm endpoints", async () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Create access token from user JWT
-      const accessToken = await ctx.helpers.createAccessToken(token, realm, {
-        name: "Test Access Token",
-      });
+      const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
-      // Use access token to access realm (note: endpoint is /:realmId, not /:realmId/info)
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
         "GET",
@@ -192,187 +171,107 @@ describe("Authentication", () => {
       expect(response.status).toBe(200);
     });
 
-    it("should enforce scope constraints on Delegate Token", async () => {
+    it("should enforce permission constraints on child delegate", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Create delegate token with limited scope (canUpload: false)
-      const delegateToken = await ctx.helpers.createDelegateToken(token, realm, {
-        name: "Limited Delegate Token",
+      const childDelegate = await ctx.helpers.createDelegateToken(token, realm, {
+        name: "Limited Child",
         canUpload: false,
         canManageDepot: false,
       });
 
-      // Try to delegate with canUpload: true (exceeds parent permissions)
-      const response = await ctx.helpers.delegateRequest(
-        delegateToken.tokenBase64,
+      const response = await ctx.helpers.accessRequest(
+        childDelegate.tokenBase64,
         "POST",
-        "/api/tokens/delegate",
+        `/api/realm/${realm}/delegates`,
         {
-          type: "access",
-          canUpload: true, // Exceeds parent
-          scope: [".:"],
+          name: "Escalating Grandchild",
+          canUpload: true,
         }
       );
 
-      // Should be rejected - cannot exceed parent permissions
       expect(response.status).toBe(400);
     });
   });
 
   describe("Token Hierarchy", () => {
-    it("should allow User JWT to create Delegate Token", async () => {
+    it("should allow User JWT to create root delegate", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const response = await ctx.helpers.authRequest(token, "POST", "/api/tokens", {
+      const response = await ctx.helpers.authRequest(token, "POST", "/api/tokens/root", {
         realm,
-        name: "Test Token",
-        type: "delegate",
-        scope: [`cas://depot:${mainDepotId}`],
       });
 
       expect(response.status).toBe(201);
-      const data = (await response.json()) as { tokenId: string; tokenBase64: string };
-      expect(data.tokenId).toMatch(/^dlt1_/);
-      expect(data.tokenBase64).toBeDefined();
+      const data = (await response.json()) as any;
+      expect(data.delegate.delegateId).toBeDefined();
+      expect(data.accessToken).toBeDefined();
+      expect(data.refreshToken).toBeDefined();
     });
 
-    it("should allow Delegate Token to create Access Token", async () => {
+    it("should allow Access Token to create child delegate", async () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const delegateToken = await ctx.helpers.createDelegateToken(token, realm);
+      const rootToken = await ctx.helpers.createRootToken(token, realm);
 
-      const response = await ctx.helpers.delegateRequest(
-        delegateToken.tokenBase64,
+      const response = await ctx.helpers.accessRequest(
+        rootToken.accessToken,
         "POST",
-        "/api/tokens/delegate",
+        `/api/realm/${realm}/delegates`,
         {
-          type: "access",
-          scope: [".:"],
+          name: "Child Delegate",
+          canUpload: true,
+          canManageDepot: false,
         }
       );
 
       expect(response.status).toBe(201);
-      const data = (await response.json()) as { tokenId: string; tokenBase64: string };
-      expect(data.tokenId).toMatch(/^dlt1_/);
-      expect(data.tokenBase64).toBeDefined();
+      const data = (await response.json()) as any;
+      expect(data.delegate.delegateId).toBeDefined();
+      expect(data.accessToken).toBeDefined();
     });
 
-    it("should allow Delegate Token to create child Delegate Token", async () => {
+    it("should NOT allow Access Token to call /api/tokens/root directly", async () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const delegateToken = await ctx.helpers.createDelegateToken(token, realm);
-
-      // Delegate tokens CAN create child delegate tokens via /api/tokens/delegate
-      const response = await ctx.helpers.delegateRequest(
-        delegateToken.tokenBase64,
-        "POST",
-        "/api/tokens/delegate",
-        {
-          type: "delegate",
-          scope: [".:"],
-        }
-      );
-
-      expect(response.status).toBe(201);
-      const data = (await response.json()) as { tokenId: string; tokenBase64: string };
-      expect(data.tokenId).toMatch(/^dlt1_/);
-      expect(data.tokenBase64).toBeDefined();
-    });
-
-    it("should NOT allow Delegate Token to call /api/tokens directly", async () => {
-      const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
-      const delegateToken = await ctx.helpers.createDelegateToken(token, realm);
-
-      // /api/tokens uses jwtAuthMiddleware - delegate tokens cannot call it directly
-      const response = await ctx.helpers.delegateRequest(
-        delegateToken.tokenBase64,
-        "POST",
-        "/api/tokens",
-        {
-          realm,
-          name: "Invalid Token",
-          type: "delegate",
-          scope: [`cas://depot:${mainDepotId}`],
-        }
-      );
-
-      // Should be rejected - /api/tokens requires User JWT
-      expect([401, 403]).toContain(response.status);
-    });
-
-    it("should NOT allow Access Token to create tokens", async () => {
-      const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
-      // Try to create delegate token using access token on /api/tokens
-      const response1 = await ctx.helpers.accessRequest(
+      const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
         "POST",
-        "/api/tokens",
-        {
-          realm,
-          name: "Invalid Token",
-          type: "delegate",
-          scope: [`cas://depot:${mainDepotId}`],
-        }
+        "/api/tokens/root",
+        { realm }
       );
 
-      expect([401, 403]).toContain(response1.status);
-
-      // Try to delegate via /api/tokens/delegate - Access Tokens cannot delegate
-      const response2 = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
-        "POST",
-        "/api/tokens/delegate",
-        {
-          type: "access",
-          scope: [".:"],
-        }
-      );
-
-      expect([401, 403]).toContain(response2.status);
+      expect([401, 403]).toContain(response.status);
     });
   });
 
   describe("Invalid Credentials", () => {
     it("should reject invalid JWT", async () => {
-      const response = await fetch(`${ctx.baseUrl}/api/tokens`, {
-        method: "GET",
+      const response = await fetch(`${ctx.baseUrl}/api/tokens/root`, {
+        method: "POST",
         headers: {
           Authorization: "Bearer invalid.jwt.token",
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({ realm: "test" }),
       });
 
       expect(response.status).toBe(401);
     });
 
-    it("should reject malformed Delegate Token", async () => {
-      const response = await ctx.helpers.delegateRequest(
-        "invalid-delegate-token",
-        "POST",
-        "/api/tokens/delegate",
-        {
-          type: "access",
-          scope: [".:"],
-        }
-      );
-
-      expect(response.status).toBe(401);
-    });
-
     it("should reject expired tokens", async () => {
-      // This test would require creating a token with a past expiration
-      // For now, we just verify the endpoint exists and returns proper errors
-      const response = await fetch(`${ctx.baseUrl}/api/tokens`, {
-        method: "GET",
+      const response = await fetch(`${ctx.baseUrl}/api/tokens/root`, {
+        method: "POST",
         headers: {
           Authorization:
             "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0IiwiZXhwIjoxfQ.invalid",
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({ realm: "test" }),
       });
 
       expect(response.status).toBe(401);

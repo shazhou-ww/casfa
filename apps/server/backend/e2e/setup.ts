@@ -31,15 +31,12 @@ import { type AppConfig, loadConfig } from "../src/config.ts";
 // DB factories - aligned with bootstrap.ts DbInstances
 import {
   createDelegatesDb,
-  createDelegateTokensDb,
   createDepotsDb,
-  createOwnershipDb,
+  createOwnershipV2Db,
   createRefCountDb,
   createScopeSetNodesDb,
   createTicketsDb,
-  createTokenAuditDb,
   createTokenRecordsDb,
-  createTokenRequestsDb,
   createUsageDb,
   createUserRolesDb,
 } from "../src/db/index.ts";
@@ -158,19 +155,28 @@ export type TestServer = {
   stop: () => void;
 };
 
-/** Delegate Token creation result */
+/** Delegate Token creation result (new model) */
 export type DelegateTokenResult = {
+  delegate: {
+    delegateId: string;
+    realm: string;
+    depth: number;
+    canUpload: boolean;
+    canManageDepot: boolean;
+  };
+  refreshToken: string;
+  accessToken: string;
+  refreshTokenId: string;
+  accessTokenId: string;
+  accessTokenExpiresAt: number;
+  // Backward compat aliases
   tokenId: string;
   tokenBase64: string;
   expiresAt: number;
 };
 
-/** Access Token creation result */
-export type AccessTokenResult = {
-  tokenId: string;
-  tokenBase64: string;
-  expiresAt: number;
-};
+/** Access Token creation result (same as DelegateTokenResult in new model) */
+export type AccessTokenResult = DelegateTokenResult;
 
 /** Ticket creation result (Access Token creates Ticket) */
 export type TicketResult = {
@@ -178,19 +184,6 @@ export type TicketResult = {
   title: string;
   status: "pending" | "submitted";
   expiresAt: number;
-};
-
-/** Client Auth Request result */
-export type ClientAuthRequestResult = {
-  requestId: string;
-  displayCode: string;
-  authorizeUrl: string;
-  expiresAt: number;
-  pollInterval: number;
-  /** The client secret used to create the request (for test use) */
-  clientSecret: string;
-  /** The hash of clientSecret (for verification) */
-  clientSecretHash: string;
 };
 
 export type TestHelpers = {
@@ -238,10 +231,30 @@ export type TestHelpers = {
   ) => Promise<Response>;
 
   // ========================================================================
-  // Token Management Helpers (User JWT required)
+  // Token Management Helpers (User JWT required → Root Delegate + AT)
   // ========================================================================
 
-  /** Create a Delegate Token (User JWT → Delegate Token) */
+  /** Create a root delegate token (User JWT → Root Delegate + RT + AT) */
+  createRootToken: (
+    userToken: string,
+    realm: string,
+  ) => Promise<DelegateTokenResult>;
+
+  /** Create a child delegate (Access Token → Child Delegate + RT + AT) */
+  createChildDelegate: (
+    accessTokenBase64: string,
+    realm: string,
+    options?: {
+      name?: string;
+      expiresIn?: number;
+      canUpload?: boolean;
+      canManageDepot?: boolean;
+      scope?: string[]; // Optional scope
+    }
+  ) => Promise<DelegateTokenResult>;
+
+  // For backward compat in tests: createDelegateToken = createRootToken + optional child
+  /** Create a Delegate Token (creates root, optionally with custom permissions via child) */
   createDelegateToken: (
     userToken: string,
     realm: string,
@@ -250,11 +263,11 @@ export type TestHelpers = {
       expiresIn?: number;
       canUpload?: boolean;
       canManageDepot?: boolean;
-      scope?: string[]; // Optional - defaults to MAIN depot
+      scope?: string[];
     }
   ) => Promise<DelegateTokenResult>;
 
-  /** Create an Access Token (User JWT → Access Token) */
+  /** Create an Access Token (alias for createDelegateToken in new model) */
   createAccessToken: (
     userToken: string,
     realm: string,
@@ -263,25 +276,9 @@ export type TestHelpers = {
       expiresIn?: number;
       canUpload?: boolean;
       canManageDepot?: boolean;
-      scope?: string[]; // Optional - defaults to MAIN depot
-    }
-  ) => Promise<AccessTokenResult>;
-
-  // ========================================================================
-  // Token Delegation Helpers (Delegate Token required)
-  // ========================================================================
-
-  /** Delegate a new token from a Delegate Token */
-  delegateToken: (
-    parentTokenBase64: string,
-    options: {
-      type: "delegate" | "access";
-      expiresIn?: number;
-      canUpload?: boolean;
-      canManageDepot?: boolean;
       scope?: string[];
     }
-  ) => Promise<DelegateTokenResult | AccessTokenResult>;
+  ) => Promise<AccessTokenResult>;
 
   // ========================================================================
   // Ticket Helpers (Access Token required)
@@ -296,18 +293,6 @@ export type TestHelpers = {
       expiresIn?: number;
     }
   ) => Promise<TicketResult>;
-
-  // ========================================================================
-  // Client Auth Helpers
-  // ========================================================================
-
-  /** Initiate a client auth request (no auth required) */
-  createClientAuthRequest: (options?: {
-    clientName?: string;
-    description?: string;
-    /** Optional: provide your own clientSecret (will generate hash). If not provided, generates a random one */
-    clientSecret?: string;
-  }) => Promise<ClientAuthRequestResult>;
 };
 
 // ============================================================================
@@ -333,14 +318,11 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
 
   // Create DB instances (aligned with DbInstances from bootstrap.ts)
   const db: DbInstances = {
-    delegateTokensDb: createDelegateTokensDb({ tableName: config.db.tokensTable }),
     delegatesDb: createDelegatesDb({ tableName: config.db.casRealmTable }),
     tokenRecordsDb: createTokenRecordsDb({ tableName: config.db.tokensTable }),
     ticketsDb: createTicketsDb({ tableName: config.db.casRealmTable }),
     scopeSetNodesDb: createScopeSetNodesDb({ tableName: config.db.tokensTable }),
-    tokenRequestsDb: createTokenRequestsDb({ tableName: config.db.tokensTable }),
-    tokenAuditDb: createTokenAuditDb({ tableName: config.db.tokensTable }),
-    ownershipDb: createOwnershipDb({ tableName: config.db.casRealmTable }),
+    ownershipV2Db: createOwnershipV2Db({ tableName: config.db.tokensTable }),
     depotsDb: createDepotsDb({ tableName: config.db.casRealmTable }),
     refCountDb: createRefCountDb({ tableName: config.db.refCountTable }),
     usageDb: createUsageDb({ tableName: config.db.usageTable }),
@@ -481,109 +463,107 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
     },
 
     // ========================================================================
-    // Token Management Helpers (User JWT required)
+    // Token Management Helpers (New Delegate Model)
     // ========================================================================
 
-    createDelegateToken: async (userToken, realm, options = {}) => {
-      const {
-        name = "Test Delegate Token",
-        expiresIn,
-        canUpload = false,
-        canManageDepot = false,
-        scope, // Optional - if not provided, will use main depot
-      } = options;
-
-      // If scope not provided, get the main depot for this realm
-      let finalScope = scope;
-      if (!finalScope || finalScope.length === 0) {
-        const mainDepot = await db.depotsDb.getByName(realm, "main");
-        if (!mainDepot) {
-          throw new Error(`main depot not found for realm ${realm}`);
-        }
-        finalScope = [`cas://depot:${mainDepot.depotId}`];
-      }
-
-      const response = await helpers.authRequest(userToken, "POST", "/api/tokens", {
+    createRootToken: async (userToken, realm) => {
+      const response = await helpers.authRequest(userToken, "POST", "/api/tokens/root", {
         realm,
-        name,
-        type: "delegate",
-        expiresIn,
-        canUpload,
-        canManageDepot,
-        scope: finalScope,
       });
 
       if (!response.ok) {
         const error = await response.text();
-        throw new Error(`Failed to create delegate token: ${response.status} - ${error}`);
+        throw new Error(`Failed to create root token: ${response.status} - ${error}`);
       }
 
-      return (await response.json()) as DelegateTokenResult;
+      const raw = (await response.json()) as any;
+      return {
+        ...raw,
+        // Backward compat aliases
+        tokenId: raw.accessTokenId,
+        tokenBase64: raw.accessToken,
+        expiresAt: raw.accessTokenExpiresAt,
+      } as DelegateTokenResult;
     },
 
-    createAccessToken: async (userToken, realm, options = {}) => {
+    createChildDelegate: async (accessTokenBase64, realm, options = {}) => {
       const {
-        name = "Test Access Token",
+        name = "Test Child Delegate",
         expiresIn,
         canUpload = false,
         canManageDepot = false,
-        scope, // Optional - if not provided, will use main depot
+        scope,
       } = options;
 
-      // If scope not provided, get the main depot for this realm
-      let finalScope = scope;
-      if (!finalScope || finalScope.length === 0) {
-        const mainDepot = await db.depotsDb.getByName(realm, "main");
-        if (!mainDepot) {
-          throw new Error(`main depot not found for realm ${realm}`);
-        }
-        finalScope = [`cas://depot:${mainDepot.depotId}`];
-      }
-
-      const response = await helpers.authRequest(userToken, "POST", "/api/tokens", {
-        realm,
+      const body: Record<string, unknown> = {
         name,
-        type: "access",
-        expiresIn,
         canUpload,
         canManageDepot,
-        scope: finalScope,
-      });
+      };
+      if (expiresIn !== undefined) body.expiresIn = expiresIn;
+      if (scope) body.scope = scope;
 
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Failed to create access token: ${response.status} - ${error}`);
-      }
-
-      return (await response.json()) as AccessTokenResult;
-    },
-
-    // ========================================================================
-    // Token Delegation Helpers (Delegate Token required)
-    // ========================================================================
-
-    delegateToken: async (parentTokenBase64, options) => {
-      const { type, expiresIn, canUpload = false, canManageDepot = false, scope } = options;
-
-      const response = await helpers.delegateRequest(
-        parentTokenBase64,
+      const response = await helpers.accessRequest(
+        accessTokenBase64,
         "POST",
-        "/api/tokens/delegate",
-        {
-          type,
-          expiresIn,
-          canUpload,
-          canManageDepot,
-          scope,
-        }
+        `/api/realm/${realm}/delegates`,
+        body,
       );
 
       if (!response.ok) {
         const error = await response.text();
-        throw new Error(`Failed to delegate token: ${response.status} - ${error}`);
+        throw new Error(`Failed to create child delegate: ${response.status} - ${error}`);
       }
 
-      return (await response.json()) as DelegateTokenResult | AccessTokenResult;
+      const raw = (await response.json()) as any;
+      return {
+        ...raw,
+        tokenId: raw.accessTokenId,
+        tokenBase64: raw.accessToken,
+        expiresAt: raw.accessTokenExpiresAt,
+      } as DelegateTokenResult;
+    },
+
+    createDelegateToken: async (userToken, realm, options = {}) => {
+      // In the new model, first create root delegate, then if specific
+      // permissions are needed, create a child delegate
+      const rootResult = await helpers.createRootToken(userToken, realm);
+
+      const {
+        canUpload,
+        canManageDepot,
+        scope,
+        name,
+        expiresIn,
+      } = options;
+
+      // Root delegate has canUpload=true, canManageDepot=true by default.
+      // If the caller wants restricted permissions, scope, name, or expiry,
+      // we need to create a child delegate.
+      const needsChild =
+        scope !== undefined ||
+        expiresIn !== undefined ||
+        name !== undefined ||
+        canUpload === false ||
+        canManageDepot === false;
+
+      if (needsChild) {
+        return helpers.createChildDelegate(rootResult.accessToken, realm, {
+          name,
+          expiresIn,
+          canUpload: canUpload ?? false,
+          canManageDepot: canManageDepot ?? false,
+          scope,
+        });
+      }
+
+      return rootResult;
+    },
+
+    createAccessToken: async (userToken, realm, options = {}) => {
+      // In the new model, access tokens come from root delegate creation
+      // or child delegate creation — both return AT
+      return helpers.createDelegateToken(userToken, realm, options);
     },
 
     // ========================================================================
@@ -609,52 +589,6 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
       }
 
       return (await response.json()) as TicketResult;
-    },
-
-    // ========================================================================
-    // Client Auth Helpers
-    // ========================================================================
-
-    createClientAuthRequest: async (options = {}) => {
-      const { clientName = "Test Client", description, clientSecret: providedSecret } = options;
-
-      // Generate a client secret if not provided (32 bytes = 64 hex chars)
-      const clientSecret =
-        providedSecret ??
-        Array.from({ length: 32 }, () =>
-          Math.floor(Math.random() * 256)
-            .toString(16)
-            .padStart(2, "0")
-        ).join("");
-
-      // Hash the client secret using SHA-256 (produces 64 hex chars)
-      const encoder = new TextEncoder();
-      const data = encoder.encode(clientSecret);
-      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-      const clientSecretHash = Array.from(new Uint8Array(hashBuffer))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-
-      const response = await fetch(`${url}/api/tokens/requests`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientName, description, clientSecretHash }),
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Failed to create client auth request: ${response.status} - ${error}`);
-      }
-
-      const result = (await response.json()) as Omit<
-        ClientAuthRequestResult,
-        "clientSecret" | "clientSecretHash"
-      >;
-      return {
-        ...result,
-        clientSecret,
-        clientSecretHash,
-      };
     },
   };
 

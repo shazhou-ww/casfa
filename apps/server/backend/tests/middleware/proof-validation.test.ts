@@ -82,27 +82,18 @@ function mockAuth(overrides?: Partial<AccessTokenAuthContext>): AccessTokenAuthC
     realm: "test-realm",
     tokenId: "dlt1_test",
     tokenBytes: new Uint8Array(128),
-    tokenRecord: {
-      pk: "TOKEN#dlt1_test",
-      sk: "METADATA",
-      tokenId: "dlt1_test",
-      tokenType: "access",
+    delegate: {
+      delegateId: "dlg_child",
       realm: "test-realm",
-      expiresAt: Date.now() + 3600_000,
+      parentId: "dlg_root",
+      chain: ["dlg_root", "dlg_child"],
       depth: 1,
-      issuerId: "issuer-hex",
-      issuerType: "token",
-      issuerChain: ["dlg_root", "dlg_child"],
       canUpload: true,
       canManageDepot: false,
-      isUserIssued: false,
       isRevoked: false,
       createdAt: Date.now(),
-      gsi1pk: "REALM#test-realm",
-      gsi1sk: "TOKEN#dlt1_test",
-      gsi2pk: "ISSUER#issuer-hex",
-      gsi2sk: "TOKEN#dlt1_test",
-    },
+    } as never,
+    delegateId: "dlg_child",
     canUpload: true,
     canManageDepot: false,
     issuerChain: ["dlg_root", "dlg_child"],
@@ -163,9 +154,33 @@ describe("proof middleware — single node", () => {
 
   it("passes with root delegate (no proof needed)", async () => {
     resetState();
-    rootDelegateSet.add("dlg_child");
-
-    const app = singleNodeApp();
+    // Root delegate has depth=0, no parentId
+    const app = new Hono<Env>();
+    app.use("/api/realm/:realmId/nodes/:key", (c, next) => {
+      c.set("auth", mockAuth({
+        delegate: {
+          delegateId: "dlg_root",
+          realm: "test-realm",
+          parentId: null,
+          chain: ["dlg_root"],
+          depth: 0,
+          canUpload: true,
+          canManageDepot: true,
+          isRevoked: false,
+          createdAt: Date.now(),
+        } as never,
+        delegateId: "dlg_root",
+        issuerChain: ["dlg_root"],
+      }));
+      return next();
+    });
+    app.use(
+      "/api/realm/:realmId/nodes/:key",
+      createProofValidationMiddleware(mockDeps),
+    );
+    app.get("/api/realm/:realmId/nodes/:key", (c) => {
+      return c.json({ ok: true });
+    });
     const res = await app.request("/api/realm/test-realm/nodes/eee");
     expect(res.status).toBe(200);
   });

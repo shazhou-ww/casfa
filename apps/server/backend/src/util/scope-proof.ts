@@ -83,16 +83,16 @@ export async function validateProofAgainstScope(
   let currentHash: string;
   let pathStart: number;
 
-  const tokenRecord = auth.tokenRecord;
+  const delegate = auth.delegate;
 
-  if (tokenRecord.scopeNodeHash) {
+  if (delegate.scopeNodeHash) {
     // Single scope: scopeNodeHash is a CAS node hash.
     // The proof traverses from this node's children.
-    currentHash = tokenRecord.scopeNodeHash;
+    currentHash = delegate.scopeNodeHash;
     pathStart = 0;
-  } else if (tokenRecord.scopeSetNodeId) {
+  } else if (delegate.scopeSetNodeId) {
     // Multi scope: first index selects which scope root from the set-node
-    const setNode = await deps.scopeSetNodesDb.get(tokenRecord.scopeSetNodeId);
+    const setNode = await deps.scopeSetNodesDb.get(delegate.scopeSetNodeId);
     if (!setNode) return false;
 
     if (indices.length === 0) return false;

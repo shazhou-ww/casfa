@@ -10,7 +10,7 @@ import { encodeDictNode, encodeFileNode, type HashProvider } from "@casfa/core";
 import { hashToNodeKey, nodeKeyToHex } from "@casfa/protocol";
 import type { StorageProvider } from "@casfa/storage-core";
 import type { DepotsDb } from "../../src/db/depots.ts";
-import type { OwnershipDb } from "../../src/db/ownership.ts";
+import type { OwnershipV2Db } from "../../src/db/ownership-v2.ts";
 import type { RefCountDb } from "../../src/db/refcount.ts";
 import type { ScopeSetNodesDb } from "../../src/db/scope-set-nodes.ts";
 import type { UsageDb } from "../../src/db/usage.ts";
@@ -67,14 +67,14 @@ function createMemoryStorage(): StorageProvider & { data: Map<string, Uint8Array
 // Mock DBs
 // ============================================================================
 
-function createMockOwnershipDb(): OwnershipDb {
+function createMockOwnershipDb(): OwnershipV2Db {
   return {
-    hasOwnership: mock(() => Promise.resolve(false)),
-    getOwnership: mock(() => Promise.resolve(null)),
     addOwnership: mock(() => Promise.resolve()),
-    listByRealm: mock(() => Promise.resolve({ items: [] })),
-    deleteOwnership: mock(() => Promise.resolve()),
-  } as unknown as OwnershipDb;
+    hasOwnership: mock(() => Promise.resolve(false)),
+    hasAnyOwnership: mock(() => Promise.resolve(false)),
+    getOwnership: mock(() => Promise.resolve(null)),
+    listOwners: mock(() => Promise.resolve([])),
+  } as unknown as OwnershipV2Db;
 }
 
 function createMockRefCountDb(): RefCountDb {
@@ -233,7 +233,7 @@ async function buildTreeNode(
 
 function createTestService() {
   const storage = createMemoryStorage();
-  const ownershipDb = createMockOwnershipDb();
+  const ownershipV2Db = createMockOwnershipDb();
   const refCountDb = createMockRefCountDb();
   const usageDb = createMockUsageDb();
   const depotsDb = createMockDepotsDb();
@@ -242,7 +242,7 @@ function createTestService() {
   const deps: FsServiceDeps = {
     storage,
     hashProvider,
-    ownershipDb,
+    ownershipV2Db,
     refCountDb,
     usageDb,
     depotsDb,
@@ -250,7 +250,7 @@ function createTestService() {
   };
 
   const service = createFsService(deps);
-  return { service, storage, ownershipDb, refCountDb, usageDb, depotsDb };
+  return { service, storage, ownershipV2Db, refCountDb, usageDb, depotsDb };
 }
 
 /** Convert hex to node: key */
@@ -1080,7 +1080,7 @@ describe("Filesystem Service", () => {
       const _service2 = createFsService({
         storage: ctx.storage,
         hashProvider,
-        ownershipDb: ctx.ownershipDb,
+        ownershipV2Db: ctx.ownershipV2Db,
         refCountDb: ctx.refCountDb,
         usageDb: ctx.usageDb,
         depotsDb,
@@ -1092,7 +1092,7 @@ describe("Filesystem Service", () => {
       const service3 = createFsService({
         storage,
         hashProvider,
-        ownershipDb: ctx.ownershipDb,
+        ownershipV2Db: ctx.ownershipV2Db,
         refCountDb: ctx.refCountDb,
         usageDb: ctx.usageDb,
         depotsDb,

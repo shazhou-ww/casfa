@@ -244,11 +244,18 @@ function buildContext(
 ): ProofVerificationContext {
   return {
     hasOwnership: deps.hasOwnership,
-    isRootDelegate: deps.isRootDelegate,
+    isRootDelegate: async (delegateId: string) => {
+      // Fast-path: if this is the authenticated delegate, check depth directly
+      if (delegateId === auth.delegateId) {
+        return auth.delegate.depth === 0;
+      }
+      // Otherwise, delegate to the provider
+      return deps.isRootDelegate(delegateId);
+    },
     getScopeRoots: async (delegateId: string) => {
       // Fast-path: if scope info is on the auth record itself
-      const rec = auth.tokenRecord;
-      if (rec.scopeNodeHash) return [rec.scopeNodeHash];
+      const d = auth.delegate;
+      if (d.scopeNodeHash) return [d.scopeNodeHash];
       // Otherwise, delegate to the provider
       return deps.getScopeRoots(delegateId);
     },
@@ -261,18 +268,9 @@ function buildContext(
 
 /**
  * Derive a stable delegate identifier from the auth context.
- *
- * In the new model, `issuerChain` is the Delegate chain and the last
- * element is the current delegate's ID. For backward compatibility with
- * old tokens that use `issuerId`, fall back to tokenId.
  */
 function deriveDelegateId(auth: AccessTokenAuthContext): string {
-  // New model: issuerChain = [root, ..., currentDelegate]
-  if (auth.issuerChain && auth.issuerChain.length > 0) {
-    return auth.issuerChain[auth.issuerChain.length - 1]!;
-  }
-  // Fallback: use tokenId
-  return auth.tokenId;
+  return auth.delegateId;
 }
 
 /**

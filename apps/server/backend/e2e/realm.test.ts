@@ -166,22 +166,23 @@ describe("Realm API", () => {
       expect(response.status).toBe(200);
     });
 
-    it("should reject Delegate Token authentication (Realm API requires Access Token)", async () => {
+    it("should accept child Delegate access token (Realm API works with all access tokens)", async () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Create delegate token
-      const delegateToken = await ctx.helpers.createDelegateToken(token, realm);
+      // In the new model, all tokens are access tokens — child delegates too
+      const childToken = await ctx.helpers.createDelegateToken(token, realm, {
+        name: "read-only child",
+      });
 
-      // Note: The actual route is /:realmId (not /:realmId/info)
-      // Delegate token should be rejected for realm API
-      const response = await ctx.helpers.delegateRequest(
-        delegateToken.tokenBase64,
+      // Child delegate access token should work for realm API (read operation)
+      const response = await ctx.helpers.accessRequest(
+        childToken.tokenBase64,
         "GET",
         `/api/realm/${realm}`
       );
 
-      expect(response.status).toBe(403); // ACCESS_TOKEN_REQUIRED
+      expect(response.status).toBe(200);
     });
 
     it("should reject User JWT authentication (Realm API requires Access Token)", async () => {

@@ -457,26 +457,12 @@ export const createDelegatesController = (
   /**
    * Resolve the parent delegate ID from AccessTokenAuthContext.
    *
-   * In the new model, the token is associated with a delegate via
-   * the tokenRecord's delegateId. For backward compatibility, we also
-   * try extracting from issuerChain.
+   * In the new Delegate model, the auth context carries `delegateId` directly.
    */
   function resolveParentDelegateId(
     auth: AccessTokenAuthContext,
   ): string | undefined {
-    // The issuerChain's last element is the issuing tokenId.
-    // We need the delegateId, not the tokenId.
-    // In the new model, we look it up from the token record.
-    // For now, use a custom field if available, or fall back to issuerChain.
-    const record = auth.tokenRecord as Record<string, unknown>;
-    if (record.delegateId && typeof record.delegateId === "string") {
-      return record.delegateId;
-    }
-    // Fallback: last element of issuerChain might be delegateId in new model
-    if (auth.issuerChain.length > 0) {
-      return auth.issuerChain[auth.issuerChain.length - 1];
-    }
-    return undefined;
+    return auth.delegateId;
   }
 
   /**

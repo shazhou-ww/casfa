@@ -3,22 +3,7 @@
  */
 
 // ============================================================================
-// Delegate Token Controllers
-// ============================================================================
-
-export {
-  createTokenRequestsController,
-  type TokenRequestsController,
-  type TokenRequestsControllerDeps,
-} from "./token-requests.ts";
-export {
-  createTokensController,
-  type TokensController,
-  type TokensControllerDeps,
-} from "./tokens.ts";
-
-// ============================================================================
-// New Delegate Model Controllers
+// Delegate Model Controllers
 // ============================================================================
 
 export {

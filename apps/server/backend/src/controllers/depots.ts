@@ -15,7 +15,7 @@ import {
   MAIN_DEPOT_TITLE,
   SYSTEM_MAX_HISTORY,
 } from "../db/depots.ts";
-import type { OwnershipDb } from "../db/ownership.ts";
+import type { OwnershipV2Db } from "../db/ownership-v2.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
 
 // ============================================================================
@@ -34,7 +34,7 @@ export type DepotsController = {
 type DepotsControllerDeps = {
   depotsDb: DepotsDb;
   storage: StorageProvider;
-  ownershipDb: OwnershipDb;
+  ownershipV2Db: OwnershipV2Db;
 };
 
 // ============================================================================
@@ -69,7 +69,7 @@ const formatDepotResponse = (depot: {
 // ============================================================================
 
 export const createDepotsController = (deps: DepotsControllerDeps): DepotsController => {
-  const { depotsDb, storage, ownershipDb } = deps;
+  const { depotsDb, storage, ownershipV2Db } = deps;
 
   const getRealm = (c: Context<Env>): string => {
     return c.req.param("realmId") ?? c.get("auth").realm;
@@ -174,11 +174,11 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
         return c.json({ error: "Root node does not exist" }, 400);
       }
 
-      // Ownership verification: root must be owned by current token's family
-      const myFamily = [...auth.issuerChain, auth.tokenRecord.issuerId];
+      // Ownership verification: root must be owned by current delegate's chain
+      const delegateChain = auth.issuerChain;
       let rootAuthorized = false;
-      for (const id of myFamily) {
-        if (await ownershipDb.hasOwnershipByToken(realm, normalizedRoot, id)) {
+      for (const id of delegateChain) {
+        if (await ownershipV2Db.hasOwnership(normalizedRoot, id)) {
           rootAuthorized = true;
           break;
         }

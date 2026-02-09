@@ -1,7 +1,7 @@
 /**
  * MCP (Model Context Protocol) Handler
  *
- * This controller is accessed by Delegate Token holders (typically AI agents)
+ * This controller is accessed by JWT-authenticated users (typically AI agents)
  * to interact with the CAS system via the MCP protocol.
  */
 
@@ -9,9 +9,9 @@ import type { StorageProvider } from "@casfa/storage-core";
 import type { Context } from "hono";
 import { z } from "zod";
 import type { ServerConfig } from "../config.ts";
-import type { OwnershipDb } from "../db/ownership.ts";
+import type { OwnershipV2Db } from "../db/ownership-v2.ts";
 import type { TicketsDb } from "../db/tickets.ts";
-import type { DelegateTokenAuthContext, Env } from "../types.ts";
+import type { JwtAuthContext, Env } from "../types.ts";
 import { generateTicketId } from "../util/token-id.ts";
 import { MCP_TOOLS } from "./tools.ts";
 
@@ -92,7 +92,7 @@ const mcpError = (
 
 export type McpHandlerDeps = {
   ticketsDb: TicketsDb;
-  ownershipDb: OwnershipDb;
+  ownershipV2Db: OwnershipV2Db;
   storage: StorageProvider;
   serverConfig: ServerConfig;
 };
@@ -102,7 +102,7 @@ export type McpController = {
 };
 
 export const createMcpController = (deps: McpHandlerDeps): McpController => {
-  const { ticketsDb, ownershipDb, storage, serverConfig } = deps;
+  const { ticketsDb, ownershipV2Db, storage, serverConfig } = deps;
 
   const handleInitialize = (id: string | number): McpResponse => {
     return mcpSuccess(id, {
@@ -119,28 +119,23 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
   const handleGetTicket = async (
     id: string | number,
     args: unknown,
-    auth: DelegateTokenAuthContext
+    auth: JwtAuthContext
   ): Promise<McpResponse> => {
     const parsed = GetTicketSchema.safeParse(args);
     if (!parsed.success) {
       return mcpError(id, MCP_INVALID_PARAMS, "Invalid parameters", parsed.error.issues);
     }
 
-    // Check if the delegate token can upload (required for creating tickets)
-    if (!auth.canUpload) {
-      return mcpError(id, MCP_INVALID_PARAMS, "Token does not have upload permission");
-    }
-
     // Generate a new ticket ID
     const ticketId = generateTicketId();
 
-    // Create the ticket
+    // Create the ticket (JWT users are always authorized to create tickets)
     const ticket = await ticketsDb.create({
       ticketId,
       realm: auth.realm,
       title: parsed.data.title ?? "",
-      accessTokenId: auth.tokenId, // The delegate token's ID will be used to derive an access token
-      creatorIssuerId: auth.tokenRecord.issuerId,
+      accessTokenId: "", // MCP tickets created via JWT don't have an access token
+      creatorIssuerId: auth.userId,
     });
 
     const endpoint = `${serverConfig.baseUrl}/api/realm/${auth.realm}/tickets/${ticketId}`;
@@ -187,7 +182,7 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
     }
 
     // Check ownership
-    const hasAccess = await ownershipDb.hasOwnership(ticket.realm, parsed.data.key);
+    const hasAccess = await ownershipV2Db.hasAnyOwnership(parsed.data.key);
     if (!hasAccess) {
       return mcpError(id, MCP_INVALID_PARAMS, "Node not found or not accessible");
     }
@@ -249,7 +244,7 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
   const handleToolsCall = async (
     id: string | number,
     params: { name: string; arguments?: unknown } | undefined,
-    auth: DelegateTokenAuthContext
+    auth: JwtAuthContext
   ): Promise<McpResponse> => {
     if (!params?.name) {
       return mcpError(id, MCP_INVALID_PARAMS, "Missing tool name");
@@ -271,9 +266,9 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
     handle: async (c) => {
       const auth = c.get("auth");
 
-      // MCP requires Delegate Token authentication
-      if (auth.type !== "delegate") {
-        return c.json({ error: "Delegate Token required for MCP access" }, 403);
+      // MCP requires JWT authentication
+      if (auth.type !== "jwt") {
+        return c.json({ error: "JWT authentication required for MCP access" }, 403);
       }
 
       // Parse request
