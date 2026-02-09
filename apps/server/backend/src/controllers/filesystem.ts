@@ -69,10 +69,10 @@ const getAuth = (c: Context<Env>): AccessTokenAuthContext => {
   return c.get("auth") as AccessTokenAuthContext;
 };
 
-/** Get the ownerId for write operations (DT issuerId, not AT tokenId) */
+/** Get the ownerId for write operations (delegate ID) */
 const getOwnerId = (c: Context<Env>): string => {
   const auth = getAuth(c);
-  return auth.tokenRecord.issuerId;
+  return auth.delegateId;
 };
 
 // ============================================================================
@@ -260,7 +260,7 @@ export const createFilesystemController = (
         body.entries,
         body.deletes,
         auth.issuerChain,
-        auth.tokenRecord.issuerId,
+        auth.delegateId,
         auth
       );
       if (isFsError(result)) return fsErrorResponse(c, result);

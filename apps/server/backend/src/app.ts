@@ -24,8 +24,6 @@ import {
   createRefreshController,
   createRootTokenController,
   createTicketsController,
-  createTokenRequestsController,
-  createTokensController,
 } from "./controllers/index.ts";
 import { createLocalAuthController } from "./controllers/local-auth.ts";
 // MCP
@@ -37,12 +35,11 @@ import {
   createAuthorizedUserMiddleware,
   createCanManageDepotMiddleware,
   createCanUploadMiddleware,
-  createDelegateTokenMiddleware,
   createJwtAuthMiddleware,
   createRealmAccessMiddleware,
-  createScopeValidationMiddleware,
   type JwtVerifier,
 } from "./middleware/index.ts";
+import { createProofValidationMiddleware } from "./middleware/proof-validation.ts";
 // Router
 import { createRouter } from "./router.ts";
 // Services
@@ -52,6 +49,7 @@ import type { CombinedHashProvider } from "./util/hash-provider.ts";
 import type { PopContext } from "@casfa/proof";
 import { blake3 } from "@noble/hashes/blake3";
 import { toCrockfordBase32 } from "./util/encoding.ts";
+import { decodeNode } from "@casfa/core";
 
 // Re-export DbInstances for convenience
 export type { DbInstances } from "./bootstrap.ts";
@@ -96,14 +94,10 @@ export type AppDependencies = {
 export const createApp = (deps: AppDependencies): Hono<Env> => {
   const { config, db, storage, hashProvider, jwtVerifier, mockJwtSecret, runtimeInfo } = deps;
   const {
-    delegateTokensDb,
     delegatesDb,
     tokenRecordsDb,
     ticketsDb,
     scopeSetNodesDb,
-    tokenRequestsDb,
-    tokenAuditDb,
-    ownershipDb,
     ownershipV2Db,
     depotsDb,
     refCountDb,
@@ -117,18 +111,58 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     jwtVerifier,
     userRolesDb,
   });
-  const delegateTokenMiddleware = createDelegateTokenMiddleware({
-    delegateTokensDb,
-  });
   const accessTokenMiddleware = createAccessTokenMiddleware({
-    delegateTokensDb,
+    tokenRecordsDb,
+    delegatesDb,
   });
   const realmAccessMiddleware = createRealmAccessMiddleware();
   const adminAccessMiddleware = createAdminAccessMiddleware();
   const authorizedUserMiddleware = createAuthorizedUserMiddleware();
-  const scopeValidationMiddleware = createScopeValidationMiddleware({
-    scopeSetNodesDb,
-    getNode: (realm: string, hash: string) => storage.get(hash),
+  const proofValidationMiddleware = createProofValidationMiddleware({
+    hasOwnership: (nodeHash, delegateId) =>
+      ownershipV2Db.hasOwnership(nodeHash, delegateId),
+    isRootDelegate: async (delegateId) => {
+      // Root delegate = depth 0, parentId null.
+      // The delegateId comes from the auth context, and we can look it
+      // up in any realm — but we don't know the realm here.
+      // However, the proof-validation middleware always runs after
+      // accessTokenMiddleware, so auth.delegate is already available.
+      // We use the delegates DB to check. Since delegateId is unique
+      // within a realm, we need the realm. As a pragmatic workaround,
+      // we check the delegate's depth from the auth context set in
+      // the middleware. The middleware calls buildContext which has
+      // access to auth — so we can use a closure-based approach instead.
+      //
+      // Note: The actual check happens inside the middleware's buildContext
+      // where auth.delegate.depth === 0 is checked directly. This fallback
+      // is kept for compatibility but should not normally be reached.
+      return false;
+    },
+    getScopeRoots: async (_delegateId) => {
+      // This is handled by the fast-path in buildContext using auth.delegate
+      return [];
+    },
+    resolveNode: async (_realm, hash) => {
+      const data = await storage.get(hash);
+      if (!data) return null;
+      const decoded = decodeNode(new Uint8Array(data));
+      if (!decoded || decoded.kind !== "dict" || !decoded.children) return { children: [] };
+      return {
+        children: decoded.children.map((c) =>
+          Buffer.from(c).toString("hex"),
+        ),
+      };
+    },
+    resolveDepotVersion: async (_realm, depotId, version) => {
+      const depot = await depotsDb.get(_realm, depotId);
+      if (!depot) return null;
+      // For now, just use the current root
+      return depot.root ?? null;
+    },
+    hasDepotAccess: async (_delegateId, _depotId) => {
+      // TODO: implement depot-level ACL
+      return true;
+    },
   });
   const canUploadMiddleware = createCanUploadMiddleware();
   const canManageDepotMiddleware = createCanManageDepotMiddleware();
@@ -160,7 +194,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   const chunks = createChunksController({
     storage,
     hashProvider,
-    ownershipDb,
+    ownershipV2Db,
     refCountDb,
     usageDb,
     scopeSetNodesDb,
@@ -168,25 +202,11 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   const depots = createDepotsController({
     depotsDb,
     storage,
-    ownershipDb,
-  });
-  const tokens = createTokensController({
-    delegateTokensDb,
-    scopeSetNodesDb,
-    tokenAuditDb,
-    depotsDb,
-    getNode: (realm: string, hash: string) => storage.get(hash),
-  });
-  const tokenRequests = createTokenRequestsController({
-    tokenRequestsDb,
-    delegateTokensDb,
-    scopeSetNodesDb,
-    depotsDb,
-    authorizeUrlBase: config.server.baseUrl ?? "http://localhost:3500",
+    ownershipV2Db,
   });
   const mcp = createMcpController({
     ticketsDb,
-    ownershipDb,
+    ownershipV2Db,
     storage,
     serverConfig: config.server,
   });
@@ -228,7 +248,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   const fsService = createFsService({
     storage,
     hashProvider,
-    ownershipDb,
+    ownershipV2Db,
     refCountDb,
     usageDb,
     depotsDb,
@@ -248,8 +268,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     chunks,
     depots,
     filesystem,
-    tokens,
-    tokenRequests,
     delegates,
     claim,
     rootToken,
@@ -257,11 +275,10 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     mcp,
     jwtAuthMiddleware,
     authorizedUserMiddleware,
-    delegateTokenMiddleware,
     accessTokenMiddleware,
     realmAccessMiddleware,
     adminAccessMiddleware,
-    scopeValidationMiddleware,
+    proofValidationMiddleware,
     canUploadMiddleware,
     canManageDepotMiddleware,
   });

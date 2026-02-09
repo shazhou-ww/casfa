@@ -36,10 +36,10 @@ export const CAS_HEADERS = {
 export type UserRole = "unauthorized" | "authorized" | "admin";
 
 // ============================================================================
-// Auth Context (Delegate Token Model)
+// Auth Context (New Delegate Model)
 // ============================================================================
 
-import type { DelegateTokenRecord } from "./types/delegate-token.ts";
+import type { Delegate } from "@casfa/delegate";
 
 /**
  * 认证上下文基础类型
@@ -61,40 +61,29 @@ export type JwtAuthContext = BaseAuthContext & {
 };
 
 /**
- * Delegate Token 认证上下文（再授权 Token）
+ * Access Token 认证上下文（访问 Token — 新 Delegate 模型）
  *
- * Delegate Token 只能用于签发子 Token，不能直接访问数据
- */
-export type DelegateTokenAuthContext = BaseAuthContext & {
-  type: "delegate";
-  tokenId: string;
-  tokenBytes: Uint8Array;
-  tokenRecord: DelegateTokenRecord;
-  canUpload: boolean;
-  canManageDepot: boolean;
-  depth: number;
-  issuerChain: string[];
-};
-
-/**
- * Access Token 认证上下文（访问 Token）
- *
- * Access Token 可以访问数据但不能转签发
+ * Access Token 通过 TokenRecordsDb + DelegatesDb 验证。
+ * delegate 包含 scope、chain、permissions 等信息。
  */
 export type AccessTokenAuthContext = BaseAuthContext & {
   type: "access";
   tokenId: string;
   tokenBytes: Uint8Array;
-  tokenRecord: DelegateTokenRecord;
+  /** The Delegate entity this token belongs to */
+  delegate: Delegate;
+  /** Convenience: delegate.delegateId */
+  delegateId: string;
   canUpload: boolean;
   canManageDepot: boolean;
+  /** Delegate chain [root, ..., self] */
   issuerChain: string[];
 };
 
 /**
- * Token 认证上下文联合类型
+ * Token 认证上下文 = Access Token only (delegate token auth removed)
  */
-export type TokenAuthContext = DelegateTokenAuthContext | AccessTokenAuthContext;
+export type TokenAuthContext = AccessTokenAuthContext;
 
 /**
  * 所有认证上下文联合类型
@@ -122,13 +111,6 @@ export function isJwtAuth(auth: AuthContext): auth is JwtAuthContext {
 }
 
 /**
- * 类型守卫：检查是否为 Delegate Token 认证
- */
-export function isDelegateTokenAuth(auth: AuthContext): auth is DelegateTokenAuthContext {
-  return auth.type === "delegate";
-}
-
-/**
  * 类型守卫：检查是否为 Access Token 认证
  */
 export function isAccessTokenAuth(auth: AuthContext): auth is AccessTokenAuthContext {
@@ -136,10 +118,10 @@ export function isAccessTokenAuth(auth: AuthContext): auth is AccessTokenAuthCon
 }
 
 /**
- * 类型守卫：检查是否为 Token 认证（Delegate 或 Access）
+ * 类型守卫：检查是否为 Token 认证
  */
 export function isTokenAuth(auth: AuthContext): auth is TokenAuthContext {
-  return auth.type === "delegate" || auth.type === "access";
+  return auth.type === "access";
 }
 
 // ============================================================================

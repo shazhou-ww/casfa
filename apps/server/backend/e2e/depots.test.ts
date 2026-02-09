@@ -81,20 +81,23 @@ describe("Depot Management", () => {
       expect(data.depots.length).toBeLessThanOrEqual(2);
     });
 
-    it("should reject Delegate Token", async () => {
+    it("should work with child delegate token", async () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const delegateToken = await ctx.helpers.createDelegateToken(token, realm);
+      // In the new model, child delegates are also access tokens
+      const childToken = await ctx.helpers.createDelegateToken(token, realm, {
+        name: "read-only child",
+      });
 
-      const response = await ctx.helpers.delegateRequest(
-        delegateToken.tokenBase64,
+      const response = await ctx.helpers.accessRequest(
+        childToken.tokenBase64,
         "GET",
         `/api/realm/${realm}/depots`
       );
 
-      // Delegate Token cannot access data directly
-      expect(response.status).toBe(403);
+      // Child delegate access tokens can list depots (read operation)
+      expect(response.status).toBe(200);
     });
 
     it("should reject unauthenticated requests", async () => {

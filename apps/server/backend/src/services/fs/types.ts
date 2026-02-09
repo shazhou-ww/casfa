@@ -7,7 +7,7 @@
 import type { CasNode, HashProvider } from "@casfa/core";
 import type { StorageProvider } from "@casfa/storage-core";
 import type { DepotsDb } from "../../db/depots.ts";
-import type { OwnershipDb } from "../../db/ownership.ts";
+import type { OwnershipV2Db } from "../../db/ownership-v2.ts";
 import type { RefCountDb } from "../../db/refcount.ts";
 import type { ScopeSetNodesDb } from "../../db/scope-set-nodes.ts";
 import type { UsageDb } from "../../db/usage.ts";
@@ -19,7 +19,7 @@ import type { UsageDb } from "../../db/usage.ts";
 export type FsServiceDeps = {
   storage: StorageProvider;
   hashProvider: HashProvider;
-  ownershipDb: OwnershipDb;
+  ownershipV2Db: OwnershipV2Db;
   refCountDb: RefCountDb;
   usageDb: UsageDb;
   depotsDb: DepotsDb;

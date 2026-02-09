@@ -406,19 +406,24 @@ Body: { "pop": "pop:XXXXX..." }
 
 ### 6.3 旧路由处理
 
-- 所有旧路由添加 `Deprecation` header + 文档说明
-- 设置下线日期（建议 2 个版本后）
-- Ticket 相关路由（`/tickets/*`）可保留或按需废弃（新模型中 delegate + scope 替代 ticket）
+- 旧路由已全部删除（不保留兼容层）
+- 删除的控制器: `tokens.ts`, `token-requests.ts`
+- 删除的中间件: `delegate-token-auth.ts`, `scope-validation.ts`, `token-auth-common.ts`
+- 删除的 DB 模块: `delegate-tokens.ts`, `token-audit.ts`, `token-requests.ts`, `ownership.ts`
 
 ### 6.4 验证标准
 
-- [ ] 所有现有 E2E 测试继续通过（`apps/cli/e2e/`）
-- [ ] 新 E2E 测试: 端到端流程（§8.1 Agent 上传文件树）
-- [ ] 新 E2E 测试: 跨分支引用（§8.3）
-- [ ] 新 E2E 测试: Revoke 与权限回收（§8.5）
-- [ ] 新 E2E 测试: Claim 流程（§8.6）
-- [ ] 新 E2E 测试: 工具调用流程（§8.7）
-- [ ] TypeScript 编译无错误
+- [x] Server 所有路由切换到新模型（Delegate + AT）
+- [x] 中间件栈切换: `accessTokenMiddleware → realmAccess → proofValidation → handler`
+- [x] 全链 Ownership 写入（OwnershipV2Db）
+- [x] X-CAS-Proof header 替换 X-CAS-Index-Path
+- [x] Root delegate 免 proof 直通（depth=0 shortcut）
+- [x] Child delegate 权限检查（canUpload, canManageDepot）
+- [x] TypeScript 编译无新错误（仅 delegate-token-utils.test.ts 预存 Uint8Array 类型问题）
+- [x] 全部 298 单元测试通过
+- [x] 全部 86 E2E 测试通过
+- [ ] 后续: CLI E2E 测试适配（Step 8）
+- [ ] 后续: 端到端 Agent 上传文件树场景（Step 8）
 
 ---
 

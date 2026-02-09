@@ -4,18 +4,18 @@
  * Tests for Node endpoints:
  * - POST /api/realm/{realmId}/nodes/prepare - Check missing nodes (Access Token)
  * - PUT /api/realm/{realmId}/nodes/:key - Upload node (Access Token + canUpload)
- * - GET /api/realm/{realmId}/nodes/:key/metadata - Get metadata (Access Token + X-CAS-Index-Path)
- * - GET /api/realm/{realmId}/nodes/:key - Get binary data (Access Token + X-CAS-Index-Path)
+ * - GET /api/realm/{realmId}/nodes/:key/metadata - Get metadata (Access Token + X-CAS-Proof)
+ * - GET /api/realm/{realmId}/nodes/:key - Get binary data (Access Token + X-CAS-Proof)
  *
  * Key Concepts:
- * - All operations require Access Token (not Delegate Token)
- * - Read operations require X-CAS-Index-Path header to prove scope access
+ * - All operations require Access Token
+ * - Read operations require X-CAS-Proof header for non-root delegates
+ * - Root delegates have unrestricted access without proof
  * - Write operations require canUpload permission
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
-  buildIndexPath,
   createE2EContext,
   type E2EContext,
   testNodeKey,
@@ -119,21 +119,25 @@ describe("Node Operations", () => {
       expect(response.status).toBe(400);
     });
 
-    it("should reject Delegate Token", async () => {
+    it("should work with child delegate that has restricted permissions", async () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const delegateToken = await ctx.helpers.createDelegateToken(token, realm);
+      // In the new model, all tokens are access tokens — even child delegates
+      const childToken = await ctx.helpers.createDelegateToken(token, realm, {
+        name: "read-only child",
+        canUpload: false,
+      });
 
-      const response = await ctx.helpers.delegateRequest(
-        delegateToken.tokenBase64,
+      const response = await ctx.helpers.accessRequest(
+        childToken.tokenBase64,
         "POST",
         `/api/realm/${realm}/nodes/prepare`,
         { keys: [testNodeKey(1)] }
       );
 
-      // Delegate Token cannot access node data directly
-      expect(response.status).toBe(403);
+      // Child delegate access tokens can still call prepare (read operation)
+      expect(response.status).toBe(200);
     });
 
     it("should reject unauthenticated requests", async () => {
@@ -173,7 +177,7 @@ describe("Node Operations", () => {
         body: nodeData,
       });
 
-      // PUT does not require X-CAS-Index-Path (no scope validation for uploads)
+      // PUT does not require X-CAS-Proof (no scope validation for uploads)
       // Returns 400 if node format is invalid, 200 if valid
       expect(response.status === 200 || response.status === 400).toBe(true);
     });
@@ -220,43 +224,43 @@ describe("Node Operations", () => {
   // ==========================================================================
 
   describe("GET /api/realm/{realmId}/nodes/:key/metadata", () => {
-    it("should return 404 for non-existent node", async () => {
+    it("should return 404 for non-existent node (root delegate)", async () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
+      // Root delegate has unrestricted access — no proof needed
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
-
       const nodeKey = testNodeKey(99);
 
-      const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
-        "GET",
-        `/api/realm/${realm}/nodes/${nodeKey}/metadata`,
-        undefined,
-        { "X-CAS-Index-Path": buildIndexPath(0) }
-      );
-
-      // Returns 403 because scope validation fails first (depot root is empty placeholder)
-      // In production with real scope roots, this would return 404 if the node is not in scope
-      expect(response.status).toBe(403);
-    });
-
-    it("should reject request without X-CAS-Index-Path header", async () => {
-      const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
-
-      const accessToken = await ctx.helpers.createAccessToken(token, realm);
-
-      const nodeKey = testNodeKey(1);
-
-      // No X-CAS-Index-Path header
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
         "GET",
         `/api/realm/${realm}/nodes/${nodeKey}/metadata`
       );
 
-      expect(response.status).toBe(400);
+      // Root delegate bypasses proof, so missing node returns 404
+      expect(response.status).toBe(404);
+    });
+
+    it("should reject child delegate without proof", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      // Child delegate needs X-CAS-Proof for read access
+      const childToken = await ctx.helpers.createAccessToken(token, realm, {
+        name: "child",
+      });
+
+      const nodeKey = testNodeKey(1);
+
+      // No X-CAS-Proof header — child delegate has no proof
+      const response = await ctx.helpers.accessRequest(
+        childToken.tokenBase64,
+        "GET",
+        `/api/realm/${realm}/nodes/${nodeKey}/metadata`
+      );
+
+      expect(response.status).toBe(403);
     });
 
     it("should reject unauthenticated requests", async () => {
@@ -273,43 +277,43 @@ describe("Node Operations", () => {
   // ==========================================================================
 
   describe("GET /api/realm/{realmId}/nodes/:key", () => {
-    it("should return 404 for non-existent node", async () => {
+    it("should return 404 for non-existent node (root delegate)", async () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
+      // Root delegate has unrestricted access — no proof needed
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
-
       const nodeKey = testNodeKey(99);
 
-      const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
-        "GET",
-        `/api/realm/${realm}/nodes/${nodeKey}`,
-        undefined,
-        { "X-CAS-Index-Path": buildIndexPath(0) }
-      );
-
-      // Returns 403 because scope validation fails first (depot root is empty placeholder)
-      // In production with real scope roots, this would return 404 if the node is not in scope
-      expect(response.status).toBe(403);
-    });
-
-    it("should reject request without X-CAS-Index-Path header", async () => {
-      const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
-
-      const accessToken = await ctx.helpers.createAccessToken(token, realm);
-
-      const nodeKey = testNodeKey(1);
-
-      // No X-CAS-Index-Path header
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
         "GET",
         `/api/realm/${realm}/nodes/${nodeKey}`
       );
 
-      expect(response.status).toBe(400);
+      // Root delegate bypasses proof, so missing node returns 404
+      expect(response.status).toBe(404);
+    });
+
+    it("should reject child delegate without proof", async () => {
+      const userId = uniqueId();
+      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      // Child delegate needs X-CAS-Proof for read access
+      const childToken = await ctx.helpers.createAccessToken(token, realm, {
+        name: "child",
+      });
+
+      const nodeKey = testNodeKey(1);
+
+      // No X-CAS-Proof header — child delegate has no proof
+      const response = await ctx.helpers.accessRequest(
+        childToken.tokenBase64,
+        "GET",
+        `/api/realm/${realm}/nodes/${nodeKey}`
+      );
+
+      expect(response.status).toBe(403);
     });
 
     it("should reject unauthenticated requests", async () => {
@@ -339,28 +343,29 @@ describe("Node Operations", () => {
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
         "GET",
-        `/api/realm/${otherRealm}/nodes/${nodeKey}`,
-        undefined,
-        { "X-CAS-Index-Path": buildIndexPath(0) }
+        `/api/realm/${otherRealm}/nodes/${nodeKey}`
       );
 
       expect(response.status).toBe(403);
     });
 
-    it("should reject invalid index-path format", async () => {
+    it("should reject invalid X-CAS-Proof format", async () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const accessToken = await ctx.helpers.createAccessToken(token, realm);
+      // Use child delegate so it doesn't get root bypass
+      const childToken = await ctx.helpers.createAccessToken(token, realm, {
+        name: "child-for-invalid-proof",
+      });
 
       const nodeKey = testNodeKey(1);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        childToken.tokenBase64,
         "GET",
         `/api/realm/${realm}/nodes/${nodeKey}`,
         undefined,
-        { "X-CAS-Index-Path": "invalid:path:format" }
+        { "X-CAS-Proof": "invalid-not-json" }
       );
 
       expect(response.status).toBe(400);

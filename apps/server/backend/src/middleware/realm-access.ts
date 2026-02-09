@@ -56,8 +56,8 @@ export const createWriteAccessMiddleware = (): MiddlewareHandler<Env> => {
       return c.json({ error: "UNAUTHORIZED", message: "Authentication required" }, 401);
     }
 
-    // For new token types, check canUpload
-    if (auth.type === "access" || auth.type === "delegate") {
+    // For access token types, check canUpload
+    if (auth.type === "access") {
       if (!auth.canUpload) {
         return c.json(
           { error: "UPLOAD_NOT_ALLOWED", message: "Token does not have upload permission" },

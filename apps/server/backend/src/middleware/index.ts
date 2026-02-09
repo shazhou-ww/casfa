@@ -16,24 +16,11 @@ export {
 // Token Authentication
 // ============================================================================
 
-// Access Token Authentication
+// Access Token Authentication (new delegate model)
 export {
   type AccessTokenMiddlewareDeps,
   createAccessTokenMiddleware,
 } from "./access-token-auth.ts";
-
-// Delegate Token Authentication
-export {
-  createDelegateTokenMiddleware,
-  type DelegateTokenMiddlewareDeps,
-} from "./delegate-token-auth.ts";
-// Common token validation
-export {
-  type TokenValidationFailure,
-  type TokenValidationResult,
-  type TokenValidationSuccess,
-  validateToken,
-} from "./token-auth-common.ts";
 
 // ============================================================================
 // Authorization
@@ -48,11 +35,6 @@ export {
   createRealmAccessMiddleware,
   createWriteAccessMiddleware,
 } from "./realm-access.ts";
-// Scope Validation
-export {
-  createScopeValidationMiddleware,
-  type ScopeValidationMiddlewareDeps,
-} from "./scope-validation.ts";
 
 // Proof Validation (X-CAS-Proof — replaces scope validation)
 export {

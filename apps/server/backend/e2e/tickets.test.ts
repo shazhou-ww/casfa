@@ -82,15 +82,18 @@ describe("Ticket Management", () => {
       expect(data.title).toBe("Simple Task");
     });
 
-    it("should reject Delegate Token for ticket creation", async () => {
+    it("should reject child delegate without canUpload for ticket creation", async () => {
       const userId = uniqueId();
       const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Create Delegate Token (not Access Token)
-      const delegateToken = await ctx.helpers.createDelegateToken(token, realm);
+      // Create a child delegate without canUpload
+      const childToken = await ctx.helpers.createDelegateToken(token, realm, {
+        name: "no-upload child",
+        canUpload: false,
+      });
 
-      const response = await ctx.helpers.delegateRequest(
-        delegateToken.tokenBase64,
+      const response = await ctx.helpers.accessRequest(
+        childToken.tokenBase64,
         "POST",
         `/api/realm/${realm}/tickets`,
         {
@@ -98,7 +101,7 @@ describe("Ticket Management", () => {
         }
       );
 
-      // Delegate Token cannot create tickets directly
+      // Without canUpload, ticket creation should be rejected
       expect(response.status).toBe(403);
     });
 
@@ -403,18 +406,17 @@ describe("Ticket Management", () => {
         title: "User Direct Ticket",
       });
 
-      // User creates delegate token with canUpload, then access token from it
-      const delegateToken = await ctx.helpers.createDelegateToken(token, realm, {
-        canUpload: true,
-      });
-      const delegatedAccessResult = await ctx.helpers.delegateToken(delegateToken.tokenBase64, {
-        type: "access",
-        scope: [".:"],
-        canUpload: true,
-      });
-      const delegatedAccessToken = delegatedAccessResult as { tokenBase64: string };
+      // User creates child delegate with canUpload, which also gets an access token
+      const childDelegate = await ctx.helpers.createChildDelegate(
+        userAccessToken.tokenBase64,
+        realm,
+        {
+          name: "child with upload",
+          canUpload: true,
+        }
+      );
 
-      const _ticket2 = await ctx.helpers.createTicket(delegatedAccessToken.tokenBase64, realm, {
+      const _ticket2 = await ctx.helpers.createTicket(childDelegate.tokenBase64, realm, {
         title: "Delegated Ticket",
       });
 

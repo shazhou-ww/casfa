@@ -26,7 +26,7 @@ const textEncoder = new TextEncoder();
 export type TreeOps = ReturnType<typeof createTreeOps>;
 
 export const createTreeOps = (deps: FsServiceDeps) => {
-  const { storage, hashProvider, ownershipDb, refCountDb, usageDb, depotsDb } = deps;
+  const { storage, hashProvider, ownershipV2Db, refCountDb, usageDb, depotsDb } = deps;
 
   // --------------------------------------------------------------------------
   // Node I/O
@@ -52,7 +52,7 @@ export const createTreeOps = (deps: FsServiceDeps) => {
    * Store a new node, update ownership / refcount / usage.
    * Returns the hex key of the stored node.
    *
-   * @param ownerId - The DT issuerId or User ID for ownership tracking
+   * @param ownerId - The delegate ID for ownership tracking
    */
   const storeNode = async (
     realm: string,
@@ -67,9 +67,11 @@ export const createTreeOps = (deps: FsServiceDeps) => {
     const exists = await storage.has(hexKey);
     if (!exists) {
       await storage.put(hexKey, bytes);
-      await ownershipDb.addOwnership(
-        realm,
+      // Write ownership for the current delegate (single-record).
+      // Full-chain writes for user content happen in chunks.ts PUT handler.
+      await ownershipV2Db.addOwnership(
         hexKey,
+        [ownerId],
         ownerId,
         "application/octet-stream",
         logicalSize,

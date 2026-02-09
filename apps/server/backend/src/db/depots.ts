@@ -19,7 +19,8 @@ import {
   QueryCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
-import type { DelegateTokenRecord, ListOptions, PaginatedResult } from "../types/delegate-token.ts";
+import type { Delegate } from "@casfa/delegate";
+import type { ListOptions, PaginatedResult } from "../types/delegate-token.ts";
 import type { Depot } from "../types.ts";
 import { decodeCursor, encodeCursor, toCreatorGsi3Pk, toDepotGsi3Sk } from "../util/db-keys.ts";
 import { generateDepotId } from "../util/token-id.ts";
@@ -120,9 +121,9 @@ export type DepotsDb = {
     options?: ListOptions
   ) => Promise<PaginatedResult<ExtendedDepot>>;
 
-  /** List depots visible to a token (based on issuerChain) */
+  /** List depots visible to a delegate (based on chain) */
   listVisibleToToken: (
-    token: DelegateTokenRecord,
+    delegate: Delegate,
     realm: string,
     options?: ListOptions
   ) => Promise<PaginatedResult<ExtendedDepot>>;
@@ -432,12 +433,12 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
   };
 
   const listVisibleToToken = async (
-    token: DelegateTokenRecord,
+    delegate: Delegate,
     realm: string,
     options?: ListOptions
   ): Promise<PaginatedResult<ExtendedDepot>> => {
-    // Visible issuers = issuerChain + current token's issuerId
-    const visibleIssuers = [...token.issuerChain, token.issuerId];
+    // Visible issuers = delegate chain (includes self)
+    const visibleIssuers = [...delegate.chain];
 
     // Query each issuer in parallel
     const results = await Promise.all(

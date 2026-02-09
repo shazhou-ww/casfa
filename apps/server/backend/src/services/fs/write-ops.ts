@@ -32,7 +32,7 @@ import { fsError } from "./types.ts";
 export type WriteOps = ReturnType<typeof createWriteOps>;
 
 export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
-  const { storage, hashProvider, ownershipDb } = deps;
+  const { storage, hashProvider, ownershipV2Db } = deps;
 
   /**
    * write — Create or overwrite a single-block file.
@@ -646,12 +646,11 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
             return fsError("NODE_NOT_FOUND", 404, `Linked node not found: ${linkKey}`);
           }
 
-          // Step 1: uploader verification using new multi-owner model
+          // Step 1: ownership verification using delegate chain
           let authorized = false;
-          if (issuerChain && issuerId) {
-            const myFamily = [...issuerChain, issuerId];
-            for (const id of myFamily) {
-              if (await ownershipDb.hasOwnershipByToken(realm, linkHex, id)) {
+          if (issuerChain && issuerChain.length > 0) {
+            for (const id of issuerChain) {
+              if (await ownershipV2Db.hasOwnership(linkHex, id)) {
                 authorized = true;
                 break;
               }
