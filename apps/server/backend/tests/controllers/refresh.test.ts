@@ -260,8 +260,8 @@ describe("RefreshController", () => {
       expect(mockTokenRecordsDb.create).toHaveBeenCalledTimes(2);
       const calls = (mockTokenRecordsDb.create as ReturnType<typeof mock>).mock.calls;
 
-      const newRt = calls[0][0] as CreateTokenRecordInput;
-      const newAt = calls[1][0] as CreateTokenRecordInput;
+      const newRt = calls[0]![0] as CreateTokenRecordInput;
+      const newAt = calls[1]![0] as CreateTokenRecordInput;
       expect(newRt.tokenType).toBe("refresh");
       expect(newAt.tokenType).toBe("access");
       expect(newRt.familyId).toBe(testFamilyId);

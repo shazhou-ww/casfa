@@ -175,7 +175,7 @@ describe("RootTokenController", () => {
       await controller.create(ctx as never);
 
       expect(mockDelegatesDb.getOrCreateRoot).toHaveBeenCalledTimes(1);
-      const call = (mockDelegatesDb.getOrCreateRoot as ReturnType<typeof mock>).mock.calls[0];
+      const call = (mockDelegatesDb.getOrCreateRoot as ReturnType<typeof mock>).mock.calls[0]!;
       expect(call[0]).toBe("usr_u1");
     });
 
@@ -191,12 +191,12 @@ describe("RootTokenController", () => {
       const calls = (mockTokenRecordsDb.create as ReturnType<typeof mock>).mock.calls;
 
       // First call: RT record
-      const rtRecord = calls[0][0] as Record<string, unknown>;
+      const rtRecord = calls[0]![0] as Record<string, unknown>;
       expect(rtRecord.tokenType).toBe("refresh");
       expect(rtRecord.expiresAt).toBe(0);
 
       // Second call: AT record
-      const atRecord = calls[1][0] as Record<string, unknown>;
+      const atRecord = calls[1]![0] as Record<string, unknown>;
       expect(atRecord.tokenType).toBe("access");
       expect(atRecord.expiresAt).toBeGreaterThan(0);
 

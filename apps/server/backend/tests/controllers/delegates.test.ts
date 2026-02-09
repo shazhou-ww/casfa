@@ -209,7 +209,7 @@ describe("DelegatesController", () => {
       await controller.create(ctx as never);
 
       expect(mockDelegatesDb.create).toHaveBeenCalledTimes(1);
-      const createCall = (mockDelegatesDb.create as ReturnType<typeof mock>).mock.calls[0];
+      const createCall = (mockDelegatesDb.create as ReturnType<typeof mock>).mock.calls[0]!;
       const savedDelegate = createCall[0] as Delegate;
       expect(savedDelegate.realm).toBe(TEST_REALM);
       expect(savedDelegate.parentId).toBe(ROOT_DELEGATE_ID);

@@ -189,7 +189,7 @@ describe("proof middleware — single node", () => {
     const app = singleNodeApp();
     const res = await app.request("/api/realm/test-realm/nodes/eee");
     expect(res.status).toBe(403);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.error).toBe("PROOF_REQUIRED");
   });
 
@@ -204,7 +204,7 @@ describe("proof middleware — single node", () => {
       headers: { "X-CAS-Proof": proof },
     });
     expect(res.status).toBe(403);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.error).toBe("NODE_NOT_IN_SCOPE");
   });
 
@@ -217,7 +217,7 @@ describe("proof middleware — single node", () => {
       headers: { "X-CAS-Proof": "not-json" },
     });
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.error).toBe("INVALID_PROOF_FORMAT");
   });
 
@@ -231,7 +231,7 @@ describe("proof middleware — single node", () => {
       headers: { "X-CAS-Proof": proof },
     });
     expect(res.status).toBe(403);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.error).toBe("NODE_NOT_IN_SCOPE");
   });
 
@@ -245,7 +245,7 @@ describe("proof middleware — single node", () => {
       headers: { "X-CAS-Proof": proof },
     });
     expect(res.status).toBe(404);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.error).toBe("NODE_NOT_FOUND");
   });
 
@@ -271,7 +271,7 @@ describe("proof middleware — single node", () => {
       headers: { "X-CAS-Proof": proof },
     });
     expect(res.status).toBe(403);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.error).toBe("DEPOT_ACCESS_DENIED");
   });
 });
@@ -320,7 +320,7 @@ describe("proof middleware — multi node", () => {
       method: "PUT",
     });
     expect(res.status).toBe(403);
-    const body = await res.json();
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.error).toBe("PROOF_REQUIRED");
   });
 });
