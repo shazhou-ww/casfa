@@ -6,6 +6,7 @@
 
 import {
   ApproveTokenRequestSchema,
+  CreateDelegateRequestSchema,
   CreateDelegateTokenSchema,
   CreateDepotSchema,
   // Ticket request schemas
@@ -23,6 +24,7 @@ import {
   PrepareNodesSchema,
   RefreshSchema,
   RegisterSchema,
+  RootTokenRequestSchema,
   TicketSubmitSchema,
   TokenExchangeSchema,
   UpdateDepotSchema,
@@ -36,6 +38,7 @@ import { serveStatic } from "hono/bun";
 import { ZodError } from "zod";
 import type { AdminController } from "./controllers/admin.ts";
 import type { ChunksController } from "./controllers/chunks.ts";
+import type { DelegatesController } from "./controllers/delegates.ts";
 import type { DepotsController } from "./controllers/depots.ts";
 import type { FilesystemController } from "./controllers/filesystem.ts";
 import type { HealthController } from "./controllers/health.ts";
@@ -43,6 +46,8 @@ import type { InfoController } from "./controllers/info.ts";
 import type { LocalAuthController } from "./controllers/local-auth.ts";
 import type { OAuthController } from "./controllers/oauth.ts";
 import type { RealmController } from "./controllers/realm.ts";
+import type { RefreshController } from "./controllers/refresh.ts";
+import type { RootTokenController } from "./controllers/root-token.ts";
 import type { TicketsController } from "./controllers/tickets.ts";
 import type { TokenRequestsController } from "./controllers/token-requests.ts";
 import type { TokensController } from "./controllers/tokens.ts";
@@ -68,6 +73,9 @@ export type RouterDeps = {
   mcp: McpController;
   tokens: TokensController;
   tokenRequests: TokenRequestsController;
+  delegates: DelegatesController;
+  rootToken: RootTokenController;
+  refreshToken: RefreshController;
 
   // Middleware
   jwtAuthMiddleware: MiddlewareHandler<Env>;
@@ -247,6 +255,22 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   app.route("/api/tokens/requests", tokenRequestsRouter);
 
   // ============================================================================
+  // New Delegate Model Routes
+  // ============================================================================
+
+  // Root token creation (JWT → Root Delegate + RT + AT)
+  app.post(
+    "/api/tokens/root",
+    deps.jwtAuthMiddleware,
+    deps.authorizedUserMiddleware,
+    zValidator("json", RootTokenRequestSchema),
+    deps.rootToken.create
+  );
+
+  // Token refresh (RT → new RT + AT, rotation)
+  app.post("/api/tokens/refresh", deps.refreshToken.refresh);
+
+  // ============================================================================
   // Realm Routes (Access Token authenticated)
   // ============================================================================
 
@@ -341,6 +365,19 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
     deps.canUploadMiddleware,
     zValidator("json", FsRewriteRequestSchema),
     deps.filesystem.rewrite
+  );
+
+  // Delegates (new delegate model)
+  realmRouter.post(
+    "/:realmId/delegates",
+    zValidator("json", CreateDelegateRequestSchema),
+    deps.delegates.create
+  );
+  realmRouter.get("/:realmId/delegates", deps.delegates.list);
+  realmRouter.get("/:realmId/delegates/:delegateId", deps.delegates.get);
+  realmRouter.post(
+    "/:realmId/delegates/:delegateId/revoke",
+    deps.delegates.revoke
   );
 
   // Depots

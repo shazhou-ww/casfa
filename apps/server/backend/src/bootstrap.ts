@@ -7,6 +7,7 @@
 
 import type { AppConfig } from "./config.ts";
 import {
+  createDelegatesDb,
   createDelegateTokensDb,
   createDepotsDb,
   createOwnershipDb,
@@ -14,9 +15,11 @@ import {
   createScopeSetNodesDb,
   createTicketsDb,
   createTokenAuditDb,
+  createTokenRecordsDb,
   createTokenRequestsDb,
   createUsageDb,
   createUserRolesDb,
+  type DelegatesDb,
   type DelegateTokensDb,
   type DepotsDb,
   type OwnershipDb,
@@ -24,6 +27,7 @@ import {
   type ScopeSetNodesDb,
   type TicketsDb,
   type TokenAuditDb,
+  type TokenRecordsDb,
   type TokenRequestsDb,
   type UsageDb,
   type UserRolesDb,
@@ -36,6 +40,8 @@ import { createLocalUsersDb, type LocalUsersDb } from "./db/local-users.ts";
 
 export type DbInstances = {
   delegateTokensDb: DelegateTokensDb;
+  delegatesDb: DelegatesDb;
+  tokenRecordsDb: TokenRecordsDb;
   ticketsDb: TicketsDb;
   scopeSetNodesDb: ScopeSetNodesDb;
   tokenRequestsDb: TokenRequestsDb;
@@ -57,6 +63,8 @@ export type DbInstances = {
  */
 export const createDbInstances = (config: AppConfig): DbInstances => ({
   delegateTokensDb: createDelegateTokensDb({ tableName: config.db.tokensTable }),
+  delegatesDb: createDelegatesDb({ tableName: config.db.casRealmTable }),
+  tokenRecordsDb: createTokenRecordsDb({ tableName: config.db.tokensTable }),
   ticketsDb: createTicketsDb({ tableName: config.db.casRealmTable }),
   scopeSetNodesDb: createScopeSetNodesDb({ tableName: config.db.tokensTable }),
   tokenRequestsDb: createTokenRequestsDb({ tableName: config.db.tokensTable }),

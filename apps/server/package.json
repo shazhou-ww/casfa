@@ -41,6 +41,7 @@
     "@casfa/client": "workspace:*",
     "@casfa/core": "workspace:*",
     "@casfa/delegate": "workspace:*",
+    "@casfa/delegate-token": "workspace:*",
     "@casfa/proof": "workspace:*",
     "@casfa/protocol": "workspace:*",
     "@casfa/storage-core": "workspace:*",

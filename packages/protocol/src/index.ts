@@ -129,7 +129,11 @@ export type {
   CreateTokenResponse,
   DelegateToken,
   ListTokensQuery,
+  RefreshTokenRequest,
+  RefreshTokenResponse,
   RevokeTokenResponse,
+  RootTokenRequest,
+  RootTokenResponse,
   TokenDetail,
   TokenListItem,
 } from "./token.ts";
@@ -138,10 +142,37 @@ export {
   CreateTokenResponseSchema,
   DelegateTokenSchema,
   ListTokensQuerySchema,
+  RefreshTokenRequestSchema,
+  RefreshTokenResponseSchema,
   RevokeTokenResponseSchema,
+  RootTokenRequestSchema,
+  RootTokenResponseSchema,
   TokenDetailSchema,
   TokenListItemSchema,
 } from "./token.ts";
+
+// ============================================================================
+// Delegate schemas
+// ============================================================================
+
+export type {
+  CreateDelegateRequest,
+  CreateDelegateResponse,
+  DelegateDetail,
+  DelegateListItem,
+  ListDelegatesQuery,
+  ListDelegatesResponse,
+  RevokeDelegateResponse,
+} from "./delegate.ts";
+export {
+  CreateDelegateRequestSchema,
+  CreateDelegateResponseSchema,
+  DelegateDetailSchema,
+  DelegateListItemSchema,
+  ListDelegatesQuerySchema,
+  ListDelegatesResponseSchema,
+  RevokeDelegateResponseSchema,
+} from "./delegate.ts";
 
 // ============================================================================
 // Depot schemas
