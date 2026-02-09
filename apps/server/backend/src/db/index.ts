@@ -30,6 +30,13 @@ export {
   type TokenInvalidReason,
   type TokenValidationResult,
 } from "./delegate-tokens.ts";
+// TokenRecord operations (new delegate model RT/AT)
+export {
+  createTokenRecordsDb,
+  type CreateTokenRecordInput,
+  type TokenRecord,
+  type TokenRecordsDb,
+} from "./token-records.ts";
 // ScopeSetNode operations
 export {
   createScopeSetNodesDb,

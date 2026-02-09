@@ -13,12 +13,15 @@ import type { AppConfig } from "./config.ts";
 import {
   createAdminController,
   createChunksController,
+  createDelegatesController,
   createDepotsController,
   createFilesystemController,
   createHealthController,
   createInfoController,
   createOAuthController,
   createRealmController,
+  createRefreshController,
+  createRootTokenController,
   createTicketsController,
   createTokenRequestsController,
   createTokensController,
@@ -90,6 +93,8 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   const { config, db, storage, hashProvider, jwtVerifier, mockJwtSecret, runtimeInfo } = deps;
   const {
     delegateTokensDb,
+    delegatesDb,
+    tokenRecordsDb,
     ticketsDb,
     scopeSetNodesDb,
     tokenRequestsDb,
@@ -181,6 +186,23 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     serverConfig: config.server,
   });
 
+  // New delegate model controllers
+  const delegates = createDelegatesController({
+    delegatesDb,
+    tokenRecordsDb,
+    scopeSetNodesDb,
+    depotsDb,
+    getNode: (realm: string, hash: string) => storage.get(hash),
+  });
+  const rootToken = createRootTokenController({
+    delegatesDb,
+    tokenRecordsDb,
+  });
+  const refreshToken = createRefreshController({
+    delegatesDb,
+    tokenRecordsDb,
+  });
+
   // Local Auth controller (only in mock JWT mode)
   const localAuth = mockJwtSecret
     ? createLocalAuthController({
@@ -216,6 +238,9 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     filesystem,
     tokens,
     tokenRequests,
+    delegates,
+    rootToken,
+    refreshToken,
     mcp,
     jwtAuthMiddleware,
     authorizedUserMiddleware,

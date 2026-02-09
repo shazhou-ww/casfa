@@ -18,6 +18,26 @@ export {
 } from "./tokens.ts";
 
 // ============================================================================
+// New Delegate Model Controllers
+// ============================================================================
+
+export {
+  createDelegatesController,
+  type DelegatesController,
+  type DelegatesControllerDeps,
+} from "./delegates.ts";
+export {
+  createRootTokenController,
+  type RootTokenController,
+  type RootTokenControllerDeps,
+} from "./root-token.ts";
+export {
+  createRefreshController,
+  type RefreshController,
+  type RefreshControllerDeps,
+} from "./refresh.ts";
+
+// ============================================================================
 // Core Controllers
 // ============================================================================
 

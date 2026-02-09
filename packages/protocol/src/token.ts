@@ -155,3 +155,83 @@ export const RevokeTokenResponseSchema = z.object({
 });
 
 export type RevokeTokenResponse = z.infer<typeof RevokeTokenResponseSchema>;
+
+// ============================================================================
+// Root Token Schemas (JWT → Root Delegate + RT + AT)
+// ============================================================================
+
+/**
+ * Schema for POST /api/tokens/root
+ *
+ * Creates root delegate for user's realm + issues initial RT + AT pair.
+ * Requires JWT authentication.
+ */
+export const RootTokenRequestSchema = z.object({
+  /** Target realm (must be user's own realm: usr_{userId}) */
+  realm: z.string().min(1),
+});
+export type RootTokenRequest = z.infer<typeof RootTokenRequestSchema>;
+
+/**
+ * Root token response schema
+ * Returns root delegate info + RT + AT pair
+ */
+export const RootTokenResponseSchema = z.object({
+  /** Root delegate details */
+  delegate: z.object({
+    delegateId: z.string(),
+    realm: z.string(),
+    depth: z.number().int().min(0),
+    canUpload: z.boolean(),
+    canManageDepot: z.boolean(),
+    createdAt: z.number(),
+  }),
+  /** Refresh Token (base64-encoded 128-byte binary) — store securely */
+  refreshToken: z.string(),
+  /** Access Token (base64-encoded 128-byte binary) — use for API calls */
+  accessToken: z.string(),
+  /** Refresh Token ID */
+  refreshTokenId: z.string(),
+  /** Access Token ID */
+  accessTokenId: z.string(),
+  /** Access Token expiration (Unix epoch ms) */
+  accessTokenExpiresAt: z.number(),
+});
+export type RootTokenResponse = z.infer<typeof RootTokenResponseSchema>;
+
+// ============================================================================
+// Refresh Token Schemas (RT → new RT + new AT)
+// ============================================================================
+
+/**
+ * Schema for POST /api/tokens/refresh
+ *
+ * Rotates a Refresh Token: consumes the old RT (one-time use),
+ * issues a new RT + AT pair for the same delegate.
+ * Uses Bearer token auth with the RT base64.
+ *
+ * Note: The RT is passed via Authorization header, not the body.
+ * This schema is for any additional body parameters (currently none).
+ */
+export const RefreshTokenRequestSchema = z.object({}).optional();
+export type RefreshTokenRequest = z.infer<typeof RefreshTokenRequestSchema>;
+
+/**
+ * Refresh token response schema
+ * Returns new RT + AT pair
+ */
+export const RefreshTokenResponseSchema = z.object({
+  /** New Refresh Token (base64-encoded 128-byte binary) */
+  refreshToken: z.string(),
+  /** New Access Token (base64-encoded 128-byte binary) */
+  accessToken: z.string(),
+  /** New Refresh Token ID */
+  refreshTokenId: z.string(),
+  /** New Access Token ID */
+  accessTokenId: z.string(),
+  /** Access Token expiration (Unix epoch ms) */
+  accessTokenExpiresAt: z.number(),
+  /** Delegate ID associated with the tokens */
+  delegateId: z.string(),
+});
+export type RefreshTokenResponse = z.infer<typeof RefreshTokenResponseSchema>;
