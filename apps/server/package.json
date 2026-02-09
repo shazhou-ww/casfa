@@ -40,6 +40,7 @@
     "@aws-sdk/lib-dynamodb": "^3.975.0",
     "@casfa/client": "workspace:*",
     "@casfa/core": "workspace:*",
+    "@casfa/delegate": "workspace:*",
     "@casfa/protocol": "workspace:*",
     "@casfa/storage-core": "workspace:*",
     "@casfa/storage-fs": "workspace:*",
