@@ -57,9 +57,9 @@
 
 ### 0.3 验证标准
 
-- [ ] `bun test packages/delegate-token` 全部通过
-- [ ] encode → decode round-trip 覆盖: RT、AT、root delegate、depth=15、只读等场景
-- [ ] Flags 位组合与设计文档 §3.4 表格完全一致
+- [x] `bun test packages/delegate-token` 全部通过 — 48 tests, 87 assertions ✅ `3b8bbcc`
+- [x] encode → decode round-trip 覆盖: RT、AT、root delegate、depth=15、只读等场景 ✅
+- [x] Flags 位组合与设计文档 §3.4 表格完全一致 ✅
 
 ---
 
@@ -137,9 +137,9 @@ GSI: PK = PARENT#{parentId}  SK = DLG#{delegateId}
 
 ### 1.3 验证标准
 
-- [ ] `bun test packages/delegate` 全部通过（chain 构建、权限验证、边界 case）
-- [ ] Server 单元测试: delegate CRUD on local DynamoDB
-- [ ] `validatePermissions` 拒绝: 子权限 > 父权限、depth > 15、delegatedDepots 逃逸
+- [x] `bun test packages/delegate` 全部通过（chain 构建、权限验证、边界 case）— 53 tests, 71 assertions ✅ `f39f290`
+- [x] Server 单元测试: delegate CRUD on local DynamoDB — 11 tests ✅ `f8310db`
+- [x] `validatePermissions` 拒绝: 子权限 > 父权限、depth > 15、delegatedDepots 逃逸 ✅
 
 ---
 
@@ -166,9 +166,9 @@ GSI: PK = PARENT#{parentId}  SK = DLG#{delegateId}
 
 ### 2.3 验证标准
 
-- [ ] 单元测试: 全链写入 → 祖先 GetItem 命中、旁支 GetItem 未命中
-- [ ] 单元测试: 幂等覆盖（同 delegate 重复上传同一 Node）
-- [ ] 单元测试: chain 深度 1（root 直接上传）到深度 16 边界
+- [x] 单元测试: 全链写入 → 祖先 GetItem 命中、旁支 GetItem 未命中 — 18 tests, 53 assertions ✅ `b4209c0`
+- [x] 单元测试: 幂等覆盖（同 delegate 重复上传同一 Node）✅
+- [x] 单元测试: chain 深度 1（root 直接上传）到深度 16 边界 ✅
 
 ---
 
@@ -226,13 +226,13 @@ async function verifyNodeAccess(
 
 ### 3.3 验证标准
 
-- [ ] `bun test packages/proof` 全部通过
-- [ ] 单元测试: ipath 正确导航到目标节点
-- [ ] 单元测试: depot-version proof 正确解析和验证
-- [ ] 单元测试: ownership 优先 → 跳过 proof
-- [ ] 单元测试: root delegate → 跳过 proof
-- [ ] 单元测试: proof 路径不匹配 → 403
-- [ ] Server middleware 集成测试: 新旧 header 可并行（过渡期）
+- [x] `bun test packages/proof` 全部通过 — 69 tests, 94 assertions ✅ `e6cc8bc`
+- [x] 单元测试: ipath 正确导航到目标节点 ✅
+- [x] 单元测试: depot-version proof 正确解析和验证 ✅
+- [x] 单元测试: ownership 优先 → 跳过 proof ✅
+- [x] 单元测试: root delegate → 跳过 proof ✅
+- [x] 单元测试: proof 路径不匹配 → 403 ✅
+- [x] Server middleware 集成测试: 新旧 header 可并行（过渡期）— 16 tests, 23 assertions ✅
 
 ---
 
