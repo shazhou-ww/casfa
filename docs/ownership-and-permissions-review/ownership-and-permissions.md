@@ -1,6 +1,6 @@
 # CASFA 数据所有权与权限体系
 
-> 版本: 3.4
+> 版本: 3.5
 > 日期: 2026-02-09
 > 基于: Delegate 实体化 + ownership 全链写入 + Keyed Blake3 PoP + Node-based FS auth
 
@@ -116,6 +116,8 @@ User (usr_abc)
 3. **父 delegate 显式委派的 Depot**（`delegatedDepots` 列表）
 
 > **`delegatedDepots` vs 自建 Depot 的区别**：`delegatedDepots` 是父 delegate 在创建子 delegate 时显式委派的列表，代表“父节点授权你管理这些 Depot”。它是 immutable 的——创建后不可修改，也不会因为后续创建新 Depot 而自动扩展。自己和子孙创建的 Depot 则是动态的、隐式获得的权限，不存储在 delegate 记录中。
+>
+> **创建时验证规则**：`delegatedDepots` 中的每个 Depot ID 必须在父 delegate 的可管理范围内（父 delegate 自建 + 父 delegate 子孙创建 + 父 delegate 的 `delegatedDepots`）。否则拒绝创建（400 `PERMISSION_ESCALATION`）。这确保权限不能通过 `delegatedDepots` 字段逃逸。
 
 管理 Depot 的权限**包括访问该 Depot 所有历史版本数据的权限**——不仅是当前版本，也包括任何历史提交的 root 节点及其子树。
 
@@ -192,7 +194,7 @@ Delegate 记录:
     depth: number             // 0–15
     canUpload: boolean
     canManageDepot: boolean
-    managedDepots?: string[]  // 父 delegate 显式委派的 Depot ID 列表（可选，immutable）
+    delegatedDepots?: string[]  // 父 delegate 显式委派的 Depot ID 列表（可选，immutable）
     scopeNodeHash?: string    // Root Delegate 此字段为空（无 scope 限制）
     scopeSetNodeId?: string
     expiresAt?: number        // 可选的有效期（epoch ms），过期视为自动 revoke
@@ -245,6 +247,16 @@ Refresh Token 是 Delegate 的**持久凭证**，但设计为一次性使用：
 - 每次使用 Refresh Token 换取 Access Token 时，同时返回一个**新的 Refresh Token**
 - 旧 Refresh Token 立即失效
 - 这实现了 **Token Rotation**——如果 Refresh Token 被窃取，合法使用者下次刷新时会发现 Token 已失效，从而检测到泄露
+
+**Rotation 冲突处理**：当服务端检测到同一个 Refresh Token 被重复使用时（`TOKEN_USED`, 409），无法区分合法者和攻击者谁先使用了 RT。因此应立即 **invalidate 该 delegate 的整个 token family**——使该 delegate 当前所有的 RT 和 AT 全部失效，迫使合法持有者通过父 delegate 重新获取新凭证。
+
+```
+检测到 RT 重复使用:
+  1. 标记该 delegate 的所有 Token 记录为已失效 (isInvalidated = true)
+  2. 返回 409 TOKEN_USED
+  3. 后续使用该 delegate 的任何 RT 或 AT 均返回 401
+  4. 合法持有者需通过父 delegate 创建新的子 delegate来恢复
+```
 
 ```
 初始: Delegate 创建 → 返回 RT-1 + AT-1
@@ -323,8 +335,10 @@ Issuer (32B):
 #### Scope 字段编码
 
 - **Root Delegate**：全零（32 字节 0x00），表示无 scope 限制
-- **单 Scope**：`blake3_256(scope_root_hash)` left-padded to 32B
-- **多 Scope**：`blake3_256(scope_set_node_id)` left-padded to 32B
+- **单 Scope**：直接存储 `scope_root_hash`（CAS 节点 hash，16 字节）left-padded to 32B
+- **多 Scope**：存储 set-node 的 CAS key（set-node 编码后的内容 hash，16 字节）left-padded to 32B
+
+> set-node 是一个存储在 CAS 中的普通节点，其 children 是按 hash 排序的 scope root 列表。set-node 的 CAS key 就是其内容的 blake3_128 hash，直接作为 Token Scope 字段的值，无需再次哈希。
 
 #### 编码/解码示例
 
@@ -345,7 +359,7 @@ interface TokenFields {
   salt: bigint;         // random
   issuer: Uint8Array;   // 16B UUID
   realm: Uint8Array;    // 32B hash
-  scope: Uint8Array;    // 32B hash (all zeros for root)
+  scope: Uint8Array;    // 32B: scope hash left-padded (all zeros for root, 16B CAS key for single/set-node)
 }
 
 function encodeToken(fields: TokenFields): Uint8Array {
@@ -467,6 +481,8 @@ Response: {
 ```
 
 首次调用时创建 root delegate；后续调用返回已有 root delegate 的新 token 对。
+
+**Root Token 无需 Rotation**：与子 delegate 的 RT rotation 机制不同，root delegate 的 token 由 JWT 登录驱动——每次 JWT 登录自动签发新的 RT + AT，旧的 token 不会自动失效。Root delegate 的安全性依赖于 JWT 本身的有效期和 OAuth 提供方的安全机制，而非 token rotation。
 
 ---
 
@@ -770,6 +786,8 @@ GET /api/realm/{realmId}/nodes/{key}
 Authorization: Bearer {access_token_base64}
 X-CAS-Proof: {"{key}":"ipath#0:1:2"}
 ```
+
+> **分层说明**：`GET /nodes/:key` 是底层 CAS API，面向知道精确 node hash 和 index-path 的调用方。应用层通常通过 FS API（stat, read, ls）或 Depot API 访问数据，这些高层 API 通过 Depot 管理权限隐式授权，无需客户端自行构造 proof。
 
 #### 5.5.2 Node 上传 (PUT /nodes/:key)
 
