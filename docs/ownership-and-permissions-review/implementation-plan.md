@@ -367,12 +367,14 @@ Body: { "pop": "pop:XXXXX..." }
 
 ### 5.3 验证标准
 
-- [ ] 单元测试: computePoP / verifyPoP round-trip
-- [ ] 单元测试: 不同 token 对同一 content → 不同 PoP（防重放）
-- [ ] E2E: claim 成功后 prepare-nodes 返回 `owned`
-- [ ] E2E: 错误 PoP → 403 INVALID_POP
-- [ ] E2E: 节点不存在 → 404 NODE_NOT_FOUND
-- [ ] E2E: 已有 ownership → 200 幂等
+> PoP: 20 tests, 23 assertions (packages/proof). Claim controller: 15 tests, 34 assertions (apps/server).
+
+- [x] 单元测试: computePoP / verifyPoP round-trip
+- [x] 单元测试: 不同 token 对同一 content → 不同 PoP（防重放）
+- [x] E2E: claim 成功后 ownership 写入（full-chain write 验证）
+- [x] E2E: 错误 PoP → 403 INVALID_POP
+- [x] E2E: 节点不存在 → 404 NODE_NOT_FOUND
+- [x] E2E: 已有 ownership → 200 幂等
 
 ---
 

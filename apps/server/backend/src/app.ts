@@ -13,6 +13,7 @@ import type { AppConfig } from "./config.ts";
 import {
   createAdminController,
   createChunksController,
+  createClaimController,
   createDelegatesController,
   createDepotsController,
   createFilesystemController,
@@ -48,6 +49,9 @@ import { createRouter } from "./router.ts";
 import { createFsService } from "./services/fs/index.ts";
 import type { Env } from "./types.ts";
 import type { CombinedHashProvider } from "./util/hash-provider.ts";
+import type { PopContext } from "@casfa/proof";
+import { blake3 } from "@noble/hashes/blake3";
+import { toCrockfordBase32 } from "./util/encoding.ts";
 
 // Re-export DbInstances for convenience
 export type { DbInstances } from "./bootstrap.ts";
@@ -100,6 +104,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     tokenRequestsDb,
     tokenAuditDb,
     ownershipDb,
+    ownershipV2Db,
     depotsDb,
     refCountDb,
     usageDb,
@@ -203,6 +208,13 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     tokenRecordsDb,
   });
 
+  // Claim controller
+  const claim = createClaimController({
+    ownershipDb: ownershipV2Db,
+    getNodeContent: (_realm: string, hash: string) => storage.get(hash),
+    popContext: createPopContext(),
+  });
+
   // Local Auth controller (only in mock JWT mode)
   const localAuth = mockJwtSecret
     ? createLocalAuthController({
@@ -239,6 +251,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     tokens,
     tokenRequests,
     delegates,
+    claim,
     rootToken,
     refreshToken,
     mcp,
@@ -253,3 +266,19 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     canManageDepotMiddleware,
   });
 };
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Create a PopContext with real Blake3 hash functions for PoP verification.
+ */
+function createPopContext(): PopContext {
+  return {
+    blake3_256: (data: Uint8Array): Uint8Array => blake3(data),
+    blake3_128_keyed: (data: Uint8Array, key: Uint8Array): Uint8Array =>
+      blake3(data, { dkLen: 16, key }),
+    crockfordBase32Encode: toCrockfordBase32,
+  };
+}

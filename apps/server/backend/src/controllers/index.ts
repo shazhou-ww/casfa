@@ -36,6 +36,11 @@ export {
   type RefreshController,
   type RefreshControllerDeps,
 } from "./refresh.ts";
+export {
+  createClaimController,
+  type ClaimController,
+  type ClaimControllerDeps,
+} from "./claim.ts";
 
 // ============================================================================
 // Core Controllers

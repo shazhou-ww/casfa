@@ -6,6 +6,7 @@
 
 import {
   ApproveTokenRequestSchema,
+  ClaimNodeRequestSchema,
   CreateDelegateRequestSchema,
   CreateDelegateTokenSchema,
   CreateDepotSchema,
@@ -38,6 +39,7 @@ import { serveStatic } from "hono/bun";
 import { ZodError } from "zod";
 import type { AdminController } from "./controllers/admin.ts";
 import type { ChunksController } from "./controllers/chunks.ts";
+import type { ClaimController } from "./controllers/claim.ts";
 import type { DelegatesController } from "./controllers/delegates.ts";
 import type { DepotsController } from "./controllers/depots.ts";
 import type { FilesystemController } from "./controllers/filesystem.ts";
@@ -74,6 +76,7 @@ export type RouterDeps = {
   tokens: TokensController;
   tokenRequests: TokenRequestsController;
   delegates: DelegatesController;
+  claim: ClaimController;
   rootToken: RootTokenController;
   refreshToken: RefreshController;
 
@@ -311,6 +314,14 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
     "/:realmId/nodes/:key/metadata",
     deps.scopeValidationMiddleware,
     deps.chunks.getMetadata
+  );
+
+  // Node claim (PoP-based ownership)
+  realmRouter.post(
+    "/:realmId/nodes/:key/claim",
+    deps.canUploadMiddleware,
+    zValidator("json", ClaimNodeRequestSchema),
+    deps.claim.claim
   );
 
   // Filesystem operations (mounted under nodes/:key/fs/*)
