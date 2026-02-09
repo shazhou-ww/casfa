@@ -1,10 +1,13 @@
 /**
  * Token types for the stateful client.
  *
- * Three-tier token hierarchy:
+ * Two-tier token hierarchy:
  * - User JWT: OAuth login token, highest authority
- * - Delegate Token: Re-delegation token, can issue child tokens
- * - Access Token: Data access token, used for CAS operations
+ * - Root Delegate: RT + AT pair for realm operations (auto-refreshed)
+ *
+ * The client holds at most one User JWT and one Root Delegate at a time.
+ * Child delegates are created via the Delegate API and returned to callers
+ * (not stored in the client's token state).
  */
 
 // ============================================================================
@@ -26,42 +29,31 @@ export type StoredUserToken = {
 };
 
 /**
- * Delegate Token (re-delegation token).
+ * Root Delegate with Refresh Token + Access Token pair.
+ *
+ * Created via POST /api/tokens/root (JWT → Root Delegate + RT + AT).
+ * The RT is used to rotate AT when it expires (POST /api/tokens/refresh).
  */
-export type StoredDelegateToken = {
-  /** Token ID (dlt1_xxx format) */
-  tokenId: string;
-  /** Token binary as Base64 */
-  tokenBase64: string;
-  /** Token type: always "delegate" */
-  type: "delegate";
-  /** Issuer ID (usr_xxx or dlt1_xxx) */
-  issuerId: string;
-  /** Token expiration time (epoch ms) */
-  expiresAt: number;
-  /** Whether the token can upload nodes */
+export type StoredRootDelegate = {
+  /** Delegate entity ID */
+  delegateId: string;
+  /** Realm this delegate belongs to */
+  realm: string;
+  /** Refresh Token (base64-encoded 128-byte binary) */
+  refreshToken: string;
+  /** Refresh Token ID */
+  refreshTokenId: string;
+  /** Access Token (base64-encoded 128-byte binary) */
+  accessToken: string;
+  /** Access Token ID */
+  accessTokenId: string;
+  /** Access Token expiration time (epoch ms) */
+  accessTokenExpiresAt: number;
+  /** Delegate depth (0 = root) */
+  depth: number;
+  /** Whether the delegate can upload nodes */
   canUpload: boolean;
-  /** Whether the token can manage depots */
-  canManageDepot: boolean;
-};
-
-/**
- * Access Token (data access token).
- */
-export type StoredAccessToken = {
-  /** Token ID (dlt1_xxx format) */
-  tokenId: string;
-  /** Token binary as Base64 */
-  tokenBase64: string;
-  /** Token type: always "access" */
-  type: "access";
-  /** Issuer ID (usr_xxx or dlt1_xxx) */
-  issuerId: string;
-  /** Token expiration time (epoch ms) */
-  expiresAt: number;
-  /** Whether the token can upload nodes */
-  canUpload: boolean;
-  /** Whether the token can manage depots */
+  /** Whether the delegate can manage depots */
   canManageDepot: boolean;
 };
 
@@ -71,10 +63,8 @@ export type StoredAccessToken = {
 export type TokenState = {
   /** User JWT (optional) */
   user: StoredUserToken | null;
-  /** Delegate Token (optional) */
-  delegate: StoredDelegateToken | null;
-  /** Access Token (optional) */
-  access: StoredAccessToken | null;
+  /** Root Delegate with RT + AT (optional) */
+  rootDelegate: StoredRootDelegate | null;
 };
 
 /**
@@ -82,8 +72,7 @@ export type TokenState = {
  */
 export const emptyTokenState = (): TokenState => ({
   user: null,
-  delegate: null,
-  access: null,
+  rootDelegate: null,
 });
 
 // ============================================================================
@@ -93,7 +82,7 @@ export const emptyTokenState = (): TokenState => ({
 /**
  * Token requirement for API calls.
  */
-export type TokenRequirement = "none" | "user" | "delegate" | "access";
+export type TokenRequirement = "none" | "user" | "access";
 
 /**
  * Auth header format.
@@ -102,36 +91,44 @@ export type AuthHeader = {
   Authorization: string;
 };
 
+// ============================================================================
+// Compatibility Types (kept for helpers/client API surface)
+// ============================================================================
+
 /**
- * Get issuer ID from current state (for signing new tokens).
- * Priority: User JWT > Delegate Token
+ * Stored Access Token — a view onto the root delegate's AT.
+ * Used by client methods that need an access token for API calls.
  */
-export const getMaxIssuerId = (state: TokenState): string | null => {
-  if (state.user) {
-    return state.user.userId;
-  }
-  if (state.delegate) {
-    return state.delegate.tokenId;
-  }
-  return null;
+export type StoredAccessToken = {
+  /** Access Token (base64-encoded) */
+  tokenBase64: string;
+  /** Access Token ID */
+  tokenId: string;
+  /** Access Token expiration time (epoch ms) */
+  expiresAt: number;
+  /** Whether the delegate can upload nodes */
+  canUpload: boolean;
+  /** Whether the delegate can manage depots */
+  canManageDepot: boolean;
 };
 
 /**
- * Check if Access Token was issued by the current max issuer.
+ * Extract a StoredAccessToken view from a StoredRootDelegate.
  */
-export const isAccessTokenFromMaxIssuer = (state: TokenState): boolean => {
-  if (!state.access) return false;
-
-  const maxIssuerId = getMaxIssuerId(state);
-  if (!maxIssuerId) return false;
-
-  return state.access.issuerId === maxIssuerId;
-};
+export const rootDelegateToAccessToken = (
+  rd: StoredRootDelegate,
+): StoredAccessToken => ({
+  tokenBase64: rd.accessToken,
+  tokenId: rd.accessTokenId,
+  expiresAt: rd.accessTokenExpiresAt,
+  canUpload: rd.canUpload,
+  canManageDepot: rd.canManageDepot,
+});
 
 /**
- * Check if Delegate Token was issued by current user.
+ * Check if root delegate has a valid (non-expired) access token.
  */
-export const isDelegateTokenFromCurrentUser = (state: TokenState): boolean => {
-  if (!state.delegate || !state.user) return false;
-  return state.delegate.issuerId === state.user.userId;
+export const hasValidAccessToken = (state: TokenState): boolean => {
+  if (!state.rootDelegate) return false;
+  return state.rootDelegate.accessTokenExpiresAt > Date.now();
 };

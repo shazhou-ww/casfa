@@ -10,20 +10,22 @@ export {
 
 export {
   DEFAULT_EXPIRY_BUFFER_MS,
-  getMaxIssuerId,
-  isAccessTokenFromMaxIssuer,
+  hasRefreshToken,
   isAccessTokenValid,
-  isDelegateTokenFromCurrentUser,
-  isDelegateTokenValid,
+  isStoredAccessTokenValid,
   isTokenExpiringSoon,
   isTokenValid,
   isUserTokenValid,
-  shouldReissueAccessToken,
-  shouldReissueDelegateToken,
+  needsRootDelegate,
+  shouldRefreshAccessToken,
 } from "./token-checks.ts";
 export {
   createTokenSelector,
   type TokenSelector,
   type TokenSelectorConfig,
 } from "./token-selector.ts";
-export { createTokenStore, type TokenStore, type TokenStoreConfig } from "./token-store.ts";
+export {
+  createTokenStore,
+  type TokenStore,
+  type TokenStoreConfig,
+} from "./token-store.ts";

@@ -13,7 +13,7 @@ export type {
 
 export type {
   StoredAccessToken,
-  StoredDelegateToken,
+  StoredRootDelegate,
   StoredUserToken,
   TokenRequirement,
   TokenState,

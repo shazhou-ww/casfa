@@ -1,27 +1,25 @@
 /**
- * Token validity and issuer consistency checks tests.
+ * Token validity checks tests for two-tier model.
  */
 
 import { describe, expect, it } from "bun:test";
 import type {
   StoredAccessToken,
-  StoredDelegateToken,
+  StoredRootDelegate,
   StoredUserToken,
   TokenState,
 } from "../types/tokens.ts";
 import { emptyTokenState } from "../types/tokens.ts";
 import {
   DEFAULT_EXPIRY_BUFFER_MS,
-  getMaxIssuerId,
-  isAccessTokenFromMaxIssuer,
+  hasRefreshToken,
   isAccessTokenValid,
-  isDelegateTokenFromCurrentUser,
-  isDelegateTokenValid,
+  isStoredAccessTokenValid,
   isTokenExpiringSoon,
   isTokenValid,
   isUserTokenValid,
-  shouldReissueAccessToken,
-  shouldReissueDelegateToken,
+  needsRootDelegate,
+  shouldRefreshAccessToken,
 } from "./token-checks.ts";
 
 // ============================================================================
@@ -36,24 +34,25 @@ const createUserToken = (overrides: Partial<StoredUserToken> = {}): StoredUserTo
   ...overrides,
 });
 
-const createDelegateToken = (
-  overrides: Partial<StoredDelegateToken> = {}
-): StoredDelegateToken => ({
-  tokenId: "dlt1_delegate123",
-  tokenBase64: "base64-delegate-token",
-  type: "delegate",
-  issuerId: "usr_test123",
-  expiresAt: Date.now() + 3600_000,
+const createRootDelegate = (
+  overrides: Partial<StoredRootDelegate> = {},
+): StoredRootDelegate => ({
+  delegateId: "dlg_root123",
+  realm: "test-realm",
+  refreshToken: "base64-refresh-token",
+  refreshTokenId: "rt_123",
+  accessToken: "base64-access-token",
+  accessTokenId: "at_123",
+  accessTokenExpiresAt: Date.now() + 3600_000,
+  depth: 0,
   canUpload: true,
   canManageDepot: true,
   ...overrides,
 });
 
 const createAccessToken = (overrides: Partial<StoredAccessToken> = {}): StoredAccessToken => ({
-  tokenId: "dlt1_access123",
   tokenBase64: "base64-access-token",
-  type: "access",
-  issuerId: "usr_test123",
+  tokenId: "at_access123",
   expiresAt: Date.now() + 3600_000,
   canUpload: true,
   canManageDepot: true,
@@ -159,310 +158,180 @@ describe("isUserTokenValid", () => {
 });
 
 // ============================================================================
-// isDelegateTokenValid Tests
-// ============================================================================
-
-describe("isDelegateTokenValid", () => {
-  it("should return false for null", () => {
-    expect(isDelegateTokenValid(null)).toBe(false);
-  });
-
-  it("should return true for valid delegate token", () => {
-    const token = createDelegateToken();
-    expect(isDelegateTokenValid(token)).toBe(true);
-  });
-
-  it("should return false for expired delegate token", () => {
-    const token = createDelegateToken({ expiresAt: Date.now() - 1000 });
-    expect(isDelegateTokenValid(token)).toBe(false);
-  });
-});
-
-// ============================================================================
-// isAccessTokenValid Tests
+// isAccessTokenValid Tests (root delegate)
 // ============================================================================
 
 describe("isAccessTokenValid", () => {
-  it("should return false for null", () => {
+  it("should return false for null root delegate", () => {
     expect(isAccessTokenValid(null)).toBe(false);
   });
 
-  it("should return true for valid access token", () => {
-    const token = createAccessToken();
-    expect(isAccessTokenValid(token)).toBe(true);
+  it("should return true for root delegate with valid access token", () => {
+    const rd = createRootDelegate({
+      accessTokenExpiresAt: Date.now() + 3600_000,
+    });
+    expect(isAccessTokenValid(rd)).toBe(true);
   });
 
-  it("should return false for expired access token", () => {
-    const token = createAccessToken({ expiresAt: Date.now() - 1000 });
-    expect(isAccessTokenValid(token)).toBe(false);
+  it("should return false for root delegate with expired access token", () => {
+    const rd = createRootDelegate({
+      accessTokenExpiresAt: Date.now() - 1000,
+    });
+    expect(isAccessTokenValid(rd)).toBe(false);
+  });
+
+  it("should return false when AT expires within default buffer", () => {
+    const rd = createRootDelegate({
+      accessTokenExpiresAt: Date.now() + 30_000, // 30 seconds, buffer is 60s
+    });
+    expect(isAccessTokenValid(rd)).toBe(false);
+  });
+
+  it("should respect custom buffer", () => {
+    const rd = createRootDelegate({
+      accessTokenExpiresAt: Date.now() + 30_000,
+    });
+    expect(isAccessTokenValid(rd, 10_000)).toBe(true);
+    expect(isAccessTokenValid(rd, 60_000)).toBe(false);
   });
 });
 
 // ============================================================================
-// getMaxIssuerId Tests
+// isStoredAccessTokenValid Tests (view type)
 // ============================================================================
 
-describe("getMaxIssuerId", () => {
-  it("should return null for empty state", () => {
+describe("isStoredAccessTokenValid", () => {
+  it("should return false for null", () => {
+    expect(isStoredAccessTokenValid(null)).toBe(false);
+  });
+
+  it("should return true for valid stored access token", () => {
+    const at = createAccessToken();
+    expect(isStoredAccessTokenValid(at)).toBe(true);
+  });
+
+  it("should return false for expired stored access token", () => {
+    const at = createAccessToken({ expiresAt: Date.now() - 1000 });
+    expect(isStoredAccessTokenValid(at)).toBe(false);
+  });
+
+  it("should respect buffer parameter", () => {
+    const at = createAccessToken({ expiresAt: Date.now() + 30_000 });
+    expect(isStoredAccessTokenValid(at, 10_000)).toBe(true);
+    expect(isStoredAccessTokenValid(at, 60_000)).toBe(false);
+  });
+});
+
+// ============================================================================
+// hasRefreshToken Tests
+// ============================================================================
+
+describe("hasRefreshToken", () => {
+  it("should return false for null root delegate", () => {
+    expect(hasRefreshToken(null)).toBe(false);
+  });
+
+  it("should return true when refresh token is present", () => {
+    const rd = createRootDelegate({ refreshToken: "some-rt" });
+    expect(hasRefreshToken(rd)).toBe(true);
+  });
+
+  it("should return false when refresh token is empty string", () => {
+    const rd = createRootDelegate({ refreshToken: "" });
+    expect(hasRefreshToken(rd)).toBe(false);
+  });
+});
+
+// ============================================================================
+// needsRootDelegate Tests
+// ============================================================================
+
+describe("needsRootDelegate", () => {
+  it("should return true when no root delegate", () => {
     const state = emptyTokenState();
-    expect(getMaxIssuerId(state)).toBe(null);
+    expect(needsRootDelegate(state)).toBe(true);
   });
 
-  it("should return userId when user token is valid", () => {
+  it("should return true when rootDelegate is null with user present", () => {
     const state: TokenState = {
-      user: createUserToken({ userId: "usr_max_issuer" }),
-      delegate: null,
-      access: null,
+      user: createUserToken(),
+      rootDelegate: null,
     };
-    expect(getMaxIssuerId(state)).toBe("usr_max_issuer");
+    expect(needsRootDelegate(state)).toBe(true);
   });
 
-  it("should return userId over tokenId when both exist", () => {
+  it("should return false when root delegate exists", () => {
     const state: TokenState = {
-      user: createUserToken({ userId: "usr_max_issuer" }),
-      delegate: createDelegateToken({ tokenId: "dlt1_delegate" }),
-      access: null,
+      user: createUserToken(),
+      rootDelegate: createRootDelegate(),
     };
-    expect(getMaxIssuerId(state)).toBe("usr_max_issuer");
+    expect(needsRootDelegate(state)).toBe(false);
   });
 
-  it("should return delegate tokenId when user is invalid", () => {
-    const state: TokenState = {
-      user: createUserToken({ expiresAt: Date.now() - 1000 }), // Expired
-      delegate: createDelegateToken({ tokenId: "dlt1_delegate" }),
-      access: null,
-    };
-    expect(getMaxIssuerId(state)).toBe("dlt1_delegate");
-  });
-
-  it("should return delegate tokenId when user is null", () => {
+  it("should return false when root delegate exists without user", () => {
     const state: TokenState = {
       user: null,
-      delegate: createDelegateToken({ tokenId: "dlt1_delegate" }),
-      access: null,
+      rootDelegate: createRootDelegate(),
     };
-    expect(getMaxIssuerId(state)).toBe("dlt1_delegate");
-  });
-
-  it("should return null when both user and delegate are invalid", () => {
-    const state: TokenState = {
-      user: createUserToken({ expiresAt: Date.now() - 1000 }),
-      delegate: createDelegateToken({ expiresAt: Date.now() - 1000 }),
-      access: null,
-    };
-    expect(getMaxIssuerId(state)).toBe(null);
+    expect(needsRootDelegate(state)).toBe(false);
   });
 });
 
 // ============================================================================
-// isAccessTokenFromMaxIssuer Tests
+// shouldRefreshAccessToken Tests
 // ============================================================================
 
-describe("isAccessTokenFromMaxIssuer", () => {
-  it("should return false when no access token", () => {
+describe("shouldRefreshAccessToken", () => {
+  it("should return false when no root delegate", () => {
     const state: TokenState = {
       user: createUserToken(),
-      delegate: null,
-      access: null,
+      rootDelegate: null,
     };
-    expect(isAccessTokenFromMaxIssuer(state)).toBe(false);
+    expect(shouldRefreshAccessToken(state)).toBe(false);
   });
 
-  it("should return false when access token is invalid", () => {
+  it("should return false when empty state", () => {
+    const state = emptyTokenState();
+    expect(shouldRefreshAccessToken(state)).toBe(false);
+  });
+
+  it("should return false when access token is still valid", () => {
     const state: TokenState = {
       user: createUserToken(),
-      delegate: null,
-      access: createAccessToken({ expiresAt: Date.now() - 1000 }),
+      rootDelegate: createRootDelegate({
+        accessTokenExpiresAt: Date.now() + 3600_000, // 1 hour
+      }),
     };
-    expect(isAccessTokenFromMaxIssuer(state)).toBe(false);
-  });
-
-  it("should return true when access token issuerId matches user userId", () => {
-    const state: TokenState = {
-      user: createUserToken({ userId: "usr_issuer" }),
-      delegate: null,
-      access: createAccessToken({ issuerId: "usr_issuer" }),
-    };
-    expect(isAccessTokenFromMaxIssuer(state)).toBe(true);
-  });
-
-  it("should return false when access token issuerId does not match max issuer", () => {
-    const state: TokenState = {
-      user: createUserToken({ userId: "usr_new_issuer" }),
-      delegate: null,
-      access: createAccessToken({ issuerId: "usr_old_issuer" }),
-    };
-    expect(isAccessTokenFromMaxIssuer(state)).toBe(false);
-  });
-
-  it("should return true when no max issuer (orphaned but usable)", () => {
-    const state: TokenState = {
-      user: null,
-      delegate: null,
-      access: createAccessToken(),
-    };
-    expect(isAccessTokenFromMaxIssuer(state)).toBe(true);
-  });
-
-  it("should match against delegate tokenId when user is absent", () => {
-    const state: TokenState = {
-      user: null,
-      delegate: createDelegateToken({ tokenId: "dlt1_delegate_issuer" }),
-      access: createAccessToken({ issuerId: "dlt1_delegate_issuer" }),
-    };
-    expect(isAccessTokenFromMaxIssuer(state)).toBe(true);
-  });
-});
-
-// ============================================================================
-// isDelegateTokenFromCurrentUser Tests
-// ============================================================================
-
-describe("isDelegateTokenFromCurrentUser", () => {
-  it("should return false when no delegate token", () => {
-    const state: TokenState = {
-      user: createUserToken(),
-      delegate: null,
-      access: null,
-    };
-    expect(isDelegateTokenFromCurrentUser(state)).toBe(false);
-  });
-
-  it("should return false when delegate token is invalid", () => {
-    const state: TokenState = {
-      user: createUserToken(),
-      delegate: createDelegateToken({ expiresAt: Date.now() - 1000 }),
-      access: null,
-    };
-    expect(isDelegateTokenFromCurrentUser(state)).toBe(false);
-  });
-
-  it("should return true when no user token (delegate is top-level)", () => {
-    const state: TokenState = {
-      user: null,
-      delegate: createDelegateToken(),
-      access: null,
-    };
-    expect(isDelegateTokenFromCurrentUser(state)).toBe(true);
-  });
-
-  it("should return true when user token is invalid (delegate is top-level)", () => {
-    const state: TokenState = {
-      user: createUserToken({ expiresAt: Date.now() - 1000 }),
-      delegate: createDelegateToken(),
-      access: null,
-    };
-    expect(isDelegateTokenFromCurrentUser(state)).toBe(true);
-  });
-
-  it("should return true when delegate issuerId matches user userId", () => {
-    const state: TokenState = {
-      user: createUserToken({ userId: "usr_current" }),
-      delegate: createDelegateToken({ issuerId: "usr_current" }),
-      access: null,
-    };
-    expect(isDelegateTokenFromCurrentUser(state)).toBe(true);
-  });
-
-  it("should return false when delegate issuerId does not match user", () => {
-    const state: TokenState = {
-      user: createUserToken({ userId: "usr_new_user" }),
-      delegate: createDelegateToken({ issuerId: "usr_old_user" }),
-      access: null,
-    };
-    expect(isDelegateTokenFromCurrentUser(state)).toBe(false);
-  });
-});
-
-// ============================================================================
-// shouldReissueAccessToken Tests
-// ============================================================================
-
-describe("shouldReissueAccessToken", () => {
-  it("should return true when no access token", () => {
-    const state: TokenState = {
-      user: createUserToken(),
-      delegate: null,
-      access: null,
-    };
-    expect(shouldReissueAccessToken(state)).toBe(true);
+    expect(shouldRefreshAccessToken(state)).toBe(false);
   });
 
   it("should return true when access token is expired", () => {
     const state: TokenState = {
       user: createUserToken(),
-      delegate: null,
-      access: createAccessToken({ expiresAt: Date.now() - 1000 }),
+      rootDelegate: createRootDelegate({
+        accessTokenExpiresAt: Date.now() - 1000,
+      }),
     };
-    expect(shouldReissueAccessToken(state)).toBe(true);
+    expect(shouldRefreshAccessToken(state)).toBe(true);
   });
 
-  it("should return true when issuer mismatch", () => {
-    const state: TokenState = {
-      user: createUserToken({ userId: "usr_new" }),
-      delegate: null,
-      access: createAccessToken({ issuerId: "usr_old" }),
-    };
-    expect(shouldReissueAccessToken(state)).toBe(true);
-  });
-
-  it("should return false when access token is valid and from max issuer", () => {
-    const state: TokenState = {
-      user: createUserToken({ userId: "usr_issuer" }),
-      delegate: null,
-      access: createAccessToken({ issuerId: "usr_issuer" }),
-    };
-    expect(shouldReissueAccessToken(state)).toBe(false);
-  });
-});
-
-// ============================================================================
-// shouldReissueDelegateToken Tests
-// ============================================================================
-
-describe("shouldReissueDelegateToken", () => {
-  it("should return true when no delegate token", () => {
+  it("should return true when access token is expiring within buffer", () => {
     const state: TokenState = {
       user: createUserToken(),
-      delegate: null,
-      access: null,
+      rootDelegate: createRootDelegate({
+        accessTokenExpiresAt: Date.now() + 30_000, // 30 seconds, buffer is 60s
+      }),
     };
-    expect(shouldReissueDelegateToken(state)).toBe(true);
+    expect(shouldRefreshAccessToken(state)).toBe(true);
   });
 
-  it("should return true when delegate token is expired", () => {
-    const state: TokenState = {
-      user: createUserToken(),
-      delegate: createDelegateToken({ expiresAt: Date.now() - 1000 }),
-      access: null,
-    };
-    expect(shouldReissueDelegateToken(state)).toBe(true);
-  });
-
-  it("should return true when user exists but delegate not from current user", () => {
-    const state: TokenState = {
-      user: createUserToken({ userId: "usr_new" }),
-      delegate: createDelegateToken({ issuerId: "usr_old" }),
-      access: null,
-    };
-    expect(shouldReissueDelegateToken(state)).toBe(true);
-  });
-
-  it("should return false when delegate is valid and from current user", () => {
-    const state: TokenState = {
-      user: createUserToken({ userId: "usr_current" }),
-      delegate: createDelegateToken({ issuerId: "usr_current" }),
-      access: null,
-    };
-    expect(shouldReissueDelegateToken(state)).toBe(false);
-  });
-
-  it("should return false when no user token and delegate is valid", () => {
+  it("should return true when root delegate present but AT expired, no user", () => {
     const state: TokenState = {
       user: null,
-      delegate: createDelegateToken(),
-      access: null,
+      rootDelegate: createRootDelegate({
+        accessTokenExpiresAt: Date.now() - 1000,
+      }),
     };
-    expect(shouldReissueDelegateToken(state)).toBe(false);
+    expect(shouldRefreshAccessToken(state)).toBe(true);
   });
 });

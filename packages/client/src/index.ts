@@ -1,10 +1,9 @@
 /**
  * @casfa/client - CASFA client library
  *
- * A stateful client that manages three-tier token hierarchy:
+ * A stateful client that manages two-tier token hierarchy:
  * - User JWT: OAuth login token, highest authority
- * - Delegate Token: Re-delegation token, can issue child tokens
- * - Access Token: Data access token, used for CAS operations
+ * - Root Delegate: RT + AT pair for realm operations (auto-refreshed)
  *
  * @packageDocumentation
  */
@@ -17,6 +16,7 @@ export {
   type CasfaClient,
   type ClientConfig,
   createClient,
+  type DelegateMethods,
   type DepotMethods,
   type NodeMethods,
   type OAuthMethods,
@@ -36,17 +36,15 @@ export {
   createTokenSelector,
   createTokenStore,
   DEFAULT_EXPIRY_BUFFER_MS,
-  getMaxIssuerId,
-  isAccessTokenFromMaxIssuer,
+  hasRefreshToken,
   isAccessTokenValid,
-  isDelegateTokenFromCurrentUser,
-  isDelegateTokenValid,
+  isStoredAccessTokenValid,
   isTokenExpiringSoon,
   isTokenValid,
   isUserTokenValid,
+  needsRootDelegate,
   type RefreshManager,
-  shouldReissueAccessToken,
-  shouldReissueDelegateToken,
+  shouldRefreshAccessToken,
   type TokenSelector,
   type TokenStore,
 } from "./store/index.ts";
@@ -55,19 +53,20 @@ export {
 // Types
 // ============================================================================
 
-export type {
-  ClientError,
-  FetchResult,
-} from "./types/client.ts";
+export type { ClientError, FetchResult } from "./types/client.ts";
 
 export type {
   StoredAccessToken,
-  StoredDelegateToken,
+  StoredRootDelegate,
   StoredUserToken,
   TokenState,
 } from "./types/tokens.ts";
 
-export { emptyTokenState } from "./types/tokens.ts";
+export {
+  emptyTokenState,
+  hasValidAccessToken,
+  rootDelegateToAccessToken,
+} from "./types/tokens.ts";
 
 // ============================================================================
 // API (for advanced usage)

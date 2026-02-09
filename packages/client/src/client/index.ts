@@ -1,10 +1,9 @@
 /**
  * Stateful CASFA Client
  *
- * A closure-based client that manages three-tier token hierarchy:
+ * A closure-based client that manages two-tier token hierarchy:
  * - User JWT: OAuth login token, highest authority
- * - Delegate Token: Re-delegation token, can issue child tokens
- * - Access Token: Data access token, used for CAS operations
+ * - Root Delegate: RT + AT pair for realm operations (auto-refreshed)
  */
 
 import type { ServiceInfo } from "@casfa/protocol";
@@ -18,7 +17,12 @@ import type {
   OnTokenChangeCallback,
   TokenStorageProvider,
 } from "../types/client.ts";
-import type { StoredAccessToken, StoredDelegateToken, TokenState } from "../types/tokens.ts";
+import type {
+  StoredAccessToken,
+  StoredRootDelegate,
+  TokenState,
+} from "../types/tokens.ts";
+import { createDelegateMethods, type DelegateMethods } from "./delegates.ts";
 import { createDepotMethods, type DepotMethods } from "./depots.ts";
 import { createNodeMethods, type NodeMethods } from "./nodes.ts";
 import { createOAuthMethods, type OAuthMethods } from "./oauth.ts";
@@ -29,9 +33,21 @@ import { createTokenMethods, type TokenMethods } from "./tokens.ts";
 // Re-exports
 // ============================================================================
 
-export type { DepotMethods, NodeMethods, OAuthMethods, TicketMethods, TokenMethods };
+export type {
+  DelegateMethods,
+  DepotMethods,
+  NodeMethods,
+  OAuthMethods,
+  TicketMethods,
+  TokenMethods,
+};
 
-export type { ClientConfig, OnAuthRequiredCallback, OnTokenChangeCallback, TokenStorageProvider };
+export type {
+  ClientConfig,
+  OnAuthRequiredCallback,
+  OnTokenChangeCallback,
+  TokenStorageProvider,
+};
 
 // ============================================================================
 // Client Type
@@ -46,17 +62,19 @@ export type CasfaClient = {
   /** Get server info */
   getServerInfo: () => ServiceInfo | null;
 
-  /** Set delegate token (e.g., from external source) */
-  setDelegateToken: (token: StoredDelegateToken) => void;
-  /** Set access token (e.g., from external source) */
-  setAccessToken: (token: StoredAccessToken) => void;
+  /** Set root delegate (e.g., from external source) */
+  setRootDelegate: (delegate: StoredRootDelegate) => void;
+  /** Get current access token (auto-refreshes if needed) */
+  getAccessToken: () => Promise<StoredAccessToken | null>;
   /** Clear all tokens and logout */
   logout: () => void;
 
   /** OAuth methods */
   oauth: OAuthMethods;
-  /** Token management methods */
+  /** Token management methods (root token + refresh) */
   tokens: TokenMethods;
+  /** Delegate management methods */
+  delegates: DelegateMethods;
   /** Ticket methods */
   tickets: TicketMethods;
   /** Depot methods */
@@ -72,8 +90,16 @@ export type CasfaClient = {
 /**
  * Create a stateful CASFA client.
  */
-export const createClient = async (config: ClientConfig): Promise<CasfaClient> => {
-  const { baseUrl, realm, tokenStorage, onTokenChange, onAuthRequired, defaultTokenTtl } = config;
+export const createClient = async (
+  config: ClientConfig,
+): Promise<CasfaClient> => {
+  const {
+    baseUrl,
+    realm,
+    tokenStorage,
+    onTokenChange,
+    onAuthRequired,
+  } = config;
 
   // Initialize token store
   const store = createTokenStore({
@@ -83,7 +109,7 @@ export const createClient = async (config: ClientConfig): Promise<CasfaClient> =
   });
   await store.initialize();
 
-  // Initialize refresh manager
+  // Initialize refresh manager (for JWT OAuth refresh)
   const refreshManager = createRefreshManager({
     store,
     baseUrl,
@@ -97,13 +123,11 @@ export const createClient = async (config: ClientConfig): Promise<CasfaClient> =
     serverInfo = infoResult.data;
   }
 
-  // Initialize token selector
+  // Initialize token selector (for root delegate + RT/AT refresh)
   const tokenSelector = createTokenSelector({
     store,
     baseUrl,
     realm,
-    serverInfo,
-    defaultTokenTtl,
   });
 
   // Shared dependencies
@@ -114,8 +138,8 @@ export const createClient = async (config: ClientConfig): Promise<CasfaClient> =
     getState: () => store.getState(),
     getServerInfo: () => serverInfo,
 
-    setDelegateToken: (token) => store.setDelegate(token),
-    setAccessToken: (token) => store.setAccess(token),
+    setRootDelegate: (delegate) => store.setRootDelegate(delegate),
+    getAccessToken: () => tokenSelector.ensureAccessToken(),
 
     logout: () => {
       refreshManager.cancelScheduledRefresh();
@@ -124,6 +148,7 @@ export const createClient = async (config: ClientConfig): Promise<CasfaClient> =
 
     oauth: createOAuthMethods(deps),
     tokens: createTokenMethods(deps),
+    delegates: createDelegateMethods(deps),
     tickets: createTicketMethods(deps),
     depots: createDepotMethods(deps),
     nodes: createNodeMethods(deps),

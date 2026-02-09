@@ -5,8 +5,7 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { TokenStorageProvider } from "../types/client.ts";
 import type {
-  StoredAccessToken,
-  StoredDelegateToken,
+  StoredRootDelegate,
   StoredUserToken,
   TokenState,
 } from "../types/tokens.ts";
@@ -25,25 +24,17 @@ const createUserToken = (overrides: Partial<StoredUserToken> = {}): StoredUserTo
   ...overrides,
 });
 
-const createDelegateToken = (
-  overrides: Partial<StoredDelegateToken> = {}
-): StoredDelegateToken => ({
-  tokenId: "dlt1_delegate123",
-  tokenBase64: "base64-delegate-token",
-  type: "delegate",
-  issuerId: "usr_test123",
-  expiresAt: Date.now() + 3600_000,
-  canUpload: true,
-  canManageDepot: true,
-  ...overrides,
-});
-
-const createAccessToken = (overrides: Partial<StoredAccessToken> = {}): StoredAccessToken => ({
-  tokenId: "dlt1_access123",
-  tokenBase64: "base64-access-token",
-  type: "access",
-  issuerId: "usr_test123",
-  expiresAt: Date.now() + 3600_000,
+const createRootDelegate = (
+  overrides: Partial<StoredRootDelegate> = {},
+): StoredRootDelegate => ({
+  delegateId: "dlg_root123",
+  realm: "test-realm",
+  refreshToken: "base64-refresh-token",
+  refreshTokenId: "rt_123",
+  accessToken: "base64-access-token",
+  accessTokenId: "at_123",
+  accessTokenExpiresAt: Date.now() + 3600_000,
+  depth: 0,
   canUpload: true,
   canManageDepot: true,
   ...overrides,
@@ -78,8 +69,7 @@ describe("createTokenStore", () => {
       const state = store.getState();
 
       expect(state.user).toBe(null);
-      expect(state.delegate).toBe(null);
-      expect(state.access).toBe(null);
+      expect(state.rootDelegate).toBe(null);
     });
 
     it("should return a copy of state (immutable)", () => {
@@ -137,40 +127,63 @@ describe("createTokenStore", () => {
     });
   });
 
-  describe("setDelegate", () => {
-    it("should update delegate token", () => {
+  describe("setRootDelegate", () => {
+    it("should update root delegate", () => {
       const store = createTokenStore();
-      const delegateToken = createDelegateToken();
+      const rd = createRootDelegate();
 
-      store.setDelegate(delegateToken);
+      store.setRootDelegate(rd);
       const state = store.getState();
 
-      expect(state.delegate).toEqual(delegateToken);
+      expect(state.rootDelegate).toEqual(rd);
     });
 
     it("should not affect other tokens", () => {
       const store = createTokenStore();
       const userToken = createUserToken();
-      const delegateToken = createDelegateToken();
+      const rd = createRootDelegate();
 
       store.setUser(userToken);
-      store.setDelegate(delegateToken);
+      store.setRootDelegate(rd);
 
       const state = store.getState();
       expect(state.user).toEqual(userToken);
-      expect(state.delegate).toEqual(delegateToken);
+      expect(state.rootDelegate).toEqual(rd);
     });
-  });
 
-  describe("setAccess", () => {
-    it("should update access token", () => {
+    it("should allow setting root delegate to null", () => {
       const store = createTokenStore();
-      const accessToken = createAccessToken();
+      store.setRootDelegate(createRootDelegate());
+      store.setRootDelegate(null);
 
-      store.setAccess(accessToken);
-      const state = store.getState();
+      expect(store.getState().rootDelegate).toBe(null);
+    });
 
-      expect(state.access).toEqual(accessToken);
+    it("should trigger onTokenChange callback", () => {
+      const onTokenChange = mock(() => {});
+      const store = createTokenStore({ onTokenChange });
+      const rd = createRootDelegate();
+
+      store.setRootDelegate(rd);
+
+      expect(onTokenChange).toHaveBeenCalledTimes(1);
+      expect(onTokenChange).toHaveBeenCalledWith(
+        expect.objectContaining({ rootDelegate: rd }),
+      );
+    });
+
+    it("should persist to storage", async () => {
+      const storage = createMockStorage();
+      const store = createTokenStore({ storage });
+      const rd = createRootDelegate();
+
+      store.setRootDelegate(rd);
+
+      // Wait for async save
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(storage.save).toHaveBeenCalled();
+      expect(storage.savedState?.rootDelegate).toEqual(rd);
     });
   });
 
@@ -178,15 +191,13 @@ describe("createTokenStore", () => {
     it("should reset all tokens to null", () => {
       const store = createTokenStore();
       store.setUser(createUserToken());
-      store.setDelegate(createDelegateToken());
-      store.setAccess(createAccessToken());
+      store.setRootDelegate(createRootDelegate());
 
       store.clear();
       const state = store.getState();
 
       expect(state.user).toBe(null);
-      expect(state.delegate).toBe(null);
-      expect(state.access).toBe(null);
+      expect(state.rootDelegate).toBe(null);
     });
 
     it("should trigger onTokenChange callback", () => {
@@ -219,8 +230,7 @@ describe("createTokenStore", () => {
       const storage = createMockStorage();
       const storedState: TokenState = {
         user: createUserToken(),
-        delegate: createDelegateToken(),
-        access: createAccessToken(),
+        rootDelegate: createRootDelegate(),
       };
       storage.loadResult = storedState;
 
@@ -229,8 +239,7 @@ describe("createTokenStore", () => {
 
       const state = store.getState();
       expect(state.user).toEqual(storedState.user);
-      expect(state.delegate).toEqual(storedState.delegate);
-      expect(state.access).toEqual(storedState.access);
+      expect(state.rootDelegate).toEqual(storedState.rootDelegate);
     });
 
     it("should do nothing when no storage provider", async () => {
@@ -271,8 +280,7 @@ describe("createTokenStore", () => {
       const storage = createMockStorage();
       storage.loadResult = {
         user: createUserToken(),
-        delegate: null,
-        access: null,
+        rootDelegate: null,
       };
 
       const store = createTokenStore({ storage, onTokenChange });

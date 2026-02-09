@@ -1,5 +1,5 @@
 /**
- * Token store - manages the three-tier token state.
+ * Token store - manages the two-tier token state.
  *
  * Provides a closure-based store for token state management with
  * automatic persistence and change notifications.
@@ -11,8 +11,7 @@ import type {
   TokenStorageProvider,
 } from "../types/client.ts";
 import type {
-  StoredAccessToken,
-  StoredDelegateToken,
+  StoredRootDelegate,
   StoredUserToken,
   TokenState,
 } from "../types/tokens.ts";
@@ -29,11 +28,8 @@ export type TokenStore = {
   /** Set user JWT token */
   setUser: (token: StoredUserToken | null) => void;
 
-  /** Set delegate token */
-  setDelegate: (token: StoredDelegateToken | null) => void;
-
-  /** Set access token */
-  setAccess: (token: StoredAccessToken | null) => void;
+  /** Set root delegate (RT + AT pair) */
+  setRootDelegate: (delegate: StoredRootDelegate | null) => void;
 
   /** Clear all tokens */
   clear: () => void;
@@ -77,13 +73,8 @@ export const createTokenStore = (config: TokenStoreConfig = {}): TokenStore => {
       notifyAndPersist();
     },
 
-    setDelegate: (token) => {
-      state = { ...state, delegate: token };
-      notifyAndPersist();
-    },
-
-    setAccess: (token) => {
-      state = { ...state, access: token };
+    setRootDelegate: (delegate) => {
+      state = { ...state, rootDelegate: delegate };
       notifyAndPersist();
     },
 
