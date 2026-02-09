@@ -301,8 +301,8 @@ Access Token 是 **所有 API 的统一访问凭证**——不仅用于数据操
 | 0 | `is_refresh` | 1=Refresh Token, 0=Access Token |
 | 1 | `can_upload` | 上传权限 |
 | 2 | `can_manage_depot` | Depot 管理权限 |
-| 3–6 | `depth` | delegate 深度 (0–15) |
-| 7 | reserved | 保留 |
+| 3 | reserved | 保留 |
+| 4–7 | `depth` | delegate 深度 (0–15)，高半字节对齐 |
 
 > **注意**：Token 中不包含 `is_root` 标志。Root delegate 的判断由服务端查询 delegate 记录决定（`depth == 0 && parentId == null`），不依赖 Token 中的任何标志位。这避免了客户端伪造 `is_root` 标志的安全风险。
 
@@ -317,6 +317,8 @@ Access Token 是 **所有 API 的统一访问凭证**——不仅用于数据操
 | 子 delegate AT（可上传，可管理 depot，depth=2） | 0 | 1 | 1 | 0010 | `0b_0010_0110` | `0x26` |
 | 子 delegate AT（只读，depth=1） | 0 | 0 | 0 | 0001 | `0b_0001_0000` | `0x10` |
 | 工具 AT（可上传，无 depot，depth=3） | 0 | 1 | 0 | 0011 | `0b_0011_0010` | `0x32` |
+
+> **半字节对齐**：低半字节 (bits 0–3) 是类型与权限标志，高半字节 (bits 4–7) 是 depth。`Flags & 0x0F` 取权限，`Flags >> 4` 取 depth。
 
 #### Issuer 字段编码
 
@@ -370,12 +372,13 @@ function encodeToken(fields: TokenFields): Uint8Array {
   // Magic (4B)
   view.setUint32(0, MAGIC);
 
-  // Flags (4B) — bit 0: is_refresh, bit 1: can_upload, bit 2: can_manage_depot, bits 3-6: depth
+  // Flags (4B) — low nibble: bit 0 is_refresh, bit 1 can_upload, bit 2 can_manage_depot, bit 3 reserved
+  //              high nibble: bits 4-7 depth (0–15)
   let flags = 0;
   if (fields.isRefresh)    flags |= (1 << 0);
   if (fields.canUpload)    flags |= (1 << 1);
   if (fields.canManageDepot) flags |= (1 << 2);
-  flags |= ((fields.depth & 0x0f) << 3);
+  flags |= ((fields.depth & 0x0f) << 4);
   view.setUint32(4, flags);
 
   // TTL (8B)
@@ -409,7 +412,7 @@ function decodeToken(bytes: Uint8Array): TokenFields {
     isRefresh:      (flags & (1 << 0)) !== 0,
     canUpload:      (flags & (1 << 1)) !== 0,
     canManageDepot: (flags & (1 << 2)) !== 0,
-    depth:          (flags >> 3) & 0x0f,
+    depth:          (flags >> 4) & 0x0f,
     ttl:   view.getBigUint64(8),
     quota: view.getBigUint64(16),
     salt:  view.getBigUint64(24),
