@@ -180,6 +180,7 @@ export const createTokenSelector = (config: TokenSelectorConfig): TokenSelector 
         expiresIn: getTokenTtl("access"),
         canUpload: true,
         canManageDepot: true,
+        scope: ["cas://depot:*"],
       });
 
       if (result) {
@@ -249,6 +250,7 @@ export const createTokenSelector = (config: TokenSelectorConfig): TokenSelector 
       expiresIn: getTokenTtl("delegate"),
       canUpload: true,
       canManageDepot: true,
+      scope: ["cas://depot:*"],
     });
 
     if (result) {

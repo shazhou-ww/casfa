@@ -37,18 +37,30 @@ export const createUserRolesDb = (config: UserRolesDbConfig): UserRolesDb => {
   const tableName = config.tableName;
 
   const getRole = async (userId: string): Promise<UserRole> => {
-    const result = await client.send(
-      new GetCommand({
-        TableName: tableName,
-        Key: { pk: `USER#${userId}`, sk: "ROLE" },
-      })
-    );
+    try {
+      const result = await client.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: { pk: `USER#${userId}`, sk: "ROLE" },
+        })
+      );
 
-    if (!result.Item) {
-      return "unauthorized";
+      if (!result.Item) {
+        return "unauthorized";
+      }
+
+      return result.Item.role as UserRole;
+    } catch (err: unknown) {
+      // If the DynamoDB table doesn't exist yet, treat as no role found
+      if (
+        err instanceof Error &&
+        err.name === "ResourceNotFoundException"
+      ) {
+        console.warn(`[user-roles] DynamoDB table "${tableName}" not found, returning "unauthorized" for ${userId}`);
+        return "unauthorized";
+      }
+      throw err;
     }
-
-    return result.Item.role as UserRole;
   };
 
   const setRole = async (userId: string, role: UserRole): Promise<void> => {

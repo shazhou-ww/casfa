@@ -32,6 +32,7 @@ import { zValidator } from "@hono/zod-validator";
 import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { serveStatic } from "hono/bun";
 import { ZodError } from "zod";
 import type { AdminController } from "./controllers/admin.ts";
 import type { ChunksController } from "./controllers/chunks.ts";
@@ -70,6 +71,7 @@ export type RouterDeps = {
 
   // Middleware
   jwtAuthMiddleware: MiddlewareHandler<Env>;
+  authorizedUserMiddleware: MiddlewareHandler<Env>;
   delegateTokenMiddleware: MiddlewareHandler<Env>;
   accessTokenMiddleware: MiddlewareHandler<Env>;
   realmAccessMiddleware: MiddlewareHandler<Env>;
@@ -172,7 +174,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   // MCP Route
   // ============================================================================
 
-  app.post("/api/mcp", deps.jwtAuthMiddleware, deps.mcp.handle);
+  app.post("/api/mcp", deps.jwtAuthMiddleware, deps.authorizedUserMiddleware, deps.mcp.handle);
 
   // ============================================================================
   // Delegate Token Routes
@@ -184,18 +186,19 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   tokensRouter.post(
     "/",
     deps.jwtAuthMiddleware,
+    deps.authorizedUserMiddleware,
     zValidator("json", CreateDelegateTokenSchema),
     deps.tokens.create
   );
 
   // List tokens (JWT auth)
-  tokensRouter.get("/", deps.jwtAuthMiddleware, deps.tokens.list);
+  tokensRouter.get("/", deps.jwtAuthMiddleware, deps.authorizedUserMiddleware, deps.tokens.list);
 
   // Get specific token
-  tokensRouter.get("/:tokenId", deps.jwtAuthMiddleware, deps.tokens.get);
+  tokensRouter.get("/:tokenId", deps.jwtAuthMiddleware, deps.authorizedUserMiddleware, deps.tokens.get);
 
   // Revoke token (JWT auth)
-  tokensRouter.post("/:tokenId/revoke", deps.jwtAuthMiddleware, deps.tokens.revoke);
+  tokensRouter.post("/:tokenId/revoke", deps.jwtAuthMiddleware, deps.authorizedUserMiddleware, deps.tokens.revoke);
 
   // Re-delegate a token (requires delegate token auth)
   tokensRouter.post(
@@ -224,21 +227,22 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   tokenRequestsRouter.get("/:requestId/poll", deps.tokenRequests.poll);
 
   // User views pending requests (JWT auth required)
-  tokenRequestsRouter.get("/", deps.jwtAuthMiddleware, deps.tokenRequests.list);
+  tokenRequestsRouter.get("/", deps.jwtAuthMiddleware, deps.authorizedUserMiddleware, deps.tokenRequests.list);
 
   // User gets specific request details (JWT auth required)
-  tokenRequestsRouter.get("/:requestId", deps.jwtAuthMiddleware, deps.tokenRequests.get);
+  tokenRequestsRouter.get("/:requestId", deps.jwtAuthMiddleware, deps.authorizedUserMiddleware, deps.tokenRequests.get);
 
   // User approves request (JWT auth required)
   tokenRequestsRouter.post(
     "/:requestId/approve",
     deps.jwtAuthMiddleware,
+    deps.authorizedUserMiddleware,
     zValidator("json", ApproveTokenRequestSchema),
     deps.tokenRequests.approve
   );
 
   // User rejects request (JWT auth required)
-  tokenRequestsRouter.post("/:requestId/reject", deps.jwtAuthMiddleware, deps.tokenRequests.reject);
+  tokenRequestsRouter.post("/:requestId/reject", deps.jwtAuthMiddleware, deps.authorizedUserMiddleware, deps.tokenRequests.reject);
 
   app.route("/api/tokens/requests", tokenRequestsRouter);
 
@@ -367,6 +371,15 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   );
 
   app.route("/api/realm", realmRouter);
+
+  // ============================================================================
+  // Static File Serving (production frontend build)
+  // ============================================================================
+
+  app.use("*", serveStatic({ root: "./backend/public" }));
+
+  // SPA fallback: serve index.html for non-API routes
+  app.use("*", serveStatic({ root: "./backend/public", path: "index.html" }));
 
   // ============================================================================
   // 404 Handler

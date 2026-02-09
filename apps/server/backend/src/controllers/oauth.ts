@@ -160,8 +160,21 @@ export const createOAuthController = (deps: OAuthControllerDeps): OAuthControlle
       }
 
       try {
-        const data = JSON.parse(text);
-        return c.json(data);
+        const data = JSON.parse(text) as {
+          access_token: string;
+          id_token?: string;
+          refresh_token?: string;
+          expires_in: number;
+          token_type: string;
+        };
+        // Map Cognito OAuth2 snake_case response to camelCase
+        // (consistent with login and refresh endpoints)
+        return c.json({
+          accessToken: data.access_token,
+          idToken: data.id_token,
+          refreshToken: data.refresh_token,
+          expiresIn: data.expires_in,
+        });
       } catch {
         return c.json({ error: "Invalid token response" }, 502);
       }

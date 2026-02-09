@@ -30,6 +30,7 @@ import { createMcpController } from "./mcp/index.ts";
 import {
   createAccessTokenMiddleware,
   createAdminAccessMiddleware,
+  createAuthorizedUserMiddleware,
   createCanManageDepotMiddleware,
   createCanUploadMiddleware,
   createDelegateTokenMiddleware,
@@ -114,6 +115,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   });
   const realmAccessMiddleware = createRealmAccessMiddleware();
   const adminAccessMiddleware = createAdminAccessMiddleware();
+  const authorizedUserMiddleware = createAuthorizedUserMiddleware();
   const scopeValidationMiddleware = createScopeValidationMiddleware({
     scopeSetNodesDb,
     getNode: (realm: string, hash: string) => storage.get(hash),
@@ -216,6 +218,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     tokenRequests,
     mcp,
     jwtAuthMiddleware,
+    authorizedUserMiddleware,
     delegateTokenMiddleware,
     accessTokenMiddleware,
     realmAccessMiddleware,

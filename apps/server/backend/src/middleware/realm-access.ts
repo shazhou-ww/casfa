@@ -104,3 +104,31 @@ export const createAdminAccessMiddleware = (): MiddlewareHandler<Env> => {
     return next();
   };
 };
+
+/**
+ * Create authorized user check middleware
+ *
+ * Validates that the JWT-authenticated user has an "authorized" or "admin" role.
+ * Blocks users with "unauthorized" role — they must be approved by an admin first.
+ * Place this AFTER jwtAuthMiddleware on routes that require authorization.
+ */
+export const createAuthorizedUserMiddleware = (): MiddlewareHandler<Env> => {
+  return async (c, next) => {
+    const auth = c.get("auth");
+    if (!auth) {
+      return c.json({ error: "UNAUTHORIZED", message: "Authentication required" }, 401);
+    }
+
+    if (auth.type === "jwt" && auth.role === "unauthorized") {
+      return c.json(
+        {
+          error: "FORBIDDEN",
+          message: "Your account is pending approval. Please contact an administrator.",
+        },
+        403
+      );
+    }
+
+    return next();
+  };
+};

@@ -3,21 +3,22 @@
 /**
  * CASFA v2 Development Server CLI
  *
- * This script provides flexible configuration options for local development.
+ * This script starts both the backend API server and the frontend Vite dev server.
  *
  * Usage:
- *   bun run backend/scripts/dev.ts                     # Default: persistent DB + fs storage + mock auth
+ *   bun run backend/scripts/dev.ts                     # Default: AWS services (Cognito + S3) + frontend
  *   bun run backend/scripts/dev.ts --preset e2e        # All in-memory + mock auth (for tests)
  *   bun run backend/scripts/dev.ts --preset local      # Persistent DB + fs storage + mock auth
- *   bun run backend/scripts/dev.ts --preset dev        # Connect to AWS services
+ *   bun run backend/scripts/dev.ts --preset dev        # Connect to AWS services (default)
+ *   bun run backend/scripts/dev.ts --no-frontend       # Backend only
  *
  *   # Custom configuration:
  *   bun run backend/scripts/dev.ts --db memory --storage memory --auth mock
  *
  * Presets:
- *   e2e   - All in-memory (DynamoDB port 8701) + mock JWT, ideal for E2E tests
- *   local - Persistent DynamoDB (port 8700) + fs storage + mock JWT, for local development
- *   dev   - Connect to real AWS services (Cognito + S3), for integration testing
+ *   e2e   - All in-memory (DynamoDB port 8701) + mock JWT, no frontend
+ *   local - Persistent DynamoDB (port 8700) + fs storage + mock JWT
+ *   dev   - Connect to real AWS services (Cognito + S3) (default)
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -202,22 +203,76 @@ function buildEnvVars(config: DevConfig): Record<string, string> {
   return env;
 }
 
-function startServer(env: Record<string, string>): Promise<number> {
+function prefixOutput(proc: ReturnType<typeof spawn>, prefix: string) {
+  proc.stdout?.on("data", (data: Buffer) => {
+    for (const line of data.toString().split("\n")) {
+      if (line) console.log(`${prefix} ${line}`);
+    }
+  });
+  proc.stderr?.on("data", (data: Buffer) => {
+    for (const line of data.toString().split("\n")) {
+      if (line) console.error(`${prefix} ${line}`);
+    }
+  });
+}
+
+function startFullstack(env: Record<string, string>, noFrontend: boolean): Promise<number> {
   return new Promise((resolve) => {
-    const serverProcess = spawn("bun", ["run", "backend/server.ts"], {
+    // Start backend
+    const backendProcess = spawn("bun", ["run", "backend/server.ts"], {
       cwd: process.cwd(),
-      stdio: "inherit",
+      stdio: noFrontend ? "inherit" : ["ignore", "pipe", "pipe"],
       env,
       shell: true,
     });
 
-    serverProcess.on("close", (code) => {
+    if (!noFrontend) {
+      prefixOutput(backendProcess, "[backend]");
+    }
+
+    let frontendProcess: ReturnType<typeof spawn> | null = null;
+
+    if (!noFrontend) {
+      // Start frontend Vite dev server
+      frontendProcess = spawn("bunx", ["vite", "dev", "--config", "frontend/vite.config.ts"], {
+        cwd: process.cwd(),
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...env, FORCE_COLOR: "1" },
+        shell: true,
+      });
+
+      prefixOutput(frontendProcess, "[frontend]");
+
+      frontendProcess.on("close", (code) => {
+        console.log(`[frontend] Vite dev server exited (code ${code})`);
+        backendProcess.kill();
+      });
+
+      frontendProcess.on("error", (err) => {
+        console.error("[frontend] Failed to start Vite:", err);
+      });
+    }
+
+    backendProcess.on("close", (code) => {
+      if (!noFrontend) console.log(`[backend] Server exited (code ${code})`);
+      frontendProcess?.kill();
       resolve(code ?? 0);
     });
 
-    serverProcess.on("error", (err) => {
+    backendProcess.on("error", (err) => {
       console.error("Failed to start server:", err);
+      frontendProcess?.kill();
       resolve(1);
+    });
+
+    // Handle process exit
+    process.on("SIGINT", () => {
+      backendProcess.kill("SIGINT");
+      frontendProcess?.kill("SIGINT");
+    });
+    process.on("SIGTERM", () => {
+      backendProcess.kill("SIGTERM");
+      frontendProcess?.kill("SIGTERM");
     });
   });
 }
@@ -231,15 +286,17 @@ const program = new Command();
 program
   .name("dev")
   .description("CASFA v2 Development Server with configurable options")
-  .option("--db <type>", "DynamoDB type: memory (8701), persistent (8700), aws", "persistent")
-  .option("--storage <type>", "Storage type: memory, fs, s3", "fs")
-  .option("--auth <type>", "Auth type: mock, cognito", "mock")
+  .option("--db <type>", "DynamoDB type: memory (8701), persistent (8700), aws", "aws")
+  .option("--storage <type>", "Storage type: memory, fs, s3", "s3")
+  .option("--auth <type>", "Auth type: mock, cognito", "cognito")
   .option("--preset <name>", "Use preset configuration: e2e, local, dev")
   .option("--port <number>", "Server port", "8801")
+  .option("--no-frontend", "Skip starting the frontend Vite dev server", false)
   .option("--skip-tables", "Skip table creation/verification", false)
   .option("-y, --yes", "Auto-answer yes to all prompts (non-interactive)", false)
   .action(async (options) => {
     const autoYes = options.yes;
+    const noFrontend = options.noFrontend ?? false;
 
     // Apply preset if specified
     let config: DevConfig = {
@@ -269,6 +326,7 @@ program
     console.log(`  Storage:  ${config.storage}`);
     console.log(`  Auth:     ${config.auth}`);
     console.log(`  Port:     ${config.port}`);
+    console.log(`  Frontend: ${noFrontend ? "disabled" : "http://localhost:8901"}`);
     console.log();
 
     // If using local DynamoDB, check Docker is running first
@@ -343,12 +401,48 @@ program
       console.log();
     }
 
+    // If using AWS DynamoDB, check tables exist and create if missing
+    if (config.db === "aws" && !config.skipTableCreation) {
+      console.log("Checking AWS DynamoDB tables...");
+      try {
+        const awsClient = createClient(); // no endpoint = AWS default
+        const existingTables = await listTables(awsClient);
+        const requiredTables = ["cas-tokens", "cas-realm", "cas-refcount", "cas-usage"];
+        const missingTables = requiredTables.filter((t) => !existingTables.includes(t));
+
+        if (missingTables.length > 0) {
+          console.log(`\nMissing AWS DynamoDB tables: ${missingTables.join(", ")}`);
+          const shouldCreate =
+            autoYes || (await promptYesNo("Do you want to create them on AWS?"));
+
+          if (!shouldCreate) {
+            console.log("\nExiting. Create tables with: bun run setup:aws");
+            process.exit(1);
+          }
+
+          console.log("\nCreating AWS DynamoDB tables...");
+          await createAllTables(awsClient);
+          console.log("AWS DynamoDB tables created successfully!");
+        } else {
+          console.log("All AWS DynamoDB tables exist.");
+        }
+      } catch (err) {
+        console.warn(`\n⚠️  Could not check AWS DynamoDB tables: ${(err as Error).message}`);
+        console.warn("   Continuing anyway — ensure tables exist or run: bun run setup:aws\n");
+      }
+      console.log();
+    }
+
     // Build environment variables
     const env = buildEnvVars(config);
 
-    // Start the server
-    console.log("Starting server...\n");
-    const exitCode = await startServer(env);
+    // Start backend (and optionally frontend)
+    if (noFrontend) {
+      console.log("Starting backend server...\n");
+    } else {
+      console.log("Starting backend + frontend...\n");
+    }
+    const exitCode = await startFullstack(env, noFrontend);
     process.exit(exitCode);
   });
 
