@@ -1,5 +1,10 @@
 /**
  * Delegate Token type definitions
+ *
+ * v2: Delegate-as-entity model
+ * - isDelegate/isUserIssued → isRefresh (bit 0)
+ * - Issuer = Delegate UUID (16B left-padded to 32B)
+ * - depth in high nibble (bits 4-7)
  */
 
 /**
@@ -10,17 +15,22 @@ export type HashFunction = (data: Uint8Array) => Uint8Array | Promise<Uint8Array
 
 /**
  * Delegate Token flags
+ *
+ * Low nibble (bits 0-3): type + permissions
+ *   bit 0: isRefresh
+ *   bit 1: canUpload
+ *   bit 2: canManageDepot
+ *   bit 3: reserved
+ * High nibble (bits 4-7): depth (0-15)
  */
 export type DelegateTokenFlags = {
-  /** Is this a delegation token (can delegate) or access token (can access data) */
-  isDelegate: boolean;
-  /** Was this token issued directly by user (true) or delegated from another token (false) */
-  isUserIssued: boolean;
+  /** Is this a Refresh Token (true) or Access Token (false) */
+  isRefresh: boolean;
   /** Can upload new nodes */
   canUpload: boolean;
   /** Can manage depots (create, delete, commit) */
   canManageDepot: boolean;
-  /** Delegation depth (0 = user issued, 1-15 = delegation level) */
+  /** Delegation depth (0 = root delegate, 1-15 = child delegate level) */
   depth: number;
 };
 
@@ -30,17 +40,17 @@ export type DelegateTokenFlags = {
 export type DelegateToken = {
   /** Token flags */
   flags: DelegateTokenFlags;
-  /** Expiration timestamp (Unix epoch milliseconds) */
+  /** Expiration timestamp (Unix epoch milliseconds). 0 for Refresh Token (never expires) */
   ttl: number;
   /** Write quota in bytes (0 = unlimited, reserved for future use) */
   quota: number;
   /** Random salt (8 bytes) */
   salt: Uint8Array;
-  /** Issuer ID - user hash (32 bytes) or parent token ID (16 bytes, left-padded to 32) */
+  /** Delegate ID — UUID v7 (16 bytes) left-padded to 32 bytes */
   issuer: Uint8Array;
   /** Realm ID hash (32 bytes) */
   realm: Uint8Array;
-  /** Scope hash - set-node hash (16 bytes, left-padded to 32) */
+  /** Scope hash — left-padded to 32 bytes (all zeros for root, 16B CAS key for single/set-node) */
   scope: Uint8Array;
 };
 
@@ -48,9 +58,9 @@ export type DelegateToken = {
  * Input for encoding a new Delegate Token
  */
 export type DelegateTokenInput = {
-  /** Token type */
-  type: "delegate" | "access";
-  /** Expiration timestamp (Unix epoch milliseconds) */
+  /** Token type: "refresh" or "access" */
+  type: "refresh" | "access";
+  /** Expiration timestamp (Unix epoch milliseconds). Use 0 for Refresh Tokens */
   ttl: number;
   /** Can upload new nodes (default: false) */
   canUpload?: boolean;
@@ -58,16 +68,14 @@ export type DelegateTokenInput = {
   canManageDepot?: boolean;
   /** Write quota in bytes (default: 0 = unlimited, reserved) */
   quota?: number;
-  /** Issuer ID (32 bytes) - user hash or parent token ID (left-padded) */
+  /** Delegate ID — UUID v7 (16 bytes) left-padded to 32 bytes */
   issuer: Uint8Array;
   /** Realm ID hash (32 bytes) */
   realm: Uint8Array;
-  /** Scope hash (32 bytes) - set-node hash (left-padded) */
+  /** Scope hash (32 bytes) — left-padded (all zeros for root) */
   scope: Uint8Array;
-  /** Was this token issued by user directly */
-  isUserIssued: boolean;
-  /** Parent token depth (for delegation, used to calculate new depth) */
-  parentDepth?: number;
+  /** Delegation depth (0 = root delegate, 1-15 = child delegate level) */
+  depth: number;
 };
 
 /**

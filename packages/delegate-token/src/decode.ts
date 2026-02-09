@@ -1,5 +1,9 @@
 /**
  * Delegate Token decoding
+ *
+ * v2: Delegate-as-entity model
+ * Flags low nibble: is_refresh(0), can_upload(1), can_manage_depot(2), reserved(3)
+ * Flags high nibble: depth(4-7)
  */
 
 import { DELEGATE_TOKEN_SIZE, FLAGS, MAGIC_NUMBER, OFFSETS, SIZES } from "./constants.ts";
@@ -7,11 +11,17 @@ import type { DelegateToken, DelegateTokenFlags } from "./types.ts";
 
 /**
  * Decode flags from u32 value
+ *
+ * Low nibble: type + permissions
+ *   bit 0: isRefresh
+ *   bit 1: canUpload
+ *   bit 2: canManageDepot
+ *   bit 3: reserved
+ * High nibble: depth
  */
 function decodeFlags(flagsValue: number): DelegateTokenFlags {
   return {
-    isDelegate: (flagsValue & (1 << FLAGS.IS_DELEGATE)) !== 0,
-    isUserIssued: (flagsValue & (1 << FLAGS.IS_USER_ISSUED)) !== 0,
+    isRefresh: (flagsValue & (1 << FLAGS.IS_REFRESH)) !== 0,
     canUpload: (flagsValue & (1 << FLAGS.CAN_UPLOAD)) !== 0,
     canManageDepot: (flagsValue & (1 << FLAGS.CAN_MANAGE_DEPOT)) !== 0,
     depth: (flagsValue >> FLAGS.DEPTH_SHIFT) & FLAGS.DEPTH_MASK,

@@ -1,5 +1,14 @@
 /**
  * Delegate Token constants
+ *
+ * Binary format: 128 bytes
+ * Flags layout (low byte of u32 LE):
+ *   Low nibble  (bits 0-3): type + permissions
+ *     bit 0: is_refresh  (1 = Refresh Token, 0 = Access Token)
+ *     bit 1: can_upload
+ *     bit 2: can_manage_depot
+ *     bit 3: reserved
+ *   High nibble (bits 4-7): depth (0-15)
  */
 
 /**
@@ -20,26 +29,35 @@ export const MAGIC_NUMBER = 0x01544c44;
 export const TOKEN_ID_PREFIX = "dlt1_";
 
 /**
- * Maximum delegation depth (0-15)
+ * Maximum delegation depth (0-15, stored in high nibble)
  */
 export const MAX_DEPTH = 15;
 
 /**
  * Flags bit positions and masks
+ *
+ * Low nibble: type + permissions
+ *   bit 0: is_refresh
+ *   bit 1: can_upload
+ *   bit 2: can_manage_depot
+ *   bit 3: reserved
+ * High nibble: depth (0-15)
  */
 export const FLAGS = {
-  /** Bit 0: Is this a delegation token (1) or access token (0) */
-  IS_DELEGATE: 0,
-  /** Bit 1: Was this token issued by user (1) or delegated (0) */
-  IS_USER_ISSUED: 1,
-  /** Bit 2: Can upload nodes */
-  CAN_UPLOAD: 2,
-  /** Bit 3: Can manage depots */
-  CAN_MANAGE_DEPOT: 3,
-  /** Bits 4-7: Delegation depth (shifted) */
+  /** Bit 0: Is this a Refresh Token (1) or Access Token (0) */
+  IS_REFRESH: 0,
+  /** Bit 1: Can upload nodes */
+  CAN_UPLOAD: 1,
+  /** Bit 2: Can manage depots */
+  CAN_MANAGE_DEPOT: 2,
+  /** Bit 3: Reserved */
+  RESERVED: 3,
+  /** Bits 4-7: Delegation depth (high nibble) */
   DEPTH_SHIFT: 4,
-  /** Mask for depth bits */
+  /** Mask for depth bits (after shifting) */
   DEPTH_MASK: 0x0f,
+  /** Mask for low nibble (type + permissions) */
+  PERM_MASK: 0x0f,
 } as const;
 
 /**
