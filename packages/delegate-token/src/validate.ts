@@ -1,5 +1,10 @@
 /**
  * Delegate Token validation
+ *
+ * v2: Delegate-as-entity model
+ * - Refresh Token: ttl must be 0 (never expires on its own)
+ * - Access Token: ttl must be > now
+ * - depth: 0-15
  */
 
 import { DELEGATE_TOKEN_SIZE, MAGIC_NUMBER, MAX_DEPTH, OFFSETS } from "./constants.ts";
@@ -13,13 +18,24 @@ import type { DelegateToken, ValidationResult } from "./types.ts";
  * @returns Validation result
  */
 export function validateToken(token: DelegateToken, now: number = Date.now()): ValidationResult {
-  // Check expiration
-  if (token.ttl <= now) {
+  // Refresh Token: ttl must be 0
+  if (token.flags.isRefresh && token.ttl !== 0) {
     return {
       valid: false,
-      error: "expired",
-      message: `Token expired at ${new Date(token.ttl).toISOString()}`,
+      error: "invalid_flags",
+      message: `Refresh Token must have ttl=0, got ${token.ttl}`,
     };
+  }
+
+  // Access Token: check expiration
+  if (!token.flags.isRefresh) {
+    if (token.ttl <= now) {
+      return {
+        valid: false,
+        error: "expired",
+        message: `Token expired at ${new Date(token.ttl).toISOString()}`,
+      };
+    }
   }
 
   // Check depth
@@ -28,25 +44,6 @@ export function validateToken(token: DelegateToken, now: number = Date.now()): V
       valid: false,
       error: "depth_exceeded",
       message: `Token depth ${token.flags.depth} exceeds maximum ${MAX_DEPTH}`,
-    };
-  }
-
-  // Check flags consistency
-  // User-issued tokens should have depth 0
-  if (token.flags.isUserIssued && token.flags.depth !== 0) {
-    return {
-      valid: false,
-      error: "invalid_flags",
-      message: `User-issued token should have depth 0, got ${token.flags.depth}`,
-    };
-  }
-
-  // Delegated tokens should have depth > 0
-  if (!token.flags.isUserIssued && token.flags.depth === 0) {
-    return {
-      valid: false,
-      error: "invalid_flags",
-      message: "Delegated token should have depth > 0",
     };
   }
 

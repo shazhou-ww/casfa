@@ -1,5 +1,9 @@
 /**
  * Delegate Token encoding
+ *
+ * v2: Delegate-as-entity model
+ * Flags low nibble: is_refresh(0), can_upload(1), can_manage_depot(2), reserved(3)
+ * Flags high nibble: depth(4-7)
  */
 
 import {
@@ -50,10 +54,9 @@ export function encodeDelegateToken(input: DelegateTokenInput): Uint8Array {
     );
   }
 
-  // Calculate depth
-  const depth = input.isUserIssued ? 0 : (input.parentDepth ?? 0) + 1;
-  if (depth > MAX_DEPTH) {
-    throw new Error(`Maximum token delegation depth exceeded: ${depth} > ${MAX_DEPTH}`);
+  // Validate depth
+  if (input.depth < 0 || input.depth > MAX_DEPTH) {
+    throw new Error(`Delegation depth out of range: ${input.depth} (must be 0-${MAX_DEPTH})`);
   }
 
   // Allocate buffer
@@ -64,12 +67,11 @@ export function encodeDelegateToken(input: DelegateTokenInput): Uint8Array {
   view.setUint32(OFFSETS.MAGIC, MAGIC_NUMBER, true);
 
   // Build and write flags (u32 LE)
+  // Low nibble: bit 0 is_refresh, bit 1 can_upload, bit 2 can_manage_depot, bit 3 reserved
+  // High nibble: bits 4-7 depth
   let flags = 0;
-  if (input.type === "delegate") {
-    flags |= 1 << FLAGS.IS_DELEGATE;
-  }
-  if (input.isUserIssued) {
-    flags |= 1 << FLAGS.IS_USER_ISSUED;
+  if (input.type === "refresh") {
+    flags |= 1 << FLAGS.IS_REFRESH;
   }
   if (input.canUpload) {
     flags |= 1 << FLAGS.CAN_UPLOAD;
@@ -77,10 +79,10 @@ export function encodeDelegateToken(input: DelegateTokenInput): Uint8Array {
   if (input.canManageDepot) {
     flags |= 1 << FLAGS.CAN_MANAGE_DEPOT;
   }
-  flags |= (depth & FLAGS.DEPTH_MASK) << FLAGS.DEPTH_SHIFT;
+  flags |= (input.depth & FLAGS.DEPTH_MASK) << FLAGS.DEPTH_SHIFT;
   view.setUint32(OFFSETS.FLAGS, flags, true);
 
-  // Write TTL (u64 LE)
+  // Write TTL (u64 LE) — 0 for Refresh Tokens
   view.setBigUint64(OFFSETS.TTL, BigInt(input.ttl), true);
 
   // Write quota (u64 LE, reserved - default 0)
@@ -90,7 +92,7 @@ export function encodeDelegateToken(input: DelegateTokenInput): Uint8Array {
   const salt = generateSalt();
   buffer.set(salt, OFFSETS.SALT);
 
-  // Write issuer (32 bytes)
+  // Write issuer (32 bytes) — Delegate UUID left-padded
   buffer.set(input.issuer, OFFSETS.ISSUER);
 
   // Write realm (32 bytes)
