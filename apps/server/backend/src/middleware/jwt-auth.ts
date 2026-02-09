@@ -66,11 +66,6 @@ export const createJwtAuthMiddleware = (deps: JwtAuthMiddlewareDeps): Middleware
       // Get user role
       const role = await userRolesDb.getRole(userId);
 
-      // Check if user is unauthorized
-      if (role === "unauthorized") {
-        return c.json({ error: "FORBIDDEN", message: "User is unauthorized" }, 403);
-      }
-
       const auth: JwtAuthContext = {
         type: "jwt",
         userId,

@@ -51,15 +51,21 @@ const realmTable = process.env.CAS_REALM_TABLE ?? "cas-realm";
 const refCountTable = process.env.CAS_REFCOUNT_TABLE ?? "cas-refcount";
 const usageTable = process.env.CAS_USAGE_TABLE ?? "cas-usage";
 
-// Create a DynamoDB client for a specific endpoint
-export function createClient(endpoint: string): DynamoDBClient {
+// Create a DynamoDB client for a specific endpoint (local) or AWS default
+export function createClient(endpoint?: string): DynamoDBClient {
+  if (endpoint) {
+    return new DynamoDBClient({
+      region: process.env.AWS_REGION ?? process.env.COGNITO_REGION ?? "us-east-1",
+      endpoint,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "local",
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "local",
+      },
+    });
+  }
+  // AWS default — uses ~/.aws/credentials or IAM role
   return new DynamoDBClient({
-    region: process.env.AWS_REGION ?? "us-east-1",
-    endpoint,
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "local",
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "local",
-    },
+    region: process.env.AWS_REGION ?? process.env.COGNITO_REGION ?? "us-east-1",
   });
 }
 

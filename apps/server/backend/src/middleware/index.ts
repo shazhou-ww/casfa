@@ -44,6 +44,7 @@ export { createCanManageDepotMiddleware, createCanUploadMiddleware } from "./per
 // Realm Access
 export {
   createAdminAccessMiddleware,
+  createAuthorizedUserMiddleware,
   createRealmAccessMiddleware,
   createWriteAccessMiddleware,
 } from "./realm-access.ts";
