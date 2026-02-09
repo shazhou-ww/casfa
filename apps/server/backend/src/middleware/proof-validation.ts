@@ -145,7 +145,7 @@ export function createProofValidationMiddleware(
     }
 
     // Store for downstream handlers
-    c.set("proofVerification" as never, {
+    c.set("proofVerification", {
       proofMap,
       delegateId,
     } satisfies ProofVerificationState);
@@ -221,7 +221,7 @@ export function createMultiNodeProofMiddleware(
       return toErrorResponse(c, result);
     }
 
-    c.set("proofVerification" as never, {
+    c.set("proofVerification", {
       proofMap,
       delegateId,
     } satisfies ProofVerificationState);
@@ -245,15 +245,15 @@ function buildContext(
   return {
     hasOwnership: deps.hasOwnership,
     isRootDelegate: deps.isRootDelegate,
-    getScopeRoots: async (delegateId) => {
+    getScopeRoots: async (delegateId: string) => {
       // Fast-path: if scope info is on the auth record itself
       const rec = auth.tokenRecord;
       if (rec.scopeNodeHash) return [rec.scopeNodeHash];
       // Otherwise, delegate to the provider
       return deps.getScopeRoots(delegateId);
     },
-    resolveNode: (hash) => deps.resolveNode(realm, hash),
-    resolveDepotVersion: (depotId, version) =>
+    resolveNode: (hash: string) => deps.resolveNode(realm, hash),
+    resolveDepotVersion: (depotId: string, version: string) =>
       deps.resolveDepotVersion(realm, depotId, version),
     hasDepotAccess: deps.hasDepotAccess,
   };

@@ -265,11 +265,11 @@ describe("generateTokenPair", () => {
 
     // RT base64 roundtrip
     const rtDecoded = Buffer.from(pair.refreshToken.base64, "base64");
-    expect(new Uint8Array(rtDecoded)).toEqual(pair.refreshToken.bytes);
+    expect(new Uint8Array(rtDecoded.buffer, rtDecoded.byteOffset, rtDecoded.byteLength)).toEqual(pair.refreshToken.bytes);
 
     // AT base64 roundtrip
     const atDecoded = Buffer.from(pair.accessToken.base64, "base64");
-    expect(new Uint8Array(atDecoded)).toEqual(pair.accessToken.bytes);
+    expect(new Uint8Array(atDecoded.buffer, atDecoded.byteOffset, atDecoded.byteLength)).toEqual(pair.accessToken.bytes);
   });
 
   it("default AT TTL is ~1 hour", async () => {

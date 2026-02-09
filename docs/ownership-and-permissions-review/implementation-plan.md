@@ -311,14 +311,16 @@ interface TokenRecord {
 
 ### 4.5 验证标准
 
-- [ ] E2E: JWT → `/api/tokens/root` → 返回 root delegate + RT + AT
-- [ ] E2E: RT → `/api/tokens/refresh` → 返回新 RT + AT；旧 RT 再用 → 409
-- [ ] E2E: AT → `POST /delegates` → 创建子 delegate；权限 > 父 → 400
-- [ ] E2E: AT → `GET /delegates` → 列出子孙（不含旁支）
-- [ ] E2E: AT → `POST /delegates/{id}/revoke` → revoke 后子孙 chain 失效
-- [ ] E2E: delegatedDepots 超范围 → 400 PERMISSION_ESCALATION
-- [ ] 单元测试: RT rotation conflict → invalidate token family
-- [ ] 集成测试: Redis 缓存命中/未命中路径、Redis 不可用 fallback
+> Commit `206a922` — 82 tests, 160+ assertions (root-token 24, refresh 29, delegates 20, delegate-token-utils 9)
+
+- [x] E2E: JWT → `/api/tokens/root` → 返回 root delegate + RT + AT
+- [x] E2E: RT → `/api/tokens/refresh` → 返回新 RT + AT；旧 RT 再用 → 409
+- [x] E2E: AT → `POST /delegates` → 创建子 delegate；权限 > 父 → 400
+- [x] E2E: AT → `GET /delegates` → 列出子孙（不含旁支）
+- [x] E2E: AT → `POST /delegates/{id}/revoke` → revoke 后子孙 chain 失效
+- [x] E2E: delegatedDepots 超范围 → 400 PERMISSION_ESCALATION
+- [x] 单元测试: RT rotation conflict → invalidate token family
+- [ ] 集成测试: Redis 缓存命中/未命中路径、Redis 不可用 fallback *(deferred to Step 6)*
 
 ---
 

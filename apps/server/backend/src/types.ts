@@ -231,6 +231,10 @@ export type Env = {
   Variables: {
     auth: AuthContext;
     scopeVerification?: ScopeVerificationResult;
+    proofVerification?: {
+      proofMap: Record<string, string>;
+      delegateId: string;
+    };
   };
 };
 
