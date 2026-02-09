@@ -53,3 +53,11 @@ export {
   createScopeValidationMiddleware,
   type ScopeValidationMiddlewareDeps,
 } from "./scope-validation.ts";
+
+// Proof Validation (X-CAS-Proof — replaces scope validation)
+export {
+  createMultiNodeProofMiddleware,
+  createProofValidationMiddleware,
+  type ProofValidationMiddlewareDeps,
+  type ProofVerificationState,
+} from "./proof-validation.ts";
