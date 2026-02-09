@@ -205,3 +205,80 @@ v1.0 没有 Claim 概念，unowned 节点只能重传。v3.1 引入了 Proof-of-
 12. ✅ **D3** — 迁移方案 → 不适用，本文档只讨论目标架构
 
 仅剩余 D5（Quota 机制）作为保留项，待后续启用时再定义。架构设计已可作为实现基线。**
+
+---
+
+## 7. 第二轮评审（v3.4）
+
+> 评审日期: 2026-02-09
+> 评审对象: `ownership-and-permissions.md` v3.4（第一轮评审所有 P0/P1/P2 已解决后的版本）
+> 评审重点: 内部一致性、边界情况、实现可行性、安全遗漏
+
+### 7.1 发现的问题
+
+#### R2-1. 🟡 §2.6 字段名残留 `managedDepots`（已修复）
+
+**位置**：§2.6 Delegate 数据模型
+
+DynamoDB 字段定义中使用了 `managedDepots`，但文档其余部分均已改为 `delegatedDepots`。
+
+**状态**：✅ 已在本轮评审中直接修复。
+
+#### R2-2. ✅ ~~Scope 字段编码逻辑不必要的双重哈希~~ → 已解决
+
+**位置**：§3.4 Scope 字段编码
+
+**解决方案**：单 Scope 直接存储 `scope_root_hash`（16B CAS key）left-padded to 32B；多 Scope 存储 set-node 的 CAS key（16B）left-padded to 32B。set-node 是存储在 CAS 中的普通节点，其 key 就是内容的 blake3_128 hash，无需再次哈希。已更新到文档 §3.4。
+
+#### R2-3. ✅ ~~`delegatedDepots` 创建时缺少验证规则~~ → 已解决
+
+**位置**：§2.3, §3.6
+
+**解决方案**：补充了验证规则——`delegatedDepots` 中的每个 Depot ID 必须在父 delegate 的可管理范围内（自建 + 子孙创建 + 父的 `delegatedDepots`），否则拒绝创建（400 `PERMISSION_ESCALATION`）。确保权限不能通过该字段逃逸。已更新到文档 §2.3。
+
+#### R2-4. ✅ ~~Token Rotation 检测泄露后的响应策略未定义~~ → 已解决
+
+**位置**：§3.2
+
+**解决方案**：补充了 rotation 冲突处理策略——检测到 RT 重复使用时，立即 invalidate 该 delegate 的整个 token family（所有 RT + AT），迫使合法持有者通过父 delegate 重新获取新凭证。符合 RFC 6819 最佳实践。已更新到文档 §3.2。
+
+#### R2-5. ✅ ~~`POST /api/tokens/root` 每次调用都发新 Token 的安全风险~~ → 已解决
+
+**位置**：§3.7
+
+**解决方案**：Root Token 无需 Rotation。Root delegate 的 token 由 JWT 登录驱动，每次登录自动签发新的 RT + AT。安全性依赖 JWT 本身的有效期和 OAuth 提供方的安全机制，而非 token rotation。已更新到文档 §3.7。
+
+#### R2-6. ✅ ~~Node 读取需要 Proof 的实际可用性~~ → 已解决
+
+**位置**：§5.5.1, §7.2
+
+**解决方案**：在 §5.5.1 中补充了分层说明：`GET /nodes/:key` 是底层 CAS API，面向知道精确 node hash 和 index-path 的调用方。应用层通常通过 FS API 或 Depot API 访问数据，这些高层 API 通过 Depot 管理权限隐式授权，无需客户端自行构造 proof。已更新到文档 §5.5.1。
+
+#### R2-7. 🟢 Claim API TODO 残留 → 保留
+
+**位置**：§6.5 末尾
+
+有意保留的 TODO，后续迭代定义。PoP 验证需要读全量内容，频率限制是必要的。
+
+#### R2-8. 🟢 Batch Claim 未定义 → 暂不需要
+
+`prepare-nodes` 可能返回多个 `unowned` 节点，但 Claim API 是单节点的。暂不需要 batch claim，后续根据实际性能需求再考虑。
+
+### 7.2 汇总
+
+| 编号 | 级别 | 问题 | 建议 | 位置 |
+|------|------|------|------|------|
+| R2-1 | ✅ 已修复 | §2.6 `managedDepots` 字段名残留 | 已改为 `delegatedDepots` | §2.6 |
+| R2-2 | ✅ 已解决 | Scope 字段双重哈希 | 单 scope 直接存 hash，多 scope 存 set-node CAS key | §3.4 |
+| R2-3 | ✅ 已解决 | `delegatedDepots` 缺少创建时验证规则 | 必须在父的可管理范围内 | §2.3 |
+| R2-4 | ✅ 已解决 | RT Rotation 冲突后的服务端响应未定义 | invalidate token family | §3.2 |
+| R2-5 | ✅ 已解决 | Root Token 端点无 rotation 保护 | 无需 rotation，JWT 登录驱动 | §3.7 |
+| R2-6 | ✅ 已解决 | Node 读取需 proof 的可用性 | 补充底层 CAS API vs 应用层 API 分层说明 | §5.5.1 |
+| R2-7 | 🟢 保留 | Claim API 频率限制 TODO | 后续迭代定义 | §6.5 |
+| R2-8 | 🟢 暂不需要 | 无 Batch Claim | 后续根据性能需求再考虑 | §6 |
+
+### 7.3 第二轮评审结论
+
+**v3.5 整体质量优秀**。第二轮发现的 6 个问题已全部解决（R2-1 – R2-6），仅保留 R2-7（Claim 频率限制）和 R2-8（Batch Claim）作为后续优化项。
+
+**无阻塞性问题。文档可作为实现基线。**
