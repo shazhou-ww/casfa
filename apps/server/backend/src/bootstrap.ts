@@ -11,6 +11,7 @@ import {
   createDelegateTokensDb,
   createDepotsDb,
   createOwnershipDb,
+  createOwnershipV2Db,
   createRefCountDb,
   createScopeSetNodesDb,
   createTicketsDb,
@@ -23,6 +24,7 @@ import {
   type DelegateTokensDb,
   type DepotsDb,
   type OwnershipDb,
+  type OwnershipV2Db,
   type RefCountDb,
   type ScopeSetNodesDb,
   type TicketsDb,
@@ -47,6 +49,7 @@ export type DbInstances = {
   tokenRequestsDb: TokenRequestsDb;
   tokenAuditDb: TokenAuditDb;
   ownershipDb: OwnershipDb;
+  ownershipV2Db: OwnershipV2Db;
   depotsDb: DepotsDb;
   refCountDb: RefCountDb;
   usageDb: UsageDb;
@@ -70,6 +73,7 @@ export const createDbInstances = (config: AppConfig): DbInstances => ({
   tokenRequestsDb: createTokenRequestsDb({ tableName: config.db.tokensTable }),
   tokenAuditDb: createTokenAuditDb({ tableName: config.db.tokensTable }),
   ownershipDb: createOwnershipDb({ tableName: config.db.casRealmTable }),
+  ownershipV2Db: createOwnershipV2Db({ tableName: config.db.tokensTable }),
   depotsDb: createDepotsDb({ tableName: config.db.casRealmTable }),
   refCountDb: createRefCountDb({ tableName: config.db.refCountTable }),
   usageDb: createUsageDb({ tableName: config.db.usageTable }),

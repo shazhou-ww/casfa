@@ -47,3 +47,7 @@ export {
   formatProofWord,
   ipath,
 } from "./format.ts";
+
+// Proof-of-Possession (PoP)
+export type { PopContext } from "./pop.ts";
+export { computePoP, isPopString, verifyPoP } from "./pop.ts";

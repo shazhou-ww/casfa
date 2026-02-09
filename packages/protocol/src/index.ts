@@ -175,6 +175,13 @@ export {
 } from "./delegate.ts";
 
 // ============================================================================
+// Claim schemas
+// ============================================================================
+
+export type { ClaimNodeRequest, ClaimNodeResponse } from "./claim.ts";
+export { ClaimNodeRequestSchema, ClaimNodeResponseSchema } from "./claim.ts";
+
+// ============================================================================
 // Depot schemas
 // ============================================================================
 
