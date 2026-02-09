@@ -1,4 +1,6 @@
 /**
+ * @deprecated Use proof-validation.ts (X-CAS-Proof) instead.
+ *
  * Scope Validation Middleware
  *
  * Validates that requested nodes are within the token's scope.
