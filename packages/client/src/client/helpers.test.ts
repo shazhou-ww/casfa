@@ -4,12 +4,11 @@
 
 import { describe, expect, it, mock } from "bun:test";
 import type { FetchResult } from "../types/client.ts";
-import type { StoredAccessToken, StoredDelegateToken, StoredUserToken } from "../types/tokens.ts";
+import type { StoredAccessToken, StoredUserToken } from "../types/tokens.ts";
 import {
   ERRORS,
   type TokenGetter,
   withAccessToken,
-  withDelegateToken,
   withToken,
   withUserToken,
 } from "./helpers.ts";
@@ -25,21 +24,9 @@ const createUserToken = (): StoredUserToken => ({
   expiresAt: Date.now() + 3600_000,
 });
 
-const createDelegateToken = (): StoredDelegateToken => ({
-  tokenId: "dlt1_delegate123",
-  tokenBase64: "base64-delegate-token",
-  type: "delegate",
-  issuerId: "usr_test123",
-  expiresAt: Date.now() + 3600_000,
-  canUpload: true,
-  canManageDepot: true,
-});
-
 const createAccessToken = (): StoredAccessToken => ({
-  tokenId: "dlt1_access123",
+  tokenId: "at_access123",
   tokenBase64: "base64-access-token",
-  type: "access",
-  issuerId: "usr_test123",
   expiresAt: Date.now() + 3600_000,
   canUpload: true,
   canManageDepot: true,
@@ -54,13 +41,6 @@ describe("ERRORS", () => {
     expect(ERRORS.USER_REQUIRED).toEqual({
       code: "UNAUTHORIZED",
       message: "User login required",
-    });
-  });
-
-  it("should have DELEGATE_REQUIRED error", () => {
-    expect(ERRORS.DELEGATE_REQUIRED).toEqual({
-      code: "FORBIDDEN",
-      message: "Delegate token required",
     });
   });
 
@@ -85,7 +65,7 @@ describe("withToken", () => {
         ok: true,
         data: `received-${t.id}`,
         status: 200,
-      })
+      }),
     );
 
     const wrapped = withToken(getToken, { code: "ERROR", message: "Error" });
@@ -105,7 +85,7 @@ describe("withToken", () => {
         ok: true,
         data: "should not reach",
         status: 200,
-      })
+      }),
     );
     const error = { code: "MISSING_TOKEN", message: "Token is required" };
 
@@ -127,7 +107,7 @@ describe("withToken", () => {
         ok: true,
         data: 42,
         status: 200,
-      })
+      }),
     );
 
     const wrapped = withToken(getToken, { code: "ERROR", message: "Error" });
@@ -147,7 +127,7 @@ describe("withToken", () => {
       async (): Promise<FetchResult<number>> => ({
         ok: false,
         error: fnError,
-      })
+      }),
     );
 
     const wrapped = withToken(getToken, { code: "ERROR", message: "Error" });
@@ -173,7 +153,7 @@ describe("withUserToken", () => {
         ok: true,
         data: token.userId,
         status: 200,
-      })
+      }),
     );
 
     const wrapped = withUserToken(getToken);
@@ -193,7 +173,7 @@ describe("withUserToken", () => {
         ok: true,
         data: "should not reach",
         status: 200,
-      })
+      }),
     );
 
     const wrapped = withUserToken(getToken);
@@ -203,53 +183,6 @@ describe("withUserToken", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toEqual(ERRORS.USER_REQUIRED);
-    }
-  });
-});
-
-// ============================================================================
-// withDelegateToken Tests
-// ============================================================================
-
-describe("withDelegateToken", () => {
-  it("should call fn with delegate token when available", async () => {
-    const delegateToken = createDelegateToken();
-    const getToken: TokenGetter<StoredDelegateToken> = async () => delegateToken;
-    const fn = mock(
-      async (token: StoredDelegateToken): Promise<FetchResult<string>> => ({
-        ok: true,
-        data: token.tokenId,
-        status: 200,
-      })
-    );
-
-    const wrapped = withDelegateToken(getToken);
-    const result = await wrapped(fn);
-
-    expect(fn).toHaveBeenCalledWith(delegateToken);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.data).toBe("dlt1_delegate123");
-    }
-  });
-
-  it("should return DELEGATE_REQUIRED error when token is null", async () => {
-    const getToken: TokenGetter<StoredDelegateToken> = async () => null;
-    const fn = mock(
-      async (): Promise<FetchResult<string>> => ({
-        ok: true,
-        data: "should not reach",
-        status: 200,
-      })
-    );
-
-    const wrapped = withDelegateToken(getToken);
-    const result = await wrapped(fn);
-
-    expect(fn).not.toHaveBeenCalled();
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error).toEqual(ERRORS.DELEGATE_REQUIRED);
     }
   });
 });
@@ -267,7 +200,7 @@ describe("withAccessToken", () => {
         ok: true,
         data: token.tokenBase64,
         status: 200,
-      })
+      }),
     );
 
     const wrapped = withAccessToken(getToken);
@@ -287,7 +220,7 @@ describe("withAccessToken", () => {
         ok: true,
         data: "should not reach",
         status: 200,
-      })
+      }),
     );
 
     const wrapped = withAccessToken(getToken);
@@ -315,7 +248,7 @@ describe("edge cases", () => {
         ok: true,
         data: "should not reach",
         status: 200,
-      })
+      }),
     );
 
     const wrapped = withToken(getToken, { code: "ERROR", message: "Error" });

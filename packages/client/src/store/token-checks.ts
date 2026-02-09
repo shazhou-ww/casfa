@@ -1,10 +1,10 @@
 /**
- * Token validity and issuer consistency checks.
+ * Token validity checks for the two-tier model.
  */
 
 import type {
   StoredAccessToken,
-  StoredDelegateToken,
+  StoredRootDelegate,
   StoredUserToken,
   TokenState,
 } from "../types/tokens.ts";
@@ -23,7 +23,7 @@ export const DEFAULT_EXPIRY_BUFFER_MS = 60_000;
  */
 export const isTokenValid = (
   token: { expiresAt: number } | null,
-  bufferMs: number = DEFAULT_EXPIRY_BUFFER_MS
+  bufferMs: number = DEFAULT_EXPIRY_BUFFER_MS,
 ): boolean => {
   if (!token) return false;
   return Date.now() + bufferMs < token.expiresAt;
@@ -35,7 +35,7 @@ export const isTokenValid = (
  */
 export const isTokenExpiringSoon = (
   token: { expiresAt: number } | null,
-  windowMs: number = 5 * 60_000 // 5 minutes
+  windowMs: number = 5 * 60_000, // 5 minutes
 ): boolean => {
   if (!token) return false;
   return Date.now() + windowMs >= token.expiresAt;
@@ -44,116 +44,62 @@ export const isTokenExpiringSoon = (
 /**
  * Check if user JWT is valid.
  */
-export const isUserTokenValid = (userToken: StoredUserToken | null, bufferMs?: number): boolean => {
+export const isUserTokenValid = (
+  userToken: StoredUserToken | null,
+  bufferMs?: number,
+): boolean => {
   return isTokenValid(userToken, bufferMs);
 };
 
 /**
- * Check if delegate token is valid.
+ * Check if a root delegate's access token is valid.
  */
-export const isDelegateTokenValid = (
-  delegateToken: StoredDelegateToken | null,
-  bufferMs?: number
+export const isAccessTokenValid = (
+  rootDelegate: StoredRootDelegate | null,
+  bufferMs: number = DEFAULT_EXPIRY_BUFFER_MS,
 ): boolean => {
-  return isTokenValid(delegateToken, bufferMs);
+  if (!rootDelegate) return false;
+  return Date.now() + bufferMs < rootDelegate.accessTokenExpiresAt;
 };
 
 /**
- * Check if access token is valid.
+ * Check if a StoredAccessToken (view) is valid.
  */
-export const isAccessTokenValid = (
+export const isStoredAccessTokenValid = (
   accessToken: StoredAccessToken | null,
-  bufferMs?: number
+  bufferMs?: number,
 ): boolean => {
   return isTokenValid(accessToken, bufferMs);
 };
 
+/**
+ * Check if root delegate has a refresh token (RT never expires independently).
+ */
+export const hasRefreshToken = (
+  rootDelegate: StoredRootDelegate | null,
+): boolean => {
+  return rootDelegate !== null && rootDelegate.refreshToken.length > 0;
+};
+
 // ============================================================================
-// Issuer Consistency Checks
+// State-level Checks
 // ============================================================================
 
 /**
- * Get the current max issuer ID.
- * Priority: User JWT (userId) > Delegate Token (tokenId)
+ * Determine if we need to obtain a root delegate.
+ * Returns true if no root delegate is present.
  */
-export const getMaxIssuerId = (state: TokenState): string | null => {
-  if (state.user && isUserTokenValid(state.user)) {
-    return state.user.userId;
-  }
-  if (state.delegate && isDelegateTokenValid(state.delegate)) {
-    return state.delegate.tokenId;
-  }
-  return null;
+export const needsRootDelegate = (state: TokenState): boolean => {
+  return state.rootDelegate === null;
 };
 
 /**
- * Check if access token is issued by the current max issuer.
- * If not, the access token should be re-issued.
+ * Determine if access token needs refresh via RT rotation.
+ * Returns true if root delegate exists but AT is expired/expiring.
  */
-export const isAccessTokenFromMaxIssuer = (state: TokenState): boolean => {
-  const accessToken = state.access;
-  if (!accessToken || !isAccessTokenValid(accessToken)) {
-    return false;
-  }
-
-  const maxIssuerId = getMaxIssuerId(state);
-  if (!maxIssuerId) {
-    // No valid issuer, access token is orphaned but still usable
-    return true;
-  }
-
-  return accessToken.issuerId === maxIssuerId;
-};
-
-/**
- * Check if delegate token is issued by current user.
- * If user JWT exists but delegate token is from a different user,
- * we may want to re-issue the delegate token.
- */
-export const isDelegateTokenFromCurrentUser = (state: TokenState): boolean => {
-  const delegateToken = state.delegate;
-  const userToken = state.user;
-
-  if (!delegateToken || !isDelegateTokenValid(delegateToken)) {
-    return false;
-  }
-
-  if (!userToken || !isUserTokenValid(userToken)) {
-    // No user token, delegate token is the top-level authority
-    return true;
-  }
-
-  return delegateToken.issuerId === userToken.userId;
-};
-
-/**
- * Determine if access token needs re-issue.
- * Returns true if:
- * - Access token is invalid/expired
- * - Access token's issuer is not the current max issuer
- */
-export const shouldReissueAccessToken = (state: TokenState): boolean => {
-  if (!isAccessTokenValid(state.access)) {
-    return true;
-  }
-  if (!isAccessTokenFromMaxIssuer(state)) {
-    return true;
-  }
-  return false;
-};
-
-/**
- * Determine if delegate token needs re-issue.
- * Returns true if:
- * - Delegate token is invalid/expired
- * - User token exists but delegate token is not from current user
- */
-export const shouldReissueDelegateToken = (state: TokenState): boolean => {
-  if (!isDelegateTokenValid(state.delegate)) {
-    return true;
-  }
-  if (state.user && !isDelegateTokenFromCurrentUser(state)) {
-    return true;
-  }
-  return false;
+export const shouldRefreshAccessToken = (state: TokenState): boolean => {
+  const rd = state.rootDelegate;
+  if (!rd) return false;
+  // AT expired or expiring within buffer
+  return !isAccessTokenValid(rd);
 };

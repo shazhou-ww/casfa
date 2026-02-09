@@ -3,7 +3,7 @@
  */
 
 import type { FetchResult } from "../types/client.ts";
-import type { StoredAccessToken, StoredDelegateToken, StoredUserToken } from "../types/tokens.ts";
+import type { StoredAccessToken, StoredUserToken } from "../types/tokens.ts";
 
 // ============================================================================
 // Error Constants
@@ -11,7 +11,6 @@ import type { StoredAccessToken, StoredDelegateToken, StoredUserToken } from "..
 
 export const ERRORS = {
   USER_REQUIRED: { code: "UNAUTHORIZED", message: "User login required" },
-  DELEGATE_REQUIRED: { code: "FORBIDDEN", message: "Delegate token required" },
   ACCESS_REQUIRED: { code: "FORBIDDEN", message: "Access token required" },
 } as const;
 
@@ -27,19 +26,18 @@ export type TokenGetter<T> = () => Promise<T | null>;
  */
 export const withToken = <T>(
   getToken: TokenGetter<T>,
-  error: { code: string; message: string }
+  error: { code: string; message: string },
 ) => {
-  return <R>(fn: (token: T) => Promise<FetchResult<R>>): Promise<FetchResult<R>> =>
+  return <R>(
+    fn: (token: T) => Promise<FetchResult<R>>,
+  ): Promise<FetchResult<R>> =>
     getToken().then((token) =>
-      token ? fn(token) : Promise.resolve({ ok: false as const, error })
+      token ? fn(token) : Promise.resolve({ ok: false as const, error }),
     );
 };
 
 export const withUserToken = (getToken: TokenGetter<StoredUserToken>) =>
   withToken(getToken, ERRORS.USER_REQUIRED);
-
-export const withDelegateToken = (getToken: TokenGetter<StoredDelegateToken>) =>
-  withToken(getToken, ERRORS.DELEGATE_REQUIRED);
 
 export const withAccessToken = (getToken: TokenGetter<StoredAccessToken>) =>
   withToken(getToken, ERRORS.ACCESS_REQUIRED);

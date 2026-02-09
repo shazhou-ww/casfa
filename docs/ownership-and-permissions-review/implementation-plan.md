@@ -465,9 +465,9 @@ class CasfaClient {
 
 ### 7.3 验证标准
 
-- [ ] 单元测试: RT rotation — AT 过期 → 自动刷新 → 新 RT + AT
-- [ ] 单元测试: RT rotation conflict — 409 → 抛出可恢复异常
-- [ ] 单元测试: createDelegate 权限验证
+- [x] 单元测试: RT rotation — AT 过期 → 自动刷新 → 新 RT + AT
+- [x] 单元测试: RT rotation conflict — 409 → 抛出可恢复异常
+- [x] 单元测试: createDelegate 权限验证
 - [ ] 集成测试: client E2E flow（create delegate → upload → claim → commit）
 
 ---

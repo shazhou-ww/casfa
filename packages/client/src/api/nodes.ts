@@ -2,12 +2,16 @@
  * Node API functions.
  *
  * Token Requirement:
- * - GET /nodes/:nodeKey: Access Token (with X-CAS-Index-Path header)
+ * - GET /nodes/:nodeKey: Access Token (with X-CAS-Proof header)
  * - POST /nodes/prepare: Access Token with canUpload
  * - PUT /nodes/:nodeKey: Access Token with canUpload
  */
 
-import type { NodeMetadata, PrepareNodes, PrepareNodesResponse } from "@casfa/protocol";
+import type {
+  NodeMetadata,
+  PrepareNodes,
+  PrepareNodesResponse,
+} from "@casfa/protocol";
 import type { FetchResult } from "../types/client.ts";
 import { fetchWithAuth } from "../utils/http.ts";
 
@@ -26,34 +30,39 @@ export type NodeUploadResult = {
 
 /**
  * Get node content.
- * Requires Access Token with scope covering the index path.
+ * Requires Access Token with scope covering the proof path.
  *
- * @param indexPath - The CAS index path for scope verification (e.g., "depot:MAIN:0:1")
+ * @param proof - JSON proof string for scope verification (optional for root delegates)
  */
 export const getNode = async (
   baseUrl: string,
   realm: string,
   accessTokenBase64: string,
   nodeKey: string,
-  indexPath: string
+  proof?: string,
 ): Promise<FetchResult<Uint8Array>> => {
   const url = `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/${encodeURIComponent(nodeKey)}`;
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${accessTokenBase64}`,
-        "X-CAS-Index-Path": indexPath,
-      },
-    });
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${accessTokenBase64}`,
+    };
+    if (proof) {
+      headers["X-CAS-Proof"] = proof;
+    }
+
+    const response = await fetch(url, { headers });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: response.statusText }));
+      const error = await response
+        .json()
+        .catch(() => ({ message: response.statusText }));
       return {
         ok: false,
         error: {
           code: String(response.status),
-          message: (error as { message?: string }).message ?? response.statusText,
+          message:
+            (error as { message?: string }).message ?? response.statusText,
           status: response.status,
         },
       };
@@ -74,23 +83,24 @@ export const getNode = async (
 
 /**
  * Get node metadata.
- * Requires Access Token with scope covering the index path.
+ * Requires Access Token with scope covering the proof path.
  */
 export const getNodeMetadata = async (
   baseUrl: string,
   realm: string,
   accessTokenBase64: string,
   nodeKey: string,
-  indexPath: string
+  proof?: string,
 ): Promise<FetchResult<NodeMetadata>> => {
+  const headers: Record<string, string> = {};
+  if (proof) {
+    headers["X-CAS-Proof"] = proof;
+  }
+
   return fetchWithAuth<NodeMetadata>(
     `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/${encodeURIComponent(nodeKey)}/metadata`,
     `Bearer ${accessTokenBase64}`,
-    {
-      headers: {
-        "X-CAS-Index-Path": indexPath,
-      },
-    }
+    { headers },
   );
 };
 
@@ -103,7 +113,7 @@ export const prepareNodes = async (
   baseUrl: string,
   realm: string,
   accessTokenBase64: string,
-  params: PrepareNodes
+  params: PrepareNodes,
 ): Promise<FetchResult<PrepareNodesResponse>> => {
   return fetchWithAuth<PrepareNodesResponse>(
     `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/prepare`,
@@ -111,7 +121,7 @@ export const prepareNodes = async (
     {
       method: "POST",
       body: params,
-    }
+    },
   );
 };
 
@@ -124,7 +134,7 @@ export const putNode = async (
   realm: string,
   accessTokenBase64: string,
   nodeKey: string,
-  content: Uint8Array
+  content: Uint8Array,
 ): Promise<FetchResult<NodeUploadResult>> => {
   const url = `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/${encodeURIComponent(nodeKey)}`;
 
@@ -139,12 +149,15 @@ export const putNode = async (
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: response.statusText }));
+      const error = await response
+        .json()
+        .catch(() => ({ message: response.statusText }));
       return {
         ok: false,
         error: {
           code: String(response.status),
-          message: (error as { message?: string }).message ?? response.statusText,
+          message:
+            (error as { message?: string }).message ?? response.statusText,
           status: response.status,
         },
       };

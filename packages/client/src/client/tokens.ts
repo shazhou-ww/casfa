@@ -1,31 +1,25 @@
 /**
- * Token management methods for the stateful client.
+ * Token management methods for the stateful client (new 2-tier model).
  */
 
-import type { CreateToken, CreateTokenResponse } from "@casfa/protocol";
+import type { RootTokenResponse, RefreshTokenResponse } from "@casfa/protocol";
 import * as api from "../api/index.ts";
 import type { RefreshManager } from "../store/jwt-refresh.ts";
 import type { TokenSelector } from "../store/token-selector.ts";
 import type { TokenStore } from "../store/token-store.ts";
 import type { FetchResult } from "../types/client.ts";
-import type { StoredAccessToken, StoredDelegateToken } from "../types/tokens.ts";
-import { withDelegateToken, withUserToken } from "./helpers.ts";
+import type { StoredRootDelegate } from "../types/tokens.ts";
+import { withUserToken } from "./helpers.ts";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export type TokenMethods = {
-  /** Create a new token (User JWT required) */
-  create: (params: CreateToken) => Promise<FetchResult<StoredDelegateToken | StoredAccessToken>>;
-  /** List tokens (User JWT required) */
-  list: (params?: api.ListTokensParams) => Promise<FetchResult<api.ListTokensResponse>>;
-  /** Revoke a token (User JWT required) */
-  revoke: (tokenId: string) => Promise<FetchResult<void>>;
-  /** Delegate a token using current Delegate Token */
-  delegate: (
-    params: api.DelegateTokenParams
-  ) => Promise<FetchResult<StoredDelegateToken | StoredAccessToken>>;
+  /** Create root delegate + RT + AT (User JWT required) */
+  createRoot: (realm: string) => Promise<FetchResult<StoredRootDelegate>>;
+  /** Manually refresh tokens using current RT */
+  refresh: () => Promise<FetchResult<StoredRootDelegate>>;
 };
 
 export type TokenDeps = {
@@ -45,52 +39,51 @@ export const createTokenMethods = ({
   realm,
   store,
   refreshManager,
-  tokenSelector,
 }: TokenDeps): TokenMethods => {
-  const requireUser = withUserToken(() => refreshManager.ensureValidUserToken());
-  const requireDelegate = withDelegateToken(() => tokenSelector.ensureDelegateToken());
+  const requireUser = withUserToken(() =>
+    refreshManager.ensureValidUserToken(),
+  );
 
   return {
-    create: (params) =>
+    createRoot: (targetRealm) =>
       requireUser(async (user) => {
-        const result = await api.createToken(baseUrl, user.accessToken, params);
+        const result = await api.createRootToken(
+          baseUrl,
+          user.accessToken,
+          targetRealm,
+        );
         if (!result.ok) return result;
 
-        const newToken = toStoredToken(result.data);
+        const rd = toStoredRootDelegate(result.data);
 
         // Auto-store if for current realm
-        if (params.realm === realm) {
-          if (params.type === "delegate") {
-            store.setDelegate(newToken as StoredDelegateToken);
-          } else {
-            store.setAccess(newToken as StoredAccessToken);
-          }
+        if (targetRealm === realm) {
+          store.setRootDelegate(rd);
         }
 
-        return { ok: true, data: newToken, status: result.status };
+        return { ok: true, data: rd, status: result.status };
       }),
 
-    list: (params) => requireUser((user) => api.listTokens(baseUrl, user.accessToken, params)),
+    refresh: async () => {
+      const state = store.getState();
+      const rd = state.rootDelegate;
+      if (!rd) {
+        return {
+          ok: false,
+          error: {
+            code: "NO_ROOT_DELEGATE",
+            message: "No root delegate to refresh",
+          },
+        };
+      }
 
-    revoke: (tokenId) =>
-      requireUser(async (user) => {
-        const result = await api.revokeToken(baseUrl, user.accessToken, tokenId);
-        if (!result.ok) return { ok: false, error: result.error };
+      const result = await api.refreshToken(baseUrl, rd.refreshToken);
+      if (!result.ok) return result;
 
-        // Clear local token if it matches
-        const state = store.getState();
-        if (state.delegate?.tokenId === tokenId) store.setDelegate(null);
-        if (state.access?.tokenId === tokenId) store.setAccess(null);
-
-        return { ok: true, data: undefined, status: result.status };
-      }),
-
-    delegate: (params) =>
-      requireDelegate(async (delegate) => {
-        const result = await api.delegateToken(baseUrl, delegate.tokenBase64, params);
-        if (!result.ok) return result;
-        return { ok: true, data: toStoredToken(result.data), status: result.status };
-      }),
+      const updated = updateRootDelegate(rd, result.data);
+      store.setRootDelegate(updated);
+      return { ok: true, data: updated, status: result.status };
+    },
   };
 };
 
@@ -98,12 +91,29 @@ export const createTokenMethods = ({
 // Helpers
 // ============================================================================
 
-const toStoredToken = (response: CreateTokenResponse): StoredDelegateToken | StoredAccessToken => ({
-  tokenId: response.tokenId,
-  tokenBase64: response.tokenBase64,
-  type: (response as { type?: "delegate" | "access" }).type ?? "delegate",
-  issuerId: (response as { issuerId?: string }).issuerId ?? "",
-  expiresAt: response.expiresAt,
-  canUpload: (response as { canUpload?: boolean }).canUpload ?? false,
-  canManageDepot: (response as { canManageDepot?: boolean }).canManageDepot ?? false,
+const toStoredRootDelegate = (
+  response: RootTokenResponse,
+): StoredRootDelegate => ({
+  delegateId: response.delegate.delegateId,
+  realm: response.delegate.realm,
+  refreshToken: response.refreshToken,
+  refreshTokenId: response.refreshTokenId,
+  accessToken: response.accessToken,
+  accessTokenId: response.accessTokenId,
+  accessTokenExpiresAt: response.accessTokenExpiresAt,
+  depth: response.delegate.depth,
+  canUpload: response.delegate.canUpload,
+  canManageDepot: response.delegate.canManageDepot,
+});
+
+const updateRootDelegate = (
+  current: StoredRootDelegate,
+  response: RefreshTokenResponse,
+): StoredRootDelegate => ({
+  ...current,
+  refreshToken: response.refreshToken,
+  refreshTokenId: response.refreshTokenId,
+  accessToken: response.accessToken,
+  accessTokenId: response.accessTokenId,
+  accessTokenExpiresAt: response.accessTokenExpiresAt,
 });
