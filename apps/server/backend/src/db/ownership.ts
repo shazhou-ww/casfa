@@ -1,5 +1,10 @@
 /**
- * CAS Ownership database operations
+ * CAS Ownership database operations (v1 — DEPRECATED)
+ *
+ * @deprecated Use ownership-v2.ts (OwnershipV2Db) for new code.
+ * This module uses the legacy key schema: realm + OWN#{key}##{ownerId}.
+ * The v2 module uses delegate-chain-based full-chain writes with O(1) lookup.
+ * This module is retained during the migration period (Steps 2–6).
  *
  * Multi-owner model: each PUT creates an ownership record keyed by ownerId.
  * Sort Key format: OWN#{hex_key}##{ownerId}

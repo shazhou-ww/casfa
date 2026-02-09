@@ -11,6 +11,11 @@
 export { createDocClient, createDynamoClient, resetClient } from "./client.ts";
 export { createDelegatesDb, type DelegatesDb } from "./delegates.ts";
 export { createOwnershipDb, type OwnershipDb } from "./ownership.ts";
+export {
+  createOwnershipV2Db,
+  type OwnershipRecord,
+  type OwnershipV2Db,
+} from "./ownership-v2.ts";
 export { createRefCountDb, type RefCountDb } from "./refcount.ts";
 export { createUserRolesDb, type UserRoleRecord, type UserRolesDb } from "./user-roles.ts";
 
