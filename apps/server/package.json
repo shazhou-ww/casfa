@@ -26,6 +26,8 @@
     "db:create": "bun run backend/scripts/create-local-tables.ts",
     "db:create:test": "bun run backend/scripts/create-local-tables.ts --port 8701",
     "db:delete": "bun run backend/scripts/create-local-tables.ts --delete",
+    "dev:clean": "bun run backend/scripts/dev-clean.ts",
+    "dev:clean:dry": "bun run backend/scripts/dev-clean.ts --dry-run",
     "setup:aws": "bun run backend/scripts/setup-aws.ts",
     "set-admin": "bun run backend/scripts/set-admin.ts",
     "set-admin:aws": "bun run backend/scripts/set-admin.ts --aws",
@@ -37,6 +39,7 @@
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.975.0",
     "@aws-sdk/client-dynamodb": "^3.975.0",
+    "@aws-sdk/client-s3": "^3.975.0",
     "@aws-sdk/lib-dynamodb": "^3.975.0",
     "@casfa/client": "workspace:*",
     "@casfa/core": "workspace:*",
