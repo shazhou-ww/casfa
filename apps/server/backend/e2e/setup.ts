@@ -167,13 +167,7 @@ export type DelegateTokenResult = {
   };
   refreshToken: string;
   accessToken: string;
-  refreshTokenId: string;
-  accessTokenId: string;
   accessTokenExpiresAt: number;
-  // Backward compat aliases
-  tokenId: string;
-  tokenBase64: string;
-  expiresAt: number;
 };
 
 /** Access Token creation result (same as DelegateTokenResult in new model) */
@@ -451,13 +445,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
       }
 
       const raw = (await response.json()) as any;
-      return {
-        ...raw,
-        // Backward compat aliases
-        tokenId: raw.accessTokenId,
-        tokenBase64: raw.accessToken,
-        expiresAt: raw.accessTokenExpiresAt,
-      } as DelegateTokenResult;
+      return raw as DelegateTokenResult;
     },
 
     createChildDelegate: async (accessTokenBase64, realm, options = {}) => {
@@ -490,12 +478,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
       }
 
       const raw = (await response.json()) as any;
-      return {
-        ...raw,
-        tokenId: raw.accessTokenId,
-        tokenBase64: raw.accessToken,
-        expiresAt: raw.accessTokenExpiresAt,
-      } as DelegateTokenResult;
+      return raw as DelegateTokenResult;
     },
 
     createDelegateToken: async (userToken, realm, options = {}) => {
