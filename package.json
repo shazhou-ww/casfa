@@ -7,6 +7,7 @@
     "apps/*"
   ],
   "scripts": {
+    "clean": "rimraf packages/*/dist apps/*/dist apps/cli/dist apps/server/backend/dist apps/server/backend/public apps/server/.aws-sam",
     "build": "bun run build:packages",
     "build:packages": "cd packages/protocol && bun run build && cd ../core && bun run build && cd ../cas-uri && bun run build && cd ../storage-core && bun run build && cd ../delegate-token && bun run build && cd ../client-auth-crypto && bun run build && cd ../storage-fs && bun run build && cd ../storage-memory && bun run build && cd ../storage-s3 && bun run build && cd ../client && bun run build && cd ../../apps/cli && bun run build",
     "typecheck": "cd packages/protocol && bun run typecheck && cd ../storage-core && bun run typecheck && cd ../core && bun run typecheck && cd ../storage-fs && bun run typecheck && cd ../storage-memory && bun run typecheck && cd ../storage-s3 && bun run typecheck && cd ../client && bun run typecheck && cd ../../apps/server && bun run typecheck",
@@ -21,6 +22,7 @@
     "@biomejs/biome": "^2.3.11",
     "@changesets/cli": "^2.29.8",
     "@types/bun": "latest",
+    "rimraf": "^6.0.1",
     "tsup": "^8.5.1",
     "typescript": "^5.8.3"
   }
