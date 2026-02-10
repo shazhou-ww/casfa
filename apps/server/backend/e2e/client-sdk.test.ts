@@ -390,7 +390,7 @@ describe("Client SDK Integration", () => {
       expect(at).not.toBeNull();
       expect(at!.tokenBase64).toBeDefined();
       expect(at!.tokenBytes).toBeInstanceOf(Uint8Array);
-      expect(at!.tokenBytes.length).toBe(128);
+      expect(at!.tokenBytes.length).toBe(32);
 
       // Verify base64 ↔ bytes roundtrip
       const decoded = Buffer.from(at!.tokenBase64, "base64");

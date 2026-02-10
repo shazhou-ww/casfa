@@ -115,7 +115,7 @@ export async function decryptAesGcm(
  *
  * Convenience function that derives the key and encrypts in one step.
  *
- * @param token - Delegate token bytes (128 bytes)
+ * @param token - Delegate token bytes (32 bytes)
  * @param clientSecret - Client secret bytes (32 bytes)
  * @returns Encrypted token package
  */
@@ -134,7 +134,7 @@ export async function encryptToken(
  *
  * @param encrypted - Encrypted token package
  * @param clientSecret - Client secret bytes (32 bytes)
- * @returns Decrypted token bytes (128 bytes)
+ * @returns Decrypted token bytes (32 bytes)
  */
 export async function decryptToken(
   encrypted: EncryptedToken,

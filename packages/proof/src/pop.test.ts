@@ -66,7 +66,7 @@ function createMockPopContext(): PopContext {
 
 describe("computePoP", () => {
   const ctx = createMockPopContext();
-  const token = new Uint8Array(128).fill(0x42);
+  const token = new Uint8Array(32).fill(0x42);
   const content = new Uint8Array([1, 2, 3, 4, 5]);
 
   it("returns a string starting with 'pop:'", () => {
@@ -81,8 +81,8 @@ describe("computePoP", () => {
   });
 
   it("different tokens → different PoP for same content", () => {
-    const tokenA = new Uint8Array(128).fill(0x01);
-    const tokenB = new Uint8Array(128).fill(0x02);
+    const tokenA = new Uint8Array(32).fill(0x01);
+    const tokenB = new Uint8Array(32).fill(0x02);
     const popA = computePoP(tokenA, content, ctx);
     const popB = computePoP(tokenB, content, ctx);
     expect(popA).not.toBe(popB);
@@ -111,7 +111,7 @@ describe("computePoP", () => {
 
 describe("verifyPoP", () => {
   const ctx = createMockPopContext();
-  const token = new Uint8Array(128).fill(0x42);
+  const token = new Uint8Array(32).fill(0x42);
   const content = new Uint8Array([1, 2, 3, 4, 5]);
 
   it("returns true for valid pop (round-trip)", () => {
@@ -121,7 +121,7 @@ describe("verifyPoP", () => {
 
   it("returns false for wrong token", () => {
     const pop = computePoP(token, content, ctx);
-    const wrongToken = new Uint8Array(128).fill(0x99);
+    const wrongToken = new Uint8Array(32).fill(0x99);
     expect(verifyPoP(pop, wrongToken, content, ctx)).toBe(false);
   });
 
@@ -193,9 +193,9 @@ describe("PoP anti-replay", () => {
 
   it("delegate A's PoP is invalid for delegate B's token", () => {
     // Use tokens with enough variety to avoid hash collisions in mock
-    const tokenA = new Uint8Array(128);
-    const tokenB = new Uint8Array(128);
-    for (let i = 0; i < 128; i++) {
+    const tokenA = new Uint8Array(32);
+    const tokenB = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) {
       tokenA[i] = (i * 7 + 0x11) & 0xff;
       tokenB[i] = (i * 13 + 0x22) & 0xff;
     }

@@ -20,7 +20,7 @@ const createUserToken = (): StoredUserToken => ({
 
 const createAccessToken = (): StoredAccessToken => ({
   tokenBase64: "base64-access-token",
-  tokenBytes: new Uint8Array(128),
+  tokenBytes: new Uint8Array(32),
   expiresAt: Date.now() + 3600_000,
   canUpload: true,
   canManageDepot: true,

@@ -95,7 +95,7 @@ export type GenerateTokenOptions = {
  *
  * Token ID = "tkn_" + Crockford Base32(Blake3-128(tokenBytes))
  *
- * @param tokenBytes - 128-byte token
+ * @param tokenBytes - Token bytes
  * @returns Token ID string (e.g., "tkn_XXXX...")
  */
 export const computeTokenId = (tokenBytes: Uint8Array): string => {
@@ -125,7 +125,7 @@ export const isValidTokenId = (id: string): boolean => {
  * Generate a new delegate token
  *
  * @param options - Token generation options
- * @returns 128-byte token
+ * @returns Token bytes
  */
 export const generateToken = (options: GenerateTokenOptions): Uint8Array => {
   const tokenBytes = new Uint8Array(TOKEN_SIZE);
@@ -188,7 +188,7 @@ export const generateToken = (options: GenerateTokenOptions): Uint8Array => {
 /**
  * Decode a token from its binary format
  *
- * @param tokenBytes - 128-byte token
+ * @param tokenBytes - Token bytes
  * @returns Decoded token structure
  * @throws Error if token format is invalid
  */
