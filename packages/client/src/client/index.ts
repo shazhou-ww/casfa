@@ -20,6 +20,7 @@ import type {
 import type { StoredAccessToken, StoredRootDelegate, TokenState } from "../types/tokens.ts";
 import { createDelegateMethods, type DelegateMethods } from "./delegates.ts";
 import { createDepotMethods, type DepotMethods } from "./depots.ts";
+import { createFsMethods, type FsMethods } from "./filesystem.ts";
 import { createNodeMethods, type NodeMethods } from "./nodes.ts";
 import { createOAuthMethods, type OAuthMethods } from "./oauth.ts";
 import { createTokenMethods, type TokenMethods } from "./tokens.ts";
@@ -28,7 +29,7 @@ import { createTokenMethods, type TokenMethods } from "./tokens.ts";
 // Re-exports
 // ============================================================================
 
-export type { DelegateMethods, DepotMethods, NodeMethods, OAuthMethods, TokenMethods };
+export type { DelegateMethods, DepotMethods, FsMethods, NodeMethods, OAuthMethods, TokenMethods };
 
 export type { ClientConfig, OnAuthRequiredCallback, OnTokenChangeCallback, TokenStorageProvider };
 
@@ -60,6 +61,8 @@ export type CasfaClient = {
   delegates: DelegateMethods;
   /** Depot methods */
   depots: DepotMethods;
+  /** Filesystem methods */
+  fs: FsMethods;
   /** Node methods */
   nodes: NodeMethods;
 };
@@ -123,6 +126,7 @@ export const createClient = async (config: ClientConfig): Promise<CasfaClient> =
     tokens: createTokenMethods(deps),
     delegates: createDelegateMethods(deps),
     depots: createDepotMethods(deps),
+    fs: createFsMethods(deps),
     nodes: createNodeMethods(deps),
   };
 };
