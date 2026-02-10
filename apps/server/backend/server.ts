@@ -58,7 +58,7 @@ const createStorage = () => {
     case "memory":
       return createMemoryStorage();
     default:
-      return createS3Storage({ bucket: config.storage.bucket, prefix: config.storage.prefix });
+      return createS3Storage({ bucket: config.storage.bucket, prefix: config.storage.prefix, region: config.storage.region });
   }
 };
 

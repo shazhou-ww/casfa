@@ -5,7 +5,14 @@
  * Implements ownership model with multi-owner tracking and children reference validation.
  */
 
-import { decodeNode, type HashProvider, validateNode, validateNodeStructure } from "@casfa/core";
+import {
+  decodeNode,
+  EMPTY_DICT_BYTES,
+  EMPTY_DICT_KEY,
+  type HashProvider,
+  validateNode,
+  validateNodeStructure,
+} from "@casfa/core";
 import {
   type DictNodeMetadata,
   type FileNodeMetadata,
@@ -278,6 +285,19 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       const nodeKey = decodeURIComponent(c.req.param("key"));
       const key = toStorageKey(nodeKey);
 
+      // Well-known empty dict node — always accessible
+      if (key === EMPTY_DICT_KEY) {
+        return new Response(EMPTY_DICT_BYTES.slice(), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "Content-Length": String(EMPTY_DICT_BYTES.length),
+            "X-CAS-Kind": "dict",
+            "X-CAS-Payload-Size": "0",
+          },
+        });
+      }
+
       // Check ownership
       const hasAccess = await ownershipV2Db.hasAnyOwnership(key);
       if (!hasAccess) {
@@ -318,6 +338,16 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       const _realm = getRealm(c);
       const nodeKey = decodeURIComponent(c.req.param("key"));
       const key = toStorageKey(nodeKey);
+
+      // Well-known empty dict node — always accessible
+      if (key === EMPTY_DICT_KEY) {
+        return c.json<DictNodeMetadata>({
+          key: nodeKey,
+          kind: "dict",
+          payloadSize: 0,
+          children: {},
+        });
+      }
 
       // Check ownership
       const hasAccess = await ownershipV2Db.hasAnyOwnership(key);
