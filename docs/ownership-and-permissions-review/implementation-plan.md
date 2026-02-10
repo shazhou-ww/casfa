@@ -422,8 +422,8 @@ Body: { "pop": "pop:XXXXX..." }
 - [x] TypeScript 编译无新错误（仅 delegate-token-utils.test.ts 预存 Uint8Array 类型问题）
 - [x] 全部 298 单元测试通过
 - [x] 全部 86 E2E 测试通过
-- [ ] 后续: CLI E2E 测试适配（Step 8）
-- [ ] 后续: 端到端 Agent 上传文件树场景（Step 8）
+- [x] 后续: CLI E2E 测试适配 ✅ `7de34c4` (Step 8)
+- [ ] 后续: 端到端 Agent 上传文件树场景
 
 ---
 
@@ -468,7 +468,7 @@ class CasfaClient {
 - [x] 单元测试: RT rotation — AT 过期 → 自动刷新 → 新 RT + AT
 - [x] 单元测试: RT rotation conflict — 409 → 抛出可恢复异常
 - [x] 单元测试: createDelegate 权限验证
-- [ ] 集成测试: client E2E flow（create delegate → upload → claim → commit）
+- [ ] 集成测试: client E2E flow（create delegate → upload → claim → commit）*(deferred)*
 
 ---
 
@@ -479,17 +479,26 @@ class CasfaClient {
 
 ### 8.1 变更清单
 
-1. `auth` 命令: JWT 登录后获取 root delegate RT+AT（替代旧 delegate token）
-2. `config` 命令: 存储 RT（本地加密），AT 按需刷新
-3. `push`/`pull` 命令: 使用新 Proof header
-4. 新增 `delegate` 子命令: create / list / revoke
-5. `node claim` 子命令: 支持 Claim API
+1. `auth` 命令: JWT 登录后获取 root delegate RT+AT（替代旧 delegate token），新增 `auth init-delegate`、`auth logout --user-only/--delegate-only`
+2. `credentials.ts`: v3 格式（UserTokenCredential + RootDelegateCredential），epoch seconds 存储
+3. `client.ts`: TokenStorageProvider 桥接 CLI 凭证到 CasfaClient，epoch seconds↔ms 转换
+4. `node` 命令: 使用 `client.nodes.*`（自动 AT 刷新），`--proof` 替代 `--index-path`，新增 `node claim`
+5. `realm`/`ticket` 命令: 使用 `client.getAccessToken()` 替代旧 ensureAccessToken
+6. 新增 `delegate` 子命令: create / list / show / revoke
+7. 移除废弃全局选项: `--delegate-token`、`--access-token`、`--token`
+8. 修复: `oauth-login.ts`（snake_case TokenExchange）、`device-auth.ts`（CasfaClient 类型）、`depot.ts`（history 类型）
+9. E2E 测试: 凭证文件认证替代 CASFA_TOKEN 环境变量，`writeTestCredentials` helper
 
 ### 8.2 验证标准
 
-- [ ] `apps/cli/e2e/auth.test.ts` 通过
-- [ ] `apps/cli/e2e/node.test.ts` 通过
-- [ ] 新增 `apps/cli/e2e/delegate.test.ts` — delegate 生命周期
+> Commit `7de34c4` — 42 tests pass, 0 fail, 57 expect() calls across 3 test files
+
+- [x] `apps/cli/e2e/auth.test.ts` 通过 — 12 tests ✅
+- [x] `apps/cli/e2e/node.test.ts` 通过 — 11 tests ✅
+- [x] `apps/cli/e2e/config.test.ts` 通过 — 19 tests ✅
+- [x] TypeScript 编译无错误（`tsc --noEmit`）
+- [x] Biome lint 无错误
+- [ ] 新增 `apps/cli/e2e/delegate.test.ts` — delegate 生命周期 *(deferred)*
 - [ ] 手动验证: `casfa auth login` → `casfa delegate create` → `casfa push`
 
 ---
