@@ -41,7 +41,7 @@ export type OwnershipV2Db = {
    * Writes one record per delegate in the chain using BatchWriteItem.
    * Idempotent: re-uploading the same node overwrites silently.
    *
-   * @param nodeHash - The CAS node hash (hex string)
+   * @param nodeHash - The CAS node hash (CB32 storage key)
    * @param chain - Uploader's full delegate chain [root, ..., self]
    * @param uploadedBy - The delegate that actually performed the upload (last in chain)
    * @param contentType - MIME content type
@@ -61,7 +61,7 @@ export type OwnershipV2Db = {
    * Check if a specific delegate owns a node — O(1) GetItem.
    * Returns true if the delegate (or any descendant) has uploaded this node.
    *
-   * @param nodeHash - The CAS node hash (hex string)
+   * @param nodeHash - The CAS node hash (CB32 storage key)
    * @param delegateId - The delegate to check
    */
   hasOwnership: (nodeHash: string, delegateId: string) => Promise<boolean>;
@@ -70,14 +70,14 @@ export type OwnershipV2Db = {
    * Check if any delegate owns a node — Query + Limit 1.
    * Used for "does this node exist in the realm" checks.
    *
-   * @param nodeHash - The CAS node hash (hex string)
+   * @param nodeHash - The CAS node hash (CB32 storage key)
    */
   hasAnyOwnership: (nodeHash: string) => Promise<boolean>;
 
   /**
    * Get the ownership record for a specific delegate + node.
    *
-   * @param nodeHash - The CAS node hash (hex string)
+   * @param nodeHash - The CAS node hash (CB32 storage key)
    * @param delegateId - The delegate to look up
    */
   getOwnership: (nodeHash: string, delegateId: string) => Promise<OwnershipRecord | null>;
@@ -85,7 +85,7 @@ export type OwnershipV2Db = {
   /**
    * List all delegates that own a specific node.
    *
-   * @param nodeHash - The CAS node hash (hex string)
+   * @param nodeHash - The CAS node hash (CB32 storage key)
    */
   listOwners: (nodeHash: string) => Promise<string[]>;
 };

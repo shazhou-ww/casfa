@@ -5,7 +5,7 @@
  */
 
 import type { FsLsChild, FsLsResponse, FsStatResponse } from "@casfa/protocol";
-import { hashToHex, hexToNodeKey } from "./helpers.ts";
+import { hashToStorageKey, storageKeyToNodeKey_ as storageKeyToNodeKey } from "./helpers.ts";
 import type { TreeOps } from "./tree-ops.ts";
 import type { FsError } from "./types.ts";
 import { fsError } from "./types.ts";
@@ -38,7 +38,7 @@ export const createReadOps = (tree: TreeOps) => {
       return {
         type: "dir",
         name,
-        key: hexToNodeKey(hash),
+        key: storageKeyToNodeKey(hash),
         childCount: node.children?.length ?? 0,
       };
     }
@@ -46,7 +46,7 @@ export const createReadOps = (tree: TreeOps) => {
       return {
         type: "file",
         name,
-        key: hexToNodeKey(hash),
+        key: storageKeyToNodeKey(hash),
         size: node.fileInfo?.fileSize ?? node.size,
         contentType: node.fileInfo?.contentType ?? "application/octet-stream",
       };
@@ -56,7 +56,7 @@ export const createReadOps = (tree: TreeOps) => {
     return {
       type: "file",
       name,
-      key: hexToNodeKey(hash),
+      key: storageKeyToNodeKey(hash),
       size: node.size,
       contentType: "application/octet-stream",
     };
@@ -97,7 +97,7 @@ export const createReadOps = (tree: TreeOps) => {
       data: node.data ?? new Uint8Array(0),
       contentType: node.fileInfo?.contentType ?? "application/octet-stream",
       size: node.fileInfo?.fileSize ?? node.data?.length ?? 0,
-      key: hexToNodeKey(hash),
+      key: storageKeyToNodeKey(hash),
     };
   };
 
@@ -136,14 +136,14 @@ export const createReadOps = (tree: TreeOps) => {
     for (let i = startIndex; i < endIndex; i++) {
       const childName = childNames[i]!;
       const childHashBytes = childHashes[i]!;
-      const childHex = hashToHex(childHashBytes);
-      const childNode = await tree.getAndDecodeNode(childHex);
+      const childStorageKey = hashToStorageKey(childHashBytes);
+      const childNode = await tree.getAndDecodeNode(childStorageKey);
 
       const child: FsLsChild = {
         name: childName,
         index: i,
         type: childNode?.kind === "dict" ? "dir" : "file",
-        key: hexToNodeKey(childHex),
+        key: storageKeyToNodeKey(childStorageKey),
       };
 
       if (childNode) {
@@ -160,7 +160,7 @@ export const createReadOps = (tree: TreeOps) => {
 
     return {
       path: pathStr ?? "",
-      key: hexToNodeKey(hash),
+      key: storageKeyToNodeKey(hash),
       children,
       total,
       nextCursor: endIndex < total ? String(endIndex) : null,

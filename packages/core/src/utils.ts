@@ -120,17 +120,81 @@ export function concatBytes(...arrays: Uint8Array[]): Uint8Array {
   return result;
 }
 
+// ============================================================================
+// Crockford Base32 (duplicated from @casfa/protocol to avoid circular dep)
+// ============================================================================
+
+const CB32_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+const CB32_DECODE: Record<string, number> = {};
+for (let i = 0; i < CB32_ALPHABET.length; i++) {
+  CB32_DECODE[CB32_ALPHABET[i]!] = i;
+  CB32_DECODE[CB32_ALPHABET[i]!.toLowerCase()] = i;
+}
+CB32_DECODE.I = 1;
+CB32_DECODE.i = 1;
+CB32_DECODE.L = 1;
+CB32_DECODE.l = 1;
+CB32_DECODE.O = 0;
+CB32_DECODE.o = 0;
+
+/** Encode bytes to Crockford Base32 string */
+export function encodeCB32(bytes: Uint8Array): string {
+  let result = "";
+  let buffer = 0;
+  let bitsLeft = 0;
+  for (const byte of bytes) {
+    buffer = (buffer << 8) | byte;
+    bitsLeft += 8;
+    while (bitsLeft >= 5) {
+      bitsLeft -= 5;
+      result += CB32_ALPHABET[(buffer >> bitsLeft) & 0x1f];
+    }
+  }
+  if (bitsLeft > 0) {
+    result += CB32_ALPHABET[(buffer << (5 - bitsLeft)) & 0x1f];
+  }
+  return result;
+}
+
+/** Decode Crockford Base32 string to bytes */
+export function decodeCB32(str: string): Uint8Array {
+  let buffer = 0;
+  let bitsLeft = 0;
+  const result: number[] = [];
+  for (const char of str) {
+    const value = CB32_DECODE[char];
+    if (value === undefined) {
+      throw new Error(`Invalid Crockford Base32 character: ${char}`);
+    }
+    buffer = (buffer << 5) | value;
+    bitsLeft += 5;
+    if (bitsLeft >= 8) {
+      bitsLeft -= 8;
+      result.push((buffer >> bitsLeft) & 0xff);
+    }
+  }
+  return new Uint8Array(result);
+}
+
+// ============================================================================
+// Storage key conversion (CB32 format)
+// ============================================================================
+
 /**
- * Format hash as hex string (storage key)
- * This is the internal storage format, used across all storage implementations.
+ * Format hash as Crockford Base32 storage key.
+ *
+ * This is the canonical storage key format used across all storage
+ * implementations.  For 128-bit (16-byte) hashes this produces a
+ * 26-character uppercase string.
  */
 export function hashToKey(hash: Uint8Array): string {
-  return bytesToHex(hash);
+  return encodeCB32(hash);
 }
 
 /**
- * Extract hash bytes from hex string (storage key)
+ * Extract hash bytes from CB32 storage key.
  */
 export function keyToHash(key: string): Uint8Array {
-  return hexToBytes(key);
+  return decodeCB32(key);
 }

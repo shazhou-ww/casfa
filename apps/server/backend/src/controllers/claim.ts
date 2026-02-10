@@ -17,7 +17,7 @@
 
 import type { PopContext } from "@casfa/proof";
 import { verifyPoP } from "@casfa/proof";
-import { nodeKeyToHex } from "@casfa/protocol";
+import { nodeKeyToStorageKey } from "@casfa/protocol";
 import type { Context } from "hono";
 import type { OwnershipV2Db } from "../db/ownership-v2.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
@@ -29,7 +29,7 @@ import type { AccessTokenAuthContext, Env } from "../types.ts";
 export type ClaimControllerDeps = {
   ownershipDb: OwnershipV2Db;
   /**
-   * Read CAS node content by storage key (hex).
+   * Read CAS node content by storage key (CB32).
    * Returns raw bytes or null if the node does not exist.
    */
   getNodeContent: (realm: string, storageKey: string) => Promise<Uint8Array | null>;
@@ -83,8 +83,8 @@ export const createClaimController = (deps: ClaimControllerDeps): ClaimControlle
       return c.json({ error: "INVALID_REQUEST", message: "Missing node key" }, 400);
     }
 
-    // Convert node:XXXX to hex storage key (consistent with chunks controller)
-    const storageKey = nodeKeyToHex(nodeKey);
+    // Convert node:XXXX to CB32 storage key (consistent with chunks controller)
+    const storageKey = nodeKeyToStorageKey(nodeKey);
 
     // Parse request body
     const body = await c.req.json().catch(() => null);

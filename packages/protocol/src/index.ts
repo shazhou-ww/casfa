@@ -31,9 +31,8 @@ export {
   // Well-known keys
   EMPTY_DICT_NODE_KEY,
   encodeCrockfordBase32,
-  // Node key conversion
+  // Node key conversion (new names)
   hashToNodeKey,
-  hexToNodeKey,
   ISSUER_ID_REGEX,
   IssuerIdSchema,
   NODE_KEY_PREFIX,
@@ -41,10 +40,11 @@ export {
   NodeKeySchema,
   NodeKindSchema,
   nodeKeyToHash,
-  nodeKeyToHex,
+  nodeKeyToStorageKey,
   PaginationQuerySchema,
   REQUEST_ID_REGEX,
   RequestIdSchema,
+  storageKeyToNodeKey,
   TokenTypeSchema,
   USER_ID_REGEX,
   UserIdSchema,

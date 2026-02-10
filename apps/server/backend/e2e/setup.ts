@@ -46,7 +46,7 @@ import { createLocalUsersDb } from "../src/db/local-users.ts";
 // ============================================================================
 
 import { randomUUID } from "node:crypto";
-import { hexToNodeKey } from "@casfa/protocol";
+import { hashToNodeKey } from "@casfa/protocol";
 import { uuidToUserId } from "../src/util/encoding.ts";
 
 /** Generate a unique test ID (UUID format like Cognito) */
@@ -58,8 +58,11 @@ export const uniqueId = () => randomUUID();
  */
 export const testNodeKey = (n: number): string => {
   // Create a 16-byte hash with the number at the end
-  const hex = n.toString(16).padStart(32, "0");
-  return hexToNodeKey(hex);
+  const bytes = new Uint8Array(16);
+  const view = new DataView(bytes.buffer);
+  // Put the number in the last 4 bytes (big-endian)
+  view.setUint32(12, n);
+  return hashToNodeKey(bytes);
 };
 
 // ============================================================================
@@ -695,10 +698,8 @@ export const buildTestFileData = (content: string): Uint8Array => {
  */
 export const testHashFromContent = (content: string): string => {
   const bytes = new TextEncoder().encode(content);
-  const hashHex = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
-    .padStart(32, "0")
-    .slice(0, 32);
-  return hexToNodeKey(hashHex);
+  // Pad or truncate to 16 bytes
+  const hash = new Uint8Array(16);
+  hash.set(bytes.subarray(0, 16));
+  return hashToNodeKey(hash);
 };

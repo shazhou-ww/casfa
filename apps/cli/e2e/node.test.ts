@@ -165,8 +165,8 @@ describe("CLI Node Commands", () => {
     });
 
     it("should show non-existent nodes", async () => {
-      // Use a fake node key (26 chars Crockford Base32)
-      const fakeNodeKey = `nod_${"A".repeat(26)}`;
+      // Use a fake node key (26 chars Crockford Base32, last char must be in [048CGMRW])
+      const fakeNodeKey = `nod_${"A".repeat(25)}0`;
 
       const result = await runCliWithAuth(["node", "exists", fakeNodeKey], ctx, user);
 
@@ -189,7 +189,7 @@ describe("CLI Node Commands", () => {
 
       const key1 = extractNodeKey(put1.stdout);
       const key2 = extractNodeKey(put2.stdout);
-      const fakeKey = `nod_${"B".repeat(26)}`;
+      const fakeKey = `nod_${"B".repeat(25)}0`;
 
       expect(key1).not.toBeNull();
       expect(key2).not.toBeNull();

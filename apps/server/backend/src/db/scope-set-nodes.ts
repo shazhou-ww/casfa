@@ -9,6 +9,7 @@ import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { ScopeSetNodeRecord } from "../types/delegate-token.ts";
 import { toSetNodePk, toSetNodeSk } from "../util/db-keys.ts";
+import { toCrockfordBase32 } from "../util/encoding.ts";
 import { blake3s128 } from "../util/hashing.ts";
 import { createDocClient } from "./client.ts";
 
@@ -89,9 +90,9 @@ function computeSetNodeId(children: string[]): string {
   const sorted = [...new Set(children)].sort();
   // Concatenate with separator
   const data = sorted.join(",");
-  // Compute hash and return as hex
+  // Compute hash and return as CB32
   const hash = blake3s128(data);
-  return Buffer.from(hash).toString("hex");
+  return toCrockfordBase32(hash);
 }
 
 // ============================================================================

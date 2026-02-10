@@ -21,6 +21,7 @@ import {
   computeScopeHash,
   generateTokenPair,
 } from "../util/delegate-token-utils.ts";
+import { toCrockfordBase32 } from "../util/encoding.ts";
 import { blake3Hash } from "../util/hashing.ts";
 import { resolveRelativeScope } from "../util/scope.ts";
 import { generateDelegateId } from "../util/token-id.ts";
@@ -117,9 +118,7 @@ export const createDelegatesController = (deps: DelegatesControllerDeps): Delega
       if (resolvedRoots.length === 1) {
         scopeNodeHash = resolvedRoots[0];
       } else if (resolvedRoots.length > 1) {
-        const setNodeId = Buffer.from(blake3Hash(resolvedRoots.join(",")).slice(0, 16)).toString(
-          "hex"
-        );
+        const setNodeId = toCrockfordBase32(blake3Hash(resolvedRoots.join(",")).slice(0, 16));
         await scopeSetNodesDb.createOrIncrement(setNodeId, resolvedRoots);
         scopeSetNodeId = setNodeId;
       }

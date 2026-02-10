@@ -88,8 +88,8 @@ export type ScopeSetNodeRecord = {
   sk: string; // METADATA
 
   // set-node 数据
-  setNodeId: string; // Blake3-128 hash of children (hex)
-  children: string[]; // 子节点 hash 列表（已排序去重，hex）
+  setNodeId: string; // Blake3-128 hash of children (CB32)
+  children: string[]; // 子节点 hash 列表（已排序去重，CB32）
 
   // 引用计数
   refCount: number; // 引用此 set-node 的 Token 数量

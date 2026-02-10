@@ -24,7 +24,7 @@ export type FsStorageConfig = {
   basePath: string;
   /** LRU cache size for key existence (default: 10000) */
   cacheSize?: number;
-  /** Key prefix in storage (default: "cas/sha256/") */
+  /** Key prefix in storage (default: "cas/blake3s/") */
   prefix?: string;
 };
 
@@ -33,7 +33,7 @@ export type FsStorageConfig = {
  */
 export const createFsStorage = (config: FsStorageConfig): StorageProvider => {
   const basePath = config.basePath;
-  const prefix = config.prefix ?? "cas/sha256/";
+  const prefix = config.prefix ?? "cas/blake3s/";
   const existsCache = createLRUCache<string, boolean>(config.cacheSize ?? DEFAULT_CACHE_SIZE);
 
   // Ensure base directory exists

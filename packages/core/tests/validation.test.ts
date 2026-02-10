@@ -119,21 +119,21 @@ describe("Validation", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("should reject unknown node type", () => {
-      // Create a valid-looking header with node type = 0b00 (invalid)
+    it("should reject set node with 0 children", () => {
+      // Flags = 0 means node type = SET (0b00), which requires ≥ 2 children
       const bytes = new Uint8Array(16);
       // Magic: "CAS\x01"
       bytes[0] = 0x43;
       bytes[1] = 0x41;
       bytes[2] = 0x53;
       bytes[3] = 0x01;
-      // Flags = 0 (invalid node type)
+      // Flags = 0 → SET node type
       bytes[4] = 0;
       // size = 0, count = 0
 
       const result = validateNodeStructure(bytes);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("Unknown node type");
+      expect(result.error).toContain("Set node requires at least 2 children");
     });
 
     it("should reject flags with reserved bits set (bits 16-31)", () => {
@@ -296,8 +296,8 @@ describe("Validation", () => {
         hashProvider
       );
 
-      // Use wrong key (128-bit = 32 hex chars)
-      const wrongKey = "00000000000000000000000000000000";
+      // Use wrong key (128-bit = 26 CB32 chars)
+      const wrongKey = "00000000000000000000000000";
       const result = await validateNode(encoded.bytes, wrongKey, hashProvider);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("Hash mismatch");

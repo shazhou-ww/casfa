@@ -104,16 +104,21 @@ describe("Utils", () => {
   });
 
   describe("Hash key conversion", () => {
-    it("should create pure hex key (no prefix)", () => {
+    it("should create CB32 key (no prefix)", () => {
       const hash = new Uint8Array(16).fill(0xab);
       const key = hashToKey(hash);
-      expect(key).toBe("ab".repeat(16));
+      // 16 bytes of 0xab → CB32 encoded
+      expect(key.length).toBe(26);
+      // Roundtrip should reproduce same bytes
+      expect(keyToHash(key)).toEqual(hash);
     });
 
-    it("should extract hash from hex key", () => {
-      const key = "cd".repeat(16);
+    it("should extract hash from CB32 key", () => {
+      // Encode then decode
+      const original = new Uint8Array(16).fill(0xcd);
+      const key = hashToKey(original);
       const hash = keyToHash(key);
-      expect(hash).toEqual(new Uint8Array(16).fill(0xcd));
+      expect(hash).toEqual(original);
     });
 
     it("should roundtrip hash", () => {

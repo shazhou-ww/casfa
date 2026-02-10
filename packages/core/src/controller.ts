@@ -16,7 +16,7 @@ import type {
   NodeKind,
   StorageProvider,
 } from "./types.ts";
-import { concatBytes, hashToKey } from "./utils.ts";
+import { concatBytes, hashToKey, keyToHash } from "./utils.ts";
 
 // ============================================================================
 // Types
@@ -77,15 +77,12 @@ export type WriteResult = {
 // ============================================================================
 
 /**
- * Convert hex key string to hash bytes
+ * Convert CB32 storage key to hash bytes
  */
 const keyToHashBytes = (key: string): Uint8Array => {
-  if (key.length !== HASH_SIZE * 2) {
-    throw new Error(`Invalid key format: expected ${HASH_SIZE * 2} hex chars, got ${key.length}`);
-  }
-  const bytes = new Uint8Array(HASH_SIZE);
-  for (let i = 0; i < HASH_SIZE; i++) {
-    bytes[i] = Number.parseInt(key.slice(i * 2, i * 2 + 2), 16);
+  const bytes = keyToHash(key);
+  if (bytes.length !== HASH_SIZE) {
+    throw new Error(`Invalid key format: expected ${HASH_SIZE} bytes, got ${bytes.length}`);
   }
   return bytes;
 };

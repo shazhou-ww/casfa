@@ -104,8 +104,10 @@ export type {
 export {
   bytesToHex,
   concatBytes,
+  decodeCB32,
   decodePascalString,
   decodePascalStrings,
+  encodeCB32,
   encodePascalString,
   encodePascalStrings,
   hashToKey,

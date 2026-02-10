@@ -18,7 +18,7 @@ import {
   type FileNodeMetadata,
   hashToNodeKey,
   type NodeUploadResponse,
-  nodeKeyToHex,
+  nodeKeyToStorageKey,
   type PrepareNodesResponse,
   PrepareNodesSchema,
   type SuccessorNodeMetadata,
@@ -55,8 +55,8 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
     return c.req.param("realmId") ?? c.get("auth").realm;
   };
 
-  // Convert node key to hex storage key
-  const toStorageKey = (nodeKey: string): string => nodeKeyToHex(nodeKey);
+  // Convert node key to CB32 storage key
+  const toStorageKey = (nodeKey: string): string => nodeKeyToStorageKey(nodeKey);
 
   return {
     prepareNodes: async (c) => {
