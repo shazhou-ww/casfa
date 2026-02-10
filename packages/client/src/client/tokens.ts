@@ -89,9 +89,7 @@ const toStoredRootDelegate = (response: RootTokenResponse): StoredRootDelegate =
   delegateId: response.delegate.delegateId,
   realm: response.delegate.realm,
   refreshToken: response.refreshToken,
-  refreshTokenId: response.refreshTokenId,
   accessToken: response.accessToken,
-  accessTokenId: response.accessTokenId,
   accessTokenExpiresAt: response.accessTokenExpiresAt,
   depth: response.delegate.depth,
   canUpload: response.delegate.canUpload,
@@ -104,8 +102,6 @@ const updateRootDelegate = (
 ): StoredRootDelegate => ({
   ...current,
   refreshToken: response.refreshToken,
-  refreshTokenId: response.refreshTokenId,
   accessToken: response.accessToken,
-  accessTokenId: response.accessTokenId,
   accessTokenExpiresAt: response.accessTokenExpiresAt,
 });

@@ -25,8 +25,8 @@ type Item = Record<string, unknown>;
 function createMockDynamoClient() {
   const items: Map<string, Item> = new Map();
 
-  /** Build a composite key from realm + key */
-  const compositeKey = (realm: string, key: string) => `${realm}||${key}`;
+  /** Build a composite key from pk + sk */
+  const compositeKey = (pk: string, sk: string) => `${pk}||${sk}`;
 
   const send = mock(async (command: unknown) => {
     const cmd = command as {
@@ -41,9 +41,9 @@ function createMockDynamoClient() {
         ConditionExpression?: string;
       };
       const item = input.Item;
-      const realm = item.realm as string;
-      const key = item.key as string;
-      const cKey = compositeKey(realm, key);
+      const pk = item.pk as string;
+      const sk = item.sk as string;
+      const cKey = compositeKey(pk, sk);
 
       // Check condition expression (attribute_not_exists)
       if (input.ConditionExpression?.includes("attribute_not_exists")) {
@@ -59,20 +59,20 @@ function createMockDynamoClient() {
     }
 
     if (cmdName === "GetCommand") {
-      const input = cmd.input as { Key: { realm: string; key: string } };
-      const cKey = compositeKey(input.Key.realm, input.Key.key);
+      const input = cmd.input as { Key: { pk: string; sk: string } };
+      const cKey = compositeKey(input.Key.pk, input.Key.sk);
       const item = items.get(cKey);
       return { Item: item ?? undefined };
     }
 
     if (cmdName === "UpdateCommand") {
       const input = cmd.input as {
-        Key: { realm: string; key: string };
+        Key: { pk: string; sk: string };
         UpdateExpression: string;
         ConditionExpression?: string;
         ExpressionAttributeValues?: Record<string, unknown>;
       };
-      const cKey = compositeKey(input.Key.realm, input.Key.key);
+      const cKey = compositeKey(input.Key.pk, input.Key.sk);
       const item = items.get(cKey);
 
       // Check condition
@@ -88,6 +88,15 @@ function createMockDynamoClient() {
           (error as unknown as { name: string }).name = "ConditionalCheckFailedException";
           throw error;
         }
+        // Check currentRtHash = :expectedRt condition (for rotateTokens)
+        if (input.ConditionExpression.includes("currentRtHash = :expectedRt")) {
+          const vals = input.ExpressionAttributeValues ?? {};
+          if (item.currentRtHash !== vals[":expectedRt"]) {
+            const error = new Error("Condition not met");
+            (error as unknown as { name: string }).name = "ConditionalCheckFailedException";
+            throw error;
+          }
+        }
       }
 
       if (item && input.ExpressionAttributeValues) {
@@ -101,6 +110,16 @@ function createMockDynamoClient() {
         }
         if (input.UpdateExpression.includes("revokedBy = :by")) {
           item.revokedBy = vals[":by"];
+        }
+        // Handle rotateTokens update
+        if (input.UpdateExpression.includes("currentRtHash = :newRt")) {
+          item.currentRtHash = vals[":newRt"];
+        }
+        if (input.UpdateExpression.includes("currentAtHash = :newAt")) {
+          item.currentAtHash = vals[":newAt"];
+        }
+        if (input.UpdateExpression.includes("atExpiresAt = :newExp")) {
+          item.atExpiresAt = vals[":newExp"];
         }
         items.set(cKey, item);
       }
@@ -117,15 +136,20 @@ function createMockDynamoClient() {
       };
 
       const vals = input.ExpressionAttributeValues ?? {};
-      const gsi1pkValue = vals[":pk"] as string | undefined;
+      const pkValue = vals[":pk"] as string | undefined;
 
-      // Filter items by gsi1pk match
       const matching: Item[] = [];
       for (const item of items.values()) {
-        if (gsi1pkValue && item.gsi1pk !== gsi1pkValue) continue;
+        if (input.IndexName === "gsi1") {
+          // GSI1: realm-index — match on gsi1pk
+          if (pkValue && item.gsi1pk !== pkValue) continue;
+        } else if (input.IndexName === "gsi2") {
+          // GSI2: parent-index — match on gsi2pk
+          if (pkValue && item.gsi2pk !== pkValue) continue;
+        }
 
         // Apply FilterExpression for realm filter
-        if (input.FilterExpression?.includes("#realm = :realm")) {
+        if (input.FilterExpression?.includes("realm = :realm")) {
           const filterRealm = vals[":realm"] as string;
           if (item.realm !== filterRealm) continue;
         }
@@ -164,6 +188,9 @@ function makeRootDelegate(
     canManageDepot: true,
     isRevoked: false,
     createdAt: Date.now(),
+    currentRtHash: "a".repeat(32),
+    currentAtHash: "b".repeat(32),
+    atExpiresAt: Date.now() + 3600_000,
     ...overrides,
   };
 }
@@ -185,6 +212,9 @@ function makeChildDelegate(
     canManageDepot: false,
     isRevoked: false,
     createdAt: Date.now(),
+    currentRtHash: "a".repeat(32),
+    currentAtHash: "b".repeat(32),
+    atExpiresAt: Date.now() + 3600_000,
     ...overrides,
   };
 }
@@ -214,7 +244,7 @@ describe("DelegatesDb", () => {
       const root = makeRootDelegate("realm-1", "dlg-root");
       await db.create(root);
 
-      const retrieved = await db.get("realm-1", "dlg-root");
+      const retrieved = await db.get("dlg-root");
       expect(retrieved).not.toBeNull();
       expect(retrieved!.delegateId).toBe("dlg-root");
       expect(retrieved!.parentId).toBeNull();
@@ -235,7 +265,7 @@ describe("DelegatesDb", () => {
       });
 
       await db.create(child);
-      const retrieved = await db.get("realm-1", "dlg-child");
+      const retrieved = await db.get("dlg-child");
       expect(retrieved).not.toBeNull();
       expect(retrieved!.name).toBe("Agent-A");
       expect(retrieved!.parentId).toBe("dlg-root");
@@ -247,7 +277,7 @@ describe("DelegatesDb", () => {
     });
 
     it("returns null for non-existent delegate", async () => {
-      const result = await db.get("realm-1", "non-existent");
+      const result = await db.get("non-existent");
       expect(result).toBeNull();
     });
 
@@ -268,10 +298,10 @@ describe("DelegatesDb", () => {
       const root = makeRootDelegate("realm-1", "dlg-root");
       await db.create(root);
 
-      const result = await db.revoke("realm-1", "dlg-root", "admin");
+      const result = await db.revoke("dlg-root", "admin");
       expect(result).toBe(true);
 
-      const retrieved = await db.get("realm-1", "dlg-root");
+      const retrieved = await db.get("dlg-root");
       expect(retrieved!.isRevoked).toBe(true);
       expect(retrieved!.revokedBy).toBe("admin");
       expect(retrieved!.revokedAt).toBeGreaterThan(0);
@@ -281,13 +311,13 @@ describe("DelegatesDb", () => {
       const root = makeRootDelegate("realm-1", "dlg-root");
       await db.create(root);
 
-      await db.revoke("realm-1", "dlg-root", "admin");
-      const result = await db.revoke("realm-1", "dlg-root", "admin");
+      await db.revoke("dlg-root", "admin");
+      const result = await db.revoke("dlg-root", "admin");
       expect(result).toBe(false);
     });
 
     it("returns false for non-existent delegate", async () => {
-      const result = await db.revoke("realm-1", "non-existent", "admin");
+      const result = await db.revoke("non-existent", "admin");
       expect(result).toBe(false);
     });
   });
@@ -327,7 +357,13 @@ describe("DelegatesDb", () => {
 
   describe("getOrCreateRoot", () => {
     it("creates a new root delegate", async () => {
-      const root = await db.getOrCreateRoot("realm-1", "dlg-new-root");
+      const tokenHashes = {
+        currentRtHash: "a".repeat(32),
+        currentAtHash: "b".repeat(32),
+        atExpiresAt: Date.now() + 3600_000,
+      };
+      const { delegate: root, created } = await db.getOrCreateRoot("realm-1", "dlg-new-root", tokenHashes);
+      expect(created).toBe(true);
       expect(root.delegateId).toBe("dlg-new-root");
       expect(root.realm).toBe("realm-1");
       expect(root.parentId).toBeNull();
@@ -338,10 +374,22 @@ describe("DelegatesDb", () => {
     });
 
     it("returns existing root on second call", async () => {
-      const _root1 = await db.getOrCreateRoot("realm-1", "dlg-root-1");
-      const root2 = await db.getOrCreateRoot("realm-1", "dlg-root-2");
+      const tokenHashes1 = {
+        currentRtHash: "a".repeat(32),
+        currentAtHash: "b".repeat(32),
+        atExpiresAt: Date.now() + 3600_000,
+      };
+      const tokenHashes2 = {
+        currentRtHash: "c".repeat(32),
+        currentAtHash: "d".repeat(32),
+        atExpiresAt: Date.now() + 3600_000,
+      };
+      const { delegate: _root1, created: created1 } = await db.getOrCreateRoot("realm-1", "dlg-root-1", tokenHashes1);
+      expect(created1).toBe(true);
+      const { delegate: root2, created: created2 } = await db.getOrCreateRoot("realm-1", "dlg-root-2", tokenHashes2);
 
       // Should return the same root (first one created)
+      expect(created2).toBe(false);
       expect(root2.delegateId).toBe("dlg-root-1");
     });
   });

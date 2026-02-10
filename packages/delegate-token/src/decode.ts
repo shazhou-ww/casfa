@@ -1,87 +1,62 @@
 /**
- * Delegate Token decoding
+ * Delegate Token decoding — v3 (simplified)
  *
- * v2: Delegate-as-entity model
- * Flags low nibble: is_refresh(0), can_upload(1), can_manage_depot(2), reserved(3)
- * Flags high nibble: depth(4-7)
+ * AT and RT distinguished by byte length:
+ *   32 bytes → Access Token
+ *   24 bytes → Refresh Token
  */
 
-import { DELEGATE_TOKEN_SIZE, FLAGS, MAGIC_NUMBER, OFFSETS, SIZES } from "./constants.ts";
-import type { DelegateToken, DelegateTokenFlags } from "./types.ts";
+import {
+  AT_OFFSETS,
+  AT_SIZE,
+  DELEGATE_ID_SIZE,
+  NONCE_SIZE,
+  RT_OFFSETS,
+  RT_SIZE,
+} from "./constants.ts";
+import type { DecodedAccessToken, DecodedRefreshToken, DecodedToken } from "./types.ts";
 
 /**
- * Decode flags from u32 value
+ * Decode a binary token by byte length.
  *
- * Low nibble: type + permissions
- *   bit 0: isRefresh
- *   bit 1: canUpload
- *   bit 2: canManageDepot
- *   bit 3: reserved
- * High nibble: depth
+ *   32 bytes → Access Token:  [delegateId 16B] [expiresAt 8B LE] [nonce 8B]
+ *   24 bytes → Refresh Token: [delegateId 16B] [nonce 8B]
+ *
+ * @param bytes - Raw token bytes (32 or 24)
+ * @returns Decoded token with discriminating `type` field
+ * @throws Error if byte length is neither 32 nor 24
  */
-function decodeFlags(flagsValue: number): DelegateTokenFlags {
-  return {
-    isRefresh: (flagsValue & (1 << FLAGS.IS_REFRESH)) !== 0,
-    canUpload: (flagsValue & (1 << FLAGS.CAN_UPLOAD)) !== 0,
-    canManageDepot: (flagsValue & (1 << FLAGS.CAN_MANAGE_DEPOT)) !== 0,
-    depth: (flagsValue >> FLAGS.DEPTH_SHIFT) & FLAGS.DEPTH_MASK,
-  };
+export function decodeToken(bytes: Uint8Array): DecodedToken {
+  if (bytes.length === AT_SIZE) {
+    return decodeAccessToken(bytes);
+  }
+  if (bytes.length === RT_SIZE) {
+    return decodeRefreshToken(bytes);
+  }
+  throw new Error(
+    `Invalid token size: expected ${AT_SIZE} (AT) or ${RT_SIZE} (RT) bytes, got ${bytes.length}`
+  );
 }
 
 /**
- * Decode a 128-byte binary Delegate Token
- *
- * @param bytes - 128-byte Uint8Array containing the token
- * @returns Decoded DelegateToken object
- * @throws Error if token format is invalid
+ * Decode a 32-byte Access Token
  */
-export function decodeDelegateToken(bytes: Uint8Array): DelegateToken {
-  // Validate size
-  if (bytes.length !== DELEGATE_TOKEN_SIZE) {
-    throw new Error(
-      `Invalid token size: expected ${DELEGATE_TOKEN_SIZE} bytes, got ${bytes.length}`
-    );
-  }
-
+function decodeAccessToken(bytes: Uint8Array): DecodedAccessToken {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
-  // Validate magic number
-  const magic = view.getUint32(OFFSETS.MAGIC, true);
-  if (magic !== MAGIC_NUMBER) {
-    throw new Error(
-      `Invalid magic number: expected 0x${MAGIC_NUMBER.toString(16)}, got 0x${magic.toString(16)}`
-    );
-  }
+  const delegateId = bytes.slice(AT_OFFSETS.DELEGATE_ID, AT_OFFSETS.DELEGATE_ID + DELEGATE_ID_SIZE);
+  const expiresAt = Number(view.getBigUint64(AT_OFFSETS.EXPIRES_AT, true));
+  const nonce = bytes.slice(AT_OFFSETS.NONCE, AT_OFFSETS.NONCE + NONCE_SIZE);
 
-  // Read flags
-  const flagsValue = view.getUint32(OFFSETS.FLAGS, true);
-  const flags = decodeFlags(flagsValue);
+  return { type: "access", delegateId, expiresAt, nonce };
+}
 
-  // Read TTL
-  const ttl = Number(view.getBigUint64(OFFSETS.TTL, true));
+/**
+ * Decode a 24-byte Refresh Token
+ */
+function decodeRefreshToken(bytes: Uint8Array): DecodedRefreshToken {
+  const delegateId = bytes.slice(RT_OFFSETS.DELEGATE_ID, RT_OFFSETS.DELEGATE_ID + DELEGATE_ID_SIZE);
+  const nonce = bytes.slice(RT_OFFSETS.NONCE, RT_OFFSETS.NONCE + NONCE_SIZE);
 
-  // Read quota
-  const quota = Number(view.getBigUint64(OFFSETS.QUOTA, true));
-
-  // Read salt
-  const salt = bytes.slice(OFFSETS.SALT, OFFSETS.SALT + SIZES.SALT);
-
-  // Read issuer
-  const issuer = bytes.slice(OFFSETS.ISSUER, OFFSETS.ISSUER + SIZES.ISSUER);
-
-  // Read realm
-  const realm = bytes.slice(OFFSETS.REALM, OFFSETS.REALM + SIZES.REALM);
-
-  // Read scope
-  const scope = bytes.slice(OFFSETS.SCOPE, OFFSETS.SCOPE + SIZES.SCOPE);
-
-  return {
-    flags,
-    ttl,
-    quota,
-    salt,
-    issuer,
-    realm,
-    scope,
-  };
+  return { type: "refresh", delegateId, nonce };
 }

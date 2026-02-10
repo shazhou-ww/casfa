@@ -186,14 +186,10 @@ export const RootTokenResponseSchema = z.object({
     canManageDepot: z.boolean(),
     createdAt: z.number(),
   }),
-  /** Refresh Token (base64-encoded 128-byte binary) — store securely */
+  /** Refresh Token (base64-encoded 24-byte binary) — store securely */
   refreshToken: z.string(),
-  /** Access Token (base64-encoded 128-byte binary) — use for API calls */
+  /** Access Token (base64-encoded 32-byte binary) — use for API calls */
   accessToken: z.string(),
-  /** Refresh Token ID */
-  refreshTokenId: z.string(),
-  /** Access Token ID */
-  accessTokenId: z.string(),
   /** Access Token expiration (Unix epoch ms) */
   accessTokenExpiresAt: z.number(),
 });
@@ -221,14 +217,10 @@ export type RefreshTokenRequest = z.infer<typeof RefreshTokenRequestSchema>;
  * Returns new RT + AT pair
  */
 export const RefreshTokenResponseSchema = z.object({
-  /** New Refresh Token (base64-encoded 128-byte binary) */
+  /** New Refresh Token (base64-encoded 24-byte binary) */
   refreshToken: z.string(),
-  /** New Access Token (base64-encoded 128-byte binary) */
+  /** New Access Token (base64-encoded 32-byte binary) */
   accessToken: z.string(),
-  /** New Refresh Token ID */
-  refreshTokenId: z.string(),
-  /** New Access Token ID */
-  accessTokenId: z.string(),
   /** Access Token expiration (Unix epoch ms) */
   accessTokenExpiresAt: z.number(),
   /** Delegate ID associated with the tokens */

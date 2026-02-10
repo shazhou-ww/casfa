@@ -57,14 +57,10 @@ export const CreateDelegateResponseSchema = z.object({
     expiresAt: z.number().optional(),
     createdAt: z.number(),
   }),
-  /** Refresh Token (base64-encoded 128-byte binary) — store securely */
+  /** Refresh Token (base64-encoded 24-byte binary) — store securely */
   refreshToken: z.string(),
-  /** Access Token (base64-encoded 128-byte binary) — use for API calls */
+  /** Access Token (base64-encoded 32-byte binary) — use for API calls */
   accessToken: z.string(),
-  /** Refresh Token ID */
-  refreshTokenId: z.string(),
-  /** Access Token ID */
-  accessTokenId: z.string(),
   /** Access Token expiration (Unix epoch ms) */
   accessTokenExpiresAt: z.number(),
 });

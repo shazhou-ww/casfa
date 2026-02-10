@@ -19,7 +19,6 @@ const createUserToken = (): StoredUserToken => ({
 });
 
 const createAccessToken = (): StoredAccessToken => ({
-  tokenId: "at_access123",
   tokenBase64: "base64-access-token",
   tokenBytes: new Uint8Array(128),
   expiresAt: Date.now() + 3600_000,

@@ -27,10 +27,8 @@ const createRootDelegate = (overrides: Partial<StoredRootDelegate> = {}): Stored
   delegateId: "dlg_root123",
   realm: "test-realm",
   refreshToken: "base64-refresh-token",
-  refreshTokenId: "rt_123",
   // A valid base64 for 128 bytes (all zeros)
   accessToken: Buffer.from(new Uint8Array(128)).toString("base64"),
-  accessTokenId: "at_123",
   accessTokenExpiresAt: Date.now() + 3600_000,
   depth: 0,
   canUpload: true,
@@ -71,7 +69,6 @@ describe("rootDelegateToAccessToken", () => {
 
     const rd = createRootDelegate({
       accessToken: base64,
-      accessTokenId: "at_view",
       accessTokenExpiresAt: 1234567890,
       canUpload: true,
       canManageDepot: false,
@@ -83,7 +80,6 @@ describe("rootDelegateToAccessToken", () => {
     expect(at.tokenBytes).toBeInstanceOf(Uint8Array);
     expect(at.tokenBytes.length).toBe(128);
     expect(at.tokenBytes).toEqual(rawBytes);
-    expect(at.tokenId).toBe("at_view");
     expect(at.expiresAt).toBe(1234567890);
     expect(at.canUpload).toBe(true);
     expect(at.canManageDepot).toBe(false);
@@ -96,7 +92,6 @@ describe("rootDelegateToAccessToken", () => {
     expect(at.tokenBase64).toBe(rd.accessToken);
     expect(at.tokenBytes).toBeInstanceOf(Uint8Array);
     expect(at.tokenBytes.length).toBe(128);
-    expect(at.tokenId).toBe(rd.accessTokenId);
     expect(at.expiresAt).toBe(rd.accessTokenExpiresAt);
     expect(at.canUpload).toBe(rd.canUpload);
     expect(at.canManageDepot).toBe(rd.canManageDepot);
@@ -190,9 +185,7 @@ describe("StoredRootDelegate structure", () => {
       delegateId: "dlg_test",
       realm: "my-realm",
       refreshToken: "rt-base64",
-      refreshTokenId: "rt_id",
       accessToken: "at-base64",
-      accessTokenId: "at_id",
       accessTokenExpiresAt: Date.now() + 3600_000,
       depth: 0,
       canUpload: true,
@@ -202,9 +195,7 @@ describe("StoredRootDelegate structure", () => {
     expect(rd.delegateId).toBe("dlg_test");
     expect(rd.realm).toBe("my-realm");
     expect(rd.refreshToken).toBe("rt-base64");
-    expect(rd.refreshTokenId).toBe("rt_id");
     expect(rd.accessToken).toBe("at-base64");
-    expect(rd.accessTokenId).toBe("at_id");
     expect(typeof rd.accessTokenExpiresAt).toBe("number");
     expect(rd.depth).toBe(0);
     expect(rd.canUpload).toBe(true);
@@ -221,7 +212,6 @@ describe("StoredAccessToken structure", () => {
     const token: StoredAccessToken = {
       tokenBase64: "base64",
       tokenBytes: new Uint8Array(128),
-      tokenId: "at_access",
       expiresAt: Date.now(),
       canUpload: false,
       canManageDepot: true,
@@ -229,7 +219,6 @@ describe("StoredAccessToken structure", () => {
 
     expect(token.tokenBase64).toBe("base64");
     expect(token.tokenBytes).toBeInstanceOf(Uint8Array);
-    expect(token.tokenId).toBe("at_access");
     expect(typeof token.expiresAt).toBe("number");
     expect(token.canUpload).toBe(false);
     expect(token.canManageDepot).toBe(true);

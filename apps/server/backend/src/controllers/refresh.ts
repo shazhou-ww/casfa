@@ -1,32 +1,26 @@
 /**
- * Refresh Token Controller
+ * Refresh Token Controller (token-simplification v3)
  *
  * POST /api/tokens/refresh — Binary RT → new RT + new AT (rotation)
  *
- * Implements RT one-time-use rotation:
- * 1. Decode binary RT from Authorization header
- * 2. Compute tokenId → look up TokenRecord
- * 3. Check isUsed:
- *    - already used → 409 TOKEN_REUSE + invalidate token family
- *    - not used → mark used, issue new RT + AT
- * 4. Check isInvalidated → 401 TOKEN_INVALIDATED
- * 5. Issue new RT + AT with same delegateId
+ * Simplified flow:
+ * 1. Decode 24-byte RT from Authorization: Bearer {base64}
+ * 2. Extract delegateId from token bytes
+ * 3. Compute hash → compare with delegate.currentRtHash
+ * 4. Generate new RT + AT pair
+ * 5. Atomic conditional update: SET new hashes WHERE currentRtHash = old hash
+ * 6. Return new tokens
+ *
+ * RT replay → conditional update fails → reject (do NOT auto-revoke delegate)
  */
 
-import {
-  computeTokenId as computeTokenIdRaw,
-  DELEGATE_TOKEN_SIZE,
-  decodeDelegateToken,
-  formatTokenId,
-} from "@casfa/delegate-token";
-import { blake3 } from "@noble/hashes/blake3";
+import { RT_SIZE, decodeToken } from "@casfa/delegate-token";
 import type { Context } from "hono";
 import type { DelegatesDb } from "../db/delegates.ts";
-import type { TokenRecordsDb } from "../db/token-records.ts";
 import type { Env } from "../types.ts";
 import {
-  computeRealmHash,
-  computeScopeHash,
+  bytesToDelegateId,
+  computeTokenHash,
   generateTokenPair,
 } from "../util/delegate-token-utils.ts";
 
@@ -36,7 +30,6 @@ import {
 
 export type RefreshControllerDeps = {
   delegatesDb: DelegatesDb;
-  tokenRecordsDb: TokenRecordsDb;
 };
 
 export type RefreshController = {
@@ -49,19 +42,12 @@ export type RefreshController = {
 
 const DEFAULT_AT_TTL_SECONDS = 3600; // 1 hour
 
-/**
- * Blake3-128 hash function for computing Token IDs
- */
-const blake3_128 = (data: Uint8Array): Uint8Array => {
-  return blake3(data, { dkLen: 16 });
-};
-
 // ============================================================================
 // Controller Factory
 // ============================================================================
 
 export const createRefreshController = (deps: RefreshControllerDeps): RefreshController => {
-  const { delegatesDb, tokenRecordsDb } = deps;
+  const { delegatesDb } = deps;
 
   /**
    * POST /api/tokens/refresh
@@ -82,15 +68,15 @@ export const createRefreshController = (deps: RefreshControllerDeps): RefreshCon
 
     const tokenBase64 = parts[1]!;
 
-    // 2. Decode RT binary
+    // 2. Decode RT binary — must be 24 bytes
     let tokenBytes: Uint8Array;
     try {
       const buffer = Buffer.from(tokenBase64, "base64");
-      if (buffer.length !== DELEGATE_TOKEN_SIZE) {
+      if (buffer.length !== RT_SIZE) {
         return c.json(
           {
             error: "INVALID_TOKEN_FORMAT",
-            message: `Token must be ${DELEGATE_TOKEN_SIZE} bytes`,
+            message: `Refresh Token must be ${RT_SIZE} bytes`,
           },
           401
         );
@@ -100,10 +86,10 @@ export const createRefreshController = (deps: RefreshControllerDeps): RefreshCon
       return c.json({ error: "INVALID_TOKEN_FORMAT", message: "Invalid Base64 encoding" }, 401);
     }
 
-    // 3. Verify it's a refresh token
+    // 3. Decode token to extract delegateId
     let decoded;
     try {
-      decoded = decodeDelegateToken(tokenBytes);
+      decoded = decodeToken(tokenBytes);
     } catch (e) {
       return c.json(
         {
@@ -114,7 +100,7 @@ export const createRefreshController = (deps: RefreshControllerDeps): RefreshCon
       );
     }
 
-    if (!decoded.flags.isRefresh) {
+    if (decoded.type !== "refresh") {
       return c.json(
         {
           error: "NOT_REFRESH_TOKEN",
@@ -124,59 +110,12 @@ export const createRefreshController = (deps: RefreshControllerDeps): RefreshCon
       );
     }
 
-    // 4. Compute Token ID
-    const tokenIdRaw = await computeTokenIdRaw(tokenBytes, blake3_128);
-    const tokenId = formatTokenId(tokenIdRaw);
+    const delegateId = bytesToDelegateId(decoded.delegateId);
 
-    // 5. Look up token record
-    const tokenRecord = await tokenRecordsDb.get(tokenId);
-    if (!tokenRecord) {
-      return c.json({ error: "TOKEN_NOT_FOUND", message: "Refresh token not found" }, 401);
-    }
-
-    // 6. Check if token family is invalidated
-    if (tokenRecord.isInvalidated) {
-      return c.json(
-        {
-          error: "TOKEN_INVALIDATED",
-          message: "Token family has been invalidated due to security concern",
-        },
-        401
-      );
-    }
-
-    // 7. Check one-time-use: if already used → replay detected → invalidate all delegate tokens
-    if (tokenRecord.isUsed) {
-      // RT replay detected! Invalidate all tokens for this delegate
-      await tokenRecordsDb.invalidateByDelegate(tokenRecord.delegateId);
-      return c.json(
-        {
-          error: "TOKEN_REUSE",
-          message:
-            "Refresh token has already been used. All tokens for this delegate have been invalidated.",
-        },
-        409
-      );
-    }
-
-    // 8. Mark RT as used (atomic conditional update)
-    const markSuccess = await tokenRecordsDb.markUsed(tokenId);
-    if (!markSuccess) {
-      // Race condition: another request used it first
-      await tokenRecordsDb.invalidateByDelegate(tokenRecord.delegateId);
-      return c.json(
-        {
-          error: "TOKEN_REUSE",
-          message: "Refresh token was already used (concurrent request detected)",
-        },
-        409
-      );
-    }
-
-    // 9. Verify the delegate still exists and is not revoked
-    const delegate = await delegatesDb.get(tokenRecord.realm, tokenRecord.delegateId);
+    // 4. Look up delegate — single DB read
+    const delegate = await delegatesDb.get(delegateId);
     if (!delegate) {
-      return c.json({ error: "DELEGATE_NOT_FOUND", message: "Associated delegate not found" }, 401);
+      return c.json({ error: "DELEGATE_NOT_FOUND", message: "Delegate not found" }, 401);
     }
 
     if (delegate.isRevoked) {
@@ -190,50 +129,51 @@ export const createRefreshController = (deps: RefreshControllerDeps): RefreshCon
       return c.json({ error: "DELEGATE_EXPIRED", message: "Associated delegate has expired" }, 401);
     }
 
-    // 10. Issue new RT + AT pair
-    const realmHash = computeRealmHash(tokenRecord.realm);
-
-    // Get scope roots for scope hash
-    let scopeRoots: string[] = [];
-    if (delegate.scopeNodeHash) {
-      scopeRoots = [delegate.scopeNodeHash];
+    // 5. Verify RT hash matches
+    const rtHash = computeTokenHash(tokenBytes);
+    if (rtHash !== delegate.currentRtHash) {
+      // RT replay or stale RT — reject without revoking delegate
+      return c.json(
+        {
+          error: "TOKEN_INVALID",
+          message: "Refresh token is no longer valid (possible replay)",
+        },
+        401
+      );
     }
-    // For root delegates (no scope), scopeRoots stays empty
-    const scopeHash = computeScopeHash(scopeRoots);
 
-    const newTokenPair = await generateTokenPair({
-      delegateId: tokenRecord.delegateId,
-      realmHash,
-      scopeHash,
-      depth: delegate.depth,
-      canUpload: delegate.canUpload,
-      canManageDepot: delegate.canManageDepot,
+    // 6. Generate new RT + AT pair
+    const newTokenPair = generateTokenPair({
+      delegateId,
       accessTokenTtlSeconds: DEFAULT_AT_TTL_SECONDS,
     });
 
-    // Store new token records with the SAME delegateId for tracking
-    await tokenRecordsDb.create({
-      tokenId: newTokenPair.refreshToken.id,
-      tokenType: "refresh",
-      delegateId: tokenRecord.delegateId,
-      realm: tokenRecord.realm,
-      expiresAt: 0,
-    });
-    await tokenRecordsDb.create({
-      tokenId: newTokenPair.accessToken.id,
-      tokenType: "access",
-      delegateId: tokenRecord.delegateId,
-      realm: tokenRecord.realm,
-      expiresAt: newTokenPair.accessToken.expiresAt,
+    // 7. Atomic conditional update — ensures no concurrent refresh
+    const rotated = await delegatesDb.rotateTokens({
+      delegateId,
+      expectedRtHash: rtHash,
+      newRtHash: newTokenPair.refreshToken.hash,
+      newAtHash: newTokenPair.accessToken.hash,
+      newAtExpiresAt: newTokenPair.accessToken.expiresAt,
     });
 
+    if (!rotated) {
+      // Concurrent refresh beat us — reject
+      return c.json(
+        {
+          error: "TOKEN_INVALID",
+          message: "Refresh token was already used (concurrent request)",
+        },
+        409
+      );
+    }
+
+    // 8. Return new tokens
     return c.json({
       refreshToken: newTokenPair.refreshToken.base64,
       accessToken: newTokenPair.accessToken.base64,
-      refreshTokenId: newTokenPair.refreshToken.id,
-      accessTokenId: newTokenPair.accessToken.id,
       accessTokenExpiresAt: newTokenPair.accessToken.expiresAt,
-      delegateId: tokenRecord.delegateId,
+      delegateId,
     });
   };
 

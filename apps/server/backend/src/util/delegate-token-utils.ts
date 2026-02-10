@@ -1,51 +1,75 @@
 /**
- * New delegate-model token utilities
+ * Delegate token utilities (v3 — simplified format)
  *
- * Uses @casfa/delegate-token package (LE binary format) for encoding
- * Refresh Tokens and Access Tokens.
+ * Bridges @casfa/delegate-token v3 with server-side Blake3 hashing.
  *
- * This module bridges the @casfa/delegate-token package with the server's
- * hash functions for creating token pairs for delegates.
+ * Token format:
+ * - Access Token: 32 bytes [delegateId 16B][expiresAt 8B LE][nonce 8B]
+ * - Refresh Token: 24 bytes [delegateId 16B][nonce 8B]
+ *
+ * Token hashes (Blake3-128, 32-char hex) are stored on the Delegate entity
+ * instead of in a separate TokenRecord table.
  */
 
 import {
-  computeTokenId as computeTokenIdRaw,
-  type DelegateTokenInput,
-  encodeDelegateToken,
-  formatTokenId,
+  encodeAccessToken,
+  encodeRefreshToken,
 } from "@casfa/delegate-token";
-import { decodeCrockfordBase32 } from "@casfa/protocol";
 import { blake3 } from "@noble/hashes/blake3";
+import { fromCrockfordBase32, toCrockfordBase32 } from "./encoding.ts";
 
 // ============================================================================
-// Hash Function (server-side Blake3-128)
+// Hash Utilities
 // ============================================================================
 
 /**
- * Blake3-128 hash function for computing Token IDs.
- * Returns 16 bytes (128 bits) for use with @casfa/delegate-token.
+ * Compute Blake3-128 hash of token bytes → hex string (32 chars).
+ * Used for storing currentRtHash / currentAtHash on Delegate.
  */
-const blake3_128: (data: Uint8Array) => Uint8Array = (data) => {
-  return blake3(data, { dkLen: 16 });
-};
+export function computeTokenHash(tokenBytes: Uint8Array): string {
+  const hash = blake3(tokenBytes, { dkLen: 16 }); // 128 bits = 16 bytes
+  return Buffer.from(hash).toString("hex");
+}
+
+// ============================================================================
+// Delegate ID ↔ Raw Bytes
+// ============================================================================
+
+/**
+ * Convert a delegate ID string (dlt_CB32) to raw 16 bytes.
+ */
+export function delegateIdToBytes(delegateId: string): Uint8Array {
+  if (!delegateId.startsWith("dlt_")) {
+    throw new Error(`Invalid delegate ID format (expected dlt_ prefix): ${delegateId}`);
+  }
+  const base32Part = delegateId.slice(4);
+  const decoded = fromCrockfordBase32(base32Part);
+  if (decoded.length !== 16) {
+    throw new Error(`Invalid delegate ID: expected 16 bytes, got ${decoded.length}`);
+  }
+  return decoded;
+}
+
+/**
+ * Convert raw 16 bytes back to delegate ID string (dlt_CB32).
+ */
+export function bytesToDelegateId(bytes: Uint8Array): string {
+  if (bytes.length !== 16) {
+    throw new Error(`Expected 16 bytes, got ${bytes.length}`);
+  }
+  return `dlt_${toCrockfordBase32(bytes)}`;
+}
 
 // ============================================================================
 // Token Pair Generation
 // ============================================================================
 
+/** Default Access Token TTL: 1 hour */
+const DEFAULT_AT_TTL_SECONDS = 3600;
+
 export type TokenPairInput = {
-  /** Delegate ID (dlt_CB32 format) — will be decoded + left-padded to 32 bytes */
+  /** Delegate ID (dlt_CB32 format) */
   delegateId: string;
-  /** Realm hash (32 bytes) */
-  realmHash: Uint8Array;
-  /** Scope hash (32 bytes) — all zeros for root delegate */
-  scopeHash: Uint8Array;
-  /** Delegation depth (0 for root) */
-  depth: number;
-  /** Can upload */
-  canUpload: boolean;
-  /** Can manage depots */
-  canManageDepot: boolean;
   /** Access Token TTL in seconds (default: 3600 = 1 hour) */
   accessTokenTtlSeconds?: number;
 };
@@ -53,120 +77,52 @@ export type TokenPairInput = {
 export type TokenPair = {
   refreshToken: {
     bytes: Uint8Array;
-    id: string;
+    hash: string;
     base64: string;
   };
   accessToken: {
     bytes: Uint8Array;
-    id: string;
+    hash: string;
     base64: string;
     expiresAt: number;
   };
 };
 
 /**
- * Convert a delegate ID (dlt_CB32) to a 32-byte issuer field.
- * Decode CB32 to get 16 bytes, left-pad with zeros to 32 bytes.
+ * Generate a RT + AT pair for a delegate.
+ *
+ * Returns the raw bytes, base64, and Blake3-128 hash for each token.
+ * The hashes are stored on the Delegate entity for later verification.
  */
-export function delegateIdToIssuer(delegateId: string): Uint8Array {
-  if (!delegateId.startsWith("dlt_")) {
-    throw new Error(`Invalid delegate ID format (expected dlt_ prefix): ${delegateId}`);
-  }
-  const base32Part = delegateId.slice(4);
-  const decoded = decodeCrockfordBase32(base32Part);
-  if (decoded.length !== 16) {
-    throw new Error(`Invalid delegate ID: expected 16 bytes, got ${decoded.length}`);
-  }
-
-  const issuer = new Uint8Array(32);
-  // Left-pad: write 16-byte ID to bytes 16-31
-  issuer.set(decoded, 16);
-  return issuer;
-}
-
-/**
- * Compute realm hash from realm string
- */
-export function computeRealmHash(realm: string): Uint8Array {
-  return blake3(`realm:${realm}`);
-}
-
-/**
- * Compute scope hash from scope root(s)
- */
-export function computeScopeHash(scopeRoots: string[]): Uint8Array {
-  if (scopeRoots.length === 0) {
-    return blake3("scope:empty");
-  }
-  if (scopeRoots.length === 1) {
-    return blake3(`scope:${scopeRoots[0]}`);
-  }
-  const sorted = [...scopeRoots].sort();
-  return blake3(`scope:${sorted.join(",")}`);
-}
-
-/** Default Access Token TTL: 1 hour */
-const DEFAULT_AT_TTL_SECONDS = 3600;
-
-/**
- * Generate a RT + AT pair for a delegate
- */
-export async function generateTokenPair(input: TokenPairInput): Promise<TokenPair> {
+export function generateTokenPair(input: TokenPairInput): TokenPair {
   const {
     delegateId,
-    realmHash,
-    scopeHash,
-    depth,
-    canUpload,
-    canManageDepot,
     accessTokenTtlSeconds = DEFAULT_AT_TTL_SECONDS,
   } = input;
 
-  const issuer = delegateIdToIssuer(delegateId);
+  const delegateIdBytes = delegateIdToBytes(delegateId);
 
-  // Encode Refresh Token (isRefresh = true, ttl = 0 = never expires)
-  const rtInput: DelegateTokenInput = {
-    type: "refresh",
-    ttl: 0,
-    canUpload,
-    canManageDepot,
-    issuer,
-    realm: realmHash,
-    scope: scopeHash,
-    depth,
-  };
-  const rtBytes = encodeDelegateToken(rtInput);
-
-  // Encode Access Token (isRefresh = false, ttl = expiresAt in ms)
+  // AT: 32 bytes
   const atExpiresAt = Date.now() + accessTokenTtlSeconds * 1000;
-  const atInput: DelegateTokenInput = {
-    type: "access",
-    ttl: atExpiresAt,
-    canUpload,
-    canManageDepot,
-    issuer,
-    realm: realmHash,
-    scope: scopeHash,
-    depth,
-  };
-  const atBytes = encodeDelegateToken(atInput);
+  const atBytes = encodeAccessToken({
+    delegateId: delegateIdBytes,
+    expiresAt: atExpiresAt,
+  });
 
-  // Compute Token IDs
-  const rtIdRaw = await computeTokenIdRaw(rtBytes, blake3_128);
-  const atIdRaw = await computeTokenIdRaw(atBytes, blake3_128);
-
-  const rtId = formatTokenId(rtIdRaw);
-  const atId = formatTokenId(atIdRaw);
+  // RT: 24 bytes
+  const rtBytes = encodeRefreshToken({
+    delegateId: delegateIdBytes,
+  });
 
   return {
     refreshToken: {
       bytes: rtBytes,
-      id: rtId,
+      hash: computeTokenHash(rtBytes),
       base64: Buffer.from(rtBytes).toString("base64"),
     },
     accessToken: {
       bytes: atBytes,
-      id: atId,
+      hash: computeTokenHash(atBytes),
       base64: Buffer.from(atBytes).toString("base64"),
       expiresAt: atExpiresAt,
     },

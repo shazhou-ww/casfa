@@ -113,16 +113,25 @@ function createAccessTokenAuth(overrides?: Record<string, unknown>) {
   return {
     type: "access",
     realm: TEST_REALM,
-    tokenId: "tkn_test",
-    tokenBytes: TEST_TOKEN_BYTES,
+    delegateId: TEST_DELEGATE_ID,
+    tokenBytes: new Uint8Array(32),
     canUpload: true,
     canManageDepot: false,
     issuerChain: [TEST_ROOT_DELEGATE_ID, TEST_DELEGATE_ID],
-    tokenRecord: {
-      tokenId: "tkn_test",
-      tokenType: "access",
+    delegate: {
+      delegateId: TEST_DELEGATE_ID,
       realm: TEST_REALM,
-    },
+      parentId: TEST_ROOT_DELEGATE_ID,
+      chain: [TEST_ROOT_DELEGATE_ID, TEST_DELEGATE_ID],
+      depth: 1,
+      canUpload: true,
+      canManageDepot: false,
+      isRevoked: false,
+      createdAt: Date.now(),
+      currentRtHash: "a".repeat(32),
+      currentAtHash: "b".repeat(32),
+      atExpiresAt: Date.now() + 3600_000,
+    } as never,
     ...overrides,
   };
 }
@@ -351,6 +360,7 @@ describe("ClaimController", () => {
     it("derives delegateId from last element of issuerChain", async () => {
       const c = createMockContext({
         auth: createAccessTokenAuth({
+          delegateId: "leaf",
           issuerChain: ["root", "mid", "leaf"],
         }),
         body: { pop: TEST_POP },
@@ -379,11 +389,11 @@ describe("ClaimController", () => {
       expect(call[1]).toEqual(chain);
     });
 
-    it("falls back to tokenId when issuerChain is empty", async () => {
+    it("uses delegateId directly from auth context", async () => {
       const c = createMockContext({
         auth: createAccessTokenAuth({
+          delegateId: "dlg_direct",
           issuerChain: [],
-          tokenId: "tkn_fallback",
         }),
         body: { pop: TEST_POP },
         params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
@@ -392,7 +402,7 @@ describe("ClaimController", () => {
       await controller.claim(c as any);
 
       const body = c.responseData.body as Record<string, unknown>;
-      expect(body.delegateId).toBe("tkn_fallback");
+      expect(body.delegateId).toBe("dlg_direct");
     });
 
     it("passes tokenBytes from auth to verifyPoP", async () => {

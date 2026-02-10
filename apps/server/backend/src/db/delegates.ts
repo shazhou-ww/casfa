@@ -4,13 +4,17 @@
  * Manages Delegate entity records in DynamoDB.
  * Delegates are first-class authorization entities in the delegate tree.
  *
- * Table: casRealmTable (realm/key schema)
- *   PK (realm) = realm
- *   SK (key)   = DLG#{delegateId}
+ * Table: tokensTable (pk/sk schema — token-simplification v3)
+ *   PK (pk) = DLG#{delegateId}
+ *   SK (sk) = METADATA
  *
- * GSI1 (parent-index):
- *   gsi1pk = PARENT#{parentId}   (or PARENT#ROOT for root delegates)
+ * GSI1 (realm-index):
+ *   gsi1pk = REALM#{realm}
  *   gsi1sk = DLG#{delegateId}
+ *
+ * GSI2 (parent-index):
+ *   gsi2pk = PARENT#{parentId}   (or PARENT#ROOT for root delegates)
+ *   gsi2sk = DLG#{delegateId}
  */
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
@@ -22,35 +26,35 @@ import { createDocClient } from "./client.ts";
 // Key Helpers
 // ============================================================================
 
-/** Sort key for a delegate record */
-const toDelegateSk = (delegateId: string): string => `DLG#${delegateId}`;
+/** Partition key for a delegate record */
+const toDelegatePk = (delegateId: string): string => `DLG#${delegateId}`;
 
-/** Extract delegateId from sort key */
-const _extractDelegateId = (sk: string): string => {
-  if (sk.startsWith("DLG#")) return sk.slice(4);
-  return sk;
-};
+/** Sort key for delegate metadata */
+const METADATA_SK = "METADATA";
 
-/** GSI1 partition key for parent-index */
-const toParentGsi1Pk = (parentId: string | null): string =>
+/** GSI1 partition key for realm-index */
+const toRealmGsi1Pk = (realm: string): string => `REALM#${realm}`;
+
+/** GSI1/GSI2 sort key for delegates */
+const toDelegateGsiSk = (delegateId: string): string => `DLG#${delegateId}`;
+
+/** GSI2 partition key for parent-index */
+const toParentGsi2Pk = (parentId: string | null): string =>
   parentId ? `PARENT#${parentId}` : "PARENT#ROOT";
-
-/** GSI1 sort key for parent-index */
-const toDelegateGsi1Sk = (delegateId: string): string => `DLG#${delegateId}`;
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export type DelegatesDb = {
-  /** Create a new delegate record */
+  /** Create a new delegate record (including initial token hashes) */
   create: (delegate: Delegate) => Promise<void>;
 
-  /** Get a delegate by realm + delegateId */
-  get: (realm: string, delegateId: string) => Promise<Delegate | null>;
+  /** Get a delegate by delegateId (primary key lookup — no realm needed) */
+  get: (delegateId: string) => Promise<Delegate | null>;
 
   /** Revoke a delegate (set isRevoked=true, revokedAt, revokedBy) */
-  revoke: (realm: string, delegateId: string, revokedBy: string) => Promise<boolean>;
+  revoke: (delegateId: string, revokedBy: string) => Promise<boolean>;
 
   /** List direct children of a delegate */
   listChildren: (
@@ -62,15 +66,33 @@ export type DelegatesDb = {
   }>;
 
   /**
+   * Atomically rotate tokens on a delegate.
+   * Uses conditional update: currentRtHash must match expectedRtHash.
+   * Returns true on success, false if condition failed (replay or revoked).
+   */
+  rotateTokens: (params: {
+    delegateId: string;
+    expectedRtHash: string;
+    newRtHash: string;
+    newAtHash: string;
+    newAtExpiresAt: number;
+  }) => Promise<boolean>;
+
+  /**
    * Get or create the root delegate for a realm/user.
    * Root delegate: depth=0, parentId=null, canUpload=true, canManageDepot=true.
    * Uses conditional PutItem to handle race conditions.
    *
    * @param realm - The realm (= userId)
    * @param delegateId - Pre-generated delegate ID for the root
+   * @param tokenHashes - Initial token hashes for the root delegate
    * @returns The root delegate (either newly created or existing)
    */
-  getOrCreateRoot: (realm: string, delegateId: string) => Promise<Delegate>;
+  getOrCreateRoot: (
+    realm: string,
+    delegateId: string,
+    tokenHashes: { currentRtHash: string; currentAtHash: string; atExpiresAt: number }
+  ) => Promise<{ delegate: Delegate; created: boolean }>;
 };
 
 type DelegatesDbConfig = {
@@ -109,6 +131,10 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
       revokedAt: item.revokedAt as number | undefined,
       revokedBy: item.revokedBy as string | undefined,
       createdAt: item.createdAt as number,
+      // Token hash fields
+      currentRtHash: item.currentRtHash as string,
+      currentAtHash: item.currentAtHash as string,
+      atExpiresAt: item.atExpiresAt as number,
     };
   };
 
@@ -118,17 +144,22 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
 
   const create = async (delegate: Delegate): Promise<void> => {
     const item: Record<string, unknown> = {
-      // DynamoDB keys
-      realm: delegate.realm,
-      key: toDelegateSk(delegate.delegateId),
+      // DynamoDB keys — new PK scheme: DLG#{delegateId} / METADATA
+      pk: toDelegatePk(delegate.delegateId),
+      sk: METADATA_SK,
 
-      // GSI1 — parent-index
-      gsi1pk: toParentGsi1Pk(delegate.parentId),
-      gsi1sk: toDelegateGsi1Sk(delegate.delegateId),
+      // GSI1 — realm-index
+      gsi1pk: toRealmGsi1Pk(delegate.realm),
+      gsi1sk: toDelegateGsiSk(delegate.delegateId),
+
+      // GSI2 — parent-index
+      gsi2pk: toParentGsi2Pk(delegate.parentId),
+      gsi2sk: toDelegateGsiSk(delegate.delegateId),
 
       // Entity data
       delegateId: delegate.delegateId,
       ...(delegate.name !== undefined && { name: delegate.name }),
+      realm: delegate.realm,
       parentId: delegate.parentId,
       chain: delegate.chain,
       depth: delegate.depth,
@@ -148,6 +179,11 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
       }),
       isRevoked: delegate.isRevoked,
       createdAt: delegate.createdAt,
+
+      // Token hash fields
+      currentRtHash: delegate.currentRtHash,
+      currentAtHash: delegate.currentAtHash,
+      atExpiresAt: delegate.atExpiresAt,
     };
 
     await client.send(
@@ -155,33 +191,31 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
         TableName: tableName,
         Item: item,
         // Prevent overwriting existing delegate
-        ConditionExpression: "attribute_not_exists(#realm) AND attribute_not_exists(#key)",
-        ExpressionAttributeNames: { "#realm": "realm", "#key": "key" },
+        ConditionExpression: "attribute_not_exists(pk)",
       })
     );
   };
 
-  const get = async (realm: string, delegateId: string): Promise<Delegate | null> => {
+  const get = async (delegateId: string): Promise<Delegate | null> => {
     const result = await client.send(
       new GetCommand({
         TableName: tableName,
-        Key: { realm, key: toDelegateSk(delegateId) },
+        Key: { pk: toDelegatePk(delegateId), sk: METADATA_SK },
       })
     );
     if (!result.Item) return null;
     return toDelegate(result.Item);
   };
 
-  const revoke = async (realm: string, delegateId: string, revokedBy: string): Promise<boolean> => {
+  const revoke = async (delegateId: string, revokedBy: string): Promise<boolean> => {
     const now = Date.now();
     try {
       await client.send(
         new UpdateCommand({
           TableName: tableName,
-          Key: { realm, key: toDelegateSk(delegateId) },
+          Key: { pk: toDelegatePk(delegateId), sk: METADATA_SK },
           UpdateExpression: "SET isRevoked = :true, revokedAt = :now, revokedBy = :by",
-          ConditionExpression: "attribute_exists(#realm) AND isRevoked = :false",
-          ExpressionAttributeNames: { "#realm": "realm" },
+          ConditionExpression: "attribute_exists(pk) AND isRevoked = :false",
           ExpressionAttributeValues: {
             ":true": true,
             ":false": false,
@@ -194,7 +228,6 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
     } catch (error: unknown) {
       const err = error as { name?: string };
       if (err.name === "ConditionalCheckFailedException") {
-        // Already revoked or doesn't exist
         return false;
       }
       throw error;
@@ -209,10 +242,10 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
 
     const params: Record<string, unknown> = {
       TableName: tableName,
-      IndexName: "gsi1",
-      KeyConditionExpression: "gsi1pk = :pk AND begins_with(gsi1sk, :prefix)",
+      IndexName: "gsi2",
+      KeyConditionExpression: "gsi2pk = :pk AND begins_with(gsi2sk, :prefix)",
       ExpressionAttributeValues: {
-        ":pk": toParentGsi1Pk(parentId),
+        ":pk": toParentGsi2Pk(parentId),
         ":prefix": "DLG#",
       },
       Limit: limit,
@@ -238,30 +271,71 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
     return { delegates, nextCursor };
   };
 
-  const getOrCreateRoot = async (realm: string, delegateId: string): Promise<Delegate> => {
-    // Try to find existing root delegate by querying the parent-index
-    // Root delegates have gsi1pk = "PARENT#ROOT"
+  const rotateTokens = async (params: {
+    delegateId: string;
+    expectedRtHash: string;
+    newRtHash: string;
+    newAtHash: string;
+    newAtExpiresAt: number;
+  }): Promise<boolean> => {
+    try {
+      await client.send(
+        new UpdateCommand({
+          TableName: tableName,
+          Key: { pk: toDelegatePk(params.delegateId), sk: METADATA_SK },
+          UpdateExpression:
+            "SET currentRtHash = :newRt, currentAtHash = :newAt, atExpiresAt = :newExp",
+          ConditionExpression:
+            "attribute_exists(pk) AND currentRtHash = :expectedRt AND isRevoked = :false",
+          ExpressionAttributeValues: {
+            ":newRt": params.newRtHash,
+            ":newAt": params.newAtHash,
+            ":newExp": params.newAtExpiresAt,
+            ":expectedRt": params.expectedRtHash,
+            ":false": false,
+          },
+        })
+      );
+      return true;
+    } catch (error: unknown) {
+      const err = error as { name?: string };
+      if (err.name === "ConditionalCheckFailedException") {
+        return false;
+      }
+      throw error;
+    }
+  };
+
+  const getOrCreateRoot = async (
+    realm: string,
+    delegateId: string,
+    tokenHashes: { currentRtHash: string; currentAtHash: string; atExpiresAt: number }
+  ): Promise<{ delegate: Delegate; created: boolean }> => {
+    // Try to find existing root delegate by querying the realm + parent index
+    // Root delegates have gsi2pk = "PARENT#ROOT"
     const queryResult = await client.send(
       new QueryCommand({
         TableName: tableName,
-        IndexName: "gsi1",
-        KeyConditionExpression: "gsi1pk = :pk",
+        IndexName: "gsi2",
+        KeyConditionExpression: "gsi2pk = :pk",
         ExpressionAttributeValues: {
           ":pk": "PARENT#ROOT",
           ":realm": realm,
         },
-        // Filter by realm since GSI doesn't include realm in the key
-        FilterExpression: "#realm = :realm",
-        ExpressionAttributeNames: { "#realm": "realm" },
+        // Filter by realm since parent-index doesn't include realm in the key
+        FilterExpression: "realm = :realm",
         Limit: 1,
       })
     );
 
     if (queryResult.Items && queryResult.Items.length > 0) {
-      return toDelegate(queryResult.Items[0] as Record<string, unknown>);
+      return {
+        delegate: toDelegate(queryResult.Items[0] as Record<string, unknown>),
+        created: false,
+      };
     }
 
-    // Create new root delegate
+    // Create new root delegate with token hashes
     const now = Date.now();
     const rootDelegate: Delegate = {
       delegateId,
@@ -273,6 +347,9 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
       canManageDepot: true,
       isRevoked: false,
       createdAt: now,
+      currentRtHash: tokenHashes.currentRtHash,
+      currentAtHash: tokenHashes.currentAtHash,
+      atExpiresAt: tokenHashes.atExpiresAt,
     };
 
     try {
@@ -280,33 +357,32 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
     } catch (error: unknown) {
       const err = error as { name?: string };
       if (err.name === "ConditionalCheckFailedException") {
-        // Race condition — another request created the root. Fetch it.
-        const existing = await get(realm, delegateId);
-        if (existing) return existing;
-        // If not found by this ID, someone used a different ID. Query again.
+        // Race condition — another request created the root. Find it.
         const retryResult = await client.send(
           new QueryCommand({
             TableName: tableName,
-            IndexName: "gsi1",
-            KeyConditionExpression: "gsi1pk = :pk",
+            IndexName: "gsi2",
+            KeyConditionExpression: "gsi2pk = :pk",
             ExpressionAttributeValues: {
               ":pk": "PARENT#ROOT",
               ":realm": realm,
             },
-            FilterExpression: "#realm = :realm",
-            ExpressionAttributeNames: { "#realm": "realm" },
+            FilterExpression: "realm = :realm",
             Limit: 1,
           })
         );
         if (retryResult.Items && retryResult.Items.length > 0) {
-          return toDelegate(retryResult.Items[0] as Record<string, unknown>);
+          return {
+            delegate: toDelegate(retryResult.Items[0] as Record<string, unknown>),
+            created: false,
+          };
         }
       }
       throw error;
     }
 
-    return rootDelegate;
+    return { delegate: rootDelegate, created: true };
   };
 
-  return { create, get, revoke, listChildren, getOrCreateRoot };
+  return { create, get, revoke, listChildren, rotateTokens, getOrCreateRoot };
 };

@@ -94,7 +94,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   const { config, db, storage, hashProvider, jwtVerifier, mockJwtSecret, runtimeInfo } = deps;
   const {
     delegatesDb,
-    tokenRecordsDb,
     scopeSetNodesDb,
     ownershipV2Db,
     depotsDb,
@@ -110,7 +109,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     userRolesDb,
   });
   const accessTokenMiddleware = createAccessTokenMiddleware({
-    tokenRecordsDb,
     delegatesDb,
   });
   const realmAccessMiddleware = createRealmAccessMiddleware();
@@ -204,18 +202,15 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   // New delegate model controllers
   const delegates = createDelegatesController({
     delegatesDb,
-    tokenRecordsDb,
     scopeSetNodesDb,
     depotsDb,
     getNode: (realm: string, hash: string) => storage.get(hash),
   });
   const rootToken = createRootTokenController({
     delegatesDb,
-    tokenRecordsDb,
   });
   const refreshToken = createRefreshController({
     delegatesDb,
-    tokenRecordsDb,
   });
 
   // Claim controller

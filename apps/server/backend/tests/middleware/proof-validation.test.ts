@@ -78,8 +78,7 @@ function mockAuth(overrides?: Partial<AccessTokenAuthContext>): AccessTokenAuthC
   return {
     type: "access",
     realm: "test-realm",
-    tokenId: "tkn_test",
-    tokenBytes: new Uint8Array(128),
+    tokenBytes: new Uint8Array(32),
     delegate: {
       delegateId: "dlg_child",
       realm: "test-realm",

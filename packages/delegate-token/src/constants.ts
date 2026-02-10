@@ -1,97 +1,56 @@
 /**
- * Delegate Token constants
+ * Delegate Token constants — v3 (simplified)
  *
- * Binary format: 128 bytes
- * Flags layout (low byte of u32 LE):
- *   Low nibble  (bits 0-3): type + permissions
- *     bit 0: is_refresh  (1 = Refresh Token, 0 = Access Token)
- *     bit 1: can_upload
- *     bit 2: can_manage_depot
- *     bit 3: reserved
- *   High nibble (bits 4-7): depth (0-15)
+ * Token format: no magic, no type byte.
+ * AT and RT distinguished by byte length alone.
+ *
+ * AT (32 bytes): [delegateId 16B] [expiresAt 8B] [nonce 8B]
+ * RT (24 bytes): [delegateId 16B] [nonce 8B]
  */
 
-/**
- * Total size of a Delegate Token in bytes
- */
-export const DELEGATE_TOKEN_SIZE = 128;
+// ============================================================================
+// Sizes
+// ============================================================================
 
-/**
- * Magic number for Delegate Token format
- * Bytes: 0x44, 0x4C, 0x54, 0x01 ("DLT\x01" ASCII)
- * u32 LE value: 0x01544C44
- */
-export const MAGIC_NUMBER = 0x01544c44;
+/** Access Token total size in bytes */
+export const AT_SIZE = 32;
 
-/**
- * Prefix for Token ID string format
- */
+/** Refresh Token total size in bytes */
+export const RT_SIZE = 24;
+
+/** Delegate ID size in bytes (UUID v7 raw binary) */
+export const DELEGATE_ID_SIZE = 16;
+
+/** Nonce size in bytes */
+export const NONCE_SIZE = 8;
+
+/** ExpiresAt field size in bytes (u64 LE, epoch ms) */
+export const EXPIRES_AT_SIZE = 8;
+
+/** Prefix for Token ID string format */
 export const TOKEN_ID_PREFIX = "tkn_";
 
-/**
- * Maximum delegation depth (0-15, stored in high nibble)
- */
-export const MAX_DEPTH = 15;
+// ============================================================================
+// Offsets
+// ============================================================================
 
 /**
- * Flags bit positions and masks
+ * Field offsets for Access Token (32 bytes)
  *
- * Low nibble: type + permissions
- *   bit 0: is_refresh
- *   bit 1: can_upload
- *   bit 2: can_manage_depot
- *   bit 3: reserved
- * High nibble: depth (0-15)
+ * Layout: [delegateId 16B] [expiresAt 8B] [nonce 8B]
  */
-export const FLAGS = {
-  /** Bit 0: Is this a Refresh Token (1) or Access Token (0) */
-  IS_REFRESH: 0,
-  /** Bit 1: Can upload nodes */
-  CAN_UPLOAD: 1,
-  /** Bit 2: Can manage depots */
-  CAN_MANAGE_DEPOT: 2,
-  /** Bit 3: Reserved */
-  RESERVED: 3,
-  /** Bits 4-7: Delegation depth (high nibble) */
-  DEPTH_SHIFT: 4,
-  /** Mask for depth bits (after shifting) */
-  DEPTH_MASK: 0x0f,
-  /** Mask for low nibble (type + permissions) */
-  PERM_MASK: 0x0f,
+export const AT_OFFSETS = {
+  DELEGATE_ID: 0,
+  EXPIRES_AT: 16,
+  NONCE: 24,
 } as const;
 
 /**
- * Field offsets in the 128-byte token
+ * Field offsets for Refresh Token (24 bytes)
+ *
+ * Layout: [delegateId 16B] [nonce 8B]
  */
-export const OFFSETS = {
-  /** Magic number (u32 LE) */
-  MAGIC: 0,
-  /** Flags (u32 LE) */
-  FLAGS: 4,
-  /** TTL - expiration timestamp (u64 LE, epoch ms) */
-  TTL: 8,
-  /** Quota (u64 LE, reserved) */
-  QUOTA: 16,
-  /** Salt (u64 LE, random) */
-  SALT: 24,
-  /** Issuer ID (32 bytes) */
-  ISSUER: 32,
-  /** Realm ID (32 bytes) */
-  REALM: 64,
-  /** Scope hash (32 bytes) */
-  SCOPE: 96,
-} as const;
-
-/**
- * Field sizes in bytes
- */
-export const SIZES = {
-  MAGIC: 4,
-  FLAGS: 4,
-  TTL: 8,
-  QUOTA: 8,
-  SALT: 8,
-  ISSUER: 32,
-  REALM: 32,
-  SCOPE: 32,
+export const RT_OFFSETS = {
+  DELEGATE_ID: 0,
+  NONCE: 16,
 } as const;
