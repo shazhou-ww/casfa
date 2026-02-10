@@ -50,7 +50,7 @@ function buildAuthUrl(
     code_challenge_method: "S256",
     state,
   });
-  return `${config.domain}/oauth2/authorize?${params.toString()}`;
+  return `https://${config.domain}/oauth2/authorize?${params.toString()}`;
 }
 
 /**
@@ -88,7 +88,7 @@ export async function oauthLogin(options: OAuthLoginOptions): Promise<OAuthLogin
     throw error;
   }
 
-  const redirectUri = `http://localhost:${port}/callback`;
+  const redirectUri = `http://localhost:${port}/oauth/callback`;
 
   // Step 4: Build authorization URL
   const authUrl = buildAuthUrl(config, redirectUri, codeChallenge, state);

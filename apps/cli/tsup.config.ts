@@ -10,10 +10,7 @@ export default defineConfig({
   minify: false,
   target: "es2022",
   outDir: "dist",
-  // Add shebang for CLI executable
-  banner: {
-    js: "#!/usr/bin/env node",
-  },
+  // Shebang is in src/cli.ts (#!/usr/bin/env bun), no need to add via banner
   // External workspace dependencies
   skipNodeModulesBundle: true,
   external: [/^@casfa\/.*/],

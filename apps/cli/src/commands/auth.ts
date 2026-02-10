@@ -1,7 +1,7 @@
 import { api } from "@casfa/client";
 import type { Command } from "commander";
 import { createClient, requireUserAuth } from "../lib/client";
-import { getProfile, loadConfig } from "../lib/config";
+import { getProfile, loadConfig, saveConfig } from "../lib/config";
 import {
   clearRootDelegate,
   clearUserToken,
@@ -45,8 +45,16 @@ export function registerAuthCommands(program: Command): void {
           profileName,
         });
 
-        // After successful OAuth login, acquire root delegate automatically
-        if (result.success && profile.realm) {
+        // After successful OAuth login, auto-set realm and acquire root delegate
+        if (result.success && result.userId) {
+          // realm === userId; auto-save to profile so subsequent commands work
+          if (!profile.realm) {
+            profile.realm = result.userId;
+            saveConfig(config);
+            formatter.info(`Realm set to ${result.userId}`);
+          }
+
+          const realm = profile.realm;
           formatter.info("Acquiring root delegate...");
           try {
             const cred = getCredentials(profileName);
@@ -54,7 +62,7 @@ export function registerAuthCommands(program: Command): void {
               const rootResult = await api.createRootToken(
                 profile.baseUrl,
                 cred.userToken.accessToken,
-                profile.realm
+                realm
               );
 
               if (rootResult.ok) {

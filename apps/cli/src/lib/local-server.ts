@@ -198,7 +198,7 @@ export function waitForCallback(
         const url = new URL(req.url);
 
         // Only handle the callback path
-        if (url.pathname !== "/callback") {
+        if (url.pathname !== "/oauth/callback") {
           return new Response("Not Found", { status: 404 });
         }
 
