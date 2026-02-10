@@ -74,6 +74,7 @@ interface CasfaExplorerProps {
   // ── 扩展点 ──
   extraContextMenuItems?: ExplorerMenuItem[];   // 追加自定义右键菜单项
   extraToolbarItems?: ExplorerToolbarItem[];     // 追加自定义工具栏按钮
+  previewProviders?: PreviewProvider[];          // 按 content type 扩展文件预览
 
   // ── 事件回调 ──
   onNavigate?: (path: string) => void;
@@ -83,7 +84,6 @@ interface CasfaExplorerProps {
   onRootChange?: (newRoot: string) => void;
 
   // ── 自定义渲染 ──
-  renderFilePreview?: (item: ExplorerItem) => React.ReactNode;
   renderEmptyState?: () => React.ReactNode;
   renderBreadcrumb?: (segments: PathSegment[]) => React.ReactNode;
   renderNodeIcon?: (item: ExplorerItem) => React.ReactNode;
@@ -209,6 +209,74 @@ type ExplorerTextKey =
 - 修饰函数返回一个新的 `ExplorerT`，拥有完全控制权
 - 不传 `i18n` 时 `builtinT` 直接使用，零配置即可工作
 
+### 2.5 文件预览扩展
+
+文件预览基于 **content type 匹配**，支持按类型注册自定义预览器，不影响其他类型的内置预览。
+
+```ts
+interface PreviewProvider {
+  /**
+   * 判断此 provider 是否处理该文件。
+   * 可按 contentType 精确匹配，也可按前缀/通配匹配。
+   */
+  match: (file: ExplorerItem) => boolean;
+
+  /**
+   * 渲染预览内容。接收文件元数据和已加载的内容（Blob）。
+   */
+  render: (file: ExplorerItem, content: Blob) => React.ReactNode;
+
+  /**
+   * 可选：预览面板中显示的标签名（如 "Markdown"、"3D Model"）。
+   */
+  label?: string;
+}
+```
+
+**匹配优先级**：`previewProviders` 数组按顺序匹配，第一个 `match` 返回 `true` 的 provider 生效。若无匹配，fallback 到内置预览器。内置预览器仍无法处理时，显示"不支持预览"提示。
+
+**内置预览器**（优先级最低，作为 fallback）：
+
+| Content Type | 预览方式 |
+|-------------|---------|
+| `image/*` | `<img>` 标签 |
+| `text/*` | 纯文本渲染（等宽字体、行号） |
+| `audio/*` | HTML5 `<audio>` 播放器 |
+| `video/*` | HTML5 `<video>` 播放器 |
+| 其他 | 显示文件元数据 + "不支持预览" 提示 |
+
+**用法示例**：
+
+```tsx
+import { CasfaExplorer } from "@casfa/explorer";
+import { MarkdownPreview } from "./my-markdown-preview";
+import { ThreeDViewer } from "./my-3d-viewer";
+
+<CasfaExplorer
+  client={client}
+  previewProviders={[
+    // Markdown：覆盖内置的 text/* 预览
+    {
+      match: (file) => file.contentType === "text/markdown",
+      render: (file, blob) => <MarkdownPreview blob={blob} />,
+      label: "Markdown",
+    },
+    // 3D 模型：新增内置不支持的类型
+    {
+      match: (file) => file.contentType === "model/gltf-binary",
+      render: (file, blob) => <ThreeDViewer blob={blob} />,
+      label: "3D Model",
+    },
+    // 按文件扩展名匹配（match 可以用任意逻辑）
+    {
+      match: (file) => file.name.endsWith(".csv"),
+      render: (file, blob) => <CsvTable blob={blob} />,
+      label: "CSV",
+    },
+  ]}
+/>
+```
+
 ---
 
 ## 3. 用例
@@ -233,7 +301,7 @@ type ExplorerTextKey =
 | # | 用例 | 描述 |
 |---|------|------|
 | R-1 | **文件详情面板** | 选中文件后在右侧浮动面板显示元数据：名称、大小、内容类型、CAS hash、创建时间 |
-| R-2 | **文件预览** | 双击文件打开预览面板。内置支持：图片（img tag）、文本/代码（Monaco/highlight）、PDF（嵌入 viewer）、音视频（HTML5 player）。可通过 `renderFilePreview` 自定义 |
+| R-2 | **文件预览** | 双击文件打开预览面板。内置支持：图片（img tag）、文本（纯文本渲染）、音视频（HTML5 player）。可通过 `previewProviders` 按 content type 扩展或覆盖预览器（见 2.5） |
 | R-3 | **文件下载** | 工具栏按钮 / 右键菜单 / 快捷键下载选中文件。调用 `fs/read` 获取 blob 并触发浏览器下载 |
 | R-4 | **批量下载** | 选中多个文件时，逐个下载或打包为 zip（前端 JSZip）|
 
@@ -562,48 +630,17 @@ interface CasfaClientFs {
 
 ---
 
-## 12. 实现优先级
+## 12. 实现计划
 
-### P0 — MVP（第一阶段）
+详见 [迭代计划](./iterations/README.md)，共 5 个迭代：
 
-- [ ] 目录浏览（ls + 懒加载）
-- [ ] 面包屑导航
-- [ ] List view（名称、大小、类型列）
-- [ ] 文件下载
-- [ ] 文件上传（按钮 + 拖拽）
-- [ ] 创建文件夹
-- [ ] 删除（单个 + 批量）
-- [ ] 重命名
-- [ ] 基本右键菜单
-- [ ] 权限感知（只读模式）
-- [ ] Depot 选择器（depotId 未指定时）
-- [ ] 错误处理 & Snackbar
-
-### P1 — 增强
-
-- [ ] 树形侧边栏
-- [ ] Grid view
-- [ ] 文件预览面板
-- [ ] 复制/移动（剪贴板）
-- [ ] 键盘快捷键
-- [ ] 搜索过滤
-- [ ] 列排序
-- [ ] 上传进度面板
-- [ ] CAS Hash 显示
-- [ ] 状态栏
-
-### P2 — 高级
-
-- [ ] CAS URI 复制
-- [ ] Depot 历史/回滚
-- [ ] 批量操作（rewrite）
-- [ ] 去重指示
-- [ ] Detail panel（完整元数据）
-- [ ] 响应式/移动端适配
-- [ ] 暗色模式
-- [ ] 国际化（zh-CN）
-- [ ] Headless hooks 导出
-- [ ] 自定义列/菜单/工具栏扩展点
+| 迭代 | 主题 | 文档 |
+|------|------|------|
+| Iter 1 | 骨架 + 列表浏览 | [iter-1-skeleton.md](./iterations/iter-1-skeleton.md) |
+| Iter 2 | 文件操作 | [iter-2-file-ops.md](./iterations/iter-2-file-ops.md) |
+| Iter 3 | 导航 + 布局 | [iter-3-nav-layout.md](./iterations/iter-3-nav-layout.md) |
+| Iter 4 | 交互增强 | [iter-4-interaction.md](./iterations/iter-4-interaction.md) |
+| Iter 5 | CAS 特性 + 打磨 | [iter-5-cas-polish.md](./iterations/iter-5-cas-polish.md) |
 
 ---
 
