@@ -14,6 +14,7 @@
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { PopContext } from "@casfa/proof";
+import { nodeKeyToHex } from "@casfa/protocol";
 import {
   createClaimController,
   type ClaimController,
@@ -28,7 +29,10 @@ import type { OwnershipV2Db } from "../../src/db/ownership-v2.ts";
 const TEST_REALM = "usr_testuser";
 const TEST_DELEGATE_ID = "dlg_child";
 const TEST_ROOT_DELEGATE_ID = "dlg_root";
-const TEST_NODE_HASH = "abcdef1234567890";
+/** Node key in node:XXXX (Crockford base32) format */
+const TEST_NODE_KEY = "node:NF6YY4HMASW91AYDXW938NKRJ0";
+/** Corresponding hex storage key */
+const TEST_STORAGE_KEY = nodeKeyToHex(TEST_NODE_KEY);
 const TEST_TOKEN_BYTES = new Uint8Array(128).fill(0x42);
 const TEST_CONTENT = new Uint8Array([0xca, 0xfe, 0xba, 0xbe]);
 const TEST_POP = "pop:VALID_POP_STRING";
@@ -160,14 +164,14 @@ describe("ClaimController", () => {
       const c = createMockContext({
         auth: createAccessTokenAuth(),
         body: { pop: TEST_POP },
-        params: { realmId: TEST_REALM, key: TEST_NODE_HASH },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
       });
 
       const res = await controller.claim(c as any);
       expect(res.status).toBe(200);
 
       const body = c.responseData.body as Record<string, unknown>;
-      expect(body.nodeHash).toBe(TEST_NODE_HASH);
+      expect(body.nodeHash).toBe(TEST_NODE_KEY);
       expect(body.alreadyOwned).toBe(false);
       expect(body.delegateId).toBe(TEST_DELEGATE_ID);
     });
@@ -176,15 +180,15 @@ describe("ClaimController", () => {
       const c = createMockContext({
         auth: createAccessTokenAuth(),
         body: { pop: TEST_POP },
-        params: { realmId: TEST_REALM, key: TEST_NODE_HASH },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
       });
 
       await controller.claim(c as any);
 
       expect(mockOwnershipDb.addOwnership).toHaveBeenCalledTimes(1);
       const call = (mockOwnershipDb.addOwnership as ReturnType<typeof mock>).mock.calls[0]!;
-      // args: (nodeHash, chain, uploadedBy, contentType, size)
-      expect(call[0]).toBe(TEST_NODE_HASH);
+      // args: (storageKey, chain, uploadedBy, contentType, size)
+      expect(call[0]).toBe(TEST_STORAGE_KEY);
       expect(call[1]).toEqual([TEST_ROOT_DELEGATE_ID, TEST_DELEGATE_ID]);
       expect(call[2]).toBe(TEST_DELEGATE_ID); // uploadedBy
       expect(call[4]).toBe(TEST_CONTENT.length); // size
@@ -203,7 +207,7 @@ describe("ClaimController", () => {
       const c = createMockContext({
         auth: createAccessTokenAuth(),
         body: { pop: TEST_POP },
-        params: { realmId: TEST_REALM, key: TEST_NODE_HASH },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
       });
 
       const res = await controller.claim(c as any);
@@ -232,7 +236,7 @@ describe("ClaimController", () => {
       const c = createMockContext({
         auth: createAccessTokenAuth(),
         body: { pop: "pop:ANYTHING" },
-        params: { realmId: TEST_REALM, key: TEST_NODE_HASH },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
       });
 
       const res = await controller.claim(c as any);
@@ -250,7 +254,7 @@ describe("ClaimController", () => {
       const c = createMockContext({
         auth: { type: "delegate", realm: TEST_REALM },
         body: { pop: TEST_POP },
-        params: { realmId: TEST_REALM, key: TEST_NODE_HASH },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
       });
 
       const res = await controller.claim(c as any);
@@ -262,7 +266,7 @@ describe("ClaimController", () => {
       const c = createMockContext({
         auth: createAccessTokenAuth({ canUpload: false }),
         body: { pop: TEST_POP },
-        params: { realmId: TEST_REALM, key: TEST_NODE_HASH },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
       });
 
       const res = await controller.claim(c as any);
@@ -274,7 +278,7 @@ describe("ClaimController", () => {
       const c = createMockContext({
         auth: createAccessTokenAuth({ realm: "usr_other" }),
         body: { pop: TEST_POP },
-        params: { realmId: TEST_REALM, key: TEST_NODE_HASH },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
       });
 
       const res = await controller.claim(c as any);
@@ -293,7 +297,7 @@ describe("ClaimController", () => {
       const c = createMockContext({
         auth: createAccessTokenAuth(),
         body: { pop: TEST_POP },
-        params: { realmId: TEST_REALM, key: TEST_NODE_HASH },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
       });
 
       const res = await controller.claim(c as any);
@@ -312,7 +316,7 @@ describe("ClaimController", () => {
       const c = createMockContext({
         auth: createAccessTokenAuth(),
         body: { pop: "pop:WRONG" },
-        params: { realmId: TEST_REALM, key: TEST_NODE_HASH },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
       });
 
       const res = await controller.claim(c as any);
@@ -324,7 +328,7 @@ describe("ClaimController", () => {
       const c = createMockContext({
         auth: createAccessTokenAuth(),
         body: {},
-        params: { realmId: TEST_REALM, key: TEST_NODE_HASH },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
       });
 
       const res = await controller.claim(c as any);
@@ -336,7 +340,7 @@ describe("ClaimController", () => {
       const c = createMockContext({
         auth: createAccessTokenAuth(),
         body: null,
-        params: { realmId: TEST_REALM, key: TEST_NODE_HASH },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
       });
 
       const res = await controller.claim(c as any);
@@ -356,7 +360,7 @@ describe("ClaimController", () => {
           issuerChain: ["root", "mid", "leaf"],
         }),
         body: { pop: TEST_POP },
-        params: { realmId: TEST_REALM, key: TEST_NODE_HASH },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
       });
 
       await controller.claim(c as any);
@@ -372,7 +376,7 @@ describe("ClaimController", () => {
           issuerChain: chain,
         }),
         body: { pop: TEST_POP },
-        params: { realmId: TEST_REALM, key: TEST_NODE_HASH },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
       });
 
       await controller.claim(c as any);
@@ -388,7 +392,7 @@ describe("ClaimController", () => {
           tokenId: "dlt1_fallback",
         }),
         body: { pop: TEST_POP },
-        params: { realmId: TEST_REALM, key: TEST_NODE_HASH },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
       });
 
       await controller.claim(c as any);
@@ -402,7 +406,7 @@ describe("ClaimController", () => {
       const c = createMockContext({
         auth: createAccessTokenAuth({ tokenBytes: customTokenBytes }),
         body: { pop: TEST_POP },
-        params: { realmId: TEST_REALM, key: TEST_NODE_HASH },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
       });
 
       await controller.claim(c as any);

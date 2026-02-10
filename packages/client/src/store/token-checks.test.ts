@@ -52,6 +52,7 @@ const createRootDelegate = (
 
 const createAccessToken = (overrides: Partial<StoredAccessToken> = {}): StoredAccessToken => ({
   tokenBase64: "base64-access-token",
+  tokenBytes: new Uint8Array(128),
   tokenId: "at_access123",
   expiresAt: Date.now() + 3600_000,
   canUpload: true,

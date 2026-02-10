@@ -102,6 +102,8 @@ export type AuthHeader = {
 export type StoredAccessToken = {
   /** Access Token (base64-encoded) */
   tokenBase64: string;
+  /** Raw 128-byte access token (for PoP computation) */
+  tokenBytes: Uint8Array;
   /** Access Token ID */
   tokenId: string;
   /** Access Token expiration time (epoch ms) */
@@ -115,10 +117,27 @@ export type StoredAccessToken = {
 /**
  * Extract a StoredAccessToken view from a StoredRootDelegate.
  */
+/**
+ * Decode a base64-encoded token string to raw bytes.
+ * Works in both Node.js (Buffer) and browser (atob) environments.
+ */
+const decodeBase64 = (base64: string): Uint8Array => {
+  if (typeof Buffer !== "undefined") {
+    return new Uint8Array(Buffer.from(base64, "base64"));
+  }
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+};
+
 export const rootDelegateToAccessToken = (
   rd: StoredRootDelegate,
 ): StoredAccessToken => ({
   tokenBase64: rd.accessToken,
+  tokenBytes: decodeBase64(rd.accessToken),
   tokenId: rd.accessTokenId,
   expiresAt: rd.accessTokenExpiresAt,
   canUpload: rd.canUpload,
