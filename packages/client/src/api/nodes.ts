@@ -7,11 +7,7 @@
  * - PUT /nodes/:nodeKey: Access Token with canUpload
  */
 
-import type {
-  NodeMetadata,
-  PrepareNodes,
-  PrepareNodesResponse,
-} from "@casfa/protocol";
+import type { NodeMetadata, PrepareNodes, PrepareNodesResponse } from "@casfa/protocol";
 import type { FetchResult } from "../types/client.ts";
 import { fetchWithAuth } from "../utils/http.ts";
 
@@ -39,7 +35,7 @@ export const getNode = async (
   realm: string,
   accessTokenBase64: string,
   nodeKey: string,
-  proof?: string,
+  proof?: string
 ): Promise<FetchResult<Uint8Array>> => {
   const url = `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/${encodeURIComponent(nodeKey)}`;
 
@@ -54,15 +50,12 @@ export const getNode = async (
     const response = await fetch(url, { headers });
 
     if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ message: response.statusText }));
+      const error = await response.json().catch(() => ({ message: response.statusText }));
       return {
         ok: false,
         error: {
           code: String(response.status),
-          message:
-            (error as { message?: string }).message ?? response.statusText,
+          message: (error as { message?: string }).message ?? response.statusText,
           status: response.status,
         },
       };
@@ -90,7 +83,7 @@ export const getNodeMetadata = async (
   realm: string,
   accessTokenBase64: string,
   nodeKey: string,
-  proof?: string,
+  proof?: string
 ): Promise<FetchResult<NodeMetadata>> => {
   const headers: Record<string, string> = {};
   if (proof) {
@@ -100,7 +93,7 @@ export const getNodeMetadata = async (
   return fetchWithAuth<NodeMetadata>(
     `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/${encodeURIComponent(nodeKey)}/metadata`,
     `Bearer ${accessTokenBase64}`,
-    { headers },
+    { headers }
   );
 };
 
@@ -113,7 +106,7 @@ export const prepareNodes = async (
   baseUrl: string,
   realm: string,
   accessTokenBase64: string,
-  params: PrepareNodes,
+  params: PrepareNodes
 ): Promise<FetchResult<PrepareNodesResponse>> => {
   return fetchWithAuth<PrepareNodesResponse>(
     `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/prepare`,
@@ -121,7 +114,7 @@ export const prepareNodes = async (
     {
       method: "POST",
       body: params,
-    },
+    }
   );
 };
 
@@ -134,7 +127,7 @@ export const putNode = async (
   realm: string,
   accessTokenBase64: string,
   nodeKey: string,
-  content: Uint8Array,
+  content: Uint8Array
 ): Promise<FetchResult<NodeUploadResult>> => {
   const url = `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/${encodeURIComponent(nodeKey)}`;
 
@@ -149,15 +142,12 @@ export const putNode = async (
     });
 
     if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ message: response.statusText }));
+      const error = await response.json().catch(() => ({ message: response.statusText }));
       return {
         ok: false,
         error: {
           code: String(response.status),
-          message:
-            (error as { message?: string }).message ?? response.statusText,
+          message: (error as { message?: string }).message ?? response.statusText,
           status: response.status,
         },
       };

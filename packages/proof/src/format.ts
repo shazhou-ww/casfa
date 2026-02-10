@@ -61,9 +61,7 @@ export function formatProofWord(word: ProofWord): string {
  *   ])
  *   // → '{"abc123":"ipath#0:1:2","def456":"ipath#0:3"}'
  */
-export function formatProofHeader(
-  entries: ReadonlyArray<readonly [string, ProofWord]>,
-): string {
+export function formatProofHeader(entries: ReadonlyArray<readonly [string, ProofWord]>): string {
   const obj: Record<string, string> = {};
   for (const [nodeHash, word] of entries) {
     obj[nodeHash] = formatProofWord(word);
@@ -92,10 +90,6 @@ export function ipath(scopeIndex: number, ...path: number[]): IPathProofWord {
  * @param version - Version string
  * @param path    - Child indices at each tree level
  */
-export function depot(
-  depotId: string,
-  version: string,
-  ...path: number[]
-): DepotProofWord {
+export function depot(depotId: string, version: string, ...path: number[]): DepotProofWord {
   return { type: "depot", depotId, version, path };
 }

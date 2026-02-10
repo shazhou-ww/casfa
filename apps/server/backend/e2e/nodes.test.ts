@@ -15,12 +15,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import {
-  createE2EContext,
-  type E2EContext,
-  testNodeKey,
-  uniqueId,
-} from "./setup.ts";
+import { createE2EContext, type E2EContext, testNodeKey, uniqueId } from "./setup.ts";
 
 describe("Node Operations", () => {
   let ctx: E2EContext;
@@ -41,7 +36,7 @@ describe("Node Operations", () => {
   describe("POST /api/realm/{realmId}/nodes/prepare", () => {
     it("should return all keys as missing for non-existent nodes", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
@@ -63,7 +58,7 @@ describe("Node Operations", () => {
 
     it("should handle empty keys array", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
@@ -87,7 +82,7 @@ describe("Node Operations", () => {
 
     it("should reject invalid node key format", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
@@ -103,7 +98,7 @@ describe("Node Operations", () => {
 
     it("should reject too many keys (> 1000)", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
@@ -121,7 +116,7 @@ describe("Node Operations", () => {
 
     it("should work with child delegate that has restricted permissions", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // In the new model, all tokens are access tokens — even child delegates
       const childToken = await ctx.helpers.createDelegateToken(token, realm, {
@@ -158,7 +153,7 @@ describe("Node Operations", () => {
   describe("PUT /api/realm/{realmId}/nodes/:key", () => {
     it("should upload a node with canUpload permission", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm, {
         canUpload: true,
@@ -184,7 +179,7 @@ describe("Node Operations", () => {
 
     it("should reject upload without canUpload permission", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm, {
         canUpload: false,
@@ -226,7 +221,7 @@ describe("Node Operations", () => {
   describe("GET /api/realm/{realmId}/nodes/:key/metadata", () => {
     it("should return 404 for non-existent node (root delegate)", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Root delegate has unrestricted access — no proof needed
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
@@ -244,7 +239,7 @@ describe("Node Operations", () => {
 
     it("should reject child delegate without proof", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Child delegate needs X-CAS-Proof for read access
       const childToken = await ctx.helpers.createAccessToken(token, realm, {
@@ -279,7 +274,7 @@ describe("Node Operations", () => {
   describe("GET /api/realm/{realmId}/nodes/:key", () => {
     it("should return 404 for non-existent node (root delegate)", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Root delegate has unrestricted access — no proof needed
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
@@ -297,7 +292,7 @@ describe("Node Operations", () => {
 
     it("should reject child delegate without proof", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Child delegate needs X-CAS-Proof for read access
       const childToken = await ctx.helpers.createAccessToken(token, realm, {
@@ -333,7 +328,7 @@ describe("Node Operations", () => {
     it("should reject access to other user's realm nodes", async () => {
       const userId1 = uniqueId();
       const userId2 = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId1, "authorized");
       const { realm: otherRealm } = await ctx.helpers.createTestUser(userId2, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
@@ -351,7 +346,7 @@ describe("Node Operations", () => {
 
     it("should reject invalid X-CAS-Proof format", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Use child delegate so it doesn't get root bypass
       const childToken = await ctx.helpers.createAccessToken(token, realm, {

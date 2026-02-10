@@ -26,13 +26,11 @@ export type TokenGetter<T> = () => Promise<T | null>;
  */
 export const withToken = <T>(
   getToken: TokenGetter<T>,
-  error: { code: string; message: string },
+  error: { code: string; message: string }
 ) => {
-  return <R>(
-    fn: (token: T) => Promise<FetchResult<R>>,
-  ): Promise<FetchResult<R>> =>
+  return <R>(fn: (token: T) => Promise<FetchResult<R>>): Promise<FetchResult<R>> =>
     getToken().then((token) =>
-      token ? fn(token) : Promise.resolve({ ok: false as const, error }),
+      token ? fn(token) : Promise.resolve({ ok: false as const, error })
     );
 };
 

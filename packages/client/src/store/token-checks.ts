@@ -23,7 +23,7 @@ export const DEFAULT_EXPIRY_BUFFER_MS = 60_000;
  */
 export const isTokenValid = (
   token: { expiresAt: number } | null,
-  bufferMs: number = DEFAULT_EXPIRY_BUFFER_MS,
+  bufferMs: number = DEFAULT_EXPIRY_BUFFER_MS
 ): boolean => {
   if (!token) return false;
   return Date.now() + bufferMs < token.expiresAt;
@@ -35,7 +35,7 @@ export const isTokenValid = (
  */
 export const isTokenExpiringSoon = (
   token: { expiresAt: number } | null,
-  windowMs: number = 5 * 60_000, // 5 minutes
+  windowMs: number = 5 * 60_000 // 5 minutes
 ): boolean => {
   if (!token) return false;
   return Date.now() + windowMs >= token.expiresAt;
@@ -44,10 +44,7 @@ export const isTokenExpiringSoon = (
 /**
  * Check if user JWT is valid.
  */
-export const isUserTokenValid = (
-  userToken: StoredUserToken | null,
-  bufferMs?: number,
-): boolean => {
+export const isUserTokenValid = (userToken: StoredUserToken | null, bufferMs?: number): boolean => {
   return isTokenValid(userToken, bufferMs);
 };
 
@@ -56,7 +53,7 @@ export const isUserTokenValid = (
  */
 export const isAccessTokenValid = (
   rootDelegate: StoredRootDelegate | null,
-  bufferMs: number = DEFAULT_EXPIRY_BUFFER_MS,
+  bufferMs: number = DEFAULT_EXPIRY_BUFFER_MS
 ): boolean => {
   if (!rootDelegate) return false;
   return Date.now() + bufferMs < rootDelegate.accessTokenExpiresAt;
@@ -67,7 +64,7 @@ export const isAccessTokenValid = (
  */
 export const isStoredAccessTokenValid = (
   accessToken: StoredAccessToken | null,
-  bufferMs?: number,
+  bufferMs?: number
 ): boolean => {
   return isTokenValid(accessToken, bufferMs);
 };
@@ -75,9 +72,7 @@ export const isStoredAccessTokenValid = (
 /**
  * Check if root delegate has a refresh token (RT never expires independently).
  */
-export const hasRefreshToken = (
-  rootDelegate: StoredRootDelegate | null,
-): boolean => {
+export const hasRefreshToken = (rootDelegate: StoredRootDelegate | null): boolean => {
   return rootDelegate !== null && rootDelegate.refreshToken.length > 0;
 };
 

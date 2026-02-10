@@ -35,8 +35,7 @@ import { useDepotStore } from "../stores/depot-store.ts";
 
 export function DepotListPage() {
   const navigate = useNavigate();
-  const { depots, loading, error, operating, createDepot, deleteDepot } =
-    useDepotStore();
+  const { depots, loading, error, operating, createDepot, deleteDepot } = useDepotStore();
 
   // Create depot dialog state
   const [createOpen, setCreateOpen] = useState(false);
@@ -100,12 +99,7 @@ export function DepotListPage() {
 
   if (loading) {
     return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        height="100%"
-      >
+      <Box display="flex" justifyContent="center" alignItems="center" height="100%">
         <CircularProgress />
       </Box>
     );
@@ -114,12 +108,7 @@ export function DepotListPage() {
   return (
     <Box>
       {/* Header */}
-      <Box
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        mb={3}
-      >
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h5" fontWeight={600}>
           My Depots
         </Typography>
@@ -180,11 +169,10 @@ export function DepotListPage() {
                     ID: {depot.depotId}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Root: {depot.root ? depot.root.slice(0, 20) + "…" : "empty"}
+                    Root: {depot.root ? `${depot.root.slice(0, 20)}…` : "empty"}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Created:{" "}
-                    {new Date(depot.createdAt).toLocaleDateString()}
+                    Created: {new Date(depot.createdAt).toLocaleDateString()}
                   </Typography>
                 </CardContent>
               </CardActionArea>
@@ -218,17 +206,11 @@ export function DepotListPage() {
       )}
 
       {/* Create Depot Dialog */}
-      <Dialog
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
+      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Create New Depot</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
-            A depot is an independent storage space for your files. Give it a
-            descriptive name.
+            A depot is an independent storage space for your files. Give it a descriptive name.
           </DialogContentText>
           <TextField
             autoFocus
@@ -259,28 +241,19 @@ export function DepotListPage() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-      >
+      <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
         <DialogTitle>Delete Depot</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to delete depot "
-            <strong>{deleteTarget?.title}</strong>"? This action cannot be
-            undone.
+            Are you sure you want to delete depot "<strong>{deleteTarget?.title}</strong>"? This
+            action cannot be undone.
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteTarget(null)} disabled={operating}>
             Cancel
           </Button>
-          <Button
-            onClick={handleDelete}
-            color="error"
-            variant="contained"
-            disabled={operating}
-          >
+          <Button onClick={handleDelete} color="error" variant="contained" disabled={operating}>
             {operating ? <CircularProgress size={20} /> : "Delete"}
           </Button>
         </DialogActions>

@@ -412,8 +412,7 @@ program
 
         if (missingTables.length > 0) {
           console.log(`\nMissing AWS DynamoDB tables: ${missingTables.join(", ")}`);
-          const shouldCreate =
-            autoYes || (await promptYesNo("Do you want to create them on AWS?"));
+          const shouldCreate = autoYes || (await promptYesNo("Do you want to create them on AWS?"));
 
           if (!shouldCreate) {
             console.log("\nExiting. Create tables with: bun run setup:aws");

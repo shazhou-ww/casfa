@@ -133,9 +133,7 @@ const decodeBase64 = (base64: string): Uint8Array => {
   return bytes;
 };
 
-export const rootDelegateToAccessToken = (
-  rd: StoredRootDelegate,
-): StoredAccessToken => ({
+export const rootDelegateToAccessToken = (rd: StoredRootDelegate): StoredAccessToken => ({
   tokenBase64: rd.accessToken,
   tokenBytes: decodeBase64(rd.accessToken),
   tokenId: rd.accessTokenId,

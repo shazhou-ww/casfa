@@ -5,7 +5,10 @@
  * All dependencies must be injected - no fallback logic.
  */
 
+import { decodeNode } from "@casfa/core";
+import type { PopContext } from "@casfa/proof";
 import type { StorageProvider } from "@casfa/storage-core";
+import { blake3 } from "@noble/hashes/blake3";
 import type { Hono } from "hono";
 import type { DbInstances } from "./bootstrap.ts";
 import type { AppConfig } from "./config.ts";
@@ -44,11 +47,8 @@ import { createRouter } from "./router.ts";
 // Services
 import { createFsService } from "./services/fs/index.ts";
 import type { Env } from "./types.ts";
-import type { CombinedHashProvider } from "./util/hash-provider.ts";
-import type { PopContext } from "@casfa/proof";
-import { blake3 } from "@noble/hashes/blake3";
 import { toCrockfordBase32 } from "./util/encoding.ts";
-import { decodeNode } from "@casfa/core";
+import type { CombinedHashProvider } from "./util/hash-provider.ts";
 
 // Re-export DbInstances for convenience
 export type { DbInstances } from "./bootstrap.ts";
@@ -117,8 +117,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   const adminAccessMiddleware = createAdminAccessMiddleware();
   const authorizedUserMiddleware = createAuthorizedUserMiddleware();
   const proofValidationMiddleware = createProofValidationMiddleware({
-    hasOwnership: (nodeHash, delegateId) =>
-      ownershipV2Db.hasOwnership(nodeHash, delegateId),
+    hasOwnership: (nodeHash, delegateId) => ownershipV2Db.hasOwnership(nodeHash, delegateId),
     isRootDelegate: async (delegateId) => {
       // Root delegate = depth 0, parentId null.
       // The delegateId comes from the auth context, and we can look it
@@ -146,9 +145,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
       const decoded = decodeNode(new Uint8Array(data));
       if (!decoded || decoded.kind !== "dict" || !decoded.children) return { children: [] };
       return {
-        children: decoded.children.map((c) =>
-          Buffer.from(c).toString("hex"),
-        ),
+        children: decoded.children.map((c) => Buffer.from(c).toString("hex")),
       };
     },
     resolveDepotVersion: async (_realm, depotId, version) => {

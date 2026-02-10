@@ -45,9 +45,7 @@ export type ClaimController = {
 // Controller Factory
 // ============================================================================
 
-export const createClaimController = (
-  deps: ClaimControllerDeps,
-): ClaimController => {
+export const createClaimController = (deps: ClaimControllerDeps): ClaimController => {
   const { ownershipDb, getNodeContent, popContext } = deps;
 
   /**
@@ -58,40 +56,31 @@ export const createClaimController = (
 
     // 1. Must be access token with canUpload
     if (!auth || auth.type !== "access") {
-      return c.json(
-        { error: "ACCESS_TOKEN_REQUIRED", message: "Access token required" },
-        403,
-      );
+      return c.json({ error: "ACCESS_TOKEN_REQUIRED", message: "Access token required" }, 403);
     }
     if (!auth.canUpload) {
       return c.json(
         { error: "UPLOAD_NOT_ALLOWED", message: "Token does not have upload permission" },
-        403,
+        403
       );
     }
 
     // Realm check
     const realmId = c.req.param("realmId");
     if (!realmId) {
-      return c.json(
-        { error: "INVALID_REQUEST", message: "Missing realmId" },
-        400,
-      );
+      return c.json({ error: "INVALID_REQUEST", message: "Missing realmId" }, 400);
     }
     if (auth.realm !== realmId) {
       return c.json(
         { error: "REALM_MISMATCH", message: "Token realm does not match request realm" },
-        403,
+        403
       );
     }
 
     // Node hash from path
     const nodeKey = c.req.param("key");
     if (!nodeKey) {
-      return c.json(
-        { error: "INVALID_REQUEST", message: "Missing node key" },
-        400,
-      );
+      return c.json({ error: "INVALID_REQUEST", message: "Missing node key" }, 400);
     }
 
     // Convert node:XXXX to hex storage key (consistent with chunks controller)
@@ -99,43 +88,39 @@ export const createClaimController = (
 
     // Parse request body
     const body = await c.req.json().catch(() => null);
-    if (!body || typeof body !== "object" || typeof (body as Record<string, unknown>).pop !== "string") {
+    if (
+      !body ||
+      typeof body !== "object" ||
+      typeof (body as Record<string, unknown>).pop !== "string"
+    ) {
       return c.json(
         { error: "INVALID_REQUEST", message: "Request body must contain a 'pop' string" },
-        400,
+        400
       );
     }
     const pop = (body as Record<string, unknown>).pop as string;
 
     // Derive delegate ID and chain from auth context
     const delegateId = deriveDelegateId(auth);
-    const chain = auth.issuerChain && auth.issuerChain.length > 0
-      ? auth.issuerChain
-      : [delegateId];
+    const chain = auth.issuerChain && auth.issuerChain.length > 0 ? auth.issuerChain : [delegateId];
 
     // 2. Node exists?
     const content = await getNodeContent(realmId, storageKey);
     if (content === null) {
-      return c.json(
-        { error: "NODE_NOT_FOUND", message: `Node ${nodeKey} does not exist` },
-        404,
-      );
+      return c.json({ error: "NODE_NOT_FOUND", message: `Node ${nodeKey} does not exist` }, 404);
     }
 
     // 3. Already owned? (idempotent)
     const alreadyOwned = await ownershipDb.hasOwnership(storageKey, delegateId);
     if (alreadyOwned) {
-      return c.json(
-        { nodeHash: nodeKey, alreadyOwned: true, delegateId },
-        200,
-      );
+      return c.json({ nodeHash: nodeKey, alreadyOwned: true, delegateId }, 200);
     }
 
     // 4. Verify PoP
     if (!verifyPoP(pop, auth.tokenBytes, content, popContext)) {
       return c.json(
         { error: "INVALID_POP", message: "Proof-of-Possession verification failed" },
-        403,
+        403
       );
     }
 
@@ -145,13 +130,10 @@ export const createClaimController = (
       chain,
       delegateId,
       "", // contentType — not needed for claim
-      content.length,
+      content.length
     );
 
-    return c.json(
-      { nodeHash: nodeKey, alreadyOwned: false, delegateId },
-      200,
-    );
+    return c.json({ nodeHash: nodeKey, alreadyOwned: false, delegateId }, 200);
   };
 
   return { claim };

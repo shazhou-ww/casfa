@@ -14,12 +14,7 @@
  */
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import {
-  GetCommand,
-  PutCommand,
-  QueryCommand,
-  UpdateCommand,
-} from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { Delegate } from "@casfa/delegate";
 import { createDocClient } from "./client.ts";
 
@@ -31,7 +26,7 @@ import { createDocClient } from "./client.ts";
 const toDelegateSk = (delegateId: string): string => `DLG#${delegateId}`;
 
 /** Extract delegateId from sort key */
-const extractDelegateId = (sk: string): string => {
+const _extractDelegateId = (sk: string): string => {
   if (sk.startsWith("DLG#")) return sk.slice(4);
   return sk;
 };
@@ -55,16 +50,12 @@ export type DelegatesDb = {
   get: (realm: string, delegateId: string) => Promise<Delegate | null>;
 
   /** Revoke a delegate (set isRevoked=true, revokedAt, revokedBy) */
-  revoke: (
-    realm: string,
-    delegateId: string,
-    revokedBy: string,
-  ) => Promise<boolean>;
+  revoke: (realm: string, delegateId: string, revokedBy: string) => Promise<boolean>;
 
   /** List direct children of a delegate */
   listChildren: (
     parentId: string,
-    options?: { limit?: number; cursor?: string },
+    options?: { limit?: number; cursor?: string }
   ) => Promise<{
     delegates: Delegate[];
     nextCursor?: string;
@@ -79,10 +70,7 @@ export type DelegatesDb = {
    * @param delegateId - Pre-generated delegate ID for the root
    * @returns The root delegate (either newly created or existing)
    */
-  getOrCreateRoot: (
-    realm: string,
-    delegateId: string,
-  ) => Promise<Delegate>;
+  getOrCreateRoot: (realm: string, delegateId: string) => Promise<Delegate>;
 };
 
 type DelegatesDbConfig = {
@@ -167,42 +155,32 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
         TableName: tableName,
         Item: item,
         // Prevent overwriting existing delegate
-        ConditionExpression:
-          "attribute_not_exists(#realm) AND attribute_not_exists(#key)",
+        ConditionExpression: "attribute_not_exists(#realm) AND attribute_not_exists(#key)",
         ExpressionAttributeNames: { "#realm": "realm", "#key": "key" },
-      }),
+      })
     );
   };
 
-  const get = async (
-    realm: string,
-    delegateId: string,
-  ): Promise<Delegate | null> => {
+  const get = async (realm: string, delegateId: string): Promise<Delegate | null> => {
     const result = await client.send(
       new GetCommand({
         TableName: tableName,
         Key: { realm, key: toDelegateSk(delegateId) },
-      }),
+      })
     );
     if (!result.Item) return null;
     return toDelegate(result.Item);
   };
 
-  const revoke = async (
-    realm: string,
-    delegateId: string,
-    revokedBy: string,
-  ): Promise<boolean> => {
+  const revoke = async (realm: string, delegateId: string, revokedBy: string): Promise<boolean> => {
     const now = Date.now();
     try {
       await client.send(
         new UpdateCommand({
           TableName: tableName,
           Key: { realm, key: toDelegateSk(delegateId) },
-          UpdateExpression:
-            "SET isRevoked = :true, revokedAt = :now, revokedBy = :by",
-          ConditionExpression:
-            "attribute_exists(#realm) AND isRevoked = :false",
+          UpdateExpression: "SET isRevoked = :true, revokedAt = :now, revokedBy = :by",
+          ConditionExpression: "attribute_exists(#realm) AND isRevoked = :false",
           ExpressionAttributeNames: { "#realm": "realm" },
           ExpressionAttributeValues: {
             ":true": true,
@@ -210,7 +188,7 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
             ":now": now,
             ":by": revokedBy,
           },
-        }),
+        })
       );
       return true;
     } catch (error: unknown) {
@@ -225,7 +203,7 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
 
   const listChildren = async (
     parentId: string,
-    options?: { limit?: number; cursor?: string },
+    options?: { limit?: number; cursor?: string }
   ): Promise<{ delegates: Delegate[]; nextCursor?: string }> => {
     const limit = options?.limit ?? 100;
 
@@ -242,30 +220,25 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
 
     if (options?.cursor) {
       (params as Record<string, unknown>).ExclusiveStartKey = JSON.parse(
-        Buffer.from(options.cursor, "base64").toString(),
+        Buffer.from(options.cursor, "base64").toString()
       );
     }
 
     const result = await client.send(new QueryCommand(params as never));
 
     const delegates = (result.Items ?? []).map((item) =>
-      toDelegate(item as Record<string, unknown>),
+      toDelegate(item as Record<string, unknown>)
     );
 
     let nextCursor: string | undefined;
     if (result.LastEvaluatedKey) {
-      nextCursor = Buffer.from(
-        JSON.stringify(result.LastEvaluatedKey),
-      ).toString("base64");
+      nextCursor = Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString("base64");
     }
 
     return { delegates, nextCursor };
   };
 
-  const getOrCreateRoot = async (
-    realm: string,
-    delegateId: string,
-  ): Promise<Delegate> => {
+  const getOrCreateRoot = async (realm: string, delegateId: string): Promise<Delegate> => {
     // Try to find existing root delegate by querying the parent-index
     // Root delegates have gsi1pk = "PARENT#ROOT"
     const queryResult = await client.send(
@@ -281,7 +254,7 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
         FilterExpression: "#realm = :realm",
         ExpressionAttributeNames: { "#realm": "realm" },
         Limit: 1,
-      }),
+      })
     );
 
     if (queryResult.Items && queryResult.Items.length > 0) {
@@ -323,7 +296,7 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
             FilterExpression: "#realm = :realm",
             ExpressionAttributeNames: { "#realm": "realm" },
             Limit: 1,
-          }),
+          })
         );
         if (retryResult.Items && retryResult.Items.length > 0) {
           return toDelegate(retryResult.Items[0] as Record<string, unknown>);

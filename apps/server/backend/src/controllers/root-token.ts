@@ -41,9 +41,7 @@ const DEFAULT_AT_TTL_SECONDS = 3600; // 1 hour
 // Controller Factory
 // ============================================================================
 
-export const createRootTokenController = (
-  deps: RootTokenControllerDeps,
-): RootTokenController => {
+export const createRootTokenController = (deps: RootTokenControllerDeps): RootTokenController => {
   const { delegatesDb, tokenRecordsDb } = deps;
 
   /**
@@ -65,7 +63,7 @@ export const createRootTokenController = (
           error: "INVALID_REALM",
           message: "Cannot create root token for another user's realm",
         },
-        400,
+        400
       );
     }
 
@@ -79,7 +77,7 @@ export const createRootTokenController = (
           error: "ROOT_DELEGATE_REVOKED",
           message: "Root delegate has been revoked. Contact admin.",
         },
-        403,
+        403
       );
     }
 
@@ -130,7 +128,7 @@ export const createRootTokenController = (
         accessTokenId: tokenPair.accessToken.id,
         accessTokenExpiresAt: tokenPair.accessToken.expiresAt,
       },
-      201,
+      201
     );
   };
 

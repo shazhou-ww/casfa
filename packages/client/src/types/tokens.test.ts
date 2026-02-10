@@ -9,11 +9,7 @@ import type {
   StoredUserToken,
   TokenState,
 } from "./tokens.ts";
-import {
-  emptyTokenState,
-  hasValidAccessToken,
-  rootDelegateToAccessToken,
-} from "./tokens.ts";
+import { emptyTokenState, hasValidAccessToken, rootDelegateToAccessToken } from "./tokens.ts";
 
 // ============================================================================
 // Test Helpers
@@ -27,9 +23,7 @@ const createUserToken = (overrides: Partial<StoredUserToken> = {}): StoredUserTo
   ...overrides,
 });
 
-const createRootDelegate = (
-  overrides: Partial<StoredRootDelegate> = {},
-): StoredRootDelegate => ({
+const createRootDelegate = (overrides: Partial<StoredRootDelegate> = {}): StoredRootDelegate => ({
   delegateId: "dlg_root123",
   realm: "test-realm",
   refreshToken: "base64-refresh-token",

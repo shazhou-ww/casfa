@@ -9,22 +9,22 @@
 import { describe, expect, it } from "bun:test";
 import { blake3 } from "@noble/hashes/blake3";
 import {
+  // Token ID
+  computeTokenId,
   // Constants
   DELEGATE_TOKEN_SIZE,
   type DelegateTokenInput,
-  FLAGS,
-  type HashFunction,
-  MAGIC_NUMBER,
-  MAX_DEPTH,
-  TOKEN_ID_PREFIX,
   // Encoding/Decoding
   decodeDelegateToken,
   encodeDelegateToken,
-  // Token ID
-  computeTokenId,
+  FLAGS,
   formatTokenId,
+  type HashFunction,
   isValidTokenIdFormat,
+  MAGIC_NUMBER,
+  MAX_DEPTH,
   parseTokenId,
+  TOKEN_ID_PREFIX,
   // Validation
   validateToken,
   validateTokenBytes,
@@ -91,9 +91,7 @@ describe("encodeDelegateToken", () => {
   });
 
   it("should encode permission flags (bits 1-2)", () => {
-    const bytes = encodeDelegateToken(
-      createTestInput({ canUpload: true, canManageDepot: true })
-    );
+    const bytes = encodeDelegateToken(createTestInput({ canUpload: true, canManageDepot: true }));
     const flags = new DataView(bytes.buffer).getUint32(4, true);
 
     expect((flags >> FLAGS.CAN_UPLOAD) & 1).toBe(1);
@@ -118,33 +116,33 @@ describe("encodeDelegateToken", () => {
   });
 
   it("should throw on invalid issuer length", () => {
-    expect(() =>
-      encodeDelegateToken(createTestInput({ issuer: new Uint8Array(16) }))
-    ).toThrow(/Invalid issuer length/);
+    expect(() => encodeDelegateToken(createTestInput({ issuer: new Uint8Array(16) }))).toThrow(
+      /Invalid issuer length/
+    );
   });
 
   it("should throw on invalid realm length", () => {
-    expect(() =>
-      encodeDelegateToken(createTestInput({ realm: new Uint8Array(16) }))
-    ).toThrow(/Invalid realm length/);
+    expect(() => encodeDelegateToken(createTestInput({ realm: new Uint8Array(16) }))).toThrow(
+      /Invalid realm length/
+    );
   });
 
   it("should throw on invalid scope length", () => {
-    expect(() =>
-      encodeDelegateToken(createTestInput({ scope: new Uint8Array(16) }))
-    ).toThrow(/Invalid scope length/);
+    expect(() => encodeDelegateToken(createTestInput({ scope: new Uint8Array(16) }))).toThrow(
+      /Invalid scope length/
+    );
   });
 
   it("should throw when depth > MAX_DEPTH", () => {
-    expect(() =>
-      encodeDelegateToken(createTestInput({ depth: 16 }))
-    ).toThrow(/Delegation depth out of range/);
+    expect(() => encodeDelegateToken(createTestInput({ depth: 16 }))).toThrow(
+      /Delegation depth out of range/
+    );
   });
 
   it("should throw when depth < 0", () => {
-    expect(() =>
-      encodeDelegateToken(createTestInput({ depth: -1 }))
-    ).toThrow(/Delegation depth out of range/);
+    expect(() => encodeDelegateToken(createTestInput({ depth: -1 }))).toThrow(
+      /Delegation depth out of range/
+    );
   });
 });
 

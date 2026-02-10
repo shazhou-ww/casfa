@@ -10,9 +10,9 @@
 
 import {
   type CasfaClient,
-  type TokenStorageProvider,
-  type TokenState,
   createClient,
+  type TokenState,
+  type TokenStorageProvider,
 } from "@casfa/client";
 
 const TOKEN_STORAGE_KEY = "casfa_tokens";

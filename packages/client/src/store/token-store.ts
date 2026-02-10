@@ -10,11 +10,7 @@ import type {
   OnTokenChangeCallback,
   TokenStorageProvider,
 } from "../types/client.ts";
-import type {
-  StoredRootDelegate,
-  StoredUserToken,
-  TokenState,
-} from "../types/tokens.ts";
+import type { StoredRootDelegate, StoredUserToken, TokenState } from "../types/tokens.ts";
 import { emptyTokenState } from "../types/tokens.ts";
 
 // ============================================================================

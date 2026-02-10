@@ -16,9 +16,7 @@ export type CasUriRootType = "nod" | "dpt";
 /**
  * Parsed CAS URI root
  */
-export type CasUriRoot =
-  | { type: "nod"; hash: string }
-  | { type: "dpt"; id: string };
+export type CasUriRoot = { type: "nod"; hash: string } | { type: "dpt"; id: string };
 
 /**
  * Parsed CAS URI

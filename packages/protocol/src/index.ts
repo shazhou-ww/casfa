@@ -18,9 +18,6 @@ export type {
 export {
   // Enum schemas
   AuthRequestStatusSchema,
-  // Crockford Base32 encoding
-  decodeCrockfordBase32,
-  encodeCrockfordBase32,
   // ID regex patterns
   DELEGATE_ID_REGEX,
   DELEGATE_TOKEN_ID_REGEX,
@@ -29,8 +26,11 @@ export {
   DelegateIdSchema,
   DelegateTokenIdSchema,
   DepotIdSchema,
+  // Crockford Base32 encoding
+  decodeCrockfordBase32,
   // Well-known keys
   EMPTY_DICT_NODE_KEY,
+  encodeCrockfordBase32,
   // Node key conversion
   hashToNodeKey,
   hexToNodeKey,

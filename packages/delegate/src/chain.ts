@@ -99,10 +99,7 @@ export function isChainValid(chain: string[]): boolean {
  * @param childChain - The child's chain to check.
  * @returns `true` if childChain is a valid direct child chain of parentChain.
  */
-export function isDirectChildChain(
-  parentChain: string[],
-  childChain: string[],
-): boolean {
+export function isDirectChildChain(parentChain: string[], childChain: string[]): boolean {
   // Child chain must be exactly one element longer
   if (childChain.length !== parentChain.length + 1) return false;
 

@@ -18,7 +18,7 @@ export const claimNode = async (
   realm: string,
   accessTokenBase64: string,
   nodeKey: string,
-  params: ClaimNodeRequest,
+  params: ClaimNodeRequest
 ): Promise<FetchResult<ClaimNodeResponse>> => {
   return fetchWithAuth<ClaimNodeResponse>(
     `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/${encodeURIComponent(nodeKey)}/claim`,
@@ -26,6 +26,6 @@ export const claimNode = async (
     {
       method: "POST",
       body: params,
-    },
+    }
   );
 };

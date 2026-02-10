@@ -54,7 +54,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
   return {
     prepareNodes: async (c) => {
       const auth = c.get("auth") as AccessTokenAuthContext;
-      const realm = getRealm(c);
+      const _realm = getRealm(c);
       const { keys } = PrepareNodesSchema.parse(await c.req.json());
 
       // Delegate chain = [root, ..., self] — all ancestors that share ownership
@@ -274,7 +274,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
     },
 
     get: async (c) => {
-      const realm = getRealm(c);
+      const _realm = getRealm(c);
       const nodeKey = decodeURIComponent(c.req.param("key"));
       const key = toStorageKey(nodeKey);
 
@@ -315,7 +315,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
     },
 
     getMetadata: async (c) => {
-      const realm = getRealm(c);
+      const _realm = getRealm(c);
       const nodeKey = decodeURIComponent(c.req.param("key"));
       const key = toStorageKey(nodeKey);
 

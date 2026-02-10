@@ -14,12 +14,11 @@ import type { Delegate } from "@casfa/delegate";
 import {
   createDelegatesController,
   type DelegatesController,
-  type DelegatesControllerDeps,
 } from "../../src/controllers/delegates.ts";
 import type { DelegatesDb } from "../../src/db/delegates.ts";
-import type { TokenRecordsDb } from "../../src/db/token-records.ts";
-import type { ScopeSetNodesDb } from "../../src/db/scope-set-nodes.ts";
 import type { DepotsDb } from "../../src/db/depots.ts";
+import type { ScopeSetNodesDb } from "../../src/db/scope-set-nodes.ts";
+import type { TokenRecordsDb } from "../../src/db/token-records.ts";
 import type { AccessTokenAuthContext } from "../../src/types.ts";
 
 // ============================================================================
@@ -86,7 +85,9 @@ function createMockDelegatesDb(overrides?: Partial<DelegatesDb>): DelegatesDb {
     }),
     revoke: mock(async () => true),
     listChildren: mock(async () => ({ delegates: [], nextCursor: undefined })),
-    getOrCreateRoot: mock(async (realm: string, id: string) => makeDelegate({ delegateId: id, realm })),
+    getOrCreateRoot: mock(async (realm: string, id: string) =>
+      makeDelegate({ delegateId: id, realm })
+    ),
     ...overrides,
   };
 }
@@ -103,7 +104,12 @@ function createMockTokenRecordsDb(): TokenRecordsDb {
 
 function createMockScopeSetNodesDb(): ScopeSetNodesDb {
   return {
-    getOrCreate: mock(async () => ({ setNodeId: "set-001", children: [], refCount: 1, createdAt: Date.now() })),
+    getOrCreate: mock(async () => ({
+      setNodeId: "set-001",
+      children: [],
+      refCount: 1,
+      createdAt: Date.now(),
+    })),
     createOrIncrement: mock(async () => {}),
     get: mock(async () => null),
   } as unknown as ScopeSetNodesDb;
@@ -129,8 +135,8 @@ function createMockContext(options: {
     set: mock(() => {}),
     req: {
       json: mock(async () => options.body ?? {}),
-      param: mock((name: string) => (options.params ?? {})[name]),
-      query: mock((name: string) => (options.query ?? {})[name]),
+      param: mock((name: string) => options.params?.[name]),
+      query: mock((name: string) => options.query?.[name]),
       header: mock(() => undefined),
     },
     json: mock((body: unknown, status?: number) => {
@@ -493,7 +499,7 @@ describe("DelegatesController", () => {
       });
       mockDelegatesDb = createMockDelegatesDb({
         get: mock(async (_r: string, id: string) =>
-          id === "target-dlg" ? targetDelegate : makeDelegate(),
+          id === "target-dlg" ? targetDelegate : makeDelegate()
         ),
       });
       controller = createDelegatesController({
@@ -593,7 +599,7 @@ describe("DelegatesController", () => {
         depth: 2,
       });
 
-      let listCallCount = 0;
+      let _listCallCount = 0;
       mockDelegatesDb = createMockDelegatesDb({
         get: mock(async (_r: string, id: string) => {
           if (id === CHILD_DELEGATE_ID) return makeChildDelegate();
@@ -601,7 +607,7 @@ describe("DelegatesController", () => {
           return null;
         }),
         listChildren: mock(async (parentId: string) => {
-          listCallCount++;
+          _listCallCount++;
           if (parentId === CHILD_DELEGATE_ID) {
             return { delegates: [grandchild], nextCursor: undefined };
           }

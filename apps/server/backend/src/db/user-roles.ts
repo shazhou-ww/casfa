@@ -52,11 +52,10 @@ export const createUserRolesDb = (config: UserRolesDbConfig): UserRolesDb => {
       return result.Item.role as UserRole;
     } catch (err: unknown) {
       // If the DynamoDB table doesn't exist yet, treat as no role found
-      if (
-        err instanceof Error &&
-        err.name === "ResourceNotFoundException"
-      ) {
-        console.warn(`[user-roles] DynamoDB table "${tableName}" not found, returning "unauthorized" for ${userId}`);
+      if (err instanceof Error && err.name === "ResourceNotFoundException") {
+        console.warn(
+          `[user-roles] DynamoDB table "${tableName}" not found, returning "unauthorized" for ${userId}`
+        );
         return "unauthorized";
       }
       throw err;

@@ -24,7 +24,7 @@ describe("Admin API", () => {
   describe("GET /api/admin/users", () => {
     it("should list all users for admin", async () => {
       const adminId = uniqueId();
-      const { token, mainDepotId } = await ctx.helpers.createTestUser(adminId, "admin");
+      const { token } = await ctx.helpers.createTestUser(adminId, "admin");
 
       const response = await ctx.helpers.authRequest(token, "GET", "/api/admin/users");
 
@@ -35,7 +35,7 @@ describe("Admin API", () => {
 
     it("should reject non-admin users", async () => {
       const userId = uniqueId();
-      const { token, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const response = await ctx.helpers.authRequest(token, "GET", "/api/admin/users");
 
@@ -70,7 +70,7 @@ describe("Admin API", () => {
     it("should reject non-admin users", async () => {
       const userId1 = uniqueId();
       const userId2 = uniqueId();
-      const { token, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
+      const { token } = await ctx.helpers.createTestUser(userId1, "authorized");
       await ctx.helpers.createTestUser(userId2, "authorized");
 
       const response = await ctx.helpers.authRequest(

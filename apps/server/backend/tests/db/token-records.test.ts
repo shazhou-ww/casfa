@@ -7,8 +7,8 @@
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import {
-  createTokenRecordsDb,
   type CreateTokenRecordInput,
+  createTokenRecordsDb,
   type TokenRecordsDb,
 } from "../../src/db/token-records.ts";
 
@@ -68,19 +68,14 @@ function createMockDynamoClient() {
       if (input.ConditionExpression) {
         if (!item) {
           const error = new Error("Condition not met");
-          (error as unknown as { name: string }).name =
-            "ConditionalCheckFailedException";
+          (error as unknown as { name: string }).name = "ConditionalCheckFailedException";
           throw error;
         }
 
         // markUsed: attribute_exists(pk) AND isUsed = :false AND isInvalidated = :false
-        if (
-          input.ConditionExpression.includes("isUsed = :false") &&
-          item.isUsed === true
-        ) {
+        if (input.ConditionExpression.includes("isUsed = :false") && item.isUsed === true) {
           const error = new Error("Condition not met");
-          (error as unknown as { name: string }).name =
-            "ConditionalCheckFailedException";
+          (error as unknown as { name: string }).name = "ConditionalCheckFailedException";
           throw error;
         }
 
@@ -89,8 +84,7 @@ function createMockDynamoClient() {
           item.isInvalidated === true
         ) {
           const error = new Error("Condition not met");
-          (error as unknown as { name: string }).name =
-            "ConditionalCheckFailedException";
+          (error as unknown as { name: string }).name = "ConditionalCheckFailedException";
           throw error;
         }
       }
@@ -267,9 +261,27 @@ describe("TokenRecordsDb", () => {
   describe("invalidateByDelegate", () => {
     it("invalidates all tokens for a delegate", async () => {
       // Create 3 tokens for the same delegate
-      await db.create(makeTokenInput({ tokenId: "tkn_rt1", tokenType: "refresh", delegateId: "dlt_DLGX00000000000000000001" }));
-      await db.create(makeTokenInput({ tokenId: "tkn_at1", tokenType: "access", delegateId: "dlt_DLGX00000000000000000001" }));
-      await db.create(makeTokenInput({ tokenId: "tkn_rt2", tokenType: "refresh", delegateId: "dlt_DLGX00000000000000000001" }));
+      await db.create(
+        makeTokenInput({
+          tokenId: "tkn_rt1",
+          tokenType: "refresh",
+          delegateId: "dlt_DLGX00000000000000000001",
+        })
+      );
+      await db.create(
+        makeTokenInput({
+          tokenId: "tkn_at1",
+          tokenType: "access",
+          delegateId: "dlt_DLGX00000000000000000001",
+        })
+      );
+      await db.create(
+        makeTokenInput({
+          tokenId: "tkn_rt2",
+          tokenType: "refresh",
+          delegateId: "dlt_DLGX00000000000000000001",
+        })
+      );
 
       const count = await db.invalidateByDelegate("dlt_DLGX00000000000000000001");
       expect(count).toBe(3);
@@ -289,8 +301,12 @@ describe("TokenRecordsDb", () => {
     });
 
     it("does not affect tokens for other delegates", async () => {
-      await db.create(makeTokenInput({ tokenId: "tkn_a", delegateId: "dlt_DLGA00000000000000000001" }));
-      await db.create(makeTokenInput({ tokenId: "tkn_b", delegateId: "dlt_DLGB00000000000000000001" }));
+      await db.create(
+        makeTokenInput({ tokenId: "tkn_a", delegateId: "dlt_DLGA00000000000000000001" })
+      );
+      await db.create(
+        makeTokenInput({ tokenId: "tkn_b", delegateId: "dlt_DLGB00000000000000000001" })
+      );
 
       await db.invalidateByDelegate("dlt_DLGA00000000000000000001");
 
@@ -301,7 +317,9 @@ describe("TokenRecordsDb", () => {
     });
 
     it("idempotent — re-invalidating already-invalidated delegate returns 0", async () => {
-      await db.create(makeTokenInput({ tokenId: "tkn_x", delegateId: "dlt_IDEM00000000000000000001" }));
+      await db.create(
+        makeTokenInput({ tokenId: "tkn_x", delegateId: "dlt_IDEM00000000000000000001" })
+      );
 
       const first = await db.invalidateByDelegate("dlt_IDEM00000000000000000001");
       expect(first).toBe(1);
@@ -317,9 +335,27 @@ describe("TokenRecordsDb", () => {
 
   describe("listByDelegate", () => {
     it("lists all tokens for a delegate", async () => {
-      await db.create(makeTokenInput({ tokenId: "tkn_r1", tokenType: "refresh", delegateId: "dlt_DLG100000000000000000001" }));
-      await db.create(makeTokenInput({ tokenId: "tkn_a1", tokenType: "access", delegateId: "dlt_DLG100000000000000000001" }));
-      await db.create(makeTokenInput({ tokenId: "tkn_r2", tokenType: "refresh", delegateId: "dlt_DLG200000000000000000001" }));
+      await db.create(
+        makeTokenInput({
+          tokenId: "tkn_r1",
+          tokenType: "refresh",
+          delegateId: "dlt_DLG100000000000000000001",
+        })
+      );
+      await db.create(
+        makeTokenInput({
+          tokenId: "tkn_a1",
+          tokenType: "access",
+          delegateId: "dlt_DLG100000000000000000001",
+        })
+      );
+      await db.create(
+        makeTokenInput({
+          tokenId: "tkn_r2",
+          tokenType: "refresh",
+          delegateId: "dlt_DLG200000000000000000001",
+        })
+      );
 
       const result = await db.listByDelegate("dlt_DLG100000000000000000001");
       expect(result.tokens.length).toBe(2);
@@ -333,9 +369,15 @@ describe("TokenRecordsDb", () => {
     });
 
     it("respects limit parameter", async () => {
-      await db.create(makeTokenInput({ tokenId: "tkn_t1", delegateId: "dlt_DLGLIM000000000000000001" }));
-      await db.create(makeTokenInput({ tokenId: "tkn_t2", delegateId: "dlt_DLGLIM000000000000000001" }));
-      await db.create(makeTokenInput({ tokenId: "tkn_t3", delegateId: "dlt_DLGLIM000000000000000001" }));
+      await db.create(
+        makeTokenInput({ tokenId: "tkn_t1", delegateId: "dlt_DLGLIM000000000000000001" })
+      );
+      await db.create(
+        makeTokenInput({ tokenId: "tkn_t2", delegateId: "dlt_DLGLIM000000000000000001" })
+      );
+      await db.create(
+        makeTokenInput({ tokenId: "tkn_t3", delegateId: "dlt_DLGLIM000000000000000001" })
+      );
 
       const result = await db.listByDelegate("dlt_DLGLIM000000000000000001", { limit: 2 });
       expect(result.tokens.length).toBe(2);
@@ -349,16 +391,40 @@ describe("TokenRecordsDb", () => {
   describe("RT rotation scenario", () => {
     it("models a full RT rotation flow", async () => {
       // 1. Create initial RT + AT
-      await db.create(makeTokenInput({ tokenId: "tkn_rt_v1", tokenType: "refresh", delegateId: "dlt_DLGROT000000000000000001" }));
-      await db.create(makeTokenInput({ tokenId: "tkn_at_v1", tokenType: "access", delegateId: "dlt_DLGROT000000000000000001" }));
+      await db.create(
+        makeTokenInput({
+          tokenId: "tkn_rt_v1",
+          tokenType: "refresh",
+          delegateId: "dlt_DLGROT000000000000000001",
+        })
+      );
+      await db.create(
+        makeTokenInput({
+          tokenId: "tkn_at_v1",
+          tokenType: "access",
+          delegateId: "dlt_DLGROT000000000000000001",
+        })
+      );
 
       // 2. Use RT v1 → mark used
       const used = await db.markUsed("tkn_rt_v1");
       expect(used).toBe(true);
 
       // 3. Issue RT v2 + AT v2
-      await db.create(makeTokenInput({ tokenId: "tkn_rt_v2", tokenType: "refresh", delegateId: "dlt_DLGROT000000000000000001" }));
-      await db.create(makeTokenInput({ tokenId: "tkn_at_v2", tokenType: "access", delegateId: "dlt_DLGROT000000000000000001" }));
+      await db.create(
+        makeTokenInput({
+          tokenId: "tkn_rt_v2",
+          tokenType: "refresh",
+          delegateId: "dlt_DLGROT000000000000000001",
+        })
+      );
+      await db.create(
+        makeTokenInput({
+          tokenId: "tkn_at_v2",
+          tokenType: "access",
+          delegateId: "dlt_DLGROT000000000000000001",
+        })
+      );
 
       // 4. Verify RT v1 cannot be reused
       const reuse = await db.markUsed("tkn_rt_v1");
@@ -371,11 +437,35 @@ describe("TokenRecordsDb", () => {
 
     it("replay detection invalidates entire delegate", async () => {
       // Setup: RT v1 used, RT v2 issued
-      await db.create(makeTokenInput({ tokenId: "tkn_rt_v1", tokenType: "refresh", delegateId: "dlt_DLGREP000000000000000001" }));
-      await db.create(makeTokenInput({ tokenId: "tkn_at_v1", tokenType: "access", delegateId: "dlt_DLGREP000000000000000001" }));
+      await db.create(
+        makeTokenInput({
+          tokenId: "tkn_rt_v1",
+          tokenType: "refresh",
+          delegateId: "dlt_DLGREP000000000000000001",
+        })
+      );
+      await db.create(
+        makeTokenInput({
+          tokenId: "tkn_at_v1",
+          tokenType: "access",
+          delegateId: "dlt_DLGREP000000000000000001",
+        })
+      );
       await db.markUsed("tkn_rt_v1");
-      await db.create(makeTokenInput({ tokenId: "tkn_rt_v2", tokenType: "refresh", delegateId: "dlt_DLGREP000000000000000001" }));
-      await db.create(makeTokenInput({ tokenId: "tkn_at_v2", tokenType: "access", delegateId: "dlt_DLGREP000000000000000001" }));
+      await db.create(
+        makeTokenInput({
+          tokenId: "tkn_rt_v2",
+          tokenType: "refresh",
+          delegateId: "dlt_DLGREP000000000000000001",
+        })
+      );
+      await db.create(
+        makeTokenInput({
+          tokenId: "tkn_at_v2",
+          tokenType: "access",
+          delegateId: "dlt_DLGREP000000000000000001",
+        })
+      );
 
       // Attacker replays RT v1 — markUsed fails
       const replay = await db.markUsed("tkn_rt_v1");

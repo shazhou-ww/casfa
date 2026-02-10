@@ -125,9 +125,7 @@ function parseDepotProofWord(raw: string): DepotProofWord | null {
  * @returns Parsed ProofMap (may be empty), or null if the header is present
  *          but contains invalid JSON or malformed proof words.
  */
-export function parseProofHeader(
-  headerValue: string | undefined | null,
-): ProofMap | null {
+export function parseProofHeader(headerValue: string | undefined | null): ProofMap | null {
   if (!headerValue || headerValue.trim().length === 0) {
     return new Map();
   }

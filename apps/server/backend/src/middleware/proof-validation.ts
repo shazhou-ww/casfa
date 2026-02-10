@@ -47,19 +47,12 @@ export type ProofValidationMiddlewareDeps = {
    * Resolve a CAS node hash to its parsed children (hex strings).
    * Uses decodeNode from @casfa/core.
    */
-  resolveNode: (
-    realm: string,
-    hash: string,
-  ) => Promise<{ children: readonly string[] } | null>;
+  resolveNode: (realm: string, hash: string) => Promise<{ children: readonly string[] } | null>;
 
   /**
    * Resolve a depot version to its root node hash.
    */
-  resolveDepotVersion: (
-    realm: string,
-    depotId: string,
-    version: string,
-  ) => Promise<string | null>;
+  resolveDepotVersion: (realm: string, depotId: string, version: string) => Promise<string | null>;
 
   /**
    * Check if a delegate has management access to a depot.
@@ -92,31 +85,22 @@ export type ProofVerificationState = {
  * access via ownership, root delegate, or X-CAS-Proof header.
  */
 export function createProofValidationMiddleware(
-  deps: ProofValidationMiddlewareDeps,
+  deps: ProofValidationMiddlewareDeps
 ): MiddlewareHandler<Env> {
   return async (c, next) => {
     const auth = c.get("auth") as AccessTokenAuthContext;
     if (!auth || auth.type !== "access") {
-      return c.json(
-        { error: "ACCESS_TOKEN_REQUIRED", message: "Access token required" },
-        403,
-      );
+      return c.json({ error: "ACCESS_TOKEN_REQUIRED", message: "Access token required" }, 403);
     }
 
     const nodeKey = c.req.param("key");
     if (!nodeKey) {
-      return c.json(
-        { error: "INVALID_REQUEST", message: "Missing node key" },
-        400,
-      );
+      return c.json({ error: "INVALID_REQUEST", message: "Missing node key" }, 400);
     }
 
     const realmId = c.req.param("realmId");
     if (!realmId) {
-      return c.json(
-        { error: "INVALID_REQUEST", message: "Missing realmId" },
-        400,
-      );
+      return c.json({ error: "INVALID_REQUEST", message: "Missing realmId" }, 400);
     }
 
     // Parse X-CAS-Proof header
@@ -128,7 +112,7 @@ export function createProofValidationMiddleware(
           error: "INVALID_PROOF_FORMAT",
           message: "X-CAS-Proof header contains invalid JSON or malformed proof words",
         },
-        400,
+        400
       );
     }
 
@@ -169,23 +153,17 @@ export function createProofValidationMiddleware(
  */
 export function createMultiNodeProofMiddleware(
   deps: ProofValidationMiddlewareDeps,
-  getNodeHashes: (c: Parameters<MiddlewareHandler<Env>>[0]) => string[] | null,
+  getNodeHashes: (c: Parameters<MiddlewareHandler<Env>>[0]) => string[] | null
 ): MiddlewareHandler<Env> {
   return async (c, next) => {
     const auth = c.get("auth") as AccessTokenAuthContext;
     if (!auth || auth.type !== "access") {
-      return c.json(
-        { error: "ACCESS_TOKEN_REQUIRED", message: "Access token required" },
-        403,
-      );
+      return c.json({ error: "ACCESS_TOKEN_REQUIRED", message: "Access token required" }, 403);
     }
 
     const realmId = c.req.param("realmId");
     if (!realmId) {
-      return c.json(
-        { error: "INVALID_REQUEST", message: "Missing realmId" },
-        400,
-      );
+      return c.json({ error: "INVALID_REQUEST", message: "Missing realmId" }, 400);
     }
 
     const nodeHashes = getNodeHashes(c);
@@ -203,19 +181,14 @@ export function createMultiNodeProofMiddleware(
           error: "INVALID_PROOF_FORMAT",
           message: "X-CAS-Proof header contains invalid JSON or malformed proof words",
         },
-        400,
+        400
       );
     }
 
     const ctx = buildContext(deps, realmId, auth);
     const delegateId = deriveDelegateId(auth);
 
-    const result = await verifyMultiNodeAccess(
-      nodeHashes,
-      delegateId,
-      proofMap,
-      ctx,
-    );
+    const result = await verifyMultiNodeAccess(nodeHashes, delegateId, proofMap, ctx);
 
     if (!result.ok) {
       return toErrorResponse(c, result);
@@ -240,7 +213,7 @@ export function createMultiNodeProofMiddleware(
 function buildContext(
   deps: ProofValidationMiddlewareDeps,
   realm: string,
-  auth: AccessTokenAuthContext,
+  auth: AccessTokenAuthContext
 ): ProofVerificationContext {
   return {
     hasOwnership: deps.hasOwnership,
@@ -276,10 +249,7 @@ function deriveDelegateId(auth: AccessTokenAuthContext): string {
 /**
  * Map ProofResult failure to an HTTP error response.
  */
-function toErrorResponse(
-  c: Parameters<MiddlewareHandler<Env>>[0],
-  result: ProofResult,
-) {
+function toErrorResponse(c: Parameters<MiddlewareHandler<Env>>[0], result: ProofResult) {
   if (result.ok) throw new Error("toErrorResponse called with ok result");
 
   const r = result;
@@ -290,7 +260,7 @@ function toErrorResponse(
           error: "PROOF_REQUIRED",
           message: r.message,
         },
-        403,
+        403
       );
     case "INVALID_PROOF_FORMAT":
     case "INVALID_PROOF_WORD":
@@ -299,7 +269,7 @@ function toErrorResponse(
           error: "INVALID_PROOF",
           message: r.message,
         },
-        400,
+        400
       );
     case "SCOPE_ROOT_OUT_OF_BOUNDS":
     case "CHILD_INDEX_OUT_OF_BOUNDS":
@@ -309,7 +279,7 @@ function toErrorResponse(
           error: "NODE_NOT_IN_SCOPE",
           message: r.message,
         },
-        403,
+        403
       );
     case "NODE_NOT_FOUND":
       return c.json(
@@ -317,7 +287,7 @@ function toErrorResponse(
           error: "NODE_NOT_FOUND",
           message: r.message,
         },
-        404,
+        404
       );
     case "DEPOT_ACCESS_DENIED":
       return c.json(
@@ -325,7 +295,7 @@ function toErrorResponse(
           error: "DEPOT_ACCESS_DENIED",
           message: r.message,
         },
-        403,
+        403
       );
     case "DEPOT_VERSION_NOT_FOUND":
       return c.json(
@@ -333,7 +303,7 @@ function toErrorResponse(
           error: "DEPOT_VERSION_NOT_FOUND",
           message: r.message,
         },
-        404,
+        404
       );
     default:
       return c.json(
@@ -341,7 +311,7 @@ function toErrorResponse(
           error: "PROOF_VERIFICATION_FAILED",
           message: r.message,
         },
-        403,
+        403
       );
   }
 }

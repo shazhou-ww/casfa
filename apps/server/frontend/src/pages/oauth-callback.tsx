@@ -50,7 +50,13 @@ export function OAuthCallbackPage() {
 
   if (error) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" bgcolor="grey.50">
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="100vh"
+        bgcolor="grey.50"
+      >
         <Box maxWidth={420} width="100%" mx={2}>
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
@@ -64,7 +70,14 @@ export function OAuthCallbackPage() {
   }
 
   return (
-    <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" minHeight="100vh" gap={2}>
+    <Box
+      display="flex"
+      flexDirection="column"
+      justifyContent="center"
+      alignItems="center"
+      minHeight="100vh"
+      gap={2}
+    >
       <CircularProgress />
       <Typography variant="body2" color="text.secondary">
         Completing sign in...

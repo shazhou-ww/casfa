@@ -26,9 +26,7 @@ import { getClient } from "./client.ts";
 // Types
 // ============================================================================
 
-export type FsResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: string };
+export type FsResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 // ============================================================================
 // Helpers
@@ -100,10 +98,7 @@ async function fetchJson<T>(url: string, token: string, init?: RequestInit): Pro
 /**
  * GET /fs/stat — Get file/directory metadata
  */
-export async function fsStat(
-  rootKey: string,
-  path: string
-): Promise<FsResult<FsStatResponse>> {
+export async function fsStat(rootKey: string, path: string): Promise<FsResult<FsStatResponse>> {
   const [token, realm] = await Promise.all([getAccessToken(), getRealm()]);
   if (!token) return { ok: false, error: "No access token" };
 
@@ -138,10 +133,7 @@ export async function fsLs(
 /**
  * GET /fs/read — Read file content (returns binary)
  */
-export async function fsRead(
-  rootKey: string,
-  path: string
-): Promise<FsResult<Blob>> {
+export async function fsRead(rootKey: string, path: string): Promise<FsResult<Blob>> {
   const [token, realm] = await Promise.all([getAccessToken(), getRealm()]);
   if (!token) return { ok: false, error: "No access token" };
 
@@ -186,9 +178,10 @@ export async function fsWrite(
   const url = `${buildFsUrl(realm, rootKey, "write")}?${params}`;
 
   // Convert to ArrayBuffer for Blob constructor compatibility
-  const buffer: ArrayBuffer = content instanceof Uint8Array
-    ? new Uint8Array(content).buffer as ArrayBuffer
-    : content as ArrayBuffer;
+  const buffer: ArrayBuffer =
+    content instanceof Uint8Array
+      ? (new Uint8Array(content).buffer as ArrayBuffer)
+      : (content as ArrayBuffer);
   const blob = new Blob([buffer], { type: contentType });
 
   return fetchJson<FsWriteResponse>(url, token, {
@@ -204,10 +197,7 @@ export async function fsWrite(
 /**
  * POST /fs/mkdir — Create a directory
  */
-export async function fsMkdir(
-  rootKey: string,
-  path: string
-): Promise<FsResult<FsMkdirResponse>> {
+export async function fsMkdir(rootKey: string, path: string): Promise<FsResult<FsMkdirResponse>> {
   const [token, realm] = await Promise.all([getAccessToken(), getRealm()]);
   if (!token) return { ok: false, error: "No access token" };
 
@@ -223,10 +213,7 @@ export async function fsMkdir(
 /**
  * POST /fs/rm — Remove a file or directory
  */
-export async function fsRm(
-  rootKey: string,
-  path: string
-): Promise<FsResult<FsRmResponse>> {
+export async function fsRm(rootKey: string, path: string): Promise<FsResult<FsRmResponse>> {
   const [token, realm] = await Promise.all([getAccessToken(), getRealm()]);
   if (!token) return { ok: false, error: "No access token" };
 

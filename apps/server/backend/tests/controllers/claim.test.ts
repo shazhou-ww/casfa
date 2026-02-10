@@ -15,11 +15,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { PopContext } from "@casfa/proof";
 import { nodeKeyToHex } from "@casfa/protocol";
-import {
-  createClaimController,
-  type ClaimController,
-  type ClaimControllerDeps,
-} from "../../src/controllers/claim.ts";
+import { type ClaimController, createClaimController } from "../../src/controllers/claim.ts";
 import type { OwnershipV2Db } from "../../src/db/ownership-v2.ts";
 
 // ============================================================================
@@ -41,9 +37,7 @@ const TEST_POP = "pop:VALID_POP_STRING";
  * Create a mock PoP context where computePoP returns TEST_POP
  * and verifyPoP succeeds only for the matching token + content.
  */
-function createMockPopContext(overrides?: {
-  verifyResult?: boolean;
-}): PopContext {
+function createMockPopContext(overrides?: { verifyResult?: boolean }): PopContext {
   const shouldVerify = overrides?.verifyResult ?? true;
   return {
     blake3_256: mock((data: Uint8Array) => new Uint8Array(32).fill(0xaa)),
@@ -100,7 +94,7 @@ function createMockContext(options: {
         if (options.body === null) throw new Error("Invalid JSON");
         return options.body ?? {};
       }),
-      param: mock((name: string) => (options.params ?? {})[name]),
+      param: mock((name: string) => options.params?.[name]),
       query: mock((_name: string) => undefined),
       header: mock((_name: string) => undefined),
     },

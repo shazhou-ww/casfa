@@ -205,7 +205,7 @@ export const REQUEST_ID_REGEX = new RegExp(`^req_[${CROCKFORD_BASE32}]{26}$`);
  * - tkn_{base32}: Token ID (for delegated tokens)
  */
 export const ISSUER_ID_REGEX = new RegExp(
-  `^(usr_[${CROCKFORD_BASE32}]{26}|tkn_[${CROCKFORD_BASE32}]{26})$`,
+  `^(usr_[${CROCKFORD_BASE32}]{26}|tkn_[${CROCKFORD_BASE32}]{26})$`
 );
 
 // ============================================================================

@@ -19,7 +19,6 @@ import type {
   ProofResult,
   ProofSuccess,
   ProofVerificationContext,
-  ResolvedNode,
 } from "./types.ts";
 
 // ============================================================================
@@ -53,7 +52,7 @@ export async function verifyNodeAccess(
   nodeHash: string,
   delegateId: string,
   proofMap: ProofMap,
-  ctx: ProofVerificationContext,
+  ctx: ProofVerificationContext
 ): Promise<ProofResult> {
   // 1. Ownership fast-path (O(1) GetItem)
   if (await ctx.hasOwnership(nodeHash, delegateId)) {
@@ -68,10 +67,7 @@ export async function verifyNodeAccess(
   // 3. Proof verification
   const proofWord = proofMap.get(nodeHash);
   if (!proofWord) {
-    return fail(
-      "MISSING_PROOF",
-      `No proof provided for node ${nodeHash}`,
-    );
+    return fail("MISSING_PROOF", `No proof provided for node ${nodeHash}`);
   }
 
   if (proofWord.type === "ipath") {
@@ -95,7 +91,7 @@ export async function verifyMultiNodeAccess(
   nodeHashes: readonly string[],
   delegateId: string,
   proofMap: ProofMap,
-  ctx: ProofVerificationContext,
+  ctx: ProofVerificationContext
 ): Promise<ProofResult> {
   for (const hash of nodeHashes) {
     const result = await verifyNodeAccess(hash, delegateId, proofMap, ctx);
@@ -115,7 +111,7 @@ async function verifyIPathProof(
   nodeHash: string,
   delegateId: string,
   proof: IPathProofWord,
-  ctx: ProofVerificationContext,
+  ctx: ProofVerificationContext
 ): Promise<ProofResult> {
   // Resolve scope roots for this delegate
   const scopeRoots = await ctx.getScopeRoots(delegateId);
@@ -123,7 +119,7 @@ async function verifyIPathProof(
   if (proof.scopeIndex < 0 || proof.scopeIndex >= scopeRoots.length) {
     return fail(
       "SCOPE_ROOT_OUT_OF_BOUNDS",
-      `Scope root index ${proof.scopeIndex} out of bounds (have ${scopeRoots.length} roots)`,
+      `Scope root index ${proof.scopeIndex} out of bounds (have ${scopeRoots.length} roots)`
     );
   }
 
@@ -143,13 +139,13 @@ async function verifyDepotProof(
   nodeHash: string,
   delegateId: string,
   proof: DepotProofWord,
-  ctx: ProofVerificationContext,
+  ctx: ProofVerificationContext
 ): Promise<ProofResult> {
   // 1. Check depot access
   if (!(await ctx.hasDepotAccess(delegateId, proof.depotId))) {
     return fail(
       "DEPOT_ACCESS_DENIED",
-      `Delegate ${delegateId} does not have access to depot ${proof.depotId}`,
+      `Delegate ${delegateId} does not have access to depot ${proof.depotId}`
     );
   }
 
@@ -158,7 +154,7 @@ async function verifyDepotProof(
   if (!rootHash) {
     return fail(
       "DEPOT_VERSION_NOT_FOUND",
-      `Depot ${proof.depotId} version ${proof.version} not found`,
+      `Depot ${proof.depotId} version ${proof.version} not found`
     );
   }
 
@@ -182,7 +178,7 @@ async function walkPath(
   targetHash: string,
   startHash: string,
   path: readonly number[],
-  ctx: Pick<ProofVerificationContext, "resolveNode">,
+  ctx: Pick<ProofVerificationContext, "resolveNode">
 ): Promise<ProofResult> {
   let currentHash = startHash;
 
@@ -198,7 +194,7 @@ async function walkPath(
     if (!node) {
       return fail(
         "NODE_NOT_FOUND",
-        `Node ${currentHash} not found while walking proof at depth ${i}`,
+        `Node ${currentHash} not found while walking proof at depth ${i}`
       );
     }
 
@@ -206,7 +202,7 @@ async function walkPath(
     if (childIdx < 0 || childIdx >= node.children.length) {
       return fail(
         "CHILD_INDEX_OUT_OF_BOUNDS",
-        `Child index ${childIdx} out of bounds (node ${currentHash} has ${node.children.length} children) at depth ${i}`,
+        `Child index ${childIdx} out of bounds (node ${currentHash} has ${node.children.length} children) at depth ${i}`
       );
     }
 

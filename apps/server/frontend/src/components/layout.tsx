@@ -60,10 +60,7 @@ export function Layout() {
   return (
     <Box sx={{ display: "flex", height: "100vh" }}>
       {/* Top App Bar */}
-      <AppBar
-        position="fixed"
-        sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}
-      >
+      <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
         <Toolbar>
           <StorageIcon sx={{ mr: 1 }} />
           <Typography variant="h6" noWrap sx={{ flexGrow: 1 }}>

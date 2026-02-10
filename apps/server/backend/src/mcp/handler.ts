@@ -10,7 +10,7 @@ import type { Context } from "hono";
 import { z } from "zod";
 import type { ServerConfig } from "../config.ts";
 import type { OwnershipV2Db } from "../db/ownership-v2.ts";
-import type { JwtAuthContext, Env } from "../types.ts";
+import type { Env, JwtAuthContext } from "../types.ts";
 import { MCP_TOOLS } from "./tools.ts";
 
 // ============================================================================
@@ -40,7 +40,7 @@ const MCP_PARSE_ERROR = -32700;
 const MCP_INVALID_REQUEST = -32600;
 const MCP_METHOD_NOT_FOUND = -32601;
 const MCP_INVALID_PARAMS = -32602;
-const MCP_INTERNAL_ERROR = -32603;
+const _MCP_INTERNAL_ERROR = -32603;
 
 // ============================================================================
 // Schemas

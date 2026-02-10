@@ -76,15 +76,12 @@ const depotAccessSet = new Set<string>();
 function buildCtx(dag?: Map<string, ResolvedNode>): ProofVerificationContext {
   const dagMap = dag ?? buildTestDag();
   return {
-    hasOwnership: async (nodeHash, delegateId) =>
-      ownershipSet.has(`${nodeHash}:${delegateId}`),
+    hasOwnership: async (nodeHash, delegateId) => ownershipSet.has(`${nodeHash}:${delegateId}`),
     isRootDelegate: async (id) => rootDelegateSet.has(id),
     getScopeRoots: async (id) => delegateScopeRoots[id] ?? [],
     resolveNode: async (hash) => dagMap.get(hash) ?? null,
-    resolveDepotVersion: async (depotId, version) =>
-      depotVersions[depotId]?.[version] ?? null,
-    hasDepotAccess: async (delegateId, depotId) =>
-      depotAccessSet.has(`${delegateId}:${depotId}`),
+    resolveDepotVersion: async (depotId, version) => depotVersions[depotId]?.[version] ?? null,
+    hasDepotAccess: async (delegateId, depotId) => depotAccessSet.has(`${delegateId}:${depotId}`),
   };
 }
 
@@ -258,7 +255,7 @@ describe("parseProofHeader", () => {
   });
 
   it("returns null for JSON array", () => {
-    expect(parseProofHeader('[1,2,3]')).toBeNull();
+    expect(parseProofHeader("[1,2,3]")).toBeNull();
   });
 
   it("returns null for non-string values", () => {
@@ -287,7 +284,7 @@ describe("verifyNodeAccess — ownership shortcut", () => {
   it("passes when delegate owns the node", async () => {
     resetState();
     ownershipSet.add("eee:dlg_child");
-    delegateScopeRoots["dlg_child"] = ["root_aaa"];
+    delegateScopeRoots.dlg_child = ["root_aaa"];
 
     const proofMap: ProofMap = new Map();
     const result = await verifyNodeAccess("eee", "dlg_child", proofMap, buildCtx());
@@ -335,62 +332,52 @@ describe("verifyNodeAccess — root delegate shortcut", () => {
 describe("verifyNodeAccess — ipath proof", () => {
   it("verifies valid ipath: root_aaa → [0] bbb → [1] eee", async () => {
     resetState();
-    delegateScopeRoots["dlg_a"] = ["root_aaa"];
+    delegateScopeRoots.dlg_a = ["root_aaa"];
 
-    const proofMap: ProofMap = new Map([
-      ["eee", { type: "ipath", scopeIndex: 0, path: [0, 1] }],
-    ]);
+    const proofMap: ProofMap = new Map([["eee", { type: "ipath", scopeIndex: 0, path: [0, 1] }]]);
     const result = await verifyNodeAccess("eee", "dlg_a", proofMap, buildCtx());
     expect(result.ok).toBe(true);
   });
 
   it("verifies ipath to immediate child: root_aaa → [1] ccc", async () => {
     resetState();
-    delegateScopeRoots["dlg_a"] = ["root_aaa"];
+    delegateScopeRoots.dlg_a = ["root_aaa"];
 
-    const proofMap: ProofMap = new Map([
-      ["ccc", { type: "ipath", scopeIndex: 0, path: [1] }],
-    ]);
+    const proofMap: ProofMap = new Map([["ccc", { type: "ipath", scopeIndex: 0, path: [1] }]]);
     const result = await verifyNodeAccess("ccc", "dlg_a", proofMap, buildCtx());
     expect(result.ok).toBe(true);
   });
 
   it("verifies ipath to scope root itself (empty path)", async () => {
     resetState();
-    delegateScopeRoots["dlg_a"] = ["root_aaa"];
+    delegateScopeRoots.dlg_a = ["root_aaa"];
 
-    const proofMap: ProofMap = new Map([
-      ["root_aaa", { type: "ipath", scopeIndex: 0, path: [] }],
-    ]);
+    const proofMap: ProofMap = new Map([["root_aaa", { type: "ipath", scopeIndex: 0, path: [] }]]);
     const result = await verifyNodeAccess("root_aaa", "dlg_a", proofMap, buildCtx());
     expect(result.ok).toBe(true);
   });
 
   it("verifies deep path: root_aaa → [1] ccc → [0] fff", async () => {
     resetState();
-    delegateScopeRoots["dlg_a"] = ["root_aaa"];
+    delegateScopeRoots.dlg_a = ["root_aaa"];
 
-    const proofMap: ProofMap = new Map([
-      ["fff", { type: "ipath", scopeIndex: 0, path: [1, 0] }],
-    ]);
+    const proofMap: ProofMap = new Map([["fff", { type: "ipath", scopeIndex: 0, path: [1, 0] }]]);
     const result = await verifyNodeAccess("fff", "dlg_a", proofMap, buildCtx());
     expect(result.ok).toBe(true);
   });
 
   it("supports multi-scope: second scope root", async () => {
     resetState();
-    delegateScopeRoots["dlg_a"] = ["root_aaa", "bbb"];
+    delegateScopeRoots.dlg_a = ["root_aaa", "bbb"];
 
-    const proofMap: ProofMap = new Map([
-      ["eee", { type: "ipath", scopeIndex: 1, path: [1] }],
-    ]);
+    const proofMap: ProofMap = new Map([["eee", { type: "ipath", scopeIndex: 1, path: [1] }]]);
     const result = await verifyNodeAccess("eee", "dlg_a", proofMap, buildCtx());
     expect(result.ok).toBe(true);
   });
 
   it("fails with MISSING_PROOF when no proof for node", async () => {
     resetState();
-    delegateScopeRoots["dlg_a"] = ["root_aaa"];
+    delegateScopeRoots.dlg_a = ["root_aaa"];
 
     const proofMap: ProofMap = new Map(); // empty
     const result = await verifyNodeAccess("eee", "dlg_a", proofMap, buildCtx());
@@ -402,12 +389,10 @@ describe("verifyNodeAccess — ipath proof", () => {
 
   it("fails with PATH_MISMATCH when proof leads to wrong node", async () => {
     resetState();
-    delegateScopeRoots["dlg_a"] = ["root_aaa"];
+    delegateScopeRoots.dlg_a = ["root_aaa"];
 
     // Proof says path [0, 0] leads to node ddd — but we claim it's eee
-    const proofMap: ProofMap = new Map([
-      ["eee", { type: "ipath", scopeIndex: 0, path: [0, 0] }],
-    ]);
+    const proofMap: ProofMap = new Map([["eee", { type: "ipath", scopeIndex: 0, path: [0, 0] }]]);
     const result = await verifyNodeAccess("eee", "dlg_a", proofMap, buildCtx());
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -417,11 +402,9 @@ describe("verifyNodeAccess — ipath proof", () => {
 
   it("fails with SCOPE_ROOT_OUT_OF_BOUNDS for invalid scope index", async () => {
     resetState();
-    delegateScopeRoots["dlg_a"] = ["root_aaa"]; // only 1 root
+    delegateScopeRoots.dlg_a = ["root_aaa"]; // only 1 root
 
-    const proofMap: ProofMap = new Map([
-      ["eee", { type: "ipath", scopeIndex: 5, path: [0, 1] }],
-    ]);
+    const proofMap: ProofMap = new Map([["eee", { type: "ipath", scopeIndex: 5, path: [0, 1] }]]);
     const result = await verifyNodeAccess("eee", "dlg_a", proofMap, buildCtx());
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -431,7 +414,7 @@ describe("verifyNodeAccess — ipath proof", () => {
 
   it("fails with CHILD_INDEX_OUT_OF_BOUNDS for bad child index", async () => {
     resetState();
-    delegateScopeRoots["dlg_a"] = ["root_aaa"];
+    delegateScopeRoots.dlg_a = ["root_aaa"];
 
     const proofMap: ProofMap = new Map([
       ["eee", { type: "ipath", scopeIndex: 0, path: [99] }], // root_aaa has only 2 children
@@ -445,11 +428,9 @@ describe("verifyNodeAccess — ipath proof", () => {
 
   it("fails with NODE_NOT_FOUND when intermediate node missing", async () => {
     resetState();
-    delegateScopeRoots["dlg_a"] = ["ghost_node"];
+    delegateScopeRoots.dlg_a = ["ghost_node"];
 
-    const proofMap: ProofMap = new Map([
-      ["eee", { type: "ipath", scopeIndex: 0, path: [0] }],
-    ]);
+    const proofMap: ProofMap = new Map([["eee", { type: "ipath", scopeIndex: 0, path: [0] }]]);
     const result = await verifyNodeAccess("eee", "dlg_a", proofMap, buildCtx());
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -459,11 +440,9 @@ describe("verifyNodeAccess — ipath proof", () => {
 
   it("fails with PATH_MISMATCH when scope root ≠ target (empty path)", async () => {
     resetState();
-    delegateScopeRoots["dlg_a"] = ["root_aaa"];
+    delegateScopeRoots.dlg_a = ["root_aaa"];
 
-    const proofMap: ProofMap = new Map([
-      ["bbb", { type: "ipath", scopeIndex: 0, path: [] }],
-    ]);
+    const proofMap: ProofMap = new Map([["bbb", { type: "ipath", scopeIndex: 0, path: [] }]]);
     const result = await verifyNodeAccess("bbb", "dlg_a", proofMap, buildCtx());
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -479,7 +458,7 @@ describe("verifyNodeAccess — ipath proof", () => {
 describe("verifyNodeAccess — depot-version proof", () => {
   it("verifies valid depot proof: depot_1@v1 → root_aaa → [0] bbb → [1] eee", async () => {
     resetState();
-    delegateScopeRoots["dlg_a"] = [];
+    delegateScopeRoots.dlg_a = [];
     depotAccessSet.add("dlg_a:depot_1");
 
     const proofMap: ProofMap = new Map([
@@ -566,7 +545,7 @@ describe("verifyNodeAccess — depot-version proof", () => {
 describe("verifyMultiNodeAccess", () => {
   it("passes when all nodes have valid proofs", async () => {
     resetState();
-    delegateScopeRoots["dlg_a"] = ["root_aaa"];
+    delegateScopeRoots.dlg_a = ["root_aaa"];
 
     const proofMap: ProofMap = new Map([
       ["bbb", { type: "ipath", scopeIndex: 0, path: [0] }],
@@ -578,7 +557,7 @@ describe("verifyMultiNodeAccess", () => {
 
   it("fails on first node without proof", async () => {
     resetState();
-    delegateScopeRoots["dlg_a"] = ["root_aaa"];
+    delegateScopeRoots.dlg_a = ["root_aaa"];
 
     const proofMap: ProofMap = new Map([
       ["bbb", { type: "ipath", scopeIndex: 0, path: [0] }],
@@ -601,7 +580,7 @@ describe("verifyMultiNodeAccess", () => {
   it("mixes ownership + proof: one owned, one proven", async () => {
     resetState();
     ownershipSet.add("bbb:dlg_a");
-    delegateScopeRoots["dlg_a"] = ["root_aaa"];
+    delegateScopeRoots.dlg_a = ["root_aaa"];
 
     const proofMap: ProofMap = new Map([
       // bbb is owned, no proof needed
@@ -633,9 +612,7 @@ describe("verification priority", () => {
     resetState();
     rootDelegateSet.add("dlg_root");
 
-    const proofMap: ProofMap = new Map([
-      ["eee", { type: "ipath", scopeIndex: 99, path: [99] }],
-    ]);
+    const proofMap: ProofMap = new Map([["eee", { type: "ipath", scopeIndex: 99, path: [99] }]]);
     const result = await verifyNodeAccess("eee", "dlg_root", proofMap, buildCtx());
     expect(result.ok).toBe(true);
   });
@@ -648,7 +625,7 @@ describe("verification priority", () => {
 describe("formatProofWord", () => {
   it("formats ipath", () => {
     expect(formatIPathProofWord({ type: "ipath", scopeIndex: 0, path: [1, 2] })).toBe(
-      "ipath#0:1:2",
+      "ipath#0:1:2"
     );
   });
 
@@ -658,7 +635,7 @@ describe("formatProofWord", () => {
 
   it("formats depot", () => {
     expect(
-      formatDepotProofWord({ type: "depot", depotId: "d1", version: "v1", path: [0, 1] }),
+      formatDepotProofWord({ type: "depot", depotId: "d1", version: "v1", path: [0, 1] })
     ).toBe("depot:d1@v1#0:1");
   });
 
@@ -668,7 +645,7 @@ describe("formatProofWord", () => {
 
   it("formats via generic formatProofWord — depot", () => {
     expect(formatProofWord({ type: "depot", depotId: "x", version: "y", path: [0] })).toBe(
-      "depot:x@y#0",
+      "depot:x@y#0"
     );
   });
 });
@@ -679,9 +656,7 @@ describe("formatProofWord", () => {
 
 describe("formatProofHeader", () => {
   it("formats single entry", () => {
-    const header = formatProofHeader([
-      ["abc", { type: "ipath", scopeIndex: 0, path: [1, 2] }],
-    ]);
+    const header = formatProofHeader([["abc", { type: "ipath", scopeIndex: 0, path: [1, 2] }]]);
     expect(JSON.parse(header)).toEqual({ abc: "ipath#0:1:2" });
   });
 

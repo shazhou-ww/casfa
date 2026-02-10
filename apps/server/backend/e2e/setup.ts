@@ -226,10 +226,7 @@ export type TestHelpers = {
   // ========================================================================
 
   /** Create a root delegate token (User JWT → Root Delegate + RT + AT) */
-  createRootToken: (
-    userToken: string,
-    realm: string,
-  ) => Promise<DelegateTokenResult>;
+  createRootToken: (userToken: string, realm: string) => Promise<DelegateTokenResult>;
 
   /** Create a child delegate (Access Token → Child Delegate + RT + AT) */
   createChildDelegate: (
@@ -270,7 +267,6 @@ export type TestHelpers = {
       scope?: string[];
     }
   ) => Promise<AccessTokenResult>;
-
 };
 
 // ============================================================================
@@ -484,7 +480,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
         accessTokenBase64,
         "POST",
         `/api/realm/${realm}/delegates`,
-        body,
+        body
       );
 
       if (!response.ok) {
@@ -506,13 +502,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
       // permissions are needed, create a child delegate
       const rootResult = await helpers.createRootToken(userToken, realm);
 
-      const {
-        canUpload,
-        canManageDepot,
-        scope,
-        name,
-        expiresIn,
-      } = options;
+      const { canUpload, canManageDepot, scope, name, expiresIn } = options;
 
       // Root delegate has canUpload=true, canManageDepot=true by default.
       // If the caller wants restricted permissions, scope, name, or expiry,
@@ -542,7 +532,6 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
       // or child delegate creation — both return AT
       return helpers.createDelegateToken(userToken, realm, options);
     },
-
   };
 
   const stop = () => {

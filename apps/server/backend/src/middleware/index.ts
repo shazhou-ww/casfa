@@ -28,14 +28,6 @@ export {
 
 // Permission Check
 export { createCanManageDepotMiddleware, createCanUploadMiddleware } from "./permission-check.ts";
-// Realm Access
-export {
-  createAdminAccessMiddleware,
-  createAuthorizedUserMiddleware,
-  createRealmAccessMiddleware,
-  createWriteAccessMiddleware,
-} from "./realm-access.ts";
-
 // Proof Validation (X-CAS-Proof — replaces scope validation)
 export {
   createMultiNodeProofMiddleware,
@@ -43,3 +35,10 @@ export {
   type ProofValidationMiddlewareDeps,
   type ProofVerificationState,
 } from "./proof-validation.ts";
+// Realm Access
+export {
+  createAdminAccessMiddleware,
+  createAuthorizedUserMiddleware,
+  createRealmAccessMiddleware,
+  createWriteAccessMiddleware,
+} from "./realm-access.ts";

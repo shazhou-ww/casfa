@@ -13,20 +13,12 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { type CasfaClient, createClient, type StoredRootDelegate } from "@casfa/client";
 import { encodeFileNode, type HashProvider } from "@casfa/core";
-import {
-  createClient,
-  type CasfaClient,
-  type StoredRootDelegate,
-} from "@casfa/client";
-import { hashToNodeKey } from "@casfa/protocol";
 import { computePoP, type PopContext } from "@casfa/proof";
+import { hashToNodeKey } from "@casfa/protocol";
 import { blake3 } from "@noble/hashes/blake3";
-import {
-  createE2EContext,
-  type E2EContext,
-  uniqueId,
-} from "./setup.ts";
+import { createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
 
 // ============================================================================
 // Test Crypto Context
@@ -81,10 +73,9 @@ describe("Client SDK Integration", () => {
   /**
    * Helper: create a CasfaClient pre-loaded with a root delegate.
    */
-  async function createTestClient(options: {
-    canUpload?: boolean;
-    canManageDepot?: boolean;
-  } = {}): Promise<{
+  async function createTestClient(
+    options: { canUpload?: boolean; canManageDepot?: boolean } = {}
+  ): Promise<{
     client: CasfaClient;
     realm: string;
     rootDelegate: StoredRootDelegate;
@@ -92,10 +83,7 @@ describe("Client SDK Integration", () => {
   }> {
     const { canUpload = true, canManageDepot = true } = options;
     const userUuid = uniqueId();
-    const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(
-      userUuid,
-      "authorized",
-    );
+    const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userUuid, "authorized");
 
     // Get root delegate from server
     const delegateResult = await ctx.helpers.createDelegateToken(token, realm, {
@@ -138,7 +126,7 @@ describe("Client SDK Integration", () => {
     const data = new TextEncoder().encode(content);
     const encoded = await encodeFileNode(
       { data, contentType: "text/plain", fileSize: data.length },
-      hashProvider,
+      hashProvider
     );
     const nodeKey = hashToNodeKey(encoded.hash);
     return { nodeKey, nodeBytes: encoded.bytes, nodeHash: encoded.hash };
@@ -319,9 +307,7 @@ describe("Client SDK Integration", () => {
     it("should claim node from a different delegate using correct PoP", async () => {
       // Client1 uploads a node
       const { client: client1 } = await createTestClient();
-      const { nodeKey, nodeBytes } = await encodeTestFile(
-        `cross-claim-${Date.now()}`,
-      );
+      const { nodeKey, nodeBytes } = await encodeTestFile(`cross-claim-${Date.now()}`);
       const putResult = await client1.nodes.put(nodeKey, nodeBytes);
       expect(putResult.ok).toBe(true);
 

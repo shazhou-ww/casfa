@@ -24,7 +24,7 @@ describe("Realm API", () => {
   describe("GET /api/realm/{realmId}/info", () => {
     it("should return realm endpoint info", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Realm API requires Access Token, not User JWT
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
@@ -56,7 +56,7 @@ describe("Realm API", () => {
     it("should reject access to other users realm", async () => {
       const userId1 = uniqueId();
       const userId2 = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId1, "authorized");
       const { realm: otherRealm } = await ctx.helpers.createTestUser(userId2, "authorized");
 
       // Create access token for user1's realm
@@ -76,7 +76,7 @@ describe("Realm API", () => {
   describe("GET /api/realm/{realmId}/usage", () => {
     it("should return usage statistics", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Realm API requires Access Token
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
@@ -102,7 +102,7 @@ describe("Realm API", () => {
 
     it("should return zero usage for new realm", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Realm API requires Access Token
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
@@ -131,7 +131,7 @@ describe("Realm API", () => {
     it("should reject access to other users realm", async () => {
       const userId1 = uniqueId();
       const userId2 = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId1, "authorized");
       const { realm: otherRealm } = await ctx.helpers.createTestUser(userId2, "authorized");
 
       // Create access token for user1's realm
@@ -151,7 +151,7 @@ describe("Realm API", () => {
   describe("Authentication Methods", () => {
     it("should accept Access Token authentication (primary method)", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Create access token
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
@@ -168,7 +168,7 @@ describe("Realm API", () => {
 
     it("should accept child Delegate access token (Realm API works with all access tokens)", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // In the new model, all tokens are access tokens — child delegates too
       const childToken = await ctx.helpers.createDelegateToken(token, realm, {
@@ -187,7 +187,7 @@ describe("Realm API", () => {
 
     it("should reject User JWT authentication (Realm API requires Access Token)", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Note: The actual route is /:realmId (not /:realmId/info)
       // User JWT should be rejected for realm API

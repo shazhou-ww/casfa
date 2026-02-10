@@ -93,10 +93,7 @@ export type ProofVerificationContext = {
   resolveNode: (hash: string) => Promise<ResolvedNode | null>;
 
   /** Resolve a depot version to its root node hash. Returns null if invalid. */
-  resolveDepotVersion: (
-    depotId: string,
-    version: string,
-  ) => Promise<string | null>;
+  resolveDepotVersion: (depotId: string, version: string) => Promise<string | null>;
 
   /** Check if a delegate has management access to a depot. */
   hasDepotAccess: (delegateId: string, depotId: string) => Promise<boolean>;
