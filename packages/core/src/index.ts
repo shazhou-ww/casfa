@@ -125,5 +125,8 @@ export {
 export {
   EMPTY_DICT_BYTES,
   EMPTY_DICT_KEY,
+  getWellKnownNodeData,
+  isWellKnownNode,
   WELL_KNOWN_KEYS,
+  WELL_KNOWN_NODES,
 } from "./well-known.ts";

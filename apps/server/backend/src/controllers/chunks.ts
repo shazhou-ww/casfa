@@ -7,9 +7,9 @@
 
 import {
   decodeNode,
-  EMPTY_DICT_BYTES,
-  EMPTY_DICT_KEY,
+  getWellKnownNodeData,
   type HashProvider,
+  isWellKnownNode,
   validateNode,
   validateNodeStructure,
 } from "@casfa/core";
@@ -74,8 +74,8 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       for (const key of keys) {
         const storageKey = toStorageKey(key);
 
-        // Well-known empty dict node — always exists and is "owned"
-        if (storageKey === EMPTY_DICT_KEY) {
+        // Well-known nodes — always exist and are "owned"
+        if (isWellKnownNode(storageKey)) {
           owned.push(key);
           continue;
         }
@@ -291,17 +291,23 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       const nodeKey = decodeURIComponent(c.req.param("key"));
       const key = toStorageKey(nodeKey);
 
-      // Well-known empty dict node — always accessible
-      if (key === EMPTY_DICT_KEY) {
-        return new Response(EMPTY_DICT_BYTES.slice(), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "Content-Length": String(EMPTY_DICT_BYTES.length),
-            "X-CAS-Kind": "dict",
-            "X-CAS-Payload-Size": "0",
-          },
-        });
+      // Well-known nodes — always accessible, served from memory
+      const wellKnownData = getWellKnownNodeData(key);
+      if (wellKnownData) {
+        let kind: string | undefined;
+        let size: number | undefined;
+        try {
+          const node = decodeNode(wellKnownData);
+          kind = node.kind;
+          size = node.size;
+        } catch {}
+        const headers: Record<string, string> = {
+          "Content-Type": "application/octet-stream",
+          "Content-Length": String(wellKnownData.length),
+        };
+        if (kind) headers["X-CAS-Kind"] = kind;
+        if (size !== undefined) headers["X-CAS-Payload-Size"] = String(size);
+        return new Response(wellKnownData, { status: 200, headers });
       }
 
       // Check ownership
@@ -345,14 +351,43 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       const nodeKey = decodeURIComponent(c.req.param("key"));
       const key = toStorageKey(nodeKey);
 
-      // Well-known empty dict node — always accessible
-      if (key === EMPTY_DICT_KEY) {
-        return c.json<DictNodeMetadata>({
-          key: nodeKey,
-          kind: "dict",
-          payloadSize: 0,
-          children: {},
-        });
+      // Well-known nodes — always accessible, decode from memory
+      const wellKnownData = getWellKnownNodeData(key);
+      if (wellKnownData) {
+        // Re-use the same decode logic below by assigning bytes
+        const bytes = wellKnownData;
+        try {
+          const node = decodeNode(bytes);
+          if (node.kind === "dict") {
+            const children: Record<string, string> = {};
+            if (node.children && node.childNames) {
+              for (let i = 0; i < node.childNames.length; i++) {
+                const name = node.childNames[i];
+                const childHash = node.children[i];
+                if (name && childHash) {
+                  children[name] = hashToNodeKey(childHash);
+                }
+              }
+            }
+            return c.json<DictNodeMetadata>({
+              key: nodeKey,
+              kind: "dict",
+              payloadSize: node.size,
+              children,
+            });
+          }
+          if (node.kind === "file") {
+            const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : undefined;
+            return c.json<FileNodeMetadata>({
+              key: nodeKey,
+              kind: "file",
+              payloadSize: node.size,
+              contentType: node.fileInfo?.contentType ?? "application/octet-stream",
+              successor,
+            });
+          }
+        } catch {}
+        return c.json({ error: "invalid_node", message: "Failed to decode well-known node" }, 400);
       }
 
       // Check ownership
