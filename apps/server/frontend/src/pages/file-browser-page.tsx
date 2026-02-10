@@ -159,7 +159,7 @@ export function FileBrowserPage() {
   // ============================================================================
 
   const handleCreateFolder = useCallback(
-    async (name: string, parentFolder: FMFile) => {
+    async (name: string, parentFolder: FMFile | null) => {
       if (!rootKeyRef.current) {
         // Depot has no root yet — need to get the empty dict key
         // Fetch depot detail to get or create root
@@ -182,21 +182,28 @@ export function FileBrowserPage() {
       }
 
       setIsOperating(true);
-      const fullPath =
-        parentFolder.path === "/" || parentFolder.path === ""
-          ? name
-          : `${parentFolder.path.replace(/^\//, "")}/${name}`;
+      try {
+        // parentFolder is null when at the root directory
+        const parentPath = parentFolder?.path ?? "";
+        const fullPath =
+          parentPath === "/" || parentPath === ""
+            ? name
+            : `${parentPath.replace(/^\//, "")}/${name}`;
 
-      const result = await fsMkdir(rootKeyRef.current!, fullPath);
-      if (result.ok) {
-        await commitNewRoot(result.data.newRoot);
-        // Add folder to local state
-        setFiles((prev) => [...prev, { name, isDirectory: true, path: `/${fullPath}` }]);
-        showSuccess(`Folder "${name}" created`);
-      } else {
-        showError(`mkdir failed: ${result.error}`);
+        const result = await fsMkdir(rootKeyRef.current!, fullPath);
+        if (result.ok) {
+          await commitNewRoot(result.data.newRoot);
+          // Add folder to local state
+          setFiles((prev) => [...prev, { name, isDirectory: true, path: `/${fullPath}` }]);
+          showSuccess(`Folder "${name}" created`);
+        } else {
+          showError(`mkdir failed: ${result.error}`);
+        }
+      } catch (err) {
+        showError(`Create folder failed: ${err}`);
+      } finally {
+        setIsOperating(false);
       }
-      setIsOperating(false);
     },
     [depotId, commitNewRoot, showError, showSuccess]
   );
