@@ -80,6 +80,7 @@ const DEFAULT_CALLBACK_URLS = [
   "http://localhost:8901/oauth/callback", // Frontend dev server
   "http://localhost:8801/oauth/callback", // Backend direct
   "http://localhost:3000/oauth/callback", // Alternative dev port
+  "http://localhost:9876/oauth/callback", // CLI login
 ];
 
 const DEFAULT_LOGOUT_URLS = [
