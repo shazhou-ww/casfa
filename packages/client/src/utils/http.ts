@@ -41,10 +41,11 @@ export const createErrorFromResponse = async (response: Response): Promise<Clien
 
   try {
     const body = (await response.json()) as Record<string, unknown>;
+    // Prefer body.message (descriptive) over body.error (may be a code like "validation_error")
     if (typeof body.message === "string") {
       message = body.message;
-    }
-    if (typeof body.error === "string") {
+    } else if (typeof body.error === "string") {
+      // Only use body.error as message if body.message is absent
       message = body.error;
     }
     // Handle Zod validation error objects (from @hono/zod-validator default hook)

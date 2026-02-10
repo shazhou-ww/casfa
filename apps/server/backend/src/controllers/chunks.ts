@@ -74,6 +74,12 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       for (const key of keys) {
         const storageKey = toStorageKey(key);
 
+        // Well-known empty dict node — always exists and is "owned"
+        if (storageKey === EMPTY_DICT_KEY) {
+          owned.push(key);
+          continue;
+        }
+
         // First check if the node physically exists in storage
         const exists = await storage.has(storageKey);
         if (!exists) {
