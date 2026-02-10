@@ -29,7 +29,7 @@ import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
-import { type ZodSchema, ZodError } from "zod";
+import { ZodError, type ZodSchema } from "zod";
 
 /**
  * Wrapper around zValidator("json", schema) with a consistent error hook.
@@ -52,6 +52,7 @@ const validatedJson = <T extends ZodSchema>(schema: T) =>
       );
     }
   });
+
 import type { AdminController } from "./controllers/admin.ts";
 import type { ChunksController } from "./controllers/chunks.ts";
 import type { ClaimController } from "./controllers/claim.ts";

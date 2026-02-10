@@ -50,7 +50,9 @@ export const createErrorFromResponse = async (response: Response): Promise<Clien
     }
     // Handle Zod validation error objects (from @hono/zod-validator default hook)
     if (body.error && typeof body.error === "object" && "issues" in (body.error as object)) {
-      const issues = (body.error as { issues: Array<{ message: string; path?: Array<string | number> }> }).issues;
+      const issues = (
+        body.error as { issues: Array<{ message: string; path?: Array<string | number> }> }
+      ).issues;
       if (Array.isArray(issues) && issues.length > 0) {
         message = issues
           .map((i) => (i.path?.length ? `${i.path.join(".")}: ${i.message}` : i.message))
