@@ -1,10 +1,8 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "rootDir": ".",
-    "outDir": "dist",
-    "types": ["node"],
-    "paths": {}
+    "noEmit": true,
+    "types": ["node"]
   },
   "include": ["backend/**/*", "scripts/**/*"]
 }
