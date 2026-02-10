@@ -5,7 +5,13 @@
  * Merkle path rebuild, child insertion / removal, and parent-dir creation.
  */
 
-import { type CasNode, decodeNode, encodeDictNode } from "@casfa/core";
+import {
+  type CasNode,
+  decodeNode,
+  EMPTY_DICT_BYTES,
+  EMPTY_DICT_KEY,
+  encodeDictNode,
+} from "@casfa/core";
 import { FS_MAX_COLLECTION_CHILDREN, FS_MAX_NAME_BYTES, nodeKeyToHex } from "@casfa/protocol";
 
 import {
@@ -34,6 +40,8 @@ export const createTreeOps = (deps: FsServiceDeps) => {
 
   /** Get raw node bytes from storage by hex key */
   const getNodeData = async (hexKey: string): Promise<Uint8Array | null> => {
+    // Well-known empty dict node — return in-memory bytes, skip storage
+    if (hexKey === EMPTY_DICT_KEY) return EMPTY_DICT_BYTES.slice();
     return storage.get(hexKey);
   };
 
