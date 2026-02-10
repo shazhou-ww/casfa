@@ -49,16 +49,8 @@ if (existsSync(envPath)) {
   }
 }
 
-import {
-  DeleteObjectsCommand,
-  ListObjectsV2Command,
-  S3Client,
-} from "@aws-sdk/client-s3";
-import {
-  BatchWriteItemCommand,
-  DynamoDBClient,
-  ScanCommand,
-} from "@aws-sdk/client-dynamodb";
+import { BatchWriteItemCommand, DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
+import { DeleteObjectsCommand, ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
 import { Command } from "commander";
 
 // ============================================================================
@@ -191,15 +183,9 @@ async function scanAndDelete(
   let lastEvaluatedKey: Record<string, unknown> | undefined;
 
   // Build filter expression for realm-scoped cleanup
-  const filterExpression = options.realm
-    ? `#pk = :realm`
-    : undefined;
-  const expressionNames = options.realm
-    ? { "#pk": hashKey }
-    : undefined;
-  const expressionValues = options.realm
-    ? { ":realm": { S: options.realm } }
-    : undefined;
+  const filterExpression = options.realm ? `#pk = :realm` : undefined;
+  const expressionNames = options.realm ? { "#pk": hashKey } : undefined;
+  const expressionValues = options.realm ? { ":realm": { S: options.realm } } : undefined;
 
   do {
     const scanResult = await dynamo.send(
@@ -370,7 +356,12 @@ async function cleanDynamoDB(options: ScanDeleteOptions): Promise<number> {
 
   // cas-tokens (pk/sk) — special handling for realm filter
   if (options.realm) {
-    const count = await scanAndDeleteTokensByRealm(dynamo, tokensTable, options.realm, options.dryRun);
+    const count = await scanAndDeleteTokensByRealm(
+      dynamo,
+      tokensTable,
+      options.realm,
+      options.dryRun
+    );
     console.log(`   ${tokensTable}: ${count} items ${options.dryRun ? "would be " : ""}deleted`);
     total += count;
   } else {
@@ -475,7 +466,7 @@ program
       dbCount = await cleanDynamoDB({ dryRun, realm, keepRoles });
     }
 
-    console.log("\n" + "=".repeat(60));
+    console.log(`\n${"=".repeat(60)}`);
     console.log(
       `Done. ${dryRun ? "Would delete" : "Deleted"}: ${s3Count} S3 objects, ${dbCount} DynamoDB items`
     );
