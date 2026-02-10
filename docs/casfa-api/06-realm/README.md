@@ -52,7 +52,7 @@ URL 中的 `realmId` 必须与 Token 关联的 realm 一致，否则返回 `403 
 | GET | `/api/realm/{realmId}/nodes/:key` | 读取节点 | Access Token |
 | GET | `/api/realm/{realmId}/nodes/:key/metadata` | 获取节点元信息 | Access Token |
 | PUT | `/api/realm/{realmId}/nodes/:key` | 上传节点 | Access Token (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/prepare` | 批量检查节点存在性 | Access Token |
+| POST | `/api/realm/{realmId}/nodes/check` | 批量检查节点状态 | Access Token |
 
 ### Depot 操作
 

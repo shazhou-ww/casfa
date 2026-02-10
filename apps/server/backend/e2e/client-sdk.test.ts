@@ -144,10 +144,10 @@ describe("Client SDK Integration", () => {
       const content = `Hello, CASFA! ${Date.now()}`;
       const { nodeKey, nodeBytes } = await encodeTestFile(content);
 
-      // 2. Prepare — check which nodes are missing
-      const prepResult = await client.nodes.prepare({ keys: [nodeKey] });
+      // 2. Check — which nodes are missing
+      const prepResult = await client.nodes.check({ keys: [nodeKey] });
       expect(prepResult.ok).toBe(true);
-      if (!prepResult.ok) throw new Error("prepare failed");
+      if (!prepResult.ok) throw new Error("check failed");
       expect(prepResult.data.missing).toContain(nodeKey);
 
       // 3. Upload the node
@@ -155,10 +155,10 @@ describe("Client SDK Integration", () => {
       expect(putResult.ok).toBe(true);
       if (!putResult.ok) throw new Error(`put failed: ${putResult.error.message}`);
 
-      // 4. Prepare again — node should no longer be missing
-      const prepResult2 = await client.nodes.prepare({ keys: [nodeKey] });
+      // 4. Check again — node should no longer be missing
+      const prepResult2 = await client.nodes.check({ keys: [nodeKey] });
       expect(prepResult2.ok).toBe(true);
-      if (!prepResult2.ok) throw new Error("prepare2 failed");
+      if (!prepResult2.ok) throw new Error("check2 failed");
       // After upload, the node exists and is owned by the uploader
       expect(prepResult2.data.missing).not.toContain(nodeKey);
 
@@ -259,10 +259,10 @@ describe("Client SDK Integration", () => {
       const putResult = await client.nodes.put(nodeKey, nodeBytes);
       expect(putResult.ok).toBe(true);
 
-      // After upload, prepare should show the node as owned
-      const prepResult = await client.nodes.prepare({ keys: [nodeKey] });
+      // After upload, check should show the node as owned
+      const prepResult = await client.nodes.check({ keys: [nodeKey] });
       expect(prepResult.ok).toBe(true);
-      if (!prepResult.ok) throw new Error("prepare failed");
+      if (!prepResult.ok) throw new Error("check failed");
       expect(prepResult.data.owned).toContain(nodeKey);
     });
 

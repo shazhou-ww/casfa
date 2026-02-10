@@ -5,6 +5,7 @@
  */
 
 import {
+  CheckNodesSchema,
   ClaimNodeRequestSchema,
   CreateDelegateRequestSchema,
   CreateDepotSchema,
@@ -16,7 +17,6 @@ import {
   FsRewriteRequestSchema,
   FsRmRequestSchema,
   LoginSchema,
-  PrepareNodesSchema,
   RefreshSchema,
   RegisterSchema,
   RootTokenRequestSchema,
@@ -226,9 +226,9 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
 
   // Nodes
   realmRouter.post(
-    "/:realmId/nodes/prepare",
-    validatedJson(PrepareNodesSchema),
-    deps.chunks.prepareNodes
+    "/:realmId/nodes/check",
+    validatedJson(CheckNodesSchema),
+    deps.chunks.checkNodes
   );
   realmRouter.put("/:realmId/nodes/:key", deps.canUploadMiddleware, deps.chunks.put);
   realmRouter.get("/:realmId/nodes/:key", deps.proofValidationMiddleware, deps.chunks.get);

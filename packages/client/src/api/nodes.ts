@@ -3,11 +3,11 @@
  *
  * Token Requirement:
  * - GET /nodes/:nodeKey: Access Token (with X-CAS-Proof header)
- * - POST /nodes/prepare: Access Token with canUpload
+ * - POST /nodes/check: Access Token
  * - PUT /nodes/:nodeKey: Access Token with canUpload
  */
 
-import type { NodeMetadata, PrepareNodes, PrepareNodesResponse } from "@casfa/protocol";
+import type { CheckNodes, CheckNodesResponse, NodeMetadata } from "@casfa/protocol";
 import type { FetchResult } from "../types/client.ts";
 import { fetchWithAuth } from "../utils/http.ts";
 
@@ -98,18 +98,18 @@ export const getNodeMetadata = async (
 };
 
 /**
- * Prepare nodes for upload.
- * Returns which nodes need to be uploaded vs already exist.
- * Requires Access Token with canUpload.
+ * Check nodes status on the server.
+ * Returns three-way classification: missing, owned, unowned.
+ * Requires Access Token.
  */
-export const prepareNodes = async (
+export const checkNodes = async (
   baseUrl: string,
   realm: string,
   accessTokenBase64: string,
-  params: PrepareNodes
-): Promise<FetchResult<PrepareNodesResponse>> => {
-  return fetchWithAuth<PrepareNodesResponse>(
-    `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/prepare`,
+  params: CheckNodes
+): Promise<FetchResult<CheckNodesResponse>> => {
+  return fetchWithAuth<CheckNodesResponse>(
+    `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/check`,
     `Bearer ${accessTokenBase64}`,
     {
       method: "POST",

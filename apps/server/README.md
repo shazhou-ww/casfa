@@ -197,7 +197,7 @@ See [.env.example](.env.example) for complete configuration.
 
 ### Nodes (CAS)
 
-- `POST /api/realm/:realmId/nodes/prepare` - Prepare node upload
+- `POST /api/realm/:realmId/nodes/check` - Check node status
 - `PUT /api/realm/:realmId/nodes/:key` - Upload node
 - `GET /api/realm/:realmId/nodes/:key` - Get node content
 - `GET /api/realm/:realmId/nodes/:key/metadata` - Get node metadata

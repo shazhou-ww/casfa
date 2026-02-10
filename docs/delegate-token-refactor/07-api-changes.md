@@ -572,7 +572,7 @@ Authorization: Bearer {base64_encoded_128_bytes}
 | GET | `/api/realm/{realmId}/nodes/:key` | Access Token | 读取节点 |
 | GET | `/api/realm/{realmId}/nodes/:key/metadata` | Access Token | 获取节点元信息 |
 | PUT | `/api/realm/{realmId}/nodes/:key` | Access Token (canUpload) | 写入节点 |
-| POST | `/api/realm/{realmId}/nodes/prepare` | Access Token | 批量检查节点存在性 |
+| POST | `/api/realm/{realmId}/nodes/check` | Access Token | 批量检查节点状态 |
 | GET | `/api/realm/{realmId}/depots` | Access Token | 列出 Depot |
 | POST | `/api/realm/{realmId}/depots` | Access Token (canManageDepot) | 创建 Depot |
 | GET | `/api/realm/{realmId}/depots/:id` | Access Token | 获取 Depot 详情 |

@@ -22,7 +22,7 @@ import {
   // Request/Response schemas
   CreateTicketSchema,
   CreateDepotSchema,
-  PrepareNodesSchema,
+  CheckNodesSchema,
   
   // Types
   type UserRole,
@@ -57,7 +57,7 @@ All 128-bit identifiers use Crockford Base32 encoding (26 characters):
 - **Admin**: `UpdateUserRoleSchema`
 - **Ticket**: `TicketCommitSchema`, `ListTicketsQuerySchema`
 - **Depot**: `CreateDepotSchema`, `UpdateDepotSchema`, `DepotCommitSchema`
-- **Node**: `PrepareNodesSchema`, `NodeMetadataSchema`
+- **Node**: `CheckNodesSchema`, `NodeMetadataSchema`
 
 ### Types
 

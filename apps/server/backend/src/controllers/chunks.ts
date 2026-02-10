@@ -1,7 +1,7 @@
 /**
  * Chunks controller
  *
- * Handles node upload (PUT), prepare-nodes check, and node retrieval (GET).
+ * Handles node upload (PUT), nodes/check, and node retrieval (GET).
  * Implements ownership model with multi-owner tracking and children reference validation.
  */
 
@@ -14,13 +14,13 @@ import {
   validateNodeStructure,
 } from "@casfa/core";
 import {
+  type CheckNodesResponse,
+  CheckNodesSchema,
   type DictNodeMetadata,
   type FileNodeMetadata,
   hashToNodeKey,
   type NodeUploadResponse,
   nodeKeyToStorageKey,
-  type PrepareNodesResponse,
-  PrepareNodesSchema,
   type SuccessorNodeMetadata,
 } from "@casfa/protocol";
 import type { StorageProvider } from "@casfa/storage-core";
@@ -33,7 +33,7 @@ import type { AccessTokenAuthContext, Env } from "../types.ts";
 import { parseChildProofsHeader, validateProofAgainstScope } from "../util/scope-proof.ts";
 
 export type ChunksController = {
-  prepareNodes: (c: Context<Env>) => Promise<Response>;
+  checkNodes: (c: Context<Env>) => Promise<Response>;
   put: (c: Context<Env>) => Promise<Response>;
   get: (c: Context<Env>) => Promise<Response>;
   getMetadata: (c: Context<Env>) => Promise<Response>;
@@ -59,10 +59,10 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
   const toStorageKey = (nodeKey: string): string => nodeKeyToStorageKey(nodeKey);
 
   return {
-    prepareNodes: async (c) => {
+    checkNodes: async (c) => {
       const auth = c.get("auth") as AccessTokenAuthContext;
       const _realm = getRealm(c);
-      const { keys } = PrepareNodesSchema.parse(await c.req.json());
+      const { keys } = CheckNodesSchema.parse(await c.req.json());
 
       // Delegate chain = [root, ..., self] — all ancestors that share ownership
       const delegateChain = auth.issuerChain;
@@ -103,7 +103,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
         }
       }
 
-      return c.json<PrepareNodesResponse>({ missing, owned, unowned });
+      return c.json<CheckNodesResponse>({ missing, owned, unowned });
     },
 
     put: async (c) => {

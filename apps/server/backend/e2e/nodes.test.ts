@@ -2,7 +2,7 @@
  * E2E Tests: Node Operations (Delegate Token API)
  *
  * Tests for Node endpoints:
- * - POST /api/realm/{realmId}/nodes/prepare - Check missing nodes (Access Token)
+ * - POST /api/realm/{realmId}/nodes/check - Check node status (Access Token)
  * - PUT /api/realm/{realmId}/nodes/:key - Upload node (Access Token + canUpload)
  * - GET /api/realm/{realmId}/nodes/:key/metadata - Get metadata (Access Token + X-CAS-Proof)
  * - GET /api/realm/{realmId}/nodes/:key - Get binary data (Access Token + X-CAS-Proof)
@@ -30,10 +30,10 @@ describe("Node Operations", () => {
   });
 
   // ==========================================================================
-  // POST /api/realm/{realmId}/nodes/prepare - Check Missing Nodes
+  // POST /api/realm/{realmId}/nodes/check - Check Node Status
   // ==========================================================================
 
-  describe("POST /api/realm/{realmId}/nodes/prepare", () => {
+  describe("POST /api/realm/{realmId}/nodes/check", () => {
     it("should return all keys as missing for non-existent nodes", async () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
@@ -45,7 +45,7 @@ describe("Node Operations", () => {
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
         "POST",
-        `/api/realm/${realm}/nodes/prepare`,
+        `/api/realm/${realm}/nodes/check`,
         { keys: testKeys }
       );
 
@@ -65,7 +65,7 @@ describe("Node Operations", () => {
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
         "POST",
-        `/api/realm/${realm}/nodes/prepare`,
+        `/api/realm/${realm}/nodes/check`,
         { keys: [] }
       );
 
@@ -89,7 +89,7 @@ describe("Node Operations", () => {
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
         "POST",
-        `/api/realm/${realm}/nodes/prepare`,
+        `/api/realm/${realm}/nodes/check`,
         { keys: ["invalid-key-format"] }
       );
 
@@ -107,7 +107,7 @@ describe("Node Operations", () => {
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
         "POST",
-        `/api/realm/${realm}/nodes/prepare`,
+        `/api/realm/${realm}/nodes/check`,
         { keys: tooManyKeys }
       );
 
@@ -127,16 +127,16 @@ describe("Node Operations", () => {
       const response = await ctx.helpers.accessRequest(
         childToken.tokenBase64,
         "POST",
-        `/api/realm/${realm}/nodes/prepare`,
+        `/api/realm/${realm}/nodes/check`,
         { keys: [testNodeKey(1)] }
       );
 
-      // Child delegate access tokens can still call prepare (read operation)
+      // Child delegate access tokens can still call check (read operation)
       expect(response.status).toBe(200);
     });
 
     it("should reject unauthenticated requests", async () => {
-      const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/nodes/prepare`, {
+      const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/nodes/check`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ keys: [testNodeKey(1)] }),
