@@ -91,8 +91,9 @@ interface CasfaExplorerProps {
   // ── 主题 ──
   sx?: SxProps<Theme>;
 
-  // ── 国际化（UI 文案覆盖） ──
-  messages?: Partial<ExplorerMessages>;
+  // ── 国际化 ──
+  locale?: string;                              // 默认 "en-US"，内置 "en-US" | "zh-CN"
+  i18n?: (builtinT: ExplorerT) => ExplorerT;    // 修饰内置翻译函数
 }
 ```
 
@@ -108,57 +109,105 @@ interface CasfaExplorerProps {
 
 > **理由**：前端收窄权限无意义（server 本来就会拒绝）；前端放大权限更无意义（server 会 403）。权限是 server 端事实，不应由 prop 配置。
 
-### 2.4 国际化 / UI 文案
+### 2.4 国际化
 
-`messages` prop 用于覆盖组件内所有 UI 文案，支持完整的 i18n 场景：
+#### 核心翻译函数
 
 ```ts
-interface ExplorerMessages {
-  // ── 工具栏 ──
-  createFolder: string;        // "新建文件夹"
-  upload: string;              // "上传"
-  download: string;            // "下载"
-  delete: string;              // "删除"
-  rename: string;              // "重命名"
-  refresh: string;             // "刷新"
-  search: string;              // "搜索文件..."
-
-  // ── 右键菜单 ──
-  open: string;                // "打开"
-  cut: string;                 // "剪切"
-  copy: string;                // "复制"
-  paste: string;               // "粘贴"
-  copyCasUri: string;          // "复制 CAS URI"
-  properties: string;          // "属性"
-
-  // ── 对话框 ──
-  confirmDeleteTitle: string;  // "确认删除"
-  confirmDeleteBody: string;   // "确定要删除 {count} 个项目吗？此操作不可撤销。"
-  newFolderTitle: string;      // "新建文件夹"
-  newFolderPlaceholder: string;// "文件夹名称"
-  renameTitle: string;         // "重命名"
-  conflictTitle: string;       // "名称冲突"
-  conflictOverwrite: string;   // "覆盖"
-  conflictRename: string;      // "重命名"
-  conflictSkip: string;        // "跳过"
-
-  // ── 状态提示 ──
-  emptyFolder: string;         // "此文件夹为空"
-  dropFilesHere: string;       // "拖拽文件到此处上传"
-  uploadSuccess: string;       // "已上传 {count} 个文件"
-  deleteSuccess: string;       // "已删除 {count} 个项目"
-  networkError: string;        // "网络不可用，请检查连接"
-  permissionDenied: string;    // "权限不足"
-  fileTooLarge: string;        // "文件过大（最大 4MB）"
-  authExpired: string;         // "认证已过期，请重新登录"
-
-  // ── Depot 选择器 ──
-  selectDepot: string;         // "选择仓库"
-  noDepots: string;            // "暂无可用仓库"
-}
+/**
+ * 翻译函数签名。组件内部所有 UI 文案都通过此函数获取。
+ *
+ * @param key   - 文案 key，如 "toolbar.upload"、"dialog.confirmDelete.title"
+ * @param args  - 插值参数，如 { count: 3 }
+ * @returns 翻译后的字符串
+ */
+type ExplorerT = (key: ExplorerTextKey, args?: Record<string, string | number>) => string;
 ```
 
-组件内置 `en-US` 和 `zh-CN` 两套默认文案。`messages` 中传入的条目会 merge 覆盖默认值。
+#### 内置文案
+
+组件内置 `en-US` 和 `zh-CN` 两套完整文案，通过 `locale` prop 选择：
+
+```ts
+// 内置 text key 枚举（部分示例）
+type ExplorerTextKey =
+  // 工具栏
+  | "toolbar.createFolder"       // "New Folder" / "新建文件夹"
+  | "toolbar.upload"             // "Upload" / "上传"
+  | "toolbar.download"           // "Download" / "下载"
+  | "toolbar.delete"             // "Delete" / "删除"
+  | "toolbar.rename"             // "Rename" / "重命名"
+  | "toolbar.refresh"            // "Refresh" / "刷新"
+  | "toolbar.search"             // "Search files..." / "搜索文件..."
+  // 右键菜单
+  | "context.open"               // "Open" / "打开"
+  | "context.cut"                // "Cut" / "剪切"
+  | "context.copy"               // "Copy" / "复制"
+  | "context.paste"              // "Paste" / "粘贴"
+  | "context.copyCasUri"         // "Copy CAS URI" / "复制 CAS URI"
+  | "context.properties"         // "Properties" / "属性"
+  // 对话框
+  | "dialog.confirmDelete.title" // "Confirm Delete" / "确认删除"
+  | "dialog.confirmDelete.body"  // "Delete {count} item(s)? This cannot be undone."
+  | "dialog.newFolder.title"     // "New Folder" / "新建文件夹"
+  | "dialog.newFolder.placeholder" // "Folder name" / "文件夹名称"
+  | "dialog.rename.title"        // "Rename" / "重命名"
+  | "dialog.conflict.title"      // "Name Conflict" / "名称冲突"
+  | "dialog.conflict.overwrite"  // "Overwrite" / "覆盖"
+  | "dialog.conflict.rename"     // "Rename" / "重命名"
+  | "dialog.conflict.skip"       // "Skip" / "跳过"
+  // 状态
+  | "status.emptyFolder"         // "This folder is empty" / "此文件夹为空"
+  | "status.dropFiles"           // "Drop files here to upload" / "拖拽文件到此处上传"
+  | "status.uploadSuccess"       // "Uploaded {count} file(s)" / "已上传 {count} 个文件"
+  | "status.deleteSuccess"       // "Deleted {count} item(s)" / "已删除 {count} 个项目"
+  // 错误
+  | "error.network"              // "Network unavailable" / "网络不可用"
+  | "error.permissionDenied"     // "Permission denied" / "权限不足"
+  | "error.fileTooLarge"         // "File too large (max 4MB)" / "文件过大（最大 4MB）"
+  | "error.authExpired"          // "Session expired, please log in again" / "认证已过期"
+  // Depot
+  | "depot.select"               // "Select Depot" / "选择仓库"
+  | "depot.empty"                // "No depots available" / "暂无可用仓库"
+  ;
+```
+
+#### 修饰函数（`i18n` prop）
+
+宿主应用通过 `i18n` prop 传入一个**修饰函数**，对内置翻译函数进行包装：
+
+```tsx
+// 用法 1：覆盖个别 key
+<CasfaExplorer
+  client={client}
+  locale="en-US"
+  i18n={(builtinT) => (key, args) => {
+    // 自定义个别文案
+    if (key === "toolbar.upload") return "Import Files";
+    if (key === "depot.select") return "Choose Repository";
+    // 其余 fallback 到内置翻译
+    return builtinT(key, args);
+  }}
+/>
+
+// 用法 2：接入宿主应用的 i18n 框架（如 i18next）
+<CasfaExplorer
+  client={client}
+  i18n={(builtinT) => (key, args) => {
+    // 优先使用宿主 i18n，找不到则 fallback
+    const hostResult = hostI18n.t(`explorer.${key}`, args);
+    return hostResult !== `explorer.${key}` ? hostResult : builtinT(key, args);
+  }}
+/>
+
+// 用法 3：不传 i18n — 直接使用 locale 对应的内置文案
+<CasfaExplorer client={client} locale="zh-CN" />
+```
+
+**设计要点**：
+- 组件先根据 `locale` 构建内置 `builtinT`，再用 `i18n` 修饰它
+- 修饰函数返回一个新的 `ExplorerT`，拥有完全控制权
+- 不传 `i18n` 时 `builtinT` 直接使用，零配置即可工作
 
 ---
 
@@ -183,7 +232,7 @@ interface ExplorerMessages {
 
 | # | 用例 | 描述 |
 |---|------|------|
-| R-1 | **文件详情面板** | 选中文件后在侧边或底部显示元数据：名称、大小、内容类型、CAS hash、创建时间 |
+| R-1 | **文件详情面板** | 选中文件后在右侧浮动面板显示元数据：名称、大小、内容类型、CAS hash、创建时间 |
 | R-2 | **文件预览** | 双击文件打开预览面板。内置支持：图片（img tag）、文本/代码（Monaco/highlight）、PDF（嵌入 viewer）、音视频（HTML5 player）。可通过 `renderFilePreview` 自定义 |
 | R-3 | **文件下载** | 工具栏按钮 / 右键菜单 / 快捷键下载选中文件。调用 `fs/read` 获取 blob 并触发浏览器下载 |
 | R-4 | **批量下载** | 选中多个文件时，逐个下载或打包为 zip（前端 JSZip）|
@@ -257,27 +306,26 @@ interface ExplorerMessages {
 ## 4. UI 布局
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ Toolbar                                                         │
-│ [← →] [↑] 📁 Home / Documents / Project    🔍 [⊞][≡] [⚙]    │
-├────────────────────┬────────────────────────────────────────────┤
-│ Tree Sidebar       │ Main Panel                                 │
-│                    │                                            │
-│ 📁 Home           │  Name          Size    Type    Modified    │
-│  ├─ 📁 Documents  │  📁 src        —      Folder   2h ago     │
-│  │  ├─ 📁 Project │  📁 docs       —      Folder   1d ago     │
-│  │  └─ 📁 Archive │  📄 README.md  2.1KB  text/md  3h ago     │
-│  ├─ 📁 Pictures   │  🖼 logo.png  48KB   image    5d ago     │
-│  └─ 📁 Music      │                                            │
-│                    ├────────────────────────────────────────────│
-│                    │ Detail / Preview Panel (collapsible)       │
-│                    │ Name: README.md                            │
-│                    │ Size: 2.1 KB                               │
-│                    │ Hash: nod_3FG7K...                         │
-│                    │ Content-Type: text/markdown                 │
-├────────────────────┴────────────────────────────────────────────┤
-│ Status Bar: Root: nod_7X2M... │ 142 items │ 3 selected         │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ Toolbar                                                                      │
+│ [← →] [↑] 📁 Home / Documents / Project         🔍 [⊞][≡] [ℹ️] [⚙]      │
+├──────────────┬───────────────────────────────┬───────────────────────────────┤
+│ Tree Sidebar │ Main Panel                     │ Detail / Preview Panel  [✕]  │
+│              │                                │                              │
+│ 📁 Home     │  Name        Size   Type  Mod  │ 📄 README.md                 │
+│  ├─ 📁 Docs │  📁 src      —     Dir   2h   │ ─────────────────────────── │
+│  │  ├─ 📁 P │  📁 docs     —     Dir   1d   │ Size: 2.1 KB                 │
+│  │  └─ 📁 A │  📄 README   2.1K  md    3h   │ Type: text/markdown          │
+│  ├─ 📁 Pics │  🖼 logo    48K   img   5d   │ Hash: nod_3FG7K...           │
+│  └─ 📁 Music│                                │                              │
+│              │                                │ ┌──────────────────────────┐ │
+│              │                                │ │  Preview                 │ │
+│              │                                │ │  # README                │ │
+│              │                                │ │  This is the project...  │ │
+│              │                                │ └──────────────────────────┘ │
+├──────────────┴───────────────────────────────┴───────────────────────────────┤
+│ Status Bar: Root: nod_7X2M... │ 142 items │ 3 selected                       │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 4.1 区域说明
@@ -287,7 +335,7 @@ interface ExplorerMessages {
 | **Toolbar** | 导航按钮（后退/前进/上级）、面包屑、搜索框、视图切换（List/Grid）、操作按钮（新建/上传/下载/删除）、设置 |
 | **Tree Sidebar** | 可折叠。仅显示文件夹的树形结构，懒加载。点击切换主面板。当前目录高亮 |
 | **Main Panel** | List view: 可排序数据表格。Grid view: 图标/缩略图卡片网格。支持虚拟滚动 |
-| **Detail Panel** | 可折叠。显示选中项元数据或文件预览 |
+| **Detail Panel** | 右侧浮动面板，可通过工具栏 ℹ️ 按钮或快捷键切换显隐。上半部分显示选中项元数据，下半部分显示文件预览（图片/文本/PDF 等）。未选中文件时自动隐藏 |
 | **Status Bar** | 当前 depot root hash、目录项数统计、选中数量 |
 
 ---

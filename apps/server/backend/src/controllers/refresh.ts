@@ -14,7 +14,7 @@
  * RT replay → conditional update fails → reject (do NOT auto-revoke delegate)
  */
 
-import { RT_SIZE, decodeToken } from "@casfa/delegate-token";
+import { decodeToken, RT_SIZE } from "@casfa/delegate-token";
 import type { Context } from "hono";
 import type { DelegatesDb } from "../db/delegates.ts";
 import type { Env } from "../types.ts";

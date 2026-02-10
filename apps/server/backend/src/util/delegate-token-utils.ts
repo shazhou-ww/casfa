@@ -11,10 +11,7 @@
  * instead of in a separate TokenRecord table.
  */
 
-import {
-  encodeAccessToken,
-  encodeRefreshToken,
-} from "@casfa/delegate-token";
+import { encodeAccessToken, encodeRefreshToken } from "@casfa/delegate-token";
 import { blake3 } from "@noble/hashes/blake3";
 import { fromCrockfordBase32, toCrockfordBase32 } from "./encoding.ts";
 
@@ -95,10 +92,7 @@ export type TokenPair = {
  * The hashes are stored on the Delegate entity for later verification.
  */
 export function generateTokenPair(input: TokenPairInput): TokenPair {
-  const {
-    delegateId,
-    accessTokenTtlSeconds = DEFAULT_AT_TTL_SECONDS,
-  } = input;
+  const { delegateId, accessTokenTtlSeconds = DEFAULT_AT_TTL_SECONDS } = input;
 
   const delegateIdBytes = delegateIdToBytes(delegateId);
 

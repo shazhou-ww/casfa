@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { AT_SIZE, RT_SIZE, decodeToken } from "@casfa/delegate-token";
+import { AT_SIZE, decodeToken, RT_SIZE } from "@casfa/delegate-token";
 import {
   bytesToDelegateId,
   computeTokenHash,

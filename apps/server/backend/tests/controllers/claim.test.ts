@@ -29,7 +29,7 @@ const TEST_ROOT_DELEGATE_ID = "dlg_root";
 const TEST_NODE_KEY = "nod_NF6YY4HMASW91AYDXW938NKRJ0";
 /** Corresponding CB32 storage key */
 const TEST_STORAGE_KEY = nodeKeyToStorageKey(TEST_NODE_KEY);
-const TEST_TOKEN_BYTES = new Uint8Array(128).fill(0x42);
+const _TEST_TOKEN_BYTES = new Uint8Array(128).fill(0x42);
 const TEST_CONTENT = new Uint8Array([0xca, 0xfe, 0xba, 0xbe]);
 const TEST_POP = "pop:VALID_POP_STRING";
 
