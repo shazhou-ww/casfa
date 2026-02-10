@@ -6,7 +6,7 @@
  */
 
 import { EMPTY_DICT_KEY } from "@casfa/core";
-import { CreateDepotSchema, DepotCommitSchema, UpdateDepotSchema } from "@casfa/protocol";
+import { CreateDepotSchema, DepotCommitSchema, nodeKeyToHex, UpdateDepotSchema } from "@casfa/protocol";
 import type { StorageProvider } from "@casfa/storage-core";
 import type { Context } from "hono";
 import {
@@ -165,11 +165,11 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
 
       const { root: newRoot } = DepotCommitSchema.parse(await c.req.json());
 
-      // Normalize root (remove node: prefix if present)
-      const normalizedRoot = newRoot.startsWith("node:") ? newRoot.slice(5) : newRoot;
+      // Convert node key to hex storage key for storage/ownership lookups
+      const storageKey = nodeKeyToHex(newRoot);
 
       // Check if new root exists in storage
-      const exists = await storage.has(normalizedRoot);
+      const exists = await storage.has(storageKey);
       if (!exists) {
         return c.json({ error: "Root node does not exist" }, 400);
       }
@@ -178,7 +178,7 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
       const delegateChain = auth.issuerChain;
       let rootAuthorized = false;
       for (const id of delegateChain) {
-        if (await ownershipV2Db.hasOwnership(normalizedRoot, id)) {
+        if (await ownershipV2Db.hasOwnership(storageKey, id)) {
           rootAuthorized = true;
           break;
         }
@@ -193,7 +193,8 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
         );
       }
 
-      const depot = await depotsDb.commit(realm, depotId, normalizedRoot);
+      // Store root as node key format (node:XXXX) in the depot
+      const depot = await depotsDb.commit(realm, depotId, newRoot);
       if (!depot) {
         return c.json({ error: "Depot not found" }, 404);
       }

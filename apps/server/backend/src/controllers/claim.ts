@@ -17,6 +17,7 @@
 
 import type { PopContext } from "@casfa/proof";
 import { verifyPoP } from "@casfa/proof";
+import { nodeKeyToHex } from "@casfa/protocol";
 import type { Context } from "hono";
 import type { OwnershipV2Db } from "../db/ownership-v2.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
@@ -28,10 +29,10 @@ import type { AccessTokenAuthContext, Env } from "../types.ts";
 export type ClaimControllerDeps = {
   ownershipDb: OwnershipV2Db;
   /**
-   * Read CAS node content by hash.
+   * Read CAS node content by storage key (hex).
    * Returns raw bytes or null if the node does not exist.
    */
-  getNodeContent: (realm: string, hash: string) => Promise<Uint8Array | null>;
+  getNodeContent: (realm: string, storageKey: string) => Promise<Uint8Array | null>;
   /** PoP crypto context (blake3_256, blake3_128_keyed, crockfordBase32Encode) */
   popContext: PopContext;
 };
@@ -85,13 +86,16 @@ export const createClaimController = (
     }
 
     // Node hash from path
-    const nodeHash = c.req.param("key");
-    if (!nodeHash) {
+    const nodeKey = c.req.param("key");
+    if (!nodeKey) {
       return c.json(
         { error: "INVALID_REQUEST", message: "Missing node key" },
         400,
       );
     }
+
+    // Convert node:XXXX to hex storage key (consistent with chunks controller)
+    const storageKey = nodeKeyToHex(nodeKey);
 
     // Parse request body
     const body = await c.req.json().catch(() => null);
@@ -110,19 +114,19 @@ export const createClaimController = (
       : [delegateId];
 
     // 2. Node exists?
-    const content = await getNodeContent(realmId, nodeHash);
+    const content = await getNodeContent(realmId, storageKey);
     if (content === null) {
       return c.json(
-        { error: "NODE_NOT_FOUND", message: `Node ${nodeHash} does not exist` },
+        { error: "NODE_NOT_FOUND", message: `Node ${nodeKey} does not exist` },
         404,
       );
     }
 
     // 3. Already owned? (idempotent)
-    const alreadyOwned = await ownershipDb.hasOwnership(nodeHash, delegateId);
+    const alreadyOwned = await ownershipDb.hasOwnership(storageKey, delegateId);
     if (alreadyOwned) {
       return c.json(
-        { nodeHash, alreadyOwned: true, delegateId },
+        { nodeHash: nodeKey, alreadyOwned: true, delegateId },
         200,
       );
     }
@@ -137,7 +141,7 @@ export const createClaimController = (
 
     // 5. Full-chain ownership write
     await ownershipDb.addOwnership(
-      nodeHash,
+      storageKey,
       chain,
       delegateId,
       "", // contentType — not needed for claim
@@ -145,7 +149,7 @@ export const createClaimController = (
     );
 
     return c.json(
-      { nodeHash, alreadyOwned: false, delegateId },
+      { nodeHash: nodeKey, alreadyOwned: false, delegateId },
       200,
     );
   };

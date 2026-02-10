@@ -468,7 +468,9 @@ class CasfaClient {
 - [x] 单元测试: RT rotation — AT 过期 → 自动刷新 → 新 RT + AT
 - [x] 单元测试: RT rotation conflict — 409 → 抛出可恢复异常
 - [x] 单元测试: createDelegate 权限验证
-- [ ] 集成测试: client E2E flow（create delegate → upload → claim → commit）*(deferred)*
+- [x] 集成测试: client E2E flow（create delegate → upload → claim → commit）
+  > `apps/server/backend/e2e/client-sdk.test.ts` — 14 tests, 52 expect()
+  > Also fixed: claim controller storage key bug, depot commit ownership lookup bug
 
 ---
 

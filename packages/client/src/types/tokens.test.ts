@@ -34,7 +34,8 @@ const createRootDelegate = (
   realm: "test-realm",
   refreshToken: "base64-refresh-token",
   refreshTokenId: "rt_123",
-  accessToken: "base64-access-token",
+  // A valid base64 for 128 bytes (all zeros)
+  accessToken: Buffer.from(new Uint8Array(128)).toString("base64"),
   accessTokenId: "at_123",
   accessTokenExpiresAt: Date.now() + 3600_000,
   depth: 0,
@@ -70,8 +71,12 @@ describe("emptyTokenState", () => {
 
 describe("rootDelegateToAccessToken", () => {
   it("should extract access token view from root delegate", () => {
+    // 128 bytes filled with 0x42
+    const rawBytes = new Uint8Array(128).fill(0x42);
+    const base64 = Buffer.from(rawBytes).toString("base64");
+
     const rd = createRootDelegate({
-      accessToken: "at-base64",
+      accessToken: base64,
       accessTokenId: "at_view",
       accessTokenExpiresAt: 1234567890,
       canUpload: true,
@@ -80,7 +85,10 @@ describe("rootDelegateToAccessToken", () => {
 
     const at: StoredAccessToken = rootDelegateToAccessToken(rd);
 
-    expect(at.tokenBase64).toBe("at-base64");
+    expect(at.tokenBase64).toBe(base64);
+    expect(at.tokenBytes).toBeInstanceOf(Uint8Array);
+    expect(at.tokenBytes.length).toBe(128);
+    expect(at.tokenBytes).toEqual(rawBytes);
     expect(at.tokenId).toBe("at_view");
     expect(at.expiresAt).toBe(1234567890);
     expect(at.canUpload).toBe(true);
@@ -92,6 +100,8 @@ describe("rootDelegateToAccessToken", () => {
     const at = rootDelegateToAccessToken(rd);
 
     expect(at.tokenBase64).toBe(rd.accessToken);
+    expect(at.tokenBytes).toBeInstanceOf(Uint8Array);
+    expect(at.tokenBytes.length).toBe(128);
     expect(at.tokenId).toBe(rd.accessTokenId);
     expect(at.expiresAt).toBe(rd.accessTokenExpiresAt);
     expect(at.canUpload).toBe(rd.canUpload);
@@ -216,6 +226,7 @@ describe("StoredAccessToken structure", () => {
   it("should have all required fields", () => {
     const token: StoredAccessToken = {
       tokenBase64: "base64",
+      tokenBytes: new Uint8Array(128),
       tokenId: "at_access",
       expiresAt: Date.now(),
       canUpload: false,
@@ -223,6 +234,7 @@ describe("StoredAccessToken structure", () => {
     };
 
     expect(token.tokenBase64).toBe("base64");
+    expect(token.tokenBytes).toBeInstanceOf(Uint8Array);
     expect(token.tokenId).toBe("at_access");
     expect(typeof token.expiresAt).toBe("number");
     expect(token.canUpload).toBe(false);
