@@ -10,7 +10,8 @@
     "strict": true,
     "skipLibCheck": true,
     "rootDir": ".",
-    "types": []
+    "types": [],
+    "paths": {}
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]
