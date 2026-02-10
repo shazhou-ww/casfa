@@ -18,6 +18,7 @@ export {
   createClient,
   type DelegateMethods,
   type DepotMethods,
+  type FsMethods,
   type NodeMethods,
   type OAuthMethods,
   type OnAuthRequiredCallback,
