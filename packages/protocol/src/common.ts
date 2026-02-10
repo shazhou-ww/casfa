@@ -19,6 +19,14 @@ import { z } from "zod";
 const CROCKFORD_BASE32 = "0-9A-HJKMNP-TV-Z";
 
 /**
+ * Valid trailing characters for 128-bit (16-byte) CB32-encoded IDs.
+ * 26 chars × 5 bits = 130 bits; only 128 are data, so the last
+ * character's low 2 bits must be zero → value ∈ {0,4,8,12,16,20,24,28}
+ * which maps to characters: 0 4 8 C G M R W
+ */
+const CB32_TAIL_128 = "048CGMRW";
+
+/**
  * Crockford Base32 alphabet for encoding (32 characters)
  */
 const CROCKFORD_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -165,39 +173,39 @@ export const EMPTY_DICT_NODE_KEY = hexToNodeKey("0000b2da2b8398251c05e6a73a6f191
  * Also serves as realm ID.
  * Example: usr_A6JCHNMFWRT90AXMYWHJ8HKS90
  */
-export const USER_ID_REGEX = new RegExp(`^usr_[${CROCKFORD_BASE32}]{26}$`);
+export const USER_ID_REGEX = new RegExp(`^usr_[${CROCKFORD_BASE32}]{25}[${CB32_TAIL_128}]$`);
 
 /**
  * Delegate ID format: dlt_{base32} (ULID-based)
  * Example: dlt_01HQXK5V8N3Y7M2P4R6T9W0ABC
  */
-export const DELEGATE_ID_REGEX = new RegExp(`^dlt_[${CROCKFORD_BASE32}]{26}$`);
+export const DELEGATE_ID_REGEX = new RegExp(`^dlt_[${CROCKFORD_BASE32}]{25}[${CB32_TAIL_128}]$`);
 
 /**
  * Token ID format: tkn_{base32}
  * blake3_128(token_bytes) encoded as CB32
  * Example: tkn_5R8F1Y3GHKM9QXW2TV4BCEJN70
  */
-export const DELEGATE_TOKEN_ID_REGEX = new RegExp(`^tkn_[${CROCKFORD_BASE32}]{26}$`);
+export const DELEGATE_TOKEN_ID_REGEX = new RegExp(`^tkn_[${CROCKFORD_BASE32}]{25}[${CB32_TAIL_128}]$`);
 
 /**
  * Depot ID format: dpt_{base32}
  * Example: dpt_7QWER2T8Y3M5K9BXFNHJC6D0PV
  */
-export const DEPOT_ID_REGEX = new RegExp(`^dpt_[${CROCKFORD_BASE32}]{26}$`);
+export const DEPOT_ID_REGEX = new RegExp(`^dpt_[${CROCKFORD_BASE32}]{25}[${CB32_TAIL_128}]$`);
 
 /**
  * Node key format: nod_{crockford_base32(blake3s(content))}
  * 26 characters (128-bit BLAKE3s hash)
  * Example: nod_A6JCHNMFWRT90AXMYWHJ8HKS90
  */
-export const NODE_KEY_REGEX = new RegExp(`^nod_[${CROCKFORD_BASE32}]{26}$`);
+export const NODE_KEY_REGEX = new RegExp(`^nod_[${CROCKFORD_BASE32}]{25}[${CB32_TAIL_128}]$`);
 
 /**
  * Authorization Request ID format: req_{base32}
  * Example: req_9X2M5K8BFNHJC6D0PV3QWER2T7Y
  */
-export const REQUEST_ID_REGEX = new RegExp(`^req_[${CROCKFORD_BASE32}]{26}$`);
+export const REQUEST_ID_REGEX = new RegExp(`^req_[${CROCKFORD_BASE32}]{25}[${CB32_TAIL_128}]$`);
 
 /**
  * Issuer ID format: can be usr_{id} or tkn_{hash}
@@ -205,7 +213,7 @@ export const REQUEST_ID_REGEX = new RegExp(`^req_[${CROCKFORD_BASE32}]{26}$`);
  * - tkn_{base32}: Token ID (for delegated tokens)
  */
 export const ISSUER_ID_REGEX = new RegExp(
-  `^(usr_[${CROCKFORD_BASE32}]{26}|tkn_[${CROCKFORD_BASE32}]{26})$`
+  `^(usr_[${CROCKFORD_BASE32}]{25}[${CB32_TAIL_128}]|tkn_[${CROCKFORD_BASE32}]{25}[${CB32_TAIL_128}])$`
 );
 
 // ============================================================================
