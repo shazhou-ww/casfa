@@ -7,14 +7,17 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "bun": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
     "./types": {
+      "bun": "./src/types/index.ts",
       "types": "./dist/types/index.d.ts",
       "import": "./dist/types/index.js"
     },
     "./api": {
+      "bun": "./src/api/index.ts",
       "types": "./dist/api/index.d.ts",
       "import": "./dist/api/index.js"
     }
