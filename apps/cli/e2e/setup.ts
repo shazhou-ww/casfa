@@ -67,12 +67,7 @@ export interface TestServer {
       };
       refreshToken: string;
       accessToken: string;
-      refreshTokenId: string;
-      accessTokenId: string;
       accessTokenExpiresAt: number;
-      tokenId: string;
-      tokenBase64: string;
-      expiresAt: number;
     }>;
     createAccessToken: (
       userToken: string,
@@ -94,12 +89,7 @@ export interface TestServer {
       };
       refreshToken: string;
       accessToken: string;
-      refreshTokenId: string;
-      accessTokenId: string;
       accessTokenExpiresAt: number;
-      tokenId: string;
-      tokenBase64: string;
-      expiresAt: number;
     }>;
   };
   stop: () => void;
@@ -251,9 +241,7 @@ export interface TestUserSetup {
     delegateId: string;
     realm: string;
     refreshToken: string;
-    refreshTokenId: string;
     accessToken: string;
-    accessTokenId: string;
     /** Epoch seconds */
     accessTokenExpiresAt: number;
     depth: number;
@@ -299,9 +287,7 @@ export async function createTestUserWithToken(
       delegateId: delegateResult.delegate.delegateId,
       realm: delegateResult.delegate.realm,
       refreshToken: delegateResult.refreshToken,
-      refreshTokenId: delegateResult.refreshTokenId,
       accessToken: delegateResult.accessToken,
-      accessTokenId: delegateResult.accessTokenId,
       // Server returns epoch ms, credentials store epoch seconds
       accessTokenExpiresAt: Math.floor(delegateResult.accessTokenExpiresAt / 1000),
       depth: delegateResult.delegate.depth,

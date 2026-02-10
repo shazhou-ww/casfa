@@ -57,9 +57,7 @@ function credentialToStoredRootDelegate(cred: RootDelegateCredential): StoredRoo
     delegateId: cred.delegateId,
     realm: cred.realm,
     refreshToken: cred.refreshToken,
-    refreshTokenId: cred.refreshTokenId,
     accessToken: cred.accessToken,
-    accessTokenId: cred.accessTokenId,
     accessTokenExpiresAt: cred.accessTokenExpiresAt * 1000, // seconds → ms
     depth: cred.depth,
     canUpload: cred.canUpload,
@@ -75,9 +73,7 @@ function storedRootDelegateToCredential(rd: StoredRootDelegate): RootDelegateCre
     delegateId: rd.delegateId,
     realm: rd.realm,
     refreshToken: rd.refreshToken,
-    refreshTokenId: rd.refreshTokenId,
     accessToken: rd.accessToken,
-    accessTokenId: rd.accessTokenId,
     accessTokenExpiresAt: Math.floor(rd.accessTokenExpiresAt / 1000), // ms → seconds
     depth: rd.depth,
     canUpload: rd.canUpload,

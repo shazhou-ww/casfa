@@ -33,12 +33,8 @@ export interface RootDelegateCredential {
   realm: string;
   /** Refresh Token (base64-encoded 24-byte binary) */
   refreshToken: string;
-  /** Refresh Token ID */
-  refreshTokenId: string;
   /** Access Token (base64-encoded 32-byte binary) */
   accessToken: string;
-  /** Access Token ID */
-  accessTokenId: string;
   /** Access Token expiration time (epoch seconds) */
   accessTokenExpiresAt: number;
   /** Delegate depth (0 = root) */
