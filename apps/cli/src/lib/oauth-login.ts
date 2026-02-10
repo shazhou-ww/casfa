@@ -143,8 +143,8 @@ export async function oauthLogin(options: OAuthLoginOptions): Promise<OAuthLogin
 
   const tokenResult = await api.exchangeCode(baseUrl, {
     code: callbackResult.code,
-    redirectUri,
-    codeVerifier,
+    redirect_uri: redirectUri,
+    code_verifier: codeVerifier,
   });
 
   if (!tokenResult.ok) {
@@ -159,7 +159,7 @@ export async function oauthLogin(options: OAuthLoginOptions): Promise<OAuthLogin
   let userId: string | undefined;
   try {
     // Use id_token as the access token for user info
-    const userResult = await api.getMe(baseUrl, tokens.id_token);
+    const userResult = await api.getMe(baseUrl, tokens.idToken ?? tokens.accessToken);
     if (userResult.ok) {
       userId = userResult.data.userId;
     }
@@ -169,10 +169,10 @@ export async function oauthLogin(options: OAuthLoginOptions): Promise<OAuthLogin
 
   // Step 9: Save credentials using new format
   setUserToken(profileName, {
-    accessToken: tokens.id_token,
-    refreshToken: tokens.refresh_token || "",
+    accessToken: tokens.idToken ?? tokens.accessToken,
+    refreshToken: tokens.refreshToken || "",
     userId,
-    expiresAt: Math.floor(Date.now() / 1000) + tokens.expires_in,
+    expiresAt: Math.floor(Date.now() / 1000) + tokens.expiresIn,
   });
 
   console.log();

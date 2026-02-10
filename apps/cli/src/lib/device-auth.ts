@@ -1,8 +1,8 @@
-import type { CasfaAnonymousClient } from "@casfa/client";
+import type { CasfaClient } from "@casfa/client";
 import chalk from "chalk";
 import open from "open";
 import ora from "ora";
-import { setCredentials } from "./credentials";
+import { type Credentials, setCredentials } from "./credentials";
 
 export interface DeviceCodeResponse {
   deviceCode: string;
@@ -14,7 +14,7 @@ export interface DeviceCodeResponse {
 }
 
 export interface DeviceAuthOptions {
-  client: CasfaAnonymousClient;
+  client: CasfaClient;
   profileName: string;
   onUserCode?: (response: DeviceCodeResponse) => void;
 }
@@ -81,12 +81,15 @@ export async function deviceCodeLogin(options: DeviceAuthOptions): Promise<boole
     const tokenResponse = await pollForToken(client, deviceResponse);
 
     // Save credentials
-    setCredentials(profileName, {
-      type: "oauth",
-      accessToken: tokenResponse.accessToken,
-      refreshToken: tokenResponse.refreshToken,
-      expiresAt: Math.floor(Date.now() / 1000) + tokenResponse.expiresIn,
-    });
+    const cred: Credentials = {
+      version: 3,
+      userToken: {
+        accessToken: tokenResponse.accessToken,
+        refreshToken: tokenResponse.refreshToken,
+        expiresAt: Math.floor(Date.now() / 1000) + tokenResponse.expiresIn,
+      },
+    };
+    setCredentials(profileName, cred);
 
     pollSpinner.succeed("Login successful!");
     return true;
@@ -96,7 +99,7 @@ export async function deviceCodeLogin(options: DeviceAuthOptions): Promise<boole
   }
 }
 
-async function requestDeviceCode(client: CasfaAnonymousClient): Promise<DeviceCodeResponse> {
+async function requestDeviceCode(client: CasfaClient): Promise<DeviceCodeResponse> {
   // This would call the OAuth device authorization endpoint
   // For now, we'll simulate with the Cognito config
   const _cognitoConfig = await client.oauth.getConfig();
@@ -122,7 +125,7 @@ interface TokenResponse {
 }
 
 async function pollForToken(
-  client: CasfaAnonymousClient,
+  client: CasfaClient,
   deviceResponse: DeviceCodeResponse
 ): Promise<TokenResponse> {
   const interval = (deviceResponse.interval || 5) * 1000;

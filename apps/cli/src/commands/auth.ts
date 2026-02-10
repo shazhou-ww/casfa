@@ -3,15 +3,14 @@ import type { Command } from "commander";
 import { createClient, requireUserAuth } from "../lib/client";
 import { getProfile, loadConfig } from "../lib/config";
 import {
-  clearDelegateToken,
+  clearRootDelegate,
   clearUserToken,
   deleteCredentials,
   formatExpiresIn,
   getAuthType,
   getCredentials,
-  getCredentialsPath,
   getExpirationInfo,
-  setDelegateToken,
+  setRootDelegate,
   setUserToken,
 } from "../lib/credentials";
 import { oauthLogin } from "../lib/oauth-login";
@@ -41,17 +40,56 @@ export function registerAuthCommands(program: Command): void {
       }
 
       try {
-        await oauthLogin({
+        const result = await oauthLogin({
           baseUrl: profile.baseUrl,
           profileName,
         });
 
-        formatter.info(`Credentials saved to ${getCredentialsPath()}`);
+        // After successful OAuth login, acquire root delegate automatically
+        if (result.success && profile.realm) {
+          formatter.info("Acquiring root delegate...");
+          try {
+            const cred = getCredentials(profileName);
+            if (cred?.userToken) {
+              const rootResult = await api.createRootToken(
+                profile.baseUrl,
+                cred.userToken.accessToken,
+                profile.realm
+              );
+
+              if (rootResult.ok) {
+                const rd = rootResult.data;
+                setRootDelegate(profileName, {
+                  delegateId: rd.delegate.delegateId,
+                  realm: rd.delegate.realm,
+                  refreshToken: rd.refreshToken,
+                  refreshTokenId: rd.refreshTokenId,
+                  accessToken: rd.accessToken,
+                  accessTokenId: rd.accessTokenId,
+                  accessTokenExpiresAt: Math.floor(rd.accessTokenExpiresAt / 1000),
+                  depth: rd.delegate.depth,
+                  canUpload: rd.delegate.canUpload,
+                  canManageDepot: rd.delegate.canManageDepot,
+                });
+                formatter.success("Root delegate acquired");
+              } else {
+                formatter.warn(
+                  `Could not acquire root delegate: ${rootResult.error.message}. ` +
+                    "You may need to run 'casfa auth init-delegate' manually."
+                );
+              }
+            }
+          } catch (error) {
+            formatter.warn(
+              `Could not acquire root delegate: ${(error as Error).message}. ` +
+                "You may need to run 'casfa auth init-delegate' manually."
+            );
+          }
+        }
+
+        formatter.info(`Credentials saved to profile: ${profileName}`);
       } catch (error) {
         formatter.error((error as Error).message);
-        formatter.info(
-          "Alternative: Use 'casfa auth delegate set <token>' to set a delegate token directly."
-        );
         process.exit(1);
       }
     });
@@ -59,8 +97,8 @@ export function registerAuthCommands(program: Command): void {
   auth
     .command("logout")
     .description("Clear stored credentials")
-    .option("--user-only", "Only clear user token, keep delegate token")
-    .option("--delegate-only", "Only clear delegate token, keep user token")
+    .option("--user-only", "Only clear user token, keep root delegate")
+    .option("--delegate-only", "Only clear root delegate, keep user token")
     .action((cmdOpts: { userOnly?: boolean; delegateOnly?: boolean }) => {
       const opts = program.opts();
       const formatter = createFormatter(opts);
@@ -72,11 +110,90 @@ export function registerAuthCommands(program: Command): void {
         clearUserToken(profileName);
         formatter.success(`User token cleared for profile: ${profileName}`);
       } else if (cmdOpts.delegateOnly) {
-        clearDelegateToken(profileName);
-        formatter.success(`Delegate token cleared for profile: ${profileName}`);
+        clearRootDelegate(profileName);
+        formatter.success(`Root delegate cleared for profile: ${profileName}`);
       } else {
         deleteCredentials(profileName);
         formatter.success(`Logged out from profile: ${profileName}`);
+      }
+    });
+
+  // ========================================================================
+  // Init Delegate (manual root delegate acquisition)
+  // ========================================================================
+
+  auth
+    .command("init-delegate")
+    .description("Acquire root delegate for current realm (requires login)")
+    .action(async () => {
+      const opts = program.opts();
+      const formatter = createFormatter(opts);
+
+      try {
+        const config = loadConfig();
+        const profileName = opts.profile || config.currentProfile;
+        const profile = getProfile(config, profileName);
+        const baseUrl = opts.baseUrl || profile.baseUrl;
+        const realm = opts.realm || profile.realm;
+
+        if (!realm) {
+          formatter.error(
+            "Realm is required. Set via --realm option or 'casfa config set realm <id>'."
+          );
+          process.exit(1);
+        }
+
+        const cred = getCredentials(profileName);
+        if (!cred?.userToken) {
+          formatter.error("User token not found. Run 'casfa auth login' first.");
+          process.exit(1);
+        }
+
+        const rootResult = await api.createRootToken(
+          baseUrl,
+          cred.userToken.accessToken,
+          realm
+        );
+
+        if (!rootResult.ok) {
+          formatter.error(`Failed to acquire root delegate: ${rootResult.error.message}`);
+          process.exit(1);
+        }
+
+        const rd = rootResult.data;
+        setRootDelegate(profileName, {
+          delegateId: rd.delegate.delegateId,
+          realm: rd.delegate.realm,
+          refreshToken: rd.refreshToken,
+          refreshTokenId: rd.refreshTokenId,
+          accessToken: rd.accessToken,
+          accessTokenId: rd.accessTokenId,
+          accessTokenExpiresAt: Math.floor(rd.accessTokenExpiresAt / 1000),
+          depth: rd.delegate.depth,
+          canUpload: rd.delegate.canUpload,
+          canManageDepot: rd.delegate.canManageDepot,
+        });
+
+        formatter.success("Root delegate acquired");
+        formatter.output(
+          {
+            delegateId: rd.delegate.delegateId,
+            realm: rd.delegate.realm,
+            canUpload: rd.delegate.canUpload,
+            canManageDepot: rd.delegate.canManageDepot,
+          },
+          () => {
+            return [
+              `Delegate ID:    ${rd.delegate.delegateId}`,
+              `Realm:          ${rd.delegate.realm}`,
+              `Can Upload:     ${rd.delegate.canUpload ? "yes" : "no"}`,
+              `Can Manage:     ${rd.delegate.canManageDepot ? "yes" : "no"}`,
+            ].join("\n");
+          }
+        );
+      } catch (error) {
+        formatter.error((error as Error).message);
+        process.exit(1);
       }
     });
 
@@ -112,7 +229,6 @@ export function registerAuthCommands(program: Command): void {
         formatter.output(userInfo, () => {
           const lines = [
             `User ID:  ${userInfo.userId}`,
-            `Name:     ${userInfo.name ?? "(not set)"}`,
             `Email:    ${userInfo.email ?? "(not set)"}`,
             `Role:     ${userInfo.role}`,
           ];
@@ -156,11 +272,15 @@ export function registerAuthCommands(program: Command): void {
               userId: credentials.userToken.userId,
             }
           : null,
-        delegateToken: credentials.delegateToken
+        rootDelegate: credentials.rootDelegate
           ? {
-              tokenId: credentials.delegateToken.tokenId,
-              expiresIn: formatExpiresIn(credentials.delegateToken.expiresAt),
-              realm: credentials.delegateToken.realm,
+              delegateId: credentials.rootDelegate.delegateId,
+              realm: credentials.rootDelegate.realm,
+              accessTokenExpiresIn: formatExpiresIn(
+                credentials.rootDelegate.accessTokenExpiresAt
+              ),
+              canUpload: credentials.rootDelegate.canUpload,
+              canManageDepot: credentials.rootDelegate.canManageDepot,
             }
           : null,
       };
@@ -175,359 +295,18 @@ export function registerAuthCommands(program: Command): void {
           lines.push(`  Expires:   ${status.userToken.expiresIn}`);
         }
 
-        if (status.delegateToken) {
+        if (status.rootDelegate) {
           lines.push("");
-          lines.push("Delegate Token:");
-          lines.push(`  Token ID:  ${status.delegateToken.tokenId}`);
-          lines.push(`  Expires:   ${status.delegateToken.expiresIn}`);
-          if (status.delegateToken.realm) {
-            lines.push(`  Realm:     ${status.delegateToken.realm}`);
-          }
+          lines.push("Root Delegate:");
+          lines.push(`  Delegate:  ${status.rootDelegate.delegateId}`);
+          lines.push(`  Realm:     ${status.rootDelegate.realm}`);
+          lines.push(`  AT Expiry: ${status.rootDelegate.accessTokenExpiresIn}`);
+          lines.push(`  Upload:    ${status.rootDelegate.canUpload ? "yes" : "no"}`);
+          lines.push(`  Manage:    ${status.rootDelegate.canManageDepot ? "yes" : "no"}`);
         }
 
         return lines.join("\n");
       });
-    });
-
-  // ========================================================================
-  // Token Management
-  // ========================================================================
-
-  const token = auth.command("token").description("Token management");
-
-  token
-    .command("create")
-    .description("Create a new Delegate or Access Token")
-    .requiredOption("-n, --name <name>", "token name/description")
-    .requiredOption("--type <type>", "token type: delegate or access", "delegate")
-    .option("-t, --ttl <seconds>", "token TTL in seconds", "2592000")
-    .option("--can-upload", "allow upload operations", true)
-    .option("--no-can-upload", "disallow upload operations")
-    .option("--can-manage-depot", "allow depot management", true)
-    .option("--no-can-manage-depot", "disallow depot management")
-    .option("--scope <paths>", "scope paths (comma-separated)")
-    .action(
-      async (cmdOpts: {
-        name: string;
-        type: string;
-        ttl: string;
-        canUpload: boolean;
-        canManageDepot: boolean;
-        scope?: string;
-      }) => {
-        const opts = program.opts();
-        const formatter = createFormatter(opts);
-
-        try {
-          const resolved = await createClient(opts);
-          requireUserAuth(resolved);
-
-          const state = resolved.client.getState();
-          if (!state.user) {
-            formatter.error("User authentication required. Run 'casfa auth login'.");
-            process.exit(1);
-          }
-
-          const tokenType = cmdOpts.type as "delegate" | "access";
-          if (tokenType !== "delegate" && tokenType !== "access") {
-            formatter.error("Token type must be 'delegate' or 'access'");
-            process.exit(1);
-          }
-
-          const params = {
-            realm: resolved.realm,
-            name: cmdOpts.name,
-            type: tokenType,
-            expiresIn: parseInt(cmdOpts.ttl, 10),
-            canUpload: cmdOpts.canUpload,
-            canManageDepot: cmdOpts.canManageDepot,
-            scope: cmdOpts.scope ? cmdOpts.scope.split(",").map((s) => s.trim()) : undefined,
-          };
-
-          const result = await api.createToken(resolved.baseUrl, state.user.accessToken, params);
-
-          if (!result.ok) {
-            formatter.error(`Failed to create token: ${result.error.message}`);
-            process.exit(1);
-          }
-
-          const tokenInfo = result.data;
-          formatter.output(tokenInfo, () => {
-            const lines = [
-              `Token ID:    ${tokenInfo.tokenId}`,
-              `Type:        ${tokenType}`,
-              `Token:       ${tokenInfo.token}`,
-              "",
-              "Save this token securely. It will not be shown again.",
-            ];
-            return lines.join("\n");
-          });
-        } catch (error) {
-          formatter.error((error as Error).message);
-          process.exit(1);
-        }
-      }
-    );
-
-  token
-    .command("list")
-    .alias("ls")
-    .description("List tokens")
-    .option("--type <type>", "filter by type: delegate or access")
-    .action(async (cmdOpts: { type?: string }) => {
-      const opts = program.opts();
-      const formatter = createFormatter(opts);
-
-      try {
-        const resolved = await createClient(opts);
-        requireUserAuth(resolved);
-
-        const state = resolved.client.getState();
-        if (!state.user) {
-          formatter.error("User authentication required. Run 'casfa auth login'.");
-          process.exit(1);
-        }
-
-        const params: api.ListTokensParams = {};
-        if (cmdOpts.type === "delegate" || cmdOpts.type === "access") {
-          params.type = cmdOpts.type;
-        }
-
-        const result = await api.listTokens(resolved.baseUrl, state.user.accessToken, params);
-
-        if (!result.ok) {
-          formatter.error(`Failed to list tokens: ${result.error.message}`);
-          process.exit(1);
-        }
-
-        const tokens = result.data.tokens;
-        formatter.output(tokens, () => {
-          if (tokens.length === 0) {
-            return "No tokens found.";
-          }
-
-          const header = `${"TYPE".padEnd(10)} ${"ID".padEnd(28)} ${"NAME".padEnd(20)} EXPIRES`;
-          const lines = tokens.map((t) => {
-            const type = t.type.padEnd(10);
-            const id = t.tokenId.slice(0, 26).padEnd(28);
-            const name = (t.name || "(unnamed)").slice(0, 18).padEnd(20);
-            const expires = t.expiresAt ? formatExpiresIn(t.expiresAt) : "N/A";
-            return `${type} ${id} ${name} ${expires}`;
-          });
-
-          return [header, ...lines].join("\n");
-        });
-      } catch (error) {
-        formatter.error((error as Error).message);
-        process.exit(1);
-      }
-    });
-
-  token
-    .command("show <token-id>")
-    .description("Show token details")
-    .action(async (tokenId: string) => {
-      const opts = program.opts();
-      const formatter = createFormatter(opts);
-
-      try {
-        const resolved = await createClient(opts);
-        requireUserAuth(resolved);
-
-        const state = resolved.client.getState();
-        if (!state.user) {
-          formatter.error("User authentication required. Run 'casfa auth login'.");
-          process.exit(1);
-        }
-
-        const result = await api.getToken(resolved.baseUrl, state.user.accessToken, tokenId);
-
-        if (!result.ok) {
-          formatter.error(`Failed to get token: ${result.error.message}`);
-          process.exit(1);
-        }
-
-        const t = result.data;
-        formatter.output(t, () => {
-          const lines = [
-            `Token ID:        ${t.tokenId}`,
-            `Type:            ${t.type}`,
-            `Name:            ${t.name || "(unnamed)"}`,
-            `Realm:           ${t.realm}`,
-            `Issuer:          ${t.issuerId}`,
-            `Can Upload:      ${t.canUpload ? "yes" : "no"}`,
-            `Can Manage Depot:${t.canManageDepot ? "yes" : "no"}`,
-            `Created:         ${new Date(t.createdAt * 1000).toISOString()}`,
-            `Expires:         ${t.expiresAt ? new Date(t.expiresAt * 1000).toISOString() : "N/A"}`,
-          ];
-
-          if (t.scope && t.scope.length > 0) {
-            lines.push(`Scope:           ${t.scope.join(", ")}`);
-          }
-
-          if (t.isRevoked) {
-            lines.push(`Status:          REVOKED`);
-          }
-
-          return lines.join("\n");
-        });
-      } catch (error) {
-        formatter.error((error as Error).message);
-        process.exit(1);
-      }
-    });
-
-  token
-    .command("revoke <token-id>")
-    .description("Revoke a token")
-    .action(async (tokenId: string) => {
-      const opts = program.opts();
-      const formatter = createFormatter(opts);
-
-      try {
-        const resolved = await createClient(opts);
-        requireUserAuth(resolved);
-
-        const state = resolved.client.getState();
-        if (!state.user) {
-          formatter.error("User authentication required. Run 'casfa auth login'.");
-          process.exit(1);
-        }
-
-        const result = await api.revokeToken(resolved.baseUrl, state.user.accessToken, tokenId);
-
-        if (!result.ok) {
-          formatter.error(`Failed to revoke token: ${result.error.message}`);
-          process.exit(1);
-        }
-
-        formatter.success(`Token ${tokenId} revoked`);
-        if (result.data.childrenRevoked && result.data.childrenRevoked > 0) {
-          formatter.info(`Also revoked ${result.data.childrenRevoked} child token(s)`);
-        }
-      } catch (error) {
-        formatter.error((error as Error).message);
-        process.exit(1);
-      }
-    });
-
-  token
-    .command("delegate")
-    .description("Re-issue a token using current Delegate Token")
-    .requiredOption("-n, --name <name>", "token name/description")
-    .requiredOption("--type <type>", "token type: delegate or access")
-    .option("-t, --ttl <seconds>", "token TTL in seconds", "86400")
-    .option("--can-upload", "allow upload operations", true)
-    .option("--no-can-upload", "disallow upload operations")
-    .option("--can-manage-depot", "allow depot management", true)
-    .option("--no-can-manage-depot", "disallow depot management")
-    .option("--scope <paths>", "relative scope paths (comma-separated)")
-    .action(
-      async (cmdOpts: {
-        name: string;
-        type: string;
-        ttl: string;
-        canUpload: boolean;
-        canManageDepot: boolean;
-        scope?: string;
-      }) => {
-        const opts = program.opts();
-        const formatter = createFormatter(opts);
-
-        try {
-          const resolved = await createClient(opts);
-
-          const state = resolved.client.getState();
-          if (!state.delegate) {
-            formatter.error(
-              "Delegate token required. Set via 'casfa auth delegate set' or --delegate-token option."
-            );
-            process.exit(1);
-          }
-
-          const tokenType = cmdOpts.type as "delegate" | "access";
-          if (tokenType !== "delegate" && tokenType !== "access") {
-            formatter.error("Token type must be 'delegate' or 'access'");
-            process.exit(1);
-          }
-
-          const params: api.DelegateTokenParams = {
-            name: cmdOpts.name,
-            type: tokenType,
-            expiresIn: parseInt(cmdOpts.ttl, 10),
-            canUpload: cmdOpts.canUpload,
-            canManageDepot: cmdOpts.canManageDepot,
-            scope: cmdOpts.scope ? cmdOpts.scope.split(",").map((s) => s.trim()) : undefined,
-          };
-
-          const result = await api.delegateToken(
-            resolved.baseUrl,
-            state.delegate.tokenBase64,
-            params
-          );
-
-          if (!result.ok) {
-            formatter.error(`Failed to delegate token: ${result.error.message}`);
-            process.exit(1);
-          }
-
-          const tokenInfo = result.data;
-          formatter.output(tokenInfo, () => {
-            const lines = [
-              `Token ID:    ${tokenInfo.tokenId}`,
-              `Type:        ${tokenType}`,
-              `Token:       ${tokenInfo.token}`,
-              "",
-              "Save this token securely. It will not be shown again.",
-            ];
-            return lines.join("\n");
-          });
-        } catch (error) {
-          formatter.error((error as Error).message);
-          process.exit(1);
-        }
-      }
-    );
-
-  // ========================================================================
-  // Delegate Token Management
-  // ========================================================================
-
-  const delegate = auth.command("delegate").description("Delegate token management");
-
-  delegate
-    .command("set <token>")
-    .description("Set a delegate token for the current profile")
-    .option("--token-id <id>", "token ID (optional)")
-    .action((tokenValue: string, cmdOpts: { tokenId?: string }) => {
-      const opts = program.opts();
-      const formatter = createFormatter(opts);
-
-      const config = loadConfig();
-      const profileName = opts.profile || config.currentProfile;
-      const profile = getProfile(config, profileName);
-
-      setDelegateToken(profileName, {
-        tokenId: cmdOpts.tokenId || "cli-imported",
-        token: tokenValue,
-        realm: profile.realm,
-      });
-
-      formatter.success(`Delegate token saved for profile: ${profileName}`);
-    });
-
-  delegate
-    .command("clear")
-    .description("Clear the delegate token for the current profile")
-    .action(() => {
-      const opts = program.opts();
-      const formatter = createFormatter(opts);
-
-      const config = loadConfig();
-      const profileName = opts.profile || config.currentProfile;
-
-      clearDelegateToken(profileName);
-      formatter.success(`Delegate token cleared for profile: ${profileName}`);
     });
 
   // ========================================================================
@@ -596,7 +375,7 @@ export function registerAuthCommands(program: Command): void {
           if (cmdOpts.canManageDepot) params.canManageDepot = true;
           if (cmdOpts.scope) params.scope = cmdOpts.scope;
 
-          const result = await api.createAuthRequest(baseUrl, params);
+          const result = await api.createAuthRequest(baseUrl, params as Parameters<typeof api.createAuthRequest>[1]);
 
           if (!result.ok) {
             formatter.error(`Failed to create request: ${result.error.message}`);
@@ -640,19 +419,12 @@ export function registerAuthCommands(program: Command): void {
               if (status === "approved" && tokenBase64) {
                 formatter.success("\nRequest approved!");
                 formatter.output({ token: tokenBase64 }, () => `Token: ${tokenBase64}`);
-
-                // Save as delegate token
-                setDelegateToken(profileName, {
-                  tokenId: requestId,
-                  token: tokenBase64,
-                  realm,
-                });
-                formatter.info(`Token saved to profile: ${profileName}`);
+                formatter.info("Use 'casfa auth login' to authenticate with the service.");
                 return;
               }
 
-              if (status === "denied") {
-                formatter.error(`\nRequest denied${reason ? `: ${reason}` : ""}`);
+              if (status === "rejected") {
+                formatter.error(`\nRequest rejected${reason ? `: ${reason}` : ""}`);
                 process.exit(1);
               }
 

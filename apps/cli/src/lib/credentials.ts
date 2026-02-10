@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { ensureCasfaDir, getCasfaDir } from "./config";
 
 // ============================================================================
-// New Credential Types (Three-tier Token System)
+// Credential Types (Two-tier Token System)
 // ============================================================================
 
 /**
@@ -21,35 +21,44 @@ export interface UserTokenCredential {
 }
 
 /**
- * Delegate Token for re-delegation.
+ * Root Delegate credential with RT + AT pair.
+ *
+ * Created via POST /api/tokens/root (JWT → Root Delegate + RT + AT).
+ * The RT is used to rotate AT when it expires (POST /api/tokens/refresh).
  */
-export interface DelegateTokenCredential {
-  /** Token ID (dlt1_xxx format) */
-  tokenId: string;
-  /** Token binary as Base64 */
-  token: string;
-  /** Issuer ID (usr_xxx or dlt1_xxx) */
-  issuerId?: string;
-  /** Token expiration time (epoch seconds) */
-  expiresAt?: number;
-  /** Realm ID (optional, for realm-scoped tokens) */
-  realm?: string;
-  /** Whether the token can upload nodes */
-  canUpload?: boolean;
-  /** Whether the token can manage depots */
-  canManageDepot?: boolean;
+export interface RootDelegateCredential {
+  /** Delegate entity ID */
+  delegateId: string;
+  /** Realm this delegate belongs to */
+  realm: string;
+  /** Refresh Token (base64-encoded 128-byte binary) */
+  refreshToken: string;
+  /** Refresh Token ID */
+  refreshTokenId: string;
+  /** Access Token (base64-encoded 128-byte binary) */
+  accessToken: string;
+  /** Access Token ID */
+  accessTokenId: string;
+  /** Access Token expiration time (epoch seconds) */
+  accessTokenExpiresAt: number;
+  /** Delegate depth (0 = root) */
+  depth: number;
+  /** Whether the delegate can upload nodes */
+  canUpload: boolean;
+  /** Whether the delegate can manage depots */
+  canManageDepot: boolean;
 }
 
 /**
- * New credential structure supporting the three-tier token system.
+ * Credential structure supporting the two-tier token system.
  */
 export interface Credentials {
   /** Version for migration support */
-  version: 2;
+  version: 3;
   /** User JWT token from OAuth login */
   userToken?: UserTokenCredential;
-  /** Delegate Token for CLI operations */
-  delegateToken?: DelegateTokenCredential;
+  /** Root Delegate with RT + AT pair */
+  rootDelegate?: RootDelegateCredential;
 }
 
 // ============================================================================
@@ -66,6 +75,21 @@ export interface LegacyOAuthCredentials {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
+}
+
+/** Version 2 credential with old delegate token format */
+export interface LegacyV2Credentials {
+  version: 2;
+  userToken?: UserTokenCredential;
+  delegateToken?: {
+    tokenId: string;
+    token: string;
+    issuerId?: string;
+    expiresAt?: number;
+    realm?: string;
+    canUpload?: boolean;
+    canManageDepot?: boolean;
+  };
 }
 
 export type LegacyCredentials = LegacyTokenCredentials | LegacyOAuthCredentials;
@@ -96,7 +120,7 @@ export function getCredentialsPath(): string {
 // ============================================================================
 
 /**
- * Check if the credential is in legacy format.
+ * Check if the credential is in legacy format (v0/v1).
  */
 function isLegacyCredential(cred: unknown): cred is LegacyCredentials {
   return (
@@ -108,12 +132,25 @@ function isLegacyCredential(cred: unknown): cred is LegacyCredentials {
 }
 
 /**
+ * Check if the credential is in legacy v2 format.
+ */
+function isLegacyV2Credential(cred: unknown): cred is LegacyV2Credentials {
+  return (
+    typeof cred === "object" &&
+    cred !== null &&
+    "version" in cred &&
+    (cred as { version: number }).version === 2 &&
+    "delegateToken" in cred
+  );
+}
+
+/**
  * Migrate a legacy credential to the new format.
  */
 function migrateLegacyCredential(legacy: LegacyCredentials): Credentials {
   if (legacy.type === "oauth") {
     return {
-      version: 2,
+      version: 3,
       userToken: {
         accessToken: legacy.accessToken,
         refreshToken: legacy.refreshToken,
@@ -121,13 +158,23 @@ function migrateLegacyCredential(legacy: LegacyCredentials): Credentials {
       },
     };
   }
-  // legacy.type === "token" (agent token -> delegate token)
+  // legacy.type === "token" — old token cannot be migrated to root delegate
+  // User needs to re-login
   return {
-    version: 2,
-    delegateToken: {
-      tokenId: "unknown", // Legacy tokens don't have ID
-      token: legacy.token,
-    },
+    version: 3,
+  };
+}
+
+/**
+ * Migrate a v2 credential to v3.
+ * Note: old delegateToken cannot be directly migrated to rootDelegate,
+ * only userToken is preserved.
+ */
+function migrateV2Credential(v2: LegacyV2Credentials): Credentials {
+  return {
+    version: 3,
+    userToken: v2.userToken,
+    // delegateToken is dropped — user needs to re-login to get rootDelegate
   };
 }
 
@@ -142,6 +189,9 @@ function migrateStoreIfNeeded(store: Record<string, unknown>): boolean {
     const cred = store[profileName];
     if (isLegacyCredential(cred)) {
       store[profileName] = migrateLegacyCredential(cred);
+      migrated = true;
+    } else if (isLegacyV2Credential(cred)) {
+      store[profileName] = migrateV2Credential(cred);
       migrated = true;
     }
   }
@@ -210,10 +260,10 @@ export function deleteCredentials(profileName: string): void {
 
 export function setUserToken(profileName: string, userToken: UserTokenCredential): void {
   const store = loadCredentials();
-  const existing = store[profileName] ?? { version: 2 as const };
+  const existing = store[profileName] ?? { version: 3 as const };
   store[profileName] = {
     ...existing,
-    version: 2,
+    version: 3,
     userToken,
   };
   saveCredentials(store);
@@ -224,7 +274,7 @@ export function clearUserToken(profileName: string): void {
   const existing = store[profileName];
   if (existing) {
     delete existing.userToken;
-    if (!existing.delegateToken) {
+    if (!existing.rootDelegate) {
       delete store[profileName];
     }
     saveCredentials(store);
@@ -232,28 +282,28 @@ export function clearUserToken(profileName: string): void {
 }
 
 // ============================================================================
-// Delegate Token Operations
+// Root Delegate Operations
 // ============================================================================
 
-export function setDelegateToken(
+export function setRootDelegate(
   profileName: string,
-  delegateToken: DelegateTokenCredential
+  rootDelegate: RootDelegateCredential
 ): void {
   const store = loadCredentials();
-  const existing = store[profileName] ?? { version: 2 as const };
+  const existing = store[profileName] ?? { version: 3 as const };
   store[profileName] = {
     ...existing,
-    version: 2,
-    delegateToken,
+    version: 3,
+    rootDelegate,
   };
   saveCredentials(store);
 }
 
-export function clearDelegateToken(profileName: string): void {
+export function clearRootDelegate(profileName: string): void {
   const store = loadCredentials();
   const existing = store[profileName];
   if (existing) {
-    delete existing.delegateToken;
+    delete existing.rootDelegate;
     if (!existing.userToken) {
       delete store[profileName];
     }
@@ -276,13 +326,13 @@ export function isUserTokenExpired(cred: Credentials): boolean {
 }
 
 /**
- * Check if delegate token is expired.
+ * Check if root delegate's access token is expired (with 60s buffer).
  */
-export function isDelegateTokenExpired(cred: Credentials): boolean {
-  if (!cred.delegateToken) return true;
-  const expiresAt = cred.delegateToken.expiresAt;
-  if (!expiresAt) return false; // No expiry = never expires
-  return Date.now() >= expiresAt * 1000;
+export function isAccessTokenExpired(cred: Credentials): boolean {
+  if (!cred.rootDelegate) return true;
+  const expiresAt = cred.rootDelegate.accessTokenExpiresAt;
+  // Add 60 second buffer
+  return Date.now() >= (expiresAt - 60) * 1000;
 }
 
 /**
@@ -311,13 +361,13 @@ export function formatExpiresIn(expiresAtSeconds: number | undefined): string {
  * Get the primary auth type for display.
  */
 export function getAuthType(cred: Credentials): string {
-  if (cred.userToken && cred.delegateToken) {
+  if (cred.userToken && cred.rootDelegate) {
     return "user+delegate";
   }
   if (cred.userToken) {
     return "user";
   }
-  if (cred.delegateToken) {
+  if (cred.rootDelegate) {
     return "delegate";
   }
   return "none";
@@ -333,10 +383,10 @@ export function getExpirationInfo(cred: Credentials): { type: string; expiresIn:
       expiresIn: formatExpiresIn(cred.userToken.expiresAt),
     };
   }
-  if (cred.delegateToken) {
+  if (cred.rootDelegate) {
     return {
       type: "delegate",
-      expiresIn: formatExpiresIn(cred.delegateToken.expiresAt),
+      expiresIn: formatExpiresIn(cred.rootDelegate.accessTokenExpiresAt),
     };
   }
   return { type: "none", expiresIn: "N/A" };

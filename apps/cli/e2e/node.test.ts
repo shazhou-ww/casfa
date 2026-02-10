@@ -15,6 +15,7 @@ import {
   createTestFile,
   expectSuccess,
   extractNodeKey,
+  runCli,
   runCliWithAuth,
 } from "./helpers.ts";
 import {
@@ -89,12 +90,17 @@ describe("CLI Node Commands", () => {
     it("should fail without authentication", async () => {
       const testFile = createTestFile("test content");
 
-      const result = await runCliWithAuth(["node", "put", testFile], ctx, {
-        ...user,
-        delegateToken: "", // Empty token
+      // Run without credentials — no HOME with creds, no CASFA_TOKEN
+      const result = await runCli(["node", "put", testFile], {
+        env: {
+          HOME: "/tmp/casfa-no-creds-test",
+          CASFA_BASE_URL: ctx.baseUrl,
+          CASFA_REALM: user.realm,
+          NO_COLOR: "1",
+        },
       });
 
-      // Should fail because no token
+      // Should fail because no credentials
       expect(result.code).not.toBe(0);
     });
 
@@ -122,13 +128,13 @@ describe("CLI Node Commands", () => {
       const nodeKey = extractNodeKey(putResult.stdout);
       expect(nodeKey).not.toBeNull();
 
-      // For get command, we need an index-path
+      // For get command, we need a proof (access authorization).
       // Since this is a newly uploaded file not in any depot tree yet,
-      // we need to use a different approach or test get with mock data
-      // For now, we test that the command runs with proper arguments
+      // we need to use a different approach or test get with mock data.
+      // For now, we test that the command runs with proper arguments.
 
       // Note: In a real scenario, the file would need to be added to a depot
-      // and we'd need the proper index-path. This test verifies the CLI accepts
+      // and we'd need the proper proof. This test verifies the CLI accepts
       // the command and connects to the server properly.
     });
   });

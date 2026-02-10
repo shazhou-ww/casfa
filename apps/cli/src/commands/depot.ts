@@ -103,16 +103,16 @@ export function registerDepotCommands(program: Command): void {
             `ID:          ${depot.depotId}`,
             `Title:       ${depot.title || "(untitled)"}`,
             `Root:        ${depot.root || "(empty)"}`,
-            `Version:     ${depot.version}`,
-            `Created:     ${depot.createdAt}`,
-            `Updated:     ${depot.updatedAt}`,
+            `Max History: ${depot.maxHistory}`,
+            `Created:     ${new Date(depot.createdAt).toISOString()}`,
+            `Updated:     ${new Date(depot.updatedAt).toISOString()}`,
           ];
 
           if (depot.history && depot.history.length > 0) {
             lines.push("");
             lines.push("History:");
             for (const h of depot.history) {
-              lines.push(`  v${h.version} - ${h.root}${h.message ? ` (${h.message})` : ""}`);
+              lines.push(`  ${h}`);
             }
           }
 

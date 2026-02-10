@@ -12,7 +12,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -57,7 +57,23 @@ export interface TestServer {
         canManageDepot?: boolean;
         scope?: string[];
       }
-    ) => Promise<{ tokenId: string; tokenBase64: string; expiresAt: number }>;
+    ) => Promise<{
+      delegate: {
+        delegateId: string;
+        realm: string;
+        depth: number;
+        canUpload: boolean;
+        canManageDepot: boolean;
+      };
+      refreshToken: string;
+      accessToken: string;
+      refreshTokenId: string;
+      accessTokenId: string;
+      accessTokenExpiresAt: number;
+      tokenId: string;
+      tokenBase64: string;
+      expiresAt: number;
+    }>;
     createAccessToken: (
       userToken: string,
       realm: string,
@@ -68,7 +84,23 @@ export interface TestServer {
         canManageDepot?: boolean;
         scope?: string[];
       }
-    ) => Promise<{ tokenId: string; tokenBase64: string; expiresAt: number }>;
+    ) => Promise<{
+      delegate: {
+        delegateId: string;
+        realm: string;
+        depth: number;
+        canUpload: boolean;
+        canManageDepot: boolean;
+      };
+      refreshToken: string;
+      accessToken: string;
+      refreshTokenId: string;
+      accessTokenId: string;
+      accessTokenExpiresAt: number;
+      tokenId: string;
+      tokenBase64: string;
+      expiresAt: number;
+    }>;
   };
   stop: () => void;
 }
@@ -214,14 +246,24 @@ export interface TestUserSetup {
   realm: string;
   /** Main depot ID */
   mainDepotId: string;
-  /** Delegate token for CLI operations */
-  delegateToken: string;
-  /** Delegate token ID */
-  delegateTokenId: string;
+  /** Root delegate info for credential storage */
+  rootDelegate: {
+    delegateId: string;
+    realm: string;
+    refreshToken: string;
+    refreshTokenId: string;
+    accessToken: string;
+    accessTokenId: string;
+    /** Epoch seconds */
+    accessTokenExpiresAt: number;
+    depth: number;
+    canUpload: boolean;
+    canManageDepot: boolean;
+  };
 }
 
 /**
- * Create a test user with delegate token for CLI operations
+ * Create a test user with root delegate for CLI operations
  */
 export async function createTestUserWithToken(
   ctx: CliTestContext,
@@ -240,7 +282,7 @@ export async function createTestUserWithToken(
     mainDepotId,
   } = await ctx.helpers.createTestUser(userUuid, "authorized");
 
-  // Create a delegate token for CLI operations
+  // Create a root delegate for CLI operations
   const delegateResult = await ctx.helpers.createDelegateToken(userToken, realm, {
     name: "CLI E2E Test Token",
     canUpload,
@@ -253,9 +295,67 @@ export async function createTestUserWithToken(
     userToken,
     realm,
     mainDepotId,
-    delegateToken: delegateResult.tokenBase64,
-    delegateTokenId: delegateResult.tokenId,
+    rootDelegate: {
+      delegateId: delegateResult.delegate.delegateId,
+      realm: delegateResult.delegate.realm,
+      refreshToken: delegateResult.refreshToken,
+      refreshTokenId: delegateResult.refreshTokenId,
+      accessToken: delegateResult.accessToken,
+      accessTokenId: delegateResult.accessTokenId,
+      // Server returns epoch ms, credentials store epoch seconds
+      accessTokenExpiresAt: Math.floor(delegateResult.accessTokenExpiresAt / 1000),
+      depth: delegateResult.delegate.depth,
+      canUpload: delegateResult.delegate.canUpload,
+      canManageDepot: delegateResult.delegate.canManageDepot,
+    },
   };
+}
+
+// ============================================================================
+// Credential File Helpers
+// ============================================================================
+
+/**
+ * Write CLI credentials file to the temp HOME directory.
+ * This is how the CLI reads authentication state.
+ */
+export function writeCredentialsFile(
+  tempHome: string,
+  baseUrl: string,
+  user: TestUserSetup,
+  profileName = "default"
+): void {
+  const casfaDir = join(tempHome, ".casfa");
+  mkdirSync(casfaDir, { recursive: true });
+
+  // Write config.json with profile pointing to the server
+  const config = {
+    currentProfile: profileName,
+    profiles: {
+      [profileName]: {
+        baseUrl,
+        realm: user.realm,
+      },
+    },
+  };
+  writeFileSync(join(casfaDir, "config.json"), JSON.stringify(config, null, 2));
+
+  // Write credentials.json with root delegate
+  const credentials = {
+    [profileName]: {
+      version: 3,
+      userToken: {
+        accessToken: user.userToken,
+        refreshToken: "",
+        userId: user.userId,
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      },
+      rootDelegate: user.rootDelegate,
+    },
+  };
+  writeFileSync(join(casfaDir, "credentials.json"), JSON.stringify(credentials, null, 2), {
+    mode: 0o600,
+  });
 }
 
 // ============================================================================
@@ -263,13 +363,16 @@ export async function createTestUserWithToken(
 // ============================================================================
 
 /**
- * Create environment for CLI execution with authentication
+ * Create environment for CLI execution with authentication.
+ * Writes credential files and returns env with HOME pointed to temp dir.
  */
 export function createAuthEnv(ctx: CliTestContext, user: TestUserSetup): Record<string, string> {
+  // Ensure credentials file is written
+  writeCredentialsFile(ctx.tempHome, ctx.baseUrl, user);
+
   return {
     ...ctx.baseEnv,
     CASFA_REALM: user.realm,
-    CASFA_TOKEN: user.delegateToken,
   };
 }
 

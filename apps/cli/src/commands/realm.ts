@@ -1,50 +1,18 @@
-import { api } from "@casfa/client";
 import type { Command } from "commander";
-import { createClient, requireAuth, requireRealm } from "../lib/client";
+import { createClient, requireRealmAuth } from "../lib/client";
 import { createFormatter, formatSize } from "../lib/output";
 
 /**
- * Ensure we have an access token for realm operations.
+ * Get an access token from the client (auto-refreshes if needed).
  */
-async function ensureAccessToken(
+async function getAccessTokenBase64(
   resolved: Awaited<ReturnType<typeof createClient>>
 ): Promise<string> {
-  const state = resolved.client.getState();
-
-  if (state.access) {
-    return state.access.tokenBase64;
+  const at = await resolved.client.getAccessToken();
+  if (!at) {
+    throw new Error("Authentication required. Run 'casfa auth login'.");
   }
-
-  if (state.delegate) {
-    const result = await api.delegateToken(resolved.baseUrl, state.delegate.tokenBase64, {
-      name: "cli-realm-info",
-      type: "access",
-      expiresIn: 300,
-      canUpload: false,
-      canManageDepot: false,
-    });
-    if (!result.ok) {
-      throw new Error(`Failed to get access token: ${result.error.message}`);
-    }
-    return result.data.token;
-  }
-
-  if (state.user) {
-    const result = await api.createToken(resolved.baseUrl, state.user.accessToken, {
-      realm: resolved.realm,
-      name: "cli-realm-info",
-      type: "access",
-      expiresIn: 300,
-      canUpload: false,
-      canManageDepot: false,
-    });
-    if (!result.ok) {
-      throw new Error(`Failed to get access token: ${result.error.message}`);
-    }
-    return result.data.token;
-  }
-
-  throw new Error("Authentication required.");
+  return at.tokenBase64;
 }
 
 /**
@@ -113,10 +81,9 @@ export function registerRealmCommands(program: Command): void {
 
       try {
         const resolved = await createClient(opts);
-        requireRealm(resolved);
-        requireAuth(resolved);
+        requireRealmAuth(resolved);
 
-        const accessToken = await ensureAccessToken(resolved);
+        const accessToken = await getAccessTokenBase64(resolved);
         const info = await fetchRealmInfo(resolved.baseUrl, resolved.realm, accessToken);
 
         formatter.output(info, () => {
@@ -142,10 +109,9 @@ export function registerRealmCommands(program: Command): void {
 
       try {
         const resolved = await createClient(opts);
-        requireRealm(resolved);
-        requireAuth(resolved);
+        requireRealmAuth(resolved);
 
-        const accessToken = await ensureAccessToken(resolved);
+        const accessToken = await getAccessTokenBase64(resolved);
         const usage = await fetchRealmUsage(resolved.baseUrl, resolved.realm, accessToken);
 
         formatter.output(usage, () => {
