@@ -4,8 +4,8 @@
  * Because createClient is async (fetches /api/info), we expose a
  * getClient() that returns a Promise and caches the result.
  *
- * Token persistence: Uses localStorage to persist the three-tier token
- * state (User JWT, Delegate Token, Access Token) across page reloads.
+ * Token persistence: Uses localStorage to persist the two-tier token
+ * state (User JWT, Root Delegate with RT/AT) across page reloads.
  */
 
 import {
@@ -51,8 +51,8 @@ let clientPromise: Promise<CasfaClient> | null = null;
  *
  * The realm is resolved lazily from the user's ID (usr_xxx).
  * Token auto-issuance: The client's TokenSelector will automatically
- * create Delegate and Access tokens when needed (with canUpload=true,
- * canManageDepot=true) using the User JWT.
+ * create a Root Delegate (RT + AT) when needed using the User JWT,
+ * and refresh the Access Token via RT rotation when it expires.
  */
 export function getClient(): Promise<CasfaClient> {
   if (!clientPromise) {
