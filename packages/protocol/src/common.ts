@@ -186,7 +186,9 @@ export const DELEGATE_ID_REGEX = new RegExp(`^dlt_[${CROCKFORD_BASE32}]{25}[${CB
  * blake3_128(token_bytes) encoded as CB32
  * Example: tkn_5R8F1Y3GHKM9QXW2TV4BCEJN70
  */
-export const DELEGATE_TOKEN_ID_REGEX = new RegExp(`^tkn_[${CROCKFORD_BASE32}]{25}[${CB32_TAIL_128}]$`);
+export const DELEGATE_TOKEN_ID_REGEX = new RegExp(
+  `^tkn_[${CROCKFORD_BASE32}]{25}[${CB32_TAIL_128}]$`
+);
 
 /**
  * Depot ID format: dpt_{base32}
