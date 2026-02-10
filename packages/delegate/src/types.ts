@@ -54,6 +54,27 @@ export interface Delegate {
   revokedBy?: string;
   /** When the delegate was created (epoch ms) */
   createdAt: number;
+
+  // === Token hash fields (token-simplification) ===
+
+  /**
+   * Blake3-128 hash of the current valid Refresh Token (hex, 32 chars).
+   * Atomically updated on every RT refresh.
+   */
+  currentRtHash: string;
+
+  /**
+   * Blake3-128 hash of the current valid Access Token (hex, 32 chars).
+   * Updated together with `currentRtHash` on every refresh.
+   */
+  currentAtHash: string;
+
+  /**
+   * Expiration time of the current Access Token (epoch ms).
+   * Stored redundantly so verification doesn't need to decode token bytes.
+   * Updated together with `currentAtHash`.
+   */
+  atExpiresAt: number;
 }
 
 // ============================================================================

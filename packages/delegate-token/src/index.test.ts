@@ -1,31 +1,31 @@
 /**
- * Delegate Token tests — v2 (Delegate-as-entity model)
+ * Delegate Token tests — v3 (simplified format)
  *
- * Flags layout:
- *   Low nibble:  bit 0 is_refresh, bit 1 can_upload, bit 2 can_manage_depot, bit 3 reserved
- *   High nibble: bits 4-7 depth (0-15)
+ * AT (32 bytes): [delegateId 16B] [expiresAt 8B LE] [nonce 8B]
+ * RT (24 bytes): [delegateId 16B] [nonce 8B]
+ * Distinguished by byte length, no magic, no type byte.
  */
 
 import { describe, expect, it } from "bun:test";
 import { blake3 } from "@noble/hashes/blake3";
 import {
-  // Token ID
+  AT_SIZE,
   computeTokenId,
-  // Constants
-  DELEGATE_TOKEN_SIZE,
-  type DelegateTokenInput,
-  // Encoding/Decoding
-  decodeDelegateToken,
-  encodeDelegateToken,
-  FLAGS,
+  type DecodedAccessToken,
+  type DecodedRefreshToken,
+  decodeToken,
+  DELEGATE_ID_SIZE,
+  encodeAccessToken,
+  encodeRefreshToken,
+  type EncodeAccessTokenInput,
+  type EncodeRefreshTokenInput,
   formatTokenId,
   type HashFunction,
   isValidTokenIdFormat,
-  MAGIC_NUMBER,
-  MAX_DEPTH,
+  NONCE_SIZE,
   parseTokenId,
+  RT_SIZE,
   TOKEN_ID_PREFIX,
-  // Validation
   validateToken,
   validateTokenBytes,
 } from "./index.ts";
@@ -39,26 +39,26 @@ const blake3_128: HashFunction = (data: Uint8Array): Uint8Array => {
   return blake3(data, { dkLen: 16 });
 };
 
-/** Create a 32-byte issuer field from a 16-byte UUID (left-padded) */
-function makeIssuer(uuid: Uint8Array): Uint8Array {
-  const issuer = new Uint8Array(32);
-  issuer.set(uuid, 16); // left-padded: 16 zero bytes + 16 UUID bytes
-  return issuer;
+/** Create a random 16-byte delegateId */
+function makeDelegateId(): Uint8Array {
+  const id = new Uint8Array(DELEGATE_ID_SIZE);
+  crypto.getRandomValues(id);
+  return id;
 }
 
-/** Create test input with sensible defaults */
-function createTestInput(overrides: Partial<DelegateTokenInput> = {}): DelegateTokenInput {
-  const now = Date.now();
+/** Create AT input with sensible defaults */
+function createATInput(overrides: Partial<EncodeAccessTokenInput> = {}): EncodeAccessTokenInput {
   return {
-    type: "access",
-    ttl: now + 3600000, // 1 hour
-    canUpload: false,
-    canManageDepot: false,
-    quota: 0,
-    issuer: makeIssuer(new Uint8Array(16).fill(0xaa)),
-    realm: new Uint8Array(32).fill(2),
-    scope: new Uint8Array(32), // all zeros = root scope
-    depth: 0,
+    delegateId: makeDelegateId(),
+    expiresAt: Date.now() + 3600_000, // 1 hour
+    ...overrides,
+  };
+}
+
+/** Create RT input with sensible defaults */
+function createRTInput(overrides: Partial<EncodeRefreshTokenInput> = {}): EncodeRefreshTokenInput {
+  return {
+    delegateId: makeDelegateId(),
     ...overrides,
   };
 }
@@ -67,81 +67,70 @@ function createTestInput(overrides: Partial<DelegateTokenInput> = {}): DelegateT
 // Encoding Tests
 // ============================================================================
 
-describe("encodeDelegateToken", () => {
-  it("should encode a token to 128 bytes", () => {
-    const bytes = encodeDelegateToken(createTestInput());
-    expect(bytes.length).toBe(DELEGATE_TOKEN_SIZE);
+describe("encodeAccessToken", () => {
+  it("should produce exactly 32 bytes", () => {
+    const bytes = encodeAccessToken(createATInput());
+    expect(bytes.length).toBe(AT_SIZE);
   });
 
-  it("should write correct magic number (LE)", () => {
-    const bytes = encodeDelegateToken(createTestInput());
-    const view = new DataView(bytes.buffer);
-    expect(view.getUint32(0, true)).toBe(MAGIC_NUMBER);
+  it("should write delegateId at offset 0", () => {
+    const delegateId = makeDelegateId();
+    const bytes = encodeAccessToken(createATInput({ delegateId }));
+    expect(bytes.slice(0, 16)).toEqual(delegateId);
   });
 
-  it("should encode Refresh Token type (bit 0 = 1)", () => {
-    const rt = encodeDelegateToken(createTestInput({ type: "refresh", ttl: 0 }));
-    const at = encodeDelegateToken(createTestInput({ type: "access" }));
-
-    const rtFlags = new DataView(rt.buffer).getUint32(4, true);
-    const atFlags = new DataView(at.buffer).getUint32(4, true);
-
-    expect((rtFlags >> FLAGS.IS_REFRESH) & 1).toBe(1);
-    expect((atFlags >> FLAGS.IS_REFRESH) & 1).toBe(0);
+  it("should write expiresAt at offset 16 (u64 LE)", () => {
+    const expiresAt = 1700000000000;
+    const bytes = encodeAccessToken(createATInput({ expiresAt }));
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    expect(Number(view.getBigUint64(16, true))).toBe(expiresAt);
   });
 
-  it("should encode permission flags (bits 1-2)", () => {
-    const bytes = encodeDelegateToken(createTestInput({ canUpload: true, canManageDepot: true }));
-    const flags = new DataView(bytes.buffer).getUint32(4, true);
-
-    expect((flags >> FLAGS.CAN_UPLOAD) & 1).toBe(1);
-    expect((flags >> FLAGS.CAN_MANAGE_DEPOT) & 1).toBe(1);
+  it("should write 8-byte nonce at offset 24", () => {
+    const bytes = encodeAccessToken(createATInput());
+    const nonce = bytes.slice(24, 32);
+    expect(nonce.length).toBe(NONCE_SIZE);
+    // Nonce should not be all zeros (cryptographically random)
+    expect(nonce.some((b) => b !== 0)).toBe(true);
   });
 
-  it("should encode depth in high nibble (bits 4-7)", () => {
-    const bytes = encodeDelegateToken(createTestInput({ depth: 5 }));
-    const flags = new DataView(bytes.buffer).getUint32(4, true);
-    const depth = (flags >> FLAGS.DEPTH_SHIFT) & FLAGS.DEPTH_MASK;
-
-    expect(depth).toBe(5);
+  it("should generate different nonces on each call", () => {
+    const input = createATInput();
+    const bytes1 = encodeAccessToken(input);
+    const bytes2 = encodeAccessToken(input);
+    // nonce is at offset 24-32
+    expect(bytes1.slice(24, 32)).not.toEqual(bytes2.slice(24, 32));
   });
 
-  it("should keep reserved bit 3 clear", () => {
-    const bytes = encodeDelegateToken(
-      createTestInput({ type: "refresh", ttl: 0, canUpload: true, canManageDepot: true, depth: 15 })
-    );
-    const flags = new DataView(bytes.buffer).getUint32(4, true);
+  it("should throw on invalid delegateId length", () => {
+    expect(() =>
+      encodeAccessToken({ delegateId: new Uint8Array(8), expiresAt: Date.now() + 1000 })
+    ).toThrow(/Invalid delegateId length/);
+  });
+});
 
-    expect((flags >> FLAGS.RESERVED) & 1).toBe(0);
+describe("encodeRefreshToken", () => {
+  it("should produce exactly 24 bytes", () => {
+    const bytes = encodeRefreshToken(createRTInput());
+    expect(bytes.length).toBe(RT_SIZE);
   });
 
-  it("should throw on invalid issuer length", () => {
-    expect(() => encodeDelegateToken(createTestInput({ issuer: new Uint8Array(16) }))).toThrow(
-      /Invalid issuer length/
-    );
+  it("should write delegateId at offset 0", () => {
+    const delegateId = makeDelegateId();
+    const bytes = encodeRefreshToken(createRTInput({ delegateId }));
+    expect(bytes.slice(0, 16)).toEqual(delegateId);
   });
 
-  it("should throw on invalid realm length", () => {
-    expect(() => encodeDelegateToken(createTestInput({ realm: new Uint8Array(16) }))).toThrow(
-      /Invalid realm length/
-    );
+  it("should write 8-byte nonce at offset 16", () => {
+    const bytes = encodeRefreshToken(createRTInput());
+    const nonce = bytes.slice(16, 24);
+    expect(nonce.length).toBe(NONCE_SIZE);
+    expect(nonce.some((b) => b !== 0)).toBe(true);
   });
 
-  it("should throw on invalid scope length", () => {
-    expect(() => encodeDelegateToken(createTestInput({ scope: new Uint8Array(16) }))).toThrow(
-      /Invalid scope length/
-    );
-  });
-
-  it("should throw when depth > MAX_DEPTH", () => {
-    expect(() => encodeDelegateToken(createTestInput({ depth: 16 }))).toThrow(
-      /Delegation depth out of range/
-    );
-  });
-
-  it("should throw when depth < 0", () => {
-    expect(() => encodeDelegateToken(createTestInput({ depth: -1 }))).toThrow(
-      /Delegation depth out of range/
+  it("should throw on invalid delegateId length", () => {
+    expect(() => encodeRefreshToken({ delegateId: new Uint8Array(32) })).toThrow(
+      /Invalid delegateId length/
     );
   });
 });
@@ -150,52 +139,39 @@ describe("encodeDelegateToken", () => {
 // Decoding Tests
 // ============================================================================
 
-describe("decodeDelegateToken", () => {
-  it("should decode an encoded Access Token correctly", () => {
-    const input = createTestInput({
-      type: "access",
-      canUpload: true,
-      canManageDepot: true,
-      quota: 1000,
-      depth: 2,
-    });
-    const bytes = encodeDelegateToken(input);
-    const decoded = decodeDelegateToken(bytes);
+describe("decodeToken", () => {
+  it("should decode 32-byte input as Access Token", () => {
+    const delegateId = makeDelegateId();
+    const expiresAt = Date.now() + 3600_000;
+    const bytes = encodeAccessToken({ delegateId, expiresAt });
+    const decoded = decodeToken(bytes);
 
-    expect(decoded.flags.isRefresh).toBe(false);
-    expect(decoded.flags.canUpload).toBe(true);
-    expect(decoded.flags.canManageDepot).toBe(true);
-    expect(decoded.flags.depth).toBe(2);
-    expect(decoded.ttl).toBe(input.ttl);
-    expect(decoded.quota).toBe(1000);
-    expect(decoded.issuer).toEqual(input.issuer);
-    expect(decoded.realm).toEqual(input.realm);
-    expect(decoded.scope).toEqual(input.scope);
+    expect(decoded.type).toBe("access");
+    expect(decoded.delegateId).toEqual(delegateId);
+    expect((decoded as DecodedAccessToken).expiresAt).toBe(expiresAt);
+    expect((decoded as DecodedAccessToken).nonce.length).toBe(NONCE_SIZE);
   });
 
-  it("should decode a Refresh Token correctly", () => {
-    const input = createTestInput({
-      type: "refresh",
-      ttl: 0,
-      canUpload: true,
-      canManageDepot: true,
-      depth: 0,
-    });
-    const bytes = encodeDelegateToken(input);
-    const decoded = decodeDelegateToken(bytes);
+  it("should decode 24-byte input as Refresh Token", () => {
+    const delegateId = makeDelegateId();
+    const bytes = encodeRefreshToken({ delegateId });
+    const decoded = decodeToken(bytes);
 
-    expect(decoded.flags.isRefresh).toBe(true);
-    expect(decoded.ttl).toBe(0);
+    expect(decoded.type).toBe("refresh");
+    expect(decoded.delegateId).toEqual(delegateId);
+    expect((decoded as DecodedRefreshToken).nonce.length).toBe(NONCE_SIZE);
   });
 
-  it("should throw on invalid size", () => {
-    expect(() => decodeDelegateToken(new Uint8Array(64))).toThrow(/Invalid token size/);
+  it("should throw on invalid size (128 bytes — old format)", () => {
+    expect(() => decodeToken(new Uint8Array(128))).toThrow(/Invalid token size/);
   });
 
-  it("should throw on invalid magic number", () => {
-    expect(() => decodeDelegateToken(new Uint8Array(DELEGATE_TOKEN_SIZE))).toThrow(
-      /Invalid magic number/
-    );
+  it("should throw on invalid size (0 bytes)", () => {
+    expect(() => decodeToken(new Uint8Array(0))).toThrow(/Invalid token size/);
+  });
+
+  it("should throw on invalid size (30 bytes)", () => {
+    expect(() => decodeToken(new Uint8Array(30))).toThrow(/Invalid token size/);
   });
 });
 
@@ -204,176 +180,68 @@ describe("decodeDelegateToken", () => {
 // ============================================================================
 
 describe("encode/decode roundtrip", () => {
-  it("should preserve all fields — root delegate AT", () => {
-    const ttl = Date.now() + 86400000;
-    const input = createTestInput({
-      type: "access",
-      ttl,
-      canUpload: true,
-      canManageDepot: true,
-      depth: 0,
-    });
-    const decoded = decodeDelegateToken(encodeDelegateToken(input));
+  it("should preserve AT fields through encode/decode", () => {
+    const delegateId = makeDelegateId();
+    const expiresAt = Date.now() + 86400_000;
 
-    expect(decoded.flags.isRefresh).toBe(false);
-    expect(decoded.flags.canUpload).toBe(true);
-    expect(decoded.flags.canManageDepot).toBe(true);
-    expect(decoded.flags.depth).toBe(0);
-    expect(decoded.ttl).toBe(ttl);
+    const bytes = encodeAccessToken({ delegateId, expiresAt });
+    const decoded = decodeToken(bytes);
+
+    expect(decoded.type).toBe("access");
+    expect(decoded.delegateId).toEqual(delegateId);
+    if (decoded.type === "access") {
+      expect(decoded.expiresAt).toBe(expiresAt);
+      expect(decoded.nonce.length).toBe(NONCE_SIZE);
+    }
   });
 
-  it("should preserve all fields — root delegate RT", () => {
-    const input = createTestInput({
-      type: "refresh",
-      ttl: 0,
-      canUpload: true,
-      canManageDepot: true,
-      depth: 0,
-    });
-    const decoded = decodeDelegateToken(encodeDelegateToken(input));
+  it("should preserve RT fields through encode/decode", () => {
+    const delegateId = makeDelegateId();
 
-    expect(decoded.flags.isRefresh).toBe(true);
-    expect(decoded.flags.depth).toBe(0);
-    expect(decoded.ttl).toBe(0);
+    const bytes = encodeRefreshToken({ delegateId });
+    const decoded = decodeToken(bytes);
+
+    expect(decoded.type).toBe("refresh");
+    expect(decoded.delegateId).toEqual(delegateId);
+    if (decoded.type === "refresh") {
+      expect(decoded.nonce.length).toBe(NONCE_SIZE);
+    }
   });
 
-  it("should preserve all fields — child delegate AT with upload, depth=2", () => {
-    const ttl = Date.now() + 3600000;
-    const input = createTestInput({
-      type: "access",
-      ttl,
-      canUpload: true,
-      canManageDepot: true,
-      depth: 2,
-    });
-    const decoded = decodeDelegateToken(encodeDelegateToken(input));
+  it("should produce unique tokens (different nonces) for same delegateId", () => {
+    const delegateId = makeDelegateId();
+    const expiresAt = Date.now() + 3600_000;
 
-    expect(decoded.flags.isRefresh).toBe(false);
-    expect(decoded.flags.canUpload).toBe(true);
-    expect(decoded.flags.canManageDepot).toBe(true);
-    expect(decoded.flags.depth).toBe(2);
-    expect(decoded.ttl).toBe(ttl);
+    const bytes1 = encodeAccessToken({ delegateId, expiresAt });
+    const bytes2 = encodeAccessToken({ delegateId, expiresAt });
+
+    // Full token bytes differ (nonce is different)
+    expect(bytes1).not.toEqual(bytes2);
+    // But delegateId and expiresAt are the same
+    expect(bytes1.slice(0, 24)).toEqual(bytes2.slice(0, 24));
   });
 
-  it("should preserve all fields — read-only AT, depth=1", () => {
-    const ttl = Date.now() + 3600000;
-    const input = createTestInput({
-      type: "access",
-      ttl,
-      canUpload: false,
-      canManageDepot: false,
-      depth: 1,
-    });
-    const decoded = decodeDelegateToken(encodeDelegateToken(input));
+  it("should handle expiresAt=0 in AT (edge case)", () => {
+    const delegateId = makeDelegateId();
+    const bytes = encodeAccessToken({ delegateId, expiresAt: 0 });
+    const decoded = decodeToken(bytes);
 
-    expect(decoded.flags.isRefresh).toBe(false);
-    expect(decoded.flags.canUpload).toBe(false);
-    expect(decoded.flags.canManageDepot).toBe(false);
-    expect(decoded.flags.depth).toBe(1);
+    expect(decoded.type).toBe("access");
+    if (decoded.type === "access") {
+      expect(decoded.expiresAt).toBe(0);
+    }
   });
 
-  it("should preserve all fields — tool AT (upload, no depot, depth=3)", () => {
-    const ttl = Date.now() + 1800000;
-    const input = createTestInput({
-      type: "access",
-      ttl,
-      canUpload: true,
-      canManageDepot: false,
-      depth: 3,
-    });
-    const decoded = decodeDelegateToken(encodeDelegateToken(input));
+  it("should handle max expiresAt value", () => {
+    const delegateId = makeDelegateId();
+    // Max safe integer for epoch ms
+    const expiresAt = Number.MAX_SAFE_INTEGER;
+    const bytes = encodeAccessToken({ delegateId, expiresAt });
+    const decoded = decodeToken(bytes);
 
-    expect(decoded.flags.isRefresh).toBe(false);
-    expect(decoded.flags.canUpload).toBe(true);
-    expect(decoded.flags.canManageDepot).toBe(false);
-    expect(decoded.flags.depth).toBe(3);
-  });
-
-  it("should preserve all fields — max depth=15", () => {
-    const input = createTestInput({ depth: MAX_DEPTH });
-    const decoded = decodeDelegateToken(encodeDelegateToken(input));
-
-    expect(decoded.flags.depth).toBe(15);
-  });
-
-  it("should match design doc §3.4 flags examples", () => {
-    // Root AT: 0x06 — is_refresh=0, can_upload=1, can_manage_depot=1, depth=0
-    const rootAT = encodeDelegateToken(
-      createTestInput({ type: "access", canUpload: true, canManageDepot: true, depth: 0 })
-    );
-    expect(new DataView(rootAT.buffer).getUint32(4, true) & 0xff).toBe(0x06);
-
-    // Root RT: 0x07
-    const rootRT = encodeDelegateToken(
-      createTestInput({ type: "refresh", ttl: 0, canUpload: true, canManageDepot: true, depth: 0 })
-    );
-    expect(new DataView(rootRT.buffer).getUint32(4, true) & 0xff).toBe(0x07);
-
-    // Child AT depth=2, upload+depot: 0x26
-    const childAT = encodeDelegateToken(
-      createTestInput({ type: "access", canUpload: true, canManageDepot: true, depth: 2 })
-    );
-    expect(new DataView(childAT.buffer).getUint32(4, true) & 0xff).toBe(0x26);
-
-    // Read-only AT depth=1: 0x10
-    const readOnly = encodeDelegateToken(
-      createTestInput({ type: "access", canUpload: false, canManageDepot: false, depth: 1 })
-    );
-    expect(new DataView(readOnly.buffer).getUint32(4, true) & 0xff).toBe(0x10);
-
-    // Tool AT upload, no depot, depth=3: 0x32
-    const toolAT = encodeDelegateToken(
-      createTestInput({ type: "access", canUpload: true, canManageDepot: false, depth: 3 })
-    );
-    expect(new DataView(toolAT.buffer).getUint32(4, true) & 0xff).toBe(0x32);
-  });
-
-  it("should preserve issuer with left-padded UUID format", () => {
-    const uuid = new Uint8Array(16);
-    crypto.getRandomValues(uuid);
-    const issuer = makeIssuer(uuid);
-
-    const input = createTestInput({ issuer });
-    const decoded = decodeDelegateToken(encodeDelegateToken(input));
-
-    // First 16 bytes should be zero (padding)
-    expect(decoded.issuer.slice(0, 16)).toEqual(new Uint8Array(16));
-    // Last 16 bytes should be UUID
-    expect(decoded.issuer.slice(16)).toEqual(uuid);
-  });
-
-  it("should preserve scope with left-padded CAS hash", () => {
-    const hash = new Uint8Array(16);
-    crypto.getRandomValues(hash);
-    const scope = new Uint8Array(32);
-    scope.set(hash, 16); // left-padded
-
-    const input = createTestInput({ scope });
-    const decoded = decodeDelegateToken(encodeDelegateToken(input));
-
-    expect(decoded.scope).toEqual(scope);
-  });
-
-  it("should preserve all-zero scope (root delegate)", () => {
-    const scope = new Uint8Array(32); // all zeros
-    const input = createTestInput({ scope });
-    const decoded = decodeDelegateToken(encodeDelegateToken(input));
-
-    expect(decoded.scope).toEqual(scope);
-  });
-
-  it("nibble extraction: flags & 0x0F = permissions, flags >> 4 = depth", () => {
-    const bytes = encodeDelegateToken(
-      createTestInput({ type: "refresh", ttl: 0, canUpload: true, canManageDepot: true, depth: 7 })
-    );
-    const flags = new DataView(bytes.buffer).getUint32(4, true);
-
-    const perms = flags & 0x0f;
-    const depth = flags >> 4;
-
-    // is_refresh=1, can_upload=1, can_manage_depot=1 → low nibble = 0b0111 = 7
-    expect(perms).toBe(0x07);
-    expect(depth).toBe(7);
+    if (decoded.type === "access") {
+      expect(decoded.expiresAt).toBe(expiresAt);
+    }
   });
 });
 
@@ -382,15 +250,21 @@ describe("encode/decode roundtrip", () => {
 // ============================================================================
 
 describe("computeTokenId", () => {
-  it("should compute a 16-byte hash", async () => {
-    const bytes = encodeDelegateToken(createTestInput());
+  it("should compute a 16-byte hash from AT", async () => {
+    const bytes = encodeAccessToken(createATInput());
+    const id = await computeTokenId(bytes, blake3_128);
+    expect(id.length).toBe(16);
+  });
+
+  it("should compute a 16-byte hash from RT", async () => {
+    const bytes = encodeRefreshToken(createRTInput());
     const id = await computeTokenId(bytes, blake3_128);
     expect(id.length).toBe(16);
   });
 
   it("should return different IDs for different tokens", async () => {
-    const bytes1 = encodeDelegateToken(createTestInput({ ttl: 1000 }));
-    const bytes2 = encodeDelegateToken(createTestInput({ ttl: 2000 }));
+    const bytes1 = encodeAccessToken(createATInput());
+    const bytes2 = encodeAccessToken(createATInput());
 
     const id1 = await computeTokenId(bytes1, blake3_128);
     const id2 = await computeTokenId(bytes2, blake3_128);
@@ -399,7 +273,7 @@ describe("computeTokenId", () => {
   });
 
   it("should throw if hash function returns wrong length", async () => {
-    const bytes = encodeDelegateToken(createTestInput());
+    const bytes = encodeAccessToken(createATInput());
     const badHashFn: HashFunction = () => new Uint8Array(32);
 
     await expect(computeTokenId(bytes, badHashFn)).rejects.toThrow(
@@ -414,9 +288,9 @@ describe("formatTokenId", () => {
     expect(formatTokenId(id).startsWith(TOKEN_ID_PREFIX)).toBe(true);
   });
 
-  it("should produce 31 character string (5 prefix + 26 base32)", () => {
+  it("should produce 30 character string (4 prefix + 26 base32)", () => {
     const id = new Uint8Array(16).fill(0);
-    expect(formatTokenId(id).length).toBe(31);
+    expect(formatTokenId(id).length).toBe(30); // "tkn_" (4) + 26 base32 chars
   });
 
   it("should throw on invalid length", () => {
@@ -464,75 +338,98 @@ describe("isValidTokenIdFormat", () => {
 // Validation Tests
 // ============================================================================
 
+describe("validateTokenBytes", () => {
+  it("should pass for 32-byte AT", () => {
+    const bytes = encodeAccessToken(createATInput());
+    expect(validateTokenBytes(bytes).valid).toBe(true);
+  });
+
+  it("should pass for 24-byte RT", () => {
+    const bytes = encodeRefreshToken(createRTInput());
+    expect(validateTokenBytes(bytes).valid).toBe(true);
+  });
+
+  it("should fail for 128 bytes (old format)", () => {
+    const result = validateTokenBytes(new Uint8Array(128));
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.error).toBe("invalid_size");
+  });
+
+  it("should fail for 0 bytes", () => {
+    const result = validateTokenBytes(new Uint8Array(0));
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.error).toBe("invalid_size");
+  });
+});
+
 describe("validateToken", () => {
-  it("should pass for valid Access Token", () => {
-    const bytes = encodeDelegateToken(createTestInput({ ttl: Date.now() + 3600000 }));
-    const decoded = decodeDelegateToken(bytes);
+  it("should pass for valid Access Token (not expired)", () => {
+    const bytes = encodeAccessToken(createATInput({ expiresAt: Date.now() + 3600_000 }));
+    const decoded = decodeToken(bytes);
     expect(validateToken(decoded).valid).toBe(true);
   });
 
-  it("should pass for valid Refresh Token (ttl=0)", () => {
-    const bytes = encodeDelegateToken(createTestInput({ type: "refresh", ttl: 0 }));
-    const decoded = decodeDelegateToken(bytes);
+  it("should pass for Refresh Token (no TTL)", () => {
+    const bytes = encodeRefreshToken(createRTInput());
+    const decoded = decodeToken(bytes);
     expect(validateToken(decoded).valid).toBe(true);
   });
 
   it("should fail for expired Access Token", () => {
-    const bytes = encodeDelegateToken(createTestInput({ ttl: Date.now() - 1000 }));
-    const decoded = decodeDelegateToken(bytes);
+    const bytes = encodeAccessToken(createATInput({ expiresAt: Date.now() - 1000 }));
+    const decoded = decodeToken(bytes);
     const result = validateToken(decoded);
 
     expect(result.valid).toBe(false);
     if (!result.valid) expect(result.error).toBe("expired");
   });
 
-  it("should fail for Refresh Token with non-zero ttl", () => {
-    const bytes = encodeDelegateToken(createTestInput({ type: "refresh", ttl: 0 }));
-    const decoded = decodeDelegateToken(bytes);
-    // Manually corrupt ttl to non-zero
-    decoded.ttl = Date.now() + 1000;
-
-    const result = validateToken(decoded);
-    expect(result.valid).toBe(false);
-    if (!result.valid) expect(result.error).toBe("invalid_flags");
-  });
-
   it("should accept custom time for AT validation", () => {
-    const ttl = 1000000;
-    const bytes = encodeDelegateToken(createTestInput({ ttl }));
-    const decoded = decodeDelegateToken(bytes);
+    const expiresAt = 1_000_000;
+    const bytes = encodeAccessToken(createATInput({ expiresAt }));
+    const decoded = decodeToken(bytes);
 
-    expect(validateToken(decoded, 500000).valid).toBe(true);
-    expect(validateToken(decoded, 2000000).valid).toBe(false);
+    expect(validateToken(decoded, 500_000).valid).toBe(true);
+    expect(validateToken(decoded, 2_000_000).valid).toBe(false);
   });
 
-  it("should fail for depth exceeding MAX_DEPTH", () => {
-    const bytes = encodeDelegateToken(createTestInput({ depth: MAX_DEPTH }));
-    const decoded = decodeDelegateToken(bytes);
-    // Manually corrupt depth
-    decoded.flags.depth = 16;
+  it("should always pass for RT regardless of time", () => {
+    const bytes = encodeRefreshToken(createRTInput());
+    const decoded = decodeToken(bytes);
 
-    const result = validateToken(decoded);
-    expect(result.valid).toBe(false);
-    if (!result.valid) expect(result.error).toBe("depth_exceeded");
+    expect(validateToken(decoded, 0).valid).toBe(true);
+    expect(validateToken(decoded, Number.MAX_SAFE_INTEGER).valid).toBe(true);
   });
 });
 
-describe("validateTokenBytes", () => {
-  it("should pass for valid bytes", () => {
-    const bytes = encodeDelegateToken(createTestInput());
-    expect(validateTokenBytes(bytes).valid).toBe(true);
+// ============================================================================
+// Size & Format Property Tests
+// ============================================================================
+
+describe("format properties", () => {
+  it("AT base64 should be 44 characters", () => {
+    const bytes = encodeAccessToken(createATInput());
+    const base64 = Buffer.from(bytes).toString("base64");
+    expect(base64.length).toBe(44);
   });
 
-  it("should fail for invalid size", () => {
-    const result = validateTokenBytes(new Uint8Array(64));
-    expect(result.valid).toBe(false);
-    if (!result.valid) expect(result.error).toBe("invalid_size");
+  it("RT base64 should be 32 characters", () => {
+    const bytes = encodeRefreshToken(createRTInput());
+    const base64 = Buffer.from(bytes).toString("base64");
+    expect(base64.length).toBe(32);
   });
 
-  it("should fail for invalid magic", () => {
-    const result = validateTokenBytes(new Uint8Array(DELEGATE_TOKEN_SIZE));
-    expect(result.valid).toBe(false);
-    if (!result.valid) expect(result.error).toBe("invalid_magic");
+  it("AT should be 75% smaller than old 128-byte format", () => {
+    expect(AT_SIZE).toBe(32);
+    expect(AT_SIZE / 128).toBe(0.25);
+  });
+
+  it("RT should be 81% smaller than old 128-byte format", () => {
+    expect(RT_SIZE).toBe(24);
+    expect(RT_SIZE / 128).toBe(0.1875);
+  });
+
+  it("AT and RT have different sizes (length-based discrimination)", () => {
+    expect(AT_SIZE).not.toBe(RT_SIZE);
   });
 });

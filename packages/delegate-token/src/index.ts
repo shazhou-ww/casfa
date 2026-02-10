@@ -2,7 +2,8 @@
  * @casfa/delegate-token
  *
  * Delegate Token encoding/decoding for CASFA authorization system.
- * Implements 128-byte binary format for Delegate Tokens.
+ * Simplified v3 format: AT (32 bytes), RT (24 bytes).
+ * No magic number, no type byte — distinguished by byte length.
  *
  * @packageDocumentation
  */
@@ -12,10 +13,13 @@
 // ============================================================================
 
 export {
-  DELEGATE_TOKEN_SIZE,
-  FLAGS,
-  MAGIC_NUMBER,
-  MAX_DEPTH,
+  AT_OFFSETS,
+  AT_SIZE,
+  DELEGATE_ID_SIZE,
+  EXPIRES_AT_SIZE,
+  NONCE_SIZE,
+  RT_OFFSETS,
+  RT_SIZE,
   TOKEN_ID_PREFIX,
 } from "./constants.ts";
 
@@ -24,20 +28,27 @@ export {
 // ============================================================================
 
 export type {
-  DelegateToken,
-  DelegateTokenFlags,
-  DelegateTokenInput,
+  DecodedAccessToken,
+  DecodedRefreshToken,
+  DecodedToken,
+  EncodeAccessTokenInput,
+  EncodeRefreshTokenInput,
   HashFunction,
   ValidationError,
   ValidationResult,
 } from "./types.ts";
 
 // ============================================================================
-// Encoding/Decoding
+// Encoding
 // ============================================================================
 
-export { decodeDelegateToken } from "./decode.ts";
-export { encodeDelegateToken } from "./encode.ts";
+export { encodeAccessToken, encodeRefreshToken } from "./encode.ts";
+
+// ============================================================================
+// Decoding
+// ============================================================================
+
+export { decodeToken } from "./decode.ts";
 
 // ============================================================================
 // Token ID

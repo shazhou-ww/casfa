@@ -1,81 +1,49 @@
 /**
- * Delegate Token validation
+ * Delegate Token validation — v3 (simplified)
  *
- * v2: Delegate-as-entity model
- * - Refresh Token: ttl must be 0 (never expires on its own)
- * - Access Token: ttl must be > now
- * - depth: 0-15
+ * Validates token bytes by length, and decoded AT by expiration.
  */
 
-import { DELEGATE_TOKEN_SIZE, MAGIC_NUMBER, MAX_DEPTH, OFFSETS } from "./constants.ts";
-import type { DelegateToken, ValidationResult } from "./types.ts";
+import { AT_SIZE, RT_SIZE } from "./constants.ts";
+import type { DecodedToken, ValidationResult } from "./types.ts";
 
 /**
- * Validate a decoded Delegate Token
- *
- * @param token - Decoded token to validate
- * @param now - Current timestamp in milliseconds (defaults to Date.now())
- * @returns Validation result
- */
-export function validateToken(token: DelegateToken, now: number = Date.now()): ValidationResult {
-  // Refresh Token: ttl must be 0
-  if (token.flags.isRefresh && token.ttl !== 0) {
-    return {
-      valid: false,
-      error: "invalid_flags",
-      message: `Refresh Token must have ttl=0, got ${token.ttl}`,
-    };
-  }
-
-  // Access Token: check expiration
-  if (!token.flags.isRefresh) {
-    if (token.ttl <= now) {
-      return {
-        valid: false,
-        error: "expired",
-        message: `Token expired at ${new Date(token.ttl).toISOString()}`,
-      };
-    }
-  }
-
-  // Check depth
-  if (token.flags.depth > MAX_DEPTH) {
-    return {
-      valid: false,
-      error: "depth_exceeded",
-      message: `Token depth ${token.flags.depth} exceeds maximum ${MAX_DEPTH}`,
-    };
-  }
-
-  return { valid: true };
-}
-
-/**
- * Validate raw token bytes (quick checks without full decode)
+ * Validate raw token bytes (quick size check).
  *
  * @param bytes - Raw token bytes
  * @returns Validation result
  */
 export function validateTokenBytes(bytes: Uint8Array): ValidationResult {
-  // Check size
-  if (bytes.length !== DELEGATE_TOKEN_SIZE) {
+  if (bytes.length !== AT_SIZE && bytes.length !== RT_SIZE) {
     return {
       valid: false,
       error: "invalid_size",
-      message: `Invalid token size: expected ${DELEGATE_TOKEN_SIZE} bytes, got ${bytes.length}`,
+      message: `Invalid token size: expected ${AT_SIZE} (AT) or ${RT_SIZE} (RT) bytes, got ${bytes.length}`,
     };
   }
+  return { valid: true };
+}
 
-  // Check magic number
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const magic = view.getUint32(OFFSETS.MAGIC, true);
-  if (magic !== MAGIC_NUMBER) {
-    return {
-      valid: false,
-      error: "invalid_magic",
-      message: `Invalid magic number: expected 0x${MAGIC_NUMBER.toString(16)}, got 0x${magic.toString(16)}`,
-    };
+/**
+ * Validate a decoded token.
+ *
+ * - Access Token: check expiration
+ * - Refresh Token: always valid (no TTL)
+ *
+ * @param token - Decoded token
+ * @param now - Current timestamp in milliseconds (defaults to Date.now())
+ * @returns Validation result
+ */
+export function validateToken(token: DecodedToken, now: number = Date.now()): ValidationResult {
+  if (token.type === "access") {
+    if (token.expiresAt <= now) {
+      return {
+        valid: false,
+        error: "expired",
+        message: `Token expired at ${new Date(token.expiresAt).toISOString()}`,
+      };
+    }
   }
-
+  // Refresh tokens have no TTL — always valid structurally
   return { valid: true };
 }

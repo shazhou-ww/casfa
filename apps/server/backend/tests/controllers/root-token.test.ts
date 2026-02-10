@@ -1,10 +1,12 @@
 /**
- * Unit tests for Root Token Controller
+ * Unit tests for Root Token Controller (token-simplification v3)
  *
  * Tests the root token creation flow:
- * - JWT auth → root delegate + RT + AT
+ * - JWT auth → root delegate + RT + AT (new delegate → 201)
+ * - JWT auth → existing delegate + rotated tokens (existing delegate → 200)
  * - Realm validation
  * - Revoked root delegate handling
+ * - Concurrent request handling (rotateTokens failure → 409)
  */
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
@@ -14,11 +16,32 @@ import {
   type RootTokenController,
 } from "../../src/controllers/root-token.ts";
 import type { DelegatesDb } from "../../src/db/delegates.ts";
-import type { TokenRecordsDb } from "../../src/db/token-records.ts";
 
 // ============================================================================
 // Mock factories
 // ============================================================================
+
+function makeFakeDelegate(
+  delegateId: string,
+  realm: string,
+  overrides?: Partial<Delegate>
+): Delegate {
+  return {
+    delegateId,
+    realm,
+    parentId: null,
+    chain: [delegateId],
+    depth: 0,
+    canUpload: true,
+    canManageDepot: true,
+    isRevoked: false,
+    createdAt: Date.now(),
+    currentRtHash: "a".repeat(32),
+    currentAtHash: "b".repeat(32),
+    atExpiresAt: Date.now() + 3600_000,
+    ...overrides,
+  };
+}
 
 function createMockDelegatesDb(overrides?: Partial<DelegatesDb>): DelegatesDb {
   return {
@@ -27,29 +50,20 @@ function createMockDelegatesDb(overrides?: Partial<DelegatesDb>): DelegatesDb {
     revoke: mock(async () => true),
     listChildren: mock(async () => ({ delegates: [], nextCursor: undefined })),
     getOrCreateRoot: mock(
-      async (realm: string, delegateId: string): Promise<Delegate> => ({
-        delegateId,
-        realm,
-        parentId: null,
-        chain: [delegateId],
-        depth: 0,
-        canUpload: true,
-        canManageDepot: true,
-        isRevoked: false,
-        createdAt: Date.now(),
+      async (
+        realm: string,
+        delegateId: string,
+        tokenHashes: { currentRtHash: string; currentAtHash: string; atExpiresAt: number }
+      ): Promise<{ delegate: Delegate; created: boolean }> => ({
+        delegate: makeFakeDelegate(delegateId, realm, {
+          currentRtHash: tokenHashes.currentRtHash,
+          currentAtHash: tokenHashes.currentAtHash,
+          atExpiresAt: tokenHashes.atExpiresAt,
+        }),
+        created: true,
       })
     ),
-    ...overrides,
-  };
-}
-
-function createMockTokenRecordsDb(overrides?: Partial<TokenRecordsDb>): TokenRecordsDb {
-  return {
-    create: mock(async () => {}),
-    get: mock(async () => null),
-    markUsed: mock(async () => true),
-    invalidateByDelegate: mock(async () => 0),
-    listByDelegate: mock(async () => ({ tokens: [], nextCursor: undefined })),
+    rotateTokens: mock(async () => true),
     ...overrides,
   };
 }
@@ -95,23 +109,20 @@ function createMockContext(options: {
 describe("RootTokenController", () => {
   let controller: RootTokenController;
   let mockDelegatesDb: DelegatesDb;
-  let mockTokenRecordsDb: TokenRecordsDb;
 
   beforeEach(() => {
     mockDelegatesDb = createMockDelegatesDb();
-    mockTokenRecordsDb = createMockTokenRecordsDb();
 
     controller = createRootTokenController({
       delegatesDb: mockDelegatesDb,
-      tokenRecordsDb: mockTokenRecordsDb,
     });
   });
 
   // --------------------------------------------------------------------------
-  // Successful creation
+  // Successful creation (new root delegate)
   // --------------------------------------------------------------------------
 
-  describe("create — success", () => {
+  describe("create — new root delegate (201)", () => {
     it("creates root delegate and returns RT + AT pair", async () => {
       const ctx = createMockContext({
         auth: {
@@ -136,16 +147,14 @@ describe("RootTokenController", () => {
       expect(delegate.canUpload).toBe(true);
       expect(delegate.canManageDepot).toBe(true);
 
-      // Should return tokens
+      // Should return tokens (no refreshTokenId / accessTokenId)
       expect(body.refreshToken).toBeDefined();
       expect(body.accessToken).toBeDefined();
-      expect(body.refreshTokenId).toBeDefined();
-      expect(body.accessTokenId).toBeDefined();
       expect(body.accessTokenExpiresAt).toBeGreaterThan(Date.now());
 
-      // Token IDs should have tkn_ prefix
-      expect((body.refreshTokenId as string).startsWith("tkn_")).toBe(true);
-      expect((body.accessTokenId as string).startsWith("tkn_")).toBe(true);
+      // Should NOT include old-style token IDs
+      expect(body.refreshTokenId).toBeUndefined();
+      expect(body.accessTokenId).toBeUndefined();
     });
 
     it("uses default realm from userId when body.realm is omitted", async () => {
@@ -167,7 +176,7 @@ describe("RootTokenController", () => {
       expect(delegate.realm).toBe("usr_bob");
     });
 
-    it("calls getOrCreateRoot with correct realm", async () => {
+    it("calls getOrCreateRoot with correct realm and token hashes", async () => {
       const ctx = createMockContext({
         auth: { type: "jwt", userId: "usr_u1", realm: "usr_u1", role: "authorized" },
         body: { realm: "usr_u1" },
@@ -177,10 +186,22 @@ describe("RootTokenController", () => {
 
       expect(mockDelegatesDb.getOrCreateRoot).toHaveBeenCalledTimes(1);
       const call = (mockDelegatesDb.getOrCreateRoot as ReturnType<typeof mock>).mock.calls[0]!;
-      expect(call[0]).toBe("usr_u1");
+      expect(call[0]).toBe("usr_u1"); // realm
+      expect(typeof call[1]).toBe("string"); // delegateId
+      // Third arg: tokenHashes object
+      const tokenHashes = call[2] as {
+        currentRtHash: string;
+        currentAtHash: string;
+        atExpiresAt: number;
+      };
+      expect(typeof tokenHashes.currentRtHash).toBe("string");
+      expect(tokenHashes.currentRtHash.length).toBe(32); // Blake3-128 hex
+      expect(typeof tokenHashes.currentAtHash).toBe("string");
+      expect(tokenHashes.currentAtHash.length).toBe(32);
+      expect(tokenHashes.atExpiresAt).toBeGreaterThan(Date.now());
     });
 
-    it("stores 2 token records (RT + AT)", async () => {
+    it("does NOT call rotateTokens when delegate is newly created", async () => {
       const ctx = createMockContext({
         auth: { type: "jwt", userId: "usr_u1", realm: "usr_u1", role: "authorized" },
         body: { realm: "usr_u1" },
@@ -188,21 +209,112 @@ describe("RootTokenController", () => {
 
       await controller.create(ctx as never);
 
-      expect(mockTokenRecordsDb.create).toHaveBeenCalledTimes(2);
-      const calls = (mockTokenRecordsDb.create as ReturnType<typeof mock>).mock.calls;
+      expect(mockDelegatesDb.rotateTokens).not.toHaveBeenCalled();
+    });
+  });
 
-      // First call: RT record
-      const rtRecord = calls[0]![0] as Record<string, unknown>;
-      expect(rtRecord.tokenType).toBe("refresh");
-      expect(rtRecord.expiresAt).toBe(0);
+  // --------------------------------------------------------------------------
+  // Existing root delegate (200) — token rotation
+  // --------------------------------------------------------------------------
 
-      // Second call: AT record
-      const atRecord = calls[1]![0] as Record<string, unknown>;
-      expect(atRecord.tokenType).toBe("access");
-      expect(atRecord.expiresAt).toBeGreaterThan(0);
+  describe("create — existing root delegate (200)", () => {
+    const existingDelegateId = "dlt_ABCDEFGHJK0000000000000000";
 
-      // Both should share the same delegateId
-      expect(rtRecord.delegateId).toBe(atRecord.delegateId);
+    beforeEach(() => {
+      mockDelegatesDb = createMockDelegatesDb({
+        getOrCreateRoot: mock(
+          async (
+            realm: string,
+            _delegateId: string,
+            _tokenHashes: { currentRtHash: string; currentAtHash: string; atExpiresAt: number }
+          ): Promise<{ delegate: Delegate; created: boolean }> => ({
+            delegate: makeFakeDelegate(existingDelegateId, realm),
+            created: false,
+          })
+        ),
+        rotateTokens: mock(async () => true),
+      });
+
+      controller = createRootTokenController({
+        delegatesDb: mockDelegatesDb,
+      });
+    });
+
+    it("returns 200 with rotated tokens for existing root", async () => {
+      const ctx = createMockContext({
+        auth: { type: "jwt", userId: "usr_u1", realm: "usr_u1", role: "authorized" },
+        body: { realm: "usr_u1" },
+      });
+
+      await controller.create(ctx as never);
+
+      expect(ctx.responseData.status).toBe(200);
+      const body = ctx.responseData.body as Record<string, unknown>;
+
+      expect(body.refreshToken).toBeDefined();
+      expect(body.accessToken).toBeDefined();
+      expect(body.accessTokenExpiresAt).toBeGreaterThan(Date.now());
+
+      const delegate = body.delegate as Record<string, unknown>;
+      expect(delegate.delegateId).toBe(existingDelegateId);
+      expect(delegate.realm).toBe("usr_u1");
+    });
+
+    it("calls rotateTokens with expected parameters", async () => {
+      const ctx = createMockContext({
+        auth: { type: "jwt", userId: "usr_u1", realm: "usr_u1", role: "authorized" },
+        body: { realm: "usr_u1" },
+      });
+
+      await controller.create(ctx as never);
+
+      expect(mockDelegatesDb.rotateTokens).toHaveBeenCalledTimes(1);
+      const call = (mockDelegatesDb.rotateTokens as ReturnType<typeof mock>).mock.calls[0]!;
+      const params = call[0] as {
+        delegateId: string;
+        expectedRtHash: string;
+        newRtHash: string;
+        newAtHash: string;
+        newAtExpiresAt: number;
+      };
+      expect(params.delegateId).toBe(existingDelegateId);
+      expect(params.expectedRtHash).toBe("a".repeat(32)); // matches the mock delegate's currentRtHash
+      expect(typeof params.newRtHash).toBe("string");
+      expect(params.newRtHash.length).toBe(32);
+      expect(typeof params.newAtHash).toBe("string");
+      expect(params.newAtHash.length).toBe(32);
+      expect(params.newAtExpiresAt).toBeGreaterThan(Date.now());
+    });
+
+    it("returns 409 when rotateTokens fails (concurrent request)", async () => {
+      mockDelegatesDb = createMockDelegatesDb({
+        getOrCreateRoot: mock(
+          async (
+            realm: string,
+            _delegateId: string,
+            _tokenHashes: { currentRtHash: string; currentAtHash: string; atExpiresAt: number }
+          ): Promise<{ delegate: Delegate; created: boolean }> => ({
+            delegate: makeFakeDelegate(existingDelegateId, realm),
+            created: false,
+          })
+        ),
+        rotateTokens: mock(async () => false),
+      });
+
+      controller = createRootTokenController({
+        delegatesDb: mockDelegatesDb,
+      });
+
+      const ctx = createMockContext({
+        auth: { type: "jwt", userId: "usr_u1", realm: "usr_u1", role: "authorized" },
+        body: { realm: "usr_u1" },
+      });
+
+      await controller.create(ctx as never);
+
+      expect(ctx.responseData.status).toBe(409);
+      const body = ctx.responseData.body as Record<string, unknown>;
+      expect(body.error).toBe("CONCURRENT_REQUEST");
     });
   });
 
@@ -211,7 +323,7 @@ describe("RootTokenController", () => {
   // --------------------------------------------------------------------------
 
   describe("create — errors", () => {
-    it("rejects realm mismatch (403)", async () => {
+    it("rejects realm mismatch (400)", async () => {
       const ctx = createMockContext({
         auth: {
           type: "jwt",
@@ -232,25 +344,27 @@ describe("RootTokenController", () => {
     it("rejects revoked root delegate (403)", async () => {
       mockDelegatesDb = createMockDelegatesDb({
         getOrCreateRoot: mock(
-          async (realm: string, delegateId: string): Promise<Delegate> => ({
-            delegateId,
-            realm,
-            parentId: null,
-            chain: [delegateId],
-            depth: 0,
-            canUpload: true,
-            canManageDepot: true,
-            isRevoked: true,
-            revokedAt: Date.now(),
-            revokedBy: "admin",
-            createdAt: Date.now() - 3600_000,
+          async (
+            realm: string,
+            delegateId: string,
+            tokenHashes: { currentRtHash: string; currentAtHash: string; atExpiresAt: number }
+          ): Promise<{ delegate: Delegate; created: boolean }> => ({
+            delegate: makeFakeDelegate(delegateId, realm, {
+              currentRtHash: tokenHashes.currentRtHash,
+              currentAtHash: tokenHashes.currentAtHash,
+              atExpiresAt: tokenHashes.atExpiresAt,
+              isRevoked: true,
+              revokedAt: Date.now(),
+              revokedBy: "admin",
+              createdAt: Date.now() - 3600_000,
+            }),
+            created: true,
           })
         ),
       });
 
       controller = createRootTokenController({
         delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
       });
 
       const ctx = createMockContext({

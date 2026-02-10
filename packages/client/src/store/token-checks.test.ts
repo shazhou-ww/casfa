@@ -38,9 +38,7 @@ const createRootDelegate = (overrides: Partial<StoredRootDelegate> = {}): Stored
   delegateId: "dlg_root123",
   realm: "test-realm",
   refreshToken: "base64-refresh-token",
-  refreshTokenId: "rt_123",
   accessToken: "base64-access-token",
-  accessTokenId: "at_123",
   accessTokenExpiresAt: Date.now() + 3600_000,
   depth: 0,
   canUpload: true,
@@ -51,7 +49,6 @@ const createRootDelegate = (overrides: Partial<StoredRootDelegate> = {}): Stored
 const createAccessToken = (overrides: Partial<StoredAccessToken> = {}): StoredAccessToken => ({
   tokenBase64: "base64-access-token",
   tokenBytes: new Uint8Array(128),
-  tokenId: "at_access123",
   expiresAt: Date.now() + 3600_000,
   canUpload: true,
   canManageDepot: true,

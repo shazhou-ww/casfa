@@ -35,7 +35,6 @@ import {
   createOwnershipV2Db,
   createRefCountDb,
   createScopeSetNodesDb,
-  createTokenRecordsDb,
   createUsageDb,
   createUserRolesDb,
 } from "../src/db/index.ts";
@@ -295,8 +294,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
 
   // Create DB instances (aligned with DbInstances from bootstrap.ts)
   const db: DbInstances = {
-    delegatesDb: createDelegatesDb({ tableName: config.db.casRealmTable }),
-    tokenRecordsDb: createTokenRecordsDb({ tableName: config.db.tokensTable }),
+    delegatesDb: createDelegatesDb({ tableName: config.db.tokensTable }),
     scopeSetNodesDb: createScopeSetNodesDb({ tableName: config.db.tokensTable }),
     ownershipV2Db: createOwnershipV2Db({ tableName: config.db.tokensTable }),
     depotsDb: createDepotsDb({ tableName: config.db.casRealmTable }),

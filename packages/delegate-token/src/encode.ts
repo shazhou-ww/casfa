@@ -1,105 +1,84 @@
 /**
- * Delegate Token encoding
+ * Delegate Token encoding — v3 (simplified)
  *
- * v2: Delegate-as-entity model
- * Flags low nibble: is_refresh(0), can_upload(1), can_manage_depot(2), reserved(3)
- * Flags high nibble: depth(4-7)
+ * AT (32 bytes): [delegateId 16B] [expiresAt 8B] [nonce 8B]
+ * RT (24 bytes): [delegateId 16B] [nonce 8B]
  */
 
 import {
-  DELEGATE_TOKEN_SIZE,
-  FLAGS,
-  MAGIC_NUMBER,
-  MAX_DEPTH,
-  OFFSETS,
-  SIZES,
+  AT_OFFSETS,
+  AT_SIZE,
+  DELEGATE_ID_SIZE,
+  NONCE_SIZE,
+  RT_OFFSETS,
+  RT_SIZE,
 } from "./constants.ts";
-import type { DelegateTokenInput } from "./types.ts";
+import type { EncodeAccessTokenInput, EncodeRefreshTokenInput } from "./types.ts";
 
 /**
- * Generate cryptographically secure random bytes for salt
+ * Generate cryptographically secure random nonce
  */
-function generateSalt(): Uint8Array {
-  const salt = new Uint8Array(SIZES.SALT);
-  crypto.getRandomValues(salt);
-  return salt;
+function generateNonce(): Uint8Array {
+  const nonce = new Uint8Array(NONCE_SIZE);
+  crypto.getRandomValues(nonce);
+  return nonce;
 }
 
 /**
- * Encode a Delegate Token to 128-byte binary format
+ * Validate delegateId is exactly 16 bytes
+ */
+function validateDelegateId(delegateId: Uint8Array): void {
+  if (delegateId.length !== DELEGATE_ID_SIZE) {
+    throw new Error(
+      `Invalid delegateId length: expected ${DELEGATE_ID_SIZE} bytes, got ${delegateId.length}`
+    );
+  }
+}
+
+/**
+ * Encode an Access Token to 32-byte binary format.
+ *
+ * Layout: [delegateId 16B] [expiresAt 8B LE] [nonce 8B]
  *
  * @param input - Token parameters
- * @returns 128-byte Uint8Array containing the encoded token
- * @throws Error if input validation fails
+ * @returns 32-byte Uint8Array
  */
-export function encodeDelegateToken(input: DelegateTokenInput): Uint8Array {
-  // Validate issuer size
-  if (input.issuer.length !== SIZES.ISSUER) {
-    throw new Error(
-      `Invalid issuer length: expected ${SIZES.ISSUER} bytes, got ${input.issuer.length}`
-    );
-  }
+export function encodeAccessToken(input: EncodeAccessTokenInput): Uint8Array {
+  validateDelegateId(input.delegateId);
 
-  // Validate realm size
-  if (input.realm.length !== SIZES.REALM) {
-    throw new Error(
-      `Invalid realm length: expected ${SIZES.REALM} bytes, got ${input.realm.length}`
-    );
-  }
-
-  // Validate scope size
-  if (input.scope.length !== SIZES.SCOPE) {
-    throw new Error(
-      `Invalid scope length: expected ${SIZES.SCOPE} bytes, got ${input.scope.length}`
-    );
-  }
-
-  // Validate depth
-  if (input.depth < 0 || input.depth > MAX_DEPTH) {
-    throw new Error(`Delegation depth out of range: ${input.depth} (must be 0-${MAX_DEPTH})`);
-  }
-
-  // Allocate buffer
-  const buffer = new Uint8Array(DELEGATE_TOKEN_SIZE);
+  const buffer = new Uint8Array(AT_SIZE);
   const view = new DataView(buffer.buffer);
 
-  // Write magic number (u32 LE)
-  view.setUint32(OFFSETS.MAGIC, MAGIC_NUMBER, true);
+  // Write delegateId (16 bytes)
+  buffer.set(input.delegateId, AT_OFFSETS.DELEGATE_ID);
 
-  // Build and write flags (u32 LE)
-  // Low nibble: bit 0 is_refresh, bit 1 can_upload, bit 2 can_manage_depot, bit 3 reserved
-  // High nibble: bits 4-7 depth
-  let flags = 0;
-  if (input.type === "refresh") {
-    flags |= 1 << FLAGS.IS_REFRESH;
-  }
-  if (input.canUpload) {
-    flags |= 1 << FLAGS.CAN_UPLOAD;
-  }
-  if (input.canManageDepot) {
-    flags |= 1 << FLAGS.CAN_MANAGE_DEPOT;
-  }
-  flags |= (input.depth & FLAGS.DEPTH_MASK) << FLAGS.DEPTH_SHIFT;
-  view.setUint32(OFFSETS.FLAGS, flags, true);
+  // Write expiresAt (u64 LE)
+  view.setBigUint64(AT_OFFSETS.EXPIRES_AT, BigInt(input.expiresAt), true);
 
-  // Write TTL (u64 LE) — 0 for Refresh Tokens
-  view.setBigUint64(OFFSETS.TTL, BigInt(input.ttl), true);
+  // Write nonce (8 bytes)
+  buffer.set(generateNonce(), AT_OFFSETS.NONCE);
 
-  // Write quota (u64 LE, reserved - default 0)
-  view.setBigUint64(OFFSETS.QUOTA, BigInt(input.quota ?? 0), true);
+  return buffer;
+}
 
-  // Generate and write salt (8 bytes)
-  const salt = generateSalt();
-  buffer.set(salt, OFFSETS.SALT);
+/**
+ * Encode a Refresh Token to 24-byte binary format.
+ *
+ * Layout: [delegateId 16B] [nonce 8B]
+ *
+ * @param input - Token parameters
+ * @returns 24-byte Uint8Array
+ */
+export function encodeRefreshToken(input: EncodeRefreshTokenInput): Uint8Array {
+  validateDelegateId(input.delegateId);
 
-  // Write issuer (32 bytes) — Delegate UUID left-padded
-  buffer.set(input.issuer, OFFSETS.ISSUER);
+  const buffer = new Uint8Array(RT_SIZE);
 
-  // Write realm (32 bytes)
-  buffer.set(input.realm, OFFSETS.REALM);
+  // Write delegateId (16 bytes)
+  buffer.set(input.delegateId, RT_OFFSETS.DELEGATE_ID);
 
-  // Write scope (32 bytes)
-  buffer.set(input.scope, OFFSETS.SCOPE);
+  // Write nonce (8 bytes)
+  buffer.set(generateNonce(), RT_OFFSETS.NONCE);
 
   return buffer;
 }

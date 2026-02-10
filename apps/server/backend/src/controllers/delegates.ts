@@ -1,11 +1,13 @@
 /**
- * Delegates Controller
+ * Delegates Controller (token-simplification v3)
  *
  * Handles Delegate entity CRUD operations:
  * - POST /api/realm/{realmId}/delegates — create child delegate + RT + AT
  * - GET /api/realm/{realmId}/delegates — list children
  * - GET /api/realm/{realmId}/delegates/:delegateId — get detail
  * - POST /api/realm/{realmId}/delegates/:delegateId/revoke — revoke
+ *
+ * Token hashes stored directly on Delegate entity (no TokenRecord table).
  */
 
 import type { Delegate } from "@casfa/delegate";
@@ -14,13 +16,8 @@ import type { Context } from "hono";
 import type { DelegatesDb } from "../db/delegates.ts";
 import type { DepotsDb } from "../db/depots.ts";
 import type { ScopeSetNodesDb } from "../db/scope-set-nodes.ts";
-import type { TokenRecordsDb } from "../db/token-records.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
-import {
-  computeRealmHash,
-  computeScopeHash,
-  generateTokenPair,
-} from "../util/delegate-token-utils.ts";
+import { generateTokenPair } from "../util/delegate-token-utils.ts";
 import { toCrockfordBase32 } from "../util/encoding.ts";
 import { blake3Hash } from "../util/hashing.ts";
 import { resolveRelativeScope } from "../util/scope.ts";
@@ -32,7 +29,6 @@ import { generateDelegateId } from "../util/token-id.ts";
 
 export type DelegatesControllerDeps = {
   delegatesDb: DelegatesDb;
-  tokenRecordsDb: TokenRecordsDb;
   scopeSetNodesDb: ScopeSetNodesDb;
   depotsDb: DepotsDb;
   /** Function to get node data by hash */
@@ -57,7 +53,7 @@ const DEFAULT_AT_TTL_SECONDS = 3600; // 1 hour
 // ============================================================================
 
 export const createDelegatesController = (deps: DelegatesControllerDeps): DelegatesController => {
-  const { delegatesDb, tokenRecordsDb, scopeSetNodesDb, getNode } = deps;
+  const { delegatesDb, scopeSetNodesDb, getNode } = deps;
 
   /**
    * POST /api/realm/{realmId}/delegates
@@ -88,7 +84,7 @@ export const createDelegatesController = (deps: DelegatesControllerDeps): Delega
       );
     }
 
-    const parentDelegate = await delegatesDb.get(realmId, parentDelegateId);
+    const parentDelegate = await delegatesDb.get(parentDelegateId);
     if (!parentDelegate) {
       return c.json({ error: "DELEGATE_NOT_FOUND", message: "Parent delegate not found" }, 404);
     }
@@ -173,6 +169,12 @@ export const createDelegatesController = (deps: DelegatesControllerDeps): Delega
     const now = Date.now();
     const expiresAt = body.expiresIn ? now + body.expiresIn * 1000 : undefined;
 
+    // Generate RT + AT pair first (need hashes for delegate creation)
+    const tokenPair = generateTokenPair({
+      delegateId: newDelegateId,
+      accessTokenTtlSeconds: body.tokenTtlSeconds ?? DEFAULT_AT_TTL_SECONDS,
+    });
+
     const newDelegate: Delegate = {
       delegateId: newDelegateId,
       name: body.name,
@@ -188,39 +190,13 @@ export const createDelegatesController = (deps: DelegatesControllerDeps): Delega
       expiresAt,
       isRevoked: false,
       createdAt: now,
+      // Token hashes — stored on delegate, no separate TokenRecord
+      currentRtHash: tokenPair.refreshToken.hash,
+      currentAtHash: tokenPair.accessToken.hash,
+      atExpiresAt: tokenPair.accessToken.expiresAt,
     };
 
     await delegatesDb.create(newDelegate);
-
-    // Generate RT + AT pair
-    const realmHash = computeRealmHash(realmId);
-    const scopeHash = computeScopeHash(resolvedRoots.length > 0 ? resolvedRoots : []);
-
-    const tokenPair = await generateTokenPair({
-      delegateId: newDelegateId,
-      realmHash,
-      scopeHash,
-      depth,
-      canUpload,
-      canManageDepot,
-      accessTokenTtlSeconds: body.tokenTtlSeconds ?? DEFAULT_AT_TTL_SECONDS,
-    });
-
-    // Store token records for RT rotation
-    await tokenRecordsDb.create({
-      tokenId: tokenPair.refreshToken.id,
-      tokenType: "refresh",
-      delegateId: newDelegateId,
-      realm: realmId,
-      expiresAt: 0, // RT never expires independently
-    });
-    await tokenRecordsDb.create({
-      tokenId: tokenPair.accessToken.id,
-      tokenType: "access",
-      delegateId: newDelegateId,
-      realm: realmId,
-      expiresAt: tokenPair.accessToken.expiresAt,
-    });
 
     return c.json(
       {
@@ -238,8 +214,6 @@ export const createDelegatesController = (deps: DelegatesControllerDeps): Delega
         },
         refreshToken: tokenPair.refreshToken.base64,
         accessToken: tokenPair.accessToken.base64,
-        refreshTokenId: tokenPair.refreshToken.id,
-        accessTokenId: tokenPair.accessToken.id,
         accessTokenExpiresAt: tokenPair.accessToken.expiresAt,
       },
       201
@@ -313,7 +287,7 @@ export const createDelegatesController = (deps: DelegatesControllerDeps): Delega
       );
     }
 
-    const delegate = await delegatesDb.get(realmId, delegateId);
+    const delegate = await delegatesDb.get(delegateId);
     if (!delegate) {
       return c.json({ error: "DELEGATE_NOT_FOUND", message: "Delegate not found" }, 404);
     }
@@ -359,7 +333,7 @@ export const createDelegatesController = (deps: DelegatesControllerDeps): Delega
       );
     }
 
-    const delegate = await delegatesDb.get(realmId, delegateId);
+    const delegate = await delegatesDb.get(delegateId);
     if (!delegate) {
       return c.json({ error: "DELEGATE_NOT_FOUND", message: "Delegate not found" }, 404);
     }
@@ -377,8 +351,8 @@ export const createDelegatesController = (deps: DelegatesControllerDeps): Delega
       );
     }
 
-    const revokedBy = callerDelegateId ?? auth.tokenId;
-    const success = await delegatesDb.revoke(realmId, delegateId, revokedBy);
+    const revokedBy = callerDelegateId ?? auth.delegateId;
+    const success = await delegatesDb.revoke(delegateId, revokedBy);
 
     if (!success) {
       return c.json(
@@ -404,15 +378,15 @@ export const createDelegatesController = (deps: DelegatesControllerDeps): Delega
    * Recursively revoke all descendants of a delegate
    */
   async function revokeDescendants(
-    realm: string,
+    _realm: string,
     parentId: string,
     revokedBy: string
   ): Promise<void> {
     const result = await delegatesDb.listChildren(parentId);
     for (const child of result.delegates) {
       if (!child.isRevoked) {
-        await delegatesDb.revoke(realm, child.delegateId, revokedBy);
-        await revokeDescendants(realm, child.delegateId, revokedBy);
+        await delegatesDb.revoke(child.delegateId, revokedBy);
+        await revokeDescendants(_realm, child.delegateId, revokedBy);
       }
     }
   }

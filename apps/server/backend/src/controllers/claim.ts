@@ -147,8 +147,5 @@ export const createClaimController = (deps: ClaimControllerDeps): ClaimControlle
  * Derive delegate ID from auth context — same logic as proof-validation.ts
  */
 function deriveDelegateId(auth: AccessTokenAuthContext): string {
-  if (auth.issuerChain && auth.issuerChain.length > 0) {
-    return auth.issuerChain[auth.issuerChain.length - 1]!;
-  }
-  return auth.tokenId;
+  return auth.delegateId;
 }

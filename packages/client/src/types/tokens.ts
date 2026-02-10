@@ -39,14 +39,10 @@ export type StoredRootDelegate = {
   delegateId: string;
   /** Realm this delegate belongs to */
   realm: string;
-  /** Refresh Token (base64-encoded 128-byte binary) */
+  /** Refresh Token (base64-encoded 24-byte binary) */
   refreshToken: string;
-  /** Refresh Token ID */
-  refreshTokenId: string;
-  /** Access Token (base64-encoded 128-byte binary) */
+  /** Access Token (base64-encoded 32-byte binary) */
   accessToken: string;
-  /** Access Token ID */
-  accessTokenId: string;
   /** Access Token expiration time (epoch ms) */
   accessTokenExpiresAt: number;
   /** Delegate depth (0 = root) */
@@ -104,8 +100,6 @@ export type StoredAccessToken = {
   tokenBase64: string;
   /** Raw 128-byte access token (for PoP computation) */
   tokenBytes: Uint8Array;
-  /** Access Token ID */
-  tokenId: string;
   /** Access Token expiration time (epoch ms) */
   expiresAt: number;
   /** Whether the delegate can upload nodes */
@@ -136,7 +130,6 @@ const decodeBase64 = (base64: string): Uint8Array => {
 export const rootDelegateToAccessToken = (rd: StoredRootDelegate): StoredAccessToken => ({
   tokenBase64: rd.accessToken,
   tokenBytes: decodeBase64(rd.accessToken),
-  tokenId: rd.accessTokenId,
   expiresAt: rd.accessTokenExpiresAt,
   canUpload: rd.canUpload,
   canManageDepot: rd.canManageDepot,

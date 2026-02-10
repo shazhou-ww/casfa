@@ -1,30 +1,26 @@
 /**
- * Access Token Authentication Middleware (New Delegate Model)
+ * Access Token Authentication Middleware (token-simplification v3)
  *
- * Validates Access Tokens by looking up the TokenRecord (from token-records.ts)
- * and the associated Delegate entity (from delegates.ts).
- *
- * Flow:
- *   1. Extract Base64 Bearer token from Authorization header
- *   2. Decode 128-byte binary token, compute tokenId via Blake3
- *   3. Look up TokenRecord — must be type="access", not invalidated, not expired
- *   4. Look up Delegate — must not be revoked, not expired
- *   5. Build AccessTokenAuthContext with Delegate info
+ * Validates Access Tokens by:
+ *   1. Decode 32-byte AT from Authorization: Bearer {base64}
+ *   2. Extract delegateId from token bytes (first 16 bytes)
+ *   3. Look up Delegate by delegateId (single DB read)
+ *   4. Compute Blake3-128 hash of token bytes → compare with delegate.currentAtHash
+ *   5. Check AT expiration, delegate revoked/expired
+ *   6. Build AccessTokenAuthContext
  */
 
-import type { Delegate } from "@casfa/delegate";
+import { AT_SIZE, decodeToken } from "@casfa/delegate-token";
 import type { MiddlewareHandler } from "hono";
 import type { DelegatesDb } from "../db/delegates.ts";
-import type { TokenRecordsDb } from "../db/token-records.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
-import { computeTokenId, TOKEN_SIZE } from "../util/token.ts";
+import { bytesToDelegateId, computeTokenHash } from "../util/delegate-token-utils.ts";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export type AccessTokenMiddlewareDeps = {
-  tokenRecordsDb: TokenRecordsDb;
   delegatesDb: DelegatesDb;
 };
 
@@ -41,7 +37,7 @@ export type AccessTokenMiddlewareDeps = {
 export const createAccessTokenMiddleware = (
   deps: AccessTokenMiddlewareDeps
 ): MiddlewareHandler<Env> => {
-  const { tokenRecordsDb, delegatesDb } = deps;
+  const { delegatesDb } = deps;
 
   return async (c, next) => {
     // 1. Extract Authorization header
@@ -57,13 +53,13 @@ export const createAccessTokenMiddleware = (
 
     const tokenBase64 = parts[1]!;
 
-    // 2. Decode token bytes
+    // 2. Decode token bytes — must be 32 bytes (AT)
     let tokenBytes: Uint8Array;
     try {
       const buffer = Buffer.from(tokenBase64, "base64");
-      if (buffer.length !== TOKEN_SIZE) {
+      if (buffer.length !== AT_SIZE) {
         return c.json(
-          { error: "INVALID_TOKEN_FORMAT", message: `Token must be ${TOKEN_SIZE} bytes` },
+          { error: "INVALID_TOKEN_FORMAT", message: `Access Token must be ${AT_SIZE} bytes` },
           401
         );
       }
@@ -72,46 +68,32 @@ export const createAccessTokenMiddleware = (
       return c.json({ error: "INVALID_TOKEN_FORMAT", message: "Invalid Base64 encoding" }, 401);
     }
 
-    // 3. Look up TokenRecord
-    const tokenId = computeTokenId(tokenBytes);
-    const tokenRecord = await tokenRecordsDb.get(tokenId);
-
-    if (!tokenRecord) {
-      return c.json({ error: "TOKEN_NOT_FOUND", message: "Token not found or invalid" }, 401);
+    // 3. Decode token to extract delegateId
+    let decoded;
+    try {
+      decoded = decodeToken(tokenBytes);
+    } catch {
+      return c.json({ error: "INVALID_TOKEN_FORMAT", message: "Invalid token format" }, 401);
     }
 
-    // Must be access token
-    if (tokenRecord.tokenType !== "access") {
+    if (decoded.type !== "access") {
       return c.json(
-        {
-          error: "ACCESS_TOKEN_REQUIRED",
-          message: "This endpoint requires an Access Token",
-        },
+        { error: "ACCESS_TOKEN_REQUIRED", message: "This endpoint requires an Access Token" },
         403
       );
     }
 
-    // Check invalidated (token family invalidation)
-    if (tokenRecord.isInvalidated) {
-      return c.json({ error: "TOKEN_INVALIDATED", message: "Token has been invalidated" }, 401);
-    }
+    // Convert raw delegateId bytes → dlt_CB32 string
+    const delegateId = bytesToDelegateId(decoded.delegateId);
 
-    // Check expired
-    if (tokenRecord.expiresAt > 0 && tokenRecord.expiresAt < Date.now()) {
-      return c.json({ error: "TOKEN_EXPIRED", message: "Token has expired" }, 401);
-    }
-
-    // 4. Look up Delegate
-    const delegate: Delegate | null = await delegatesDb.get(
-      tokenRecord.realm,
-      tokenRecord.delegateId
-    );
+    // 4. Look up Delegate — single DB read
+    const delegate = await delegatesDb.get(delegateId);
 
     if (!delegate) {
       return c.json({ error: "DELEGATE_NOT_FOUND", message: "Associated delegate not found" }, 401);
     }
 
-    // Check delegate revoked
+    // 5. Check delegate revoked
     if (delegate.isRevoked) {
       return c.json({ error: "DELEGATE_REVOKED", message: "The delegate has been revoked" }, 401);
     }
@@ -121,10 +103,20 @@ export const createAccessTokenMiddleware = (
       return c.json({ error: "DELEGATE_EXPIRED", message: "The delegate has expired" }, 401);
     }
 
-    // 5. Build auth context from Delegate
+    // 6. Verify AT hash matches
+    const atHash = computeTokenHash(tokenBytes);
+    if (atHash !== delegate.currentAtHash) {
+      return c.json({ error: "TOKEN_INVALID", message: "Access token is no longer valid" }, 401);
+    }
+
+    // 7. Check AT expiration (from delegate's stored atExpiresAt)
+    if (delegate.atExpiresAt < Date.now()) {
+      return c.json({ error: "TOKEN_EXPIRED", message: "Access token has expired" }, 401);
+    }
+
+    // 8. Build auth context from Delegate
     const auth: AccessTokenAuthContext = {
       type: "access",
-      tokenId,
       tokenBytes,
       delegate,
       delegateId: delegate.delegateId,

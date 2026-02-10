@@ -1,5 +1,5 @@
 /**
- * Unit tests for Delegates Controller
+ * Unit tests for Delegates Controller (token-simplification v3)
  *
  * Tests delegate CRUD operations with mocked dependencies:
  * - Create child delegate with permission validation
@@ -7,6 +7,16 @@
  * - Get delegate detail (ancestor check)
  * - Revoke delegate (cascading)
  * - Permission escalation rejection
+ *
+ * Key changes from v2:
+ * - No tokenRecordsDb dependency
+ * - delegatesDb.get takes only (delegateId) — no realm parameter
+ * - delegatesDb.revoke takes only (delegateId, revokedBy) — no realm parameter
+ * - Delegate entity stores currentRtHash, currentAtHash, atExpiresAt directly
+ * - AccessTokenAuthContext no longer has tokenId field
+ * - Response for create no longer includes refreshTokenId or accessTokenId
+ * - generateTokenPair is synchronous and returns .hash instead of .id
+ * - DelegatesDb includes rotateTokens method
  */
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
@@ -18,7 +28,6 @@ import {
 import type { DelegatesDb } from "../../src/db/delegates.ts";
 import type { DepotsDb } from "../../src/db/depots.ts";
 import type { ScopeSetNodesDb } from "../../src/db/scope-set-nodes.ts";
-import type { TokenRecordsDb } from "../../src/db/token-records.ts";
 import type { AccessTokenAuthContext } from "../../src/types.ts";
 
 // ============================================================================
@@ -28,6 +37,10 @@ import type { AccessTokenAuthContext } from "../../src/types.ts";
 const TEST_REALM = "usr_testuser";
 const ROOT_DELEGATE_ID = "root-dlg-001";
 const CHILD_DELEGATE_ID = "child-dlg-001";
+
+const MOCK_RT_HASH = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
+const MOCK_AT_HASH = "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3";
+const MOCK_AT_EXPIRES_AT = Date.now() + 3600_000;
 
 // ============================================================================
 // Mock factories
@@ -44,6 +57,9 @@ function makeDelegate(overrides?: Partial<Delegate>): Delegate {
     canManageDepot: true,
     isRevoked: false,
     createdAt: Date.now(),
+    currentRtHash: MOCK_RT_HASH,
+    currentAtHash: MOCK_AT_HASH,
+    atExpiresAt: MOCK_AT_EXPIRES_AT,
     ...overrides,
   };
 }
@@ -64,7 +80,6 @@ function createMockAuth(overrides?: Partial<AccessTokenAuthContext>): AccessToke
   return {
     type: "access",
     realm: TEST_REALM,
-    tokenId: "tok-001",
     tokenBytes: new Uint8Array(128),
     delegate: { delegateId: ROOT_DELEGATE_ID, chain: [ROOT_DELEGATE_ID] } as never,
     delegateId: ROOT_DELEGATE_ID,
@@ -78,27 +93,27 @@ function createMockAuth(overrides?: Partial<AccessTokenAuthContext>): AccessToke
 function createMockDelegatesDb(overrides?: Partial<DelegatesDb>): DelegatesDb {
   return {
     create: mock(async () => {}),
-    get: mock(async (_realm: string, id: string) => {
+    get: mock(async (id: string) => {
       if (id === ROOT_DELEGATE_ID) return makeDelegate();
       if (id === CHILD_DELEGATE_ID) return makeChildDelegate();
       return null;
     }),
     revoke: mock(async () => true),
     listChildren: mock(async () => ({ delegates: [], nextCursor: undefined })),
-    getOrCreateRoot: mock(async (realm: string, id: string) =>
-      makeDelegate({ delegateId: id, realm })
+    rotateTokens: mock(async () => true),
+    getOrCreateRoot: mock(
+      async (realm: string, id: string, tokenHashes: { currentRtHash: string; currentAtHash: string; atExpiresAt: number }) => ({
+        delegate: makeDelegate({
+          delegateId: id,
+          realm,
+          currentRtHash: tokenHashes.currentRtHash,
+          currentAtHash: tokenHashes.currentAtHash,
+          atExpiresAt: tokenHashes.atExpiresAt,
+        }),
+        created: true,
+      })
     ),
     ...overrides,
-  };
-}
-
-function createMockTokenRecordsDb(): TokenRecordsDb {
-  return {
-    create: mock(async () => {}),
-    get: mock(async () => null),
-    markUsed: mock(async () => true),
-    invalidateByDelegate: mock(async () => 0),
-    listByDelegate: mock(async () => ({ tokens: [], nextCursor: undefined })),
   };
 }
 
@@ -157,15 +172,12 @@ function createMockContext(options: {
 describe("DelegatesController", () => {
   let controller: DelegatesController;
   let mockDelegatesDb: DelegatesDb;
-  let mockTokenRecordsDb: TokenRecordsDb;
 
   beforeEach(() => {
     mockDelegatesDb = createMockDelegatesDb();
-    mockTokenRecordsDb = createMockTokenRecordsDb();
 
     controller = createDelegatesController({
       delegatesDb: mockDelegatesDb,
-      tokenRecordsDb: mockTokenRecordsDb,
       scopeSetNodesDb: createMockScopeSetNodesDb(),
       depotsDb: createMockDepotsDb(),
       getNode: mock(async () => null),
@@ -198,15 +210,16 @@ describe("DelegatesController", () => {
       expect(delegate.canUpload).toBe(false);
       expect(delegate.canManageDepot).toBe(false);
 
-      // Tokens
+      // Tokens — no refreshTokenId/accessTokenId in v3
       expect(body.refreshToken).toBeDefined();
       expect(body.accessToken).toBeDefined();
-      expect(body.refreshTokenId).toBeDefined();
-      expect(body.accessTokenId).toBeDefined();
-      expect((body.refreshTokenId as string).startsWith("tkn_")).toBe(true);
+      expect(body.accessTokenExpiresAt).toBeDefined();
+      // v3: no refreshTokenId or accessTokenId
+      expect(body.refreshTokenId).toBeUndefined();
+      expect(body.accessTokenId).toBeUndefined();
     });
 
-    it("stores delegate in DB", async () => {
+    it("stores delegate in DB with token hashes", async () => {
       const ctx = createMockContext({
         auth: createMockAuth(),
         body: { canUpload: false },
@@ -221,9 +234,13 @@ describe("DelegatesController", () => {
       expect(savedDelegate.realm).toBe(TEST_REALM);
       expect(savedDelegate.parentId).toBe(ROOT_DELEGATE_ID);
       expect(savedDelegate.depth).toBe(1);
+      // v3: token hashes stored directly on delegate
+      expect(savedDelegate.currentRtHash).toBeDefined();
+      expect(savedDelegate.currentAtHash).toBeDefined();
+      expect(savedDelegate.atExpiresAt).toBeGreaterThan(0);
     });
 
-    it("stores 2 token records (RT + AT)", async () => {
+    it("does not create any token records (v3: hashes on delegate)", async () => {
       const ctx = createMockContext({
         auth: createMockAuth(),
         body: { canUpload: false },
@@ -232,7 +249,8 @@ describe("DelegatesController", () => {
 
       await controller.create(ctx as never);
 
-      expect(mockTokenRecordsDb.create).toHaveBeenCalledTimes(2);
+      // v3: no tokenRecordsDb — only delegatesDb.create is called
+      expect(mockDelegatesDb.create).toHaveBeenCalledTimes(1);
     });
 
     it("rejects realm mismatch (403)", async () => {
@@ -259,7 +277,6 @@ describe("DelegatesController", () => {
       });
       controller = createDelegatesController({
         delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
         scopeSetNodesDb: createMockScopeSetNodesDb(),
         depotsDb: createMockDepotsDb(),
         getNode: mock(async () => null),
@@ -288,7 +305,6 @@ describe("DelegatesController", () => {
       });
       controller = createDelegatesController({
         delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
         scopeSetNodesDb: createMockScopeSetNodesDb(),
         depotsDb: createMockDepotsDb(),
         getNode: mock(async () => null),
@@ -313,7 +329,6 @@ describe("DelegatesController", () => {
       });
       controller = createDelegatesController({
         delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
         scopeSetNodesDb: createMockScopeSetNodesDb(),
         depotsDb: createMockDepotsDb(),
         getNode: mock(async () => null),
@@ -338,7 +353,6 @@ describe("DelegatesController", () => {
       });
       controller = createDelegatesController({
         delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
         scopeSetNodesDb: createMockScopeSetNodesDb(),
         depotsDb: createMockDepotsDb(),
         getNode: mock(async () => null),
@@ -371,7 +385,6 @@ describe("DelegatesController", () => {
       });
       controller = createDelegatesController({
         delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
         scopeSetNodesDb: createMockScopeSetNodesDb(),
         depotsDb: createMockDepotsDb(),
         getNode: mock(async () => null),
@@ -400,7 +413,6 @@ describe("DelegatesController", () => {
       });
       controller = createDelegatesController({
         delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
         scopeSetNodesDb: createMockScopeSetNodesDb(),
         depotsDb: createMockDepotsDb(),
         getNode: mock(async () => null),
@@ -429,7 +441,6 @@ describe("DelegatesController", () => {
       });
       controller = createDelegatesController({
         delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
         scopeSetNodesDb: createMockScopeSetNodesDb(),
         depotsDb: createMockDepotsDb(),
         getNode: mock(async () => null),
@@ -498,13 +509,12 @@ describe("DelegatesController", () => {
         chain: ["other-parent", "target-dlg"],
       });
       mockDelegatesDb = createMockDelegatesDb({
-        get: mock(async (_r: string, id: string) =>
+        get: mock(async (id: string) =>
           id === "target-dlg" ? targetDelegate : makeDelegate()
         ),
       });
       controller = createDelegatesController({
         delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
         scopeSetNodesDb: createMockScopeSetNodesDb(),
         depotsDb: createMockDepotsDb(),
         getNode: mock(async () => null),
@@ -540,7 +550,7 @@ describe("DelegatesController", () => {
       expect(body.revokedAt).toBeGreaterThan(0);
     });
 
-    it("calls delegatesDb.revoke", async () => {
+    it("calls delegatesDb.revoke with (delegateId, revokedBy)", async () => {
       const ctx = createMockContext({
         auth: createMockAuth(),
         params: { realmId: TEST_REALM, delegateId: CHILD_DELEGATE_ID },
@@ -553,7 +563,7 @@ describe("DelegatesController", () => {
 
     it("returns 409 for already-revoked delegate", async () => {
       mockDelegatesDb = createMockDelegatesDb({
-        get: mock(async (_r: string, id: string) => {
+        get: mock(async (id: string) => {
           if (id === CHILD_DELEGATE_ID) {
             return makeChildDelegate({ isRevoked: true });
           }
@@ -562,7 +572,6 @@ describe("DelegatesController", () => {
       });
       controller = createDelegatesController({
         delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
         scopeSetNodesDb: createMockScopeSetNodesDb(),
         depotsDb: createMockDepotsDb(),
         getNode: mock(async () => null),
@@ -601,7 +610,7 @@ describe("DelegatesController", () => {
 
       let _listCallCount = 0;
       mockDelegatesDb = createMockDelegatesDb({
-        get: mock(async (_r: string, id: string) => {
+        get: mock(async (id: string) => {
           if (id === CHILD_DELEGATE_ID) return makeChildDelegate();
           if (id === ROOT_DELEGATE_ID) return makeDelegate();
           return null;
@@ -618,7 +627,6 @@ describe("DelegatesController", () => {
 
       controller = createDelegatesController({
         delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
         scopeSetNodesDb: createMockScopeSetNodesDb(),
         depotsDb: createMockDepotsDb(),
         getNode: mock(async () => null),

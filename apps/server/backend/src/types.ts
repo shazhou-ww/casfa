@@ -63,12 +63,11 @@ export type JwtAuthContext = BaseAuthContext & {
 /**
  * Access Token 认证上下文（访问 Token — 新 Delegate 模型）
  *
- * Access Token 通过 TokenRecordsDb + DelegatesDb 验证。
+ * Access Token 通过 Delegate 实体上的 hash 验证。
  * delegate 包含 scope、chain、permissions 等信息。
  */
 export type AccessTokenAuthContext = BaseAuthContext & {
   type: "access";
-  tokenId: string;
   tokenBytes: Uint8Array;
   /** The Delegate entity this token belongs to */
   delegate: Delegate;

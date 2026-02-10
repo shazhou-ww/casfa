@@ -1,108 +1,74 @@
 /**
- * Unit tests for Refresh Controller
+ * Unit tests for Refresh Controller (token-simplification v3)
  *
  * Tests RT rotation flow:
- * - Valid RT → new RT + AT (rotation)
- * - Replay detection → 409 + family invalidation
+ * - Valid RT → new RT + AT (rotation via atomic rotateTokens)
+ * - RT hash mismatch → 401 TOKEN_INVALID (no auto-revoke)
+ * - Concurrent rotation → 409 TOKEN_INVALID (rotateTokens fails)
  * - Missing / invalid header → 401
- * - Not-a-refresh-token → 400
- * - Revoked / expired delegate → 401
+ * - Not-a-refresh-token (AT used as RT) → 400
+ * - Revoked / expired / missing delegate → 401
  */
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { Delegate } from "@casfa/delegate";
+import { encodeAccessToken, encodeRefreshToken, RT_SIZE } from "@casfa/delegate-token";
 import {
-  computeTokenId as computeTokenIdRaw,
-  type DelegateTokenInput,
-  encodeDelegateToken,
-  formatTokenId,
-} from "@casfa/delegate-token";
-import { blake3 } from "@noble/hashes/blake3";
-import { createRefreshController, type RefreshController } from "../../src/controllers/refresh.ts";
+  createRefreshController,
+  type RefreshController,
+} from "../../src/controllers/refresh.ts";
 import type { DelegatesDb } from "../../src/db/delegates.ts";
-import type {
-  CreateTokenRecordInput,
-  TokenRecord,
-  TokenRecordsDb,
-} from "../../src/db/token-records.ts";
-import {
-  computeRealmHash,
-  computeScopeHash,
-  delegateIdToIssuer,
-} from "../../src/util/delegate-token-utils.ts";
+import { fromCrockfordBase32 } from "../../src/util/encoding.ts";
+import { computeTokenHash } from "../../src/util/delegate-token-utils.ts";
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-const blake3_128 = (data: Uint8Array): Uint8Array => blake3(data, { dkLen: 16 });
-
 const testDelegateId = "dlt_04HMASW9NF6YY0938NKRKAYDXW";
 const testRealm = "usr_testuser";
 
-async function makeRefreshToken(): Promise<{ bytes: Uint8Array; base64: string; tokenId: string }> {
-  const issuer = delegateIdToIssuer(testDelegateId);
-  const realmHash = computeRealmHash(testRealm);
-  const scopeHash = computeScopeHash([]);
+/** Decode a dlt_CB32 delegate ID to raw 16 bytes */
+function delegateIdToBytes(delegateId: string): Uint8Array {
+  return fromCrockfordBase32(delegateId.slice(4));
+}
 
-  const input: DelegateTokenInput = {
-    type: "refresh",
-    ttl: 0,
-    canUpload: true,
-    canManageDepot: true,
-    issuer,
-    realm: realmHash,
-    scope: scopeHash,
-    depth: 0,
-  };
+const testDelegateIdBytes = delegateIdToBytes(testDelegateId);
 
-  const bytes = encodeDelegateToken(input);
-  const idRaw = await computeTokenIdRaw(bytes, blake3_128);
-  const tokenId = formatTokenId(idRaw);
+/**
+ * Create a 24-byte Refresh Token for the test delegate.
+ * Returns raw bytes, base64 encoding, and Blake3-128 hash (hex).
+ */
+function makeRefreshToken(): { bytes: Uint8Array; base64: string; hash: string } {
+  const bytes = encodeRefreshToken({ delegateId: testDelegateIdBytes });
+  const hash = computeTokenHash(bytes);
   const base64 = Buffer.from(bytes).toString("base64");
-
-  return { bytes, base64, tokenId };
+  return { bytes, base64, hash };
 }
 
-async function makeAccessToken(): Promise<{ bytes: Uint8Array; base64: string; tokenId: string }> {
-  const issuer = delegateIdToIssuer(testDelegateId);
-  const realmHash = computeRealmHash(testRealm);
-  const scopeHash = computeScopeHash([]);
-
-  const input: DelegateTokenInput = {
-    type: "access",
-    ttl: Date.now() + 3600_000,
-    canUpload: true,
-    canManageDepot: true,
-    issuer,
-    realm: realmHash,
-    scope: scopeHash,
-    depth: 0,
-  };
-
-  const bytes = encodeDelegateToken(input);
-  const idRaw = await computeTokenIdRaw(bytes, blake3_128);
-  const tokenId = formatTokenId(idRaw);
+/**
+ * Create a 32-byte Access Token for the test delegate.
+ * Returns raw bytes, base64 encoding, and Blake3-128 hash (hex).
+ */
+function makeAccessToken(): { bytes: Uint8Array; base64: string; hash: string } {
+  const bytes = encodeAccessToken({
+    delegateId: testDelegateIdBytes,
+    expiresAt: Date.now() + 3600_000,
+  });
+  const hash = computeTokenHash(bytes);
   const base64 = Buffer.from(bytes).toString("base64");
-
-  return { bytes, base64, tokenId };
+  return { bytes, base64, hash };
 }
 
-function makeTokenRecord(tokenId: string, overrides?: Partial<TokenRecord>): TokenRecord {
-  return {
-    tokenId,
-    tokenType: "refresh",
-    delegateId: testDelegateId,
-    realm: testRealm,
-    expiresAt: 0,
-    isUsed: false,
-    isInvalidated: false,
-    createdAt: Date.now(),
-    ...overrides,
-  };
-}
-
+/**
+ * Create a Delegate entity with token hashes matching the given RT.
+ * If no rtHash/atHash supplied, generates a fresh pair.
+ */
 function makeDelegate(overrides?: Partial<Delegate>): Delegate {
+  // Generate default token hashes if not provided
+  const defaultRt = makeRefreshToken();
+  const defaultAt = makeAccessToken();
+
   return {
     delegateId: testDelegateId,
     realm: testRealm,
@@ -113,6 +79,9 @@ function makeDelegate(overrides?: Partial<Delegate>): Delegate {
     canManageDepot: true,
     isRevoked: false,
     createdAt: Date.now(),
+    currentRtHash: defaultRt.hash,
+    currentAtHash: defaultAt.hash,
+    atExpiresAt: Date.now() + 3600_000,
     ...overrides,
   };
 }
@@ -127,23 +96,17 @@ function createMockDelegatesDb(overrides?: Partial<DelegatesDb>): DelegatesDb {
     get: mock(async () => makeDelegate()),
     revoke: mock(async () => true),
     listChildren: mock(async () => ({ delegates: [], nextCursor: undefined })),
-    getOrCreateRoot: mock(async (realm: string, id: string) =>
-      makeDelegate({ delegateId: id, realm })
-    ),
-    ...overrides,
-  };
-}
-
-function createMockTokenRecordsDb(
-  tokenRecordFn?: (tokenId: string) => TokenRecord | null,
-  overrides?: Partial<TokenRecordsDb>
-): TokenRecordsDb {
-  return {
-    create: mock(async () => {}),
-    get: mock(async (tokenId: string) => tokenRecordFn?.(tokenId) ?? null),
-    markUsed: mock(async () => true),
-    invalidateByDelegate: mock(async () => 0),
-    listByDelegate: mock(async () => ({ tokens: [], nextCursor: undefined })),
+    rotateTokens: mock(async () => true),
+    getOrCreateRoot: mock(async (realm: string, id: string, tokenHashes) => ({
+      delegate: makeDelegate({
+        delegateId: id,
+        realm,
+        currentRtHash: tokenHashes.currentRtHash,
+        currentAtHash: tokenHashes.currentAtHash,
+        atExpiresAt: tokenHashes.atExpiresAt,
+      }),
+      created: true,
+    })),
     ...overrides,
   };
 }
@@ -181,25 +144,22 @@ function createMockContext(authHeader?: string) {
 describe("RefreshController", () => {
   let controller: RefreshController;
   let mockDelegatesDb: DelegatesDb;
-  let mockTokenRecordsDb: TokenRecordsDb;
 
   // --------------------------------------------------------------------------
   // Successful rotation
   // --------------------------------------------------------------------------
 
   describe("refresh — success", () => {
-    it("rotates RT: returns new RT + AT", async () => {
-      const rt = await makeRefreshToken();
+    it("rotates RT: returns new RT + AT + delegateId", async () => {
+      const rt = makeRefreshToken();
 
-      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
-        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null
-      );
-      mockDelegatesDb = createMockDelegatesDb();
-
-      controller = createRefreshController({
-        delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
+      // Delegate's currentRtHash matches the presented RT
+      mockDelegatesDb = createMockDelegatesDb({
+        get: mock(async () => makeDelegate({ currentRtHash: rt.hash })),
+        rotateTokens: mock(async () => true),
       });
+
+      controller = createRefreshController({ delegatesDb: mockDelegatesDb });
 
       const ctx = createMockContext(`Bearer ${rt.base64}`);
       await controller.refresh(ctx as never);
@@ -209,59 +169,65 @@ describe("RefreshController", () => {
 
       expect(body.refreshToken).toBeDefined();
       expect(body.accessToken).toBeDefined();
-      expect(body.refreshTokenId).toBeDefined();
-      expect(body.accessTokenId).toBeDefined();
+      expect(body.accessTokenExpiresAt).toBeDefined();
       expect(body.delegateId).toBe(testDelegateId);
 
-      // New token IDs should be tkn_*
-      expect((body.refreshTokenId as string).startsWith("tkn_")).toBe(true);
-      expect((body.accessTokenId as string).startsWith("tkn_")).toBe(true);
+      // Response should NOT include refreshTokenId or accessTokenId (removed in v3)
+      expect(body.refreshTokenId).toBeUndefined();
+      expect(body.accessTokenId).toBeUndefined();
     });
 
-    it("marks old RT as used", async () => {
-      const rt = await makeRefreshToken();
+    it("calls rotateTokens with correct parameters", async () => {
+      const rt = makeRefreshToken();
 
-      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
-        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null
-      );
-      mockDelegatesDb = createMockDelegatesDb();
-
-      controller = createRefreshController({
-        delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
+      const rotateTokensMock = mock(async () => true);
+      mockDelegatesDb = createMockDelegatesDb({
+        get: mock(async () => makeDelegate({ currentRtHash: rt.hash })),
+        rotateTokens: rotateTokensMock,
       });
+
+      controller = createRefreshController({ delegatesDb: mockDelegatesDb });
 
       const ctx = createMockContext(`Bearer ${rt.base64}`);
       await controller.refresh(ctx as never);
 
-      expect(mockTokenRecordsDb.markUsed).toHaveBeenCalledWith(rt.tokenId);
+      expect(rotateTokensMock).toHaveBeenCalledTimes(1);
+      const calls = rotateTokensMock.mock.calls as unknown as Array<[{
+        delegateId: string;
+        expectedRtHash: string;
+        newRtHash: string;
+        newAtHash: string;
+        newAtExpiresAt: number;
+      }]>;
+      const args = calls[0]![0];
+
+      expect(args.delegateId).toBe(testDelegateId);
+      expect(args.expectedRtHash).toBe(rt.hash);
+      // New hashes should be non-empty hex strings (32 chars = 16 bytes hex)
+      expect(args.newRtHash).toMatch(/^[0-9a-f]{32}$/);
+      expect(args.newAtHash).toMatch(/^[0-9a-f]{32}$/);
+      expect(args.newAtExpiresAt).toBeGreaterThan(Date.now());
     });
 
-    it("stores 2 new token records with same delegateId", async () => {
-      const rt = await makeRefreshToken();
+    it("looks up delegate by delegateId only (no realm)", async () => {
+      const rt = makeRefreshToken();
 
-      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
-        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null
-      );
-      mockDelegatesDb = createMockDelegatesDb();
-
-      controller = createRefreshController({
-        delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
+      const getMock = mock(async () => makeDelegate({ currentRtHash: rt.hash }));
+      mockDelegatesDb = createMockDelegatesDb({
+        get: getMock,
+        rotateTokens: mock(async () => true),
       });
+
+      controller = createRefreshController({ delegatesDb: mockDelegatesDb });
 
       const ctx = createMockContext(`Bearer ${rt.base64}`);
       await controller.refresh(ctx as never);
 
-      expect(mockTokenRecordsDb.create).toHaveBeenCalledTimes(2);
-      const calls = (mockTokenRecordsDb.create as ReturnType<typeof mock>).mock.calls;
-
-      const newRt = calls[0]![0] as CreateTokenRecordInput;
-      const newAt = calls[1]![0] as CreateTokenRecordInput;
-      expect(newRt.tokenType).toBe("refresh");
-      expect(newAt.tokenType).toBe("access");
-      expect(newRt.delegateId).toBe(testDelegateId);
-      expect(newAt.delegateId).toBe(testDelegateId);
+      expect(getMock).toHaveBeenCalledTimes(1);
+      // get() now takes only delegateId — verify single argument
+      const getCalls = getMock.mock.calls as unknown as Array<[string]>;
+      expect(getCalls.length).toBe(1);
+      expect(getCalls[0]![0]).toBe(testDelegateId);
     });
   });
 
@@ -272,11 +238,7 @@ describe("RefreshController", () => {
   describe("refresh — auth header errors", () => {
     beforeEach(() => {
       mockDelegatesDb = createMockDelegatesDb();
-      mockTokenRecordsDb = createMockTokenRecordsDb();
-      controller = createRefreshController({
-        delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
-      });
+      controller = createRefreshController({ delegatesDb: mockDelegatesDb });
     });
 
     it("returns 401 for missing Authorization header", async () => {
@@ -299,165 +261,110 @@ describe("RefreshController", () => {
       const ctx = createMockContext("Bearer !!!not-base64!!!");
       await controller.refresh(ctx as never);
 
-      // Will fail at size check or base64 decode
       expect(ctx.responseData.status).toBe(401);
     });
 
-    it("returns 401 for wrong token size", async () => {
-      const tooShort = Buffer.from(new Uint8Array(64)).toString("base64");
+    it("returns 401 for wrong token size (too short)", async () => {
+      const tooShort = Buffer.from(new Uint8Array(10)).toString("base64");
       const ctx = createMockContext(`Bearer ${tooShort}`);
       await controller.refresh(ctx as never);
 
       expect(ctx.responseData.status).toBe(401);
     });
+
+    it("returns 401 for wrong token size (too long — 64 bytes)", async () => {
+      const tooLong = Buffer.from(new Uint8Array(64)).toString("base64");
+      const ctx = createMockContext(`Bearer ${tooLong}`);
+      await controller.refresh(ctx as never);
+
+      expect(ctx.responseData.status).toBe(401);
+    });
   });
 
   // --------------------------------------------------------------------------
-  // Error: not a refresh token
+  // Error: not a refresh token (AT used as RT)
   // --------------------------------------------------------------------------
 
   describe("refresh — not a refresh token", () => {
-    it("returns 400 for access token used as RT", async () => {
-      const at = await makeAccessToken();
+    it("returns 400 for access token (32 bytes) used as RT", async () => {
+      const at = makeAccessToken();
 
       mockDelegatesDb = createMockDelegatesDb();
-      mockTokenRecordsDb = createMockTokenRecordsDb();
-      controller = createRefreshController({
-        delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
-      });
+      controller = createRefreshController({ delegatesDb: mockDelegatesDb });
 
       const ctx = createMockContext(`Bearer ${at.base64}`);
       await controller.refresh(ctx as never);
 
-      expect(ctx.responseData.status).toBe(400);
-      const body = ctx.responseData.body as Record<string, unknown>;
-      expect(body.error).toBe("NOT_REFRESH_TOKEN");
+      // AT is 32 bytes, RT must be 24 bytes → size check fails first → 401
+      expect(ctx.responseData.status).toBe(401);
     });
   });
 
   // --------------------------------------------------------------------------
-  // Error: token not found
+  // Error: RT hash mismatch (stale or replayed RT)
   // --------------------------------------------------------------------------
 
-  describe("refresh — token not found", () => {
-    it("returns 401 when token record not in DB", async () => {
-      const rt = await makeRefreshToken();
+  describe("refresh — RT hash mismatch", () => {
+    it("returns 401 TOKEN_INVALID when RT hash does not match delegate.currentRtHash", async () => {
+      const rt = makeRefreshToken();
 
-      mockDelegatesDb = createMockDelegatesDb();
-      mockTokenRecordsDb = createMockTokenRecordsDb(() => null);
-      controller = createRefreshController({
-        delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
+      // Delegate has a DIFFERENT currentRtHash (simulates stale RT)
+      const staleHash = "a".repeat(32);
+      mockDelegatesDb = createMockDelegatesDb({
+        get: mock(async () => makeDelegate({ currentRtHash: staleHash })),
       });
+
+      controller = createRefreshController({ delegatesDb: mockDelegatesDb });
 
       const ctx = createMockContext(`Bearer ${rt.base64}`);
       await controller.refresh(ctx as never);
 
       expect(ctx.responseData.status).toBe(401);
       const body = ctx.responseData.body as Record<string, unknown>;
-      expect(body.error).toBe("TOKEN_NOT_FOUND");
+      expect(body.error).toBe("TOKEN_INVALID");
     });
   });
 
   // --------------------------------------------------------------------------
-  // Error: token invalidated
+  // Error: concurrent rotation → rotateTokens fails → 409
   // --------------------------------------------------------------------------
 
-  describe("refresh — token invalidated", () => {
-    it("returns 401 when token family is invalidated", async () => {
-      const rt = await makeRefreshToken();
+  describe("refresh — concurrent rotation (rotateTokens fails)", () => {
+    it("returns 409 TOKEN_INVALID when rotateTokens returns false", async () => {
+      const rt = makeRefreshToken();
 
-      mockDelegatesDb = createMockDelegatesDb();
-      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
-        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId, { isInvalidated: true }) : null
-      );
-      controller = createRefreshController({
-        delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
+      // RT hash matches, but rotateTokens fails (another request rotated first)
+      mockDelegatesDb = createMockDelegatesDb({
+        get: mock(async () => makeDelegate({ currentRtHash: rt.hash })),
+        rotateTokens: mock(async () => false),
       });
 
-      const ctx = createMockContext(`Bearer ${rt.base64}`);
-      await controller.refresh(ctx as never);
-
-      expect(ctx.responseData.status).toBe(401);
-      const body = ctx.responseData.body as Record<string, unknown>;
-      expect(body.error).toBe("TOKEN_INVALIDATED");
-    });
-  });
-
-  // --------------------------------------------------------------------------
-  // Error: RT replay → 409 + delegate invalidation
-  // --------------------------------------------------------------------------
-
-  describe("refresh — replay detection", () => {
-    it("returns 409 and invalidates delegate when RT is already used", async () => {
-      const rt = await makeRefreshToken();
-
-      mockDelegatesDb = createMockDelegatesDb();
-      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
-        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId, { isUsed: true }) : null
-      );
-      controller = createRefreshController({
-        delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
-      });
+      controller = createRefreshController({ delegatesDb: mockDelegatesDb });
 
       const ctx = createMockContext(`Bearer ${rt.base64}`);
       await controller.refresh(ctx as never);
 
       expect(ctx.responseData.status).toBe(409);
       const body = ctx.responseData.body as Record<string, unknown>;
-      expect(body.error).toBe("TOKEN_REUSE");
-
-      // Should have called invalidateByDelegate
-      expect(mockTokenRecordsDb.invalidateByDelegate).toHaveBeenCalledWith(testDelegateId);
-    });
-
-    it("returns 409 when concurrent markUsed fails (race condition)", async () => {
-      const rt = await makeRefreshToken();
-
-      mockDelegatesDb = createMockDelegatesDb();
-      mockTokenRecordsDb = createMockTokenRecordsDb(
-        (tokenId) => (tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null),
-        {
-          // markUsed returns false (another request got there first)
-          markUsed: mock(async () => false),
-        }
-      );
-      controller = createRefreshController({
-        delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
-      });
-
-      const ctx = createMockContext(`Bearer ${rt.base64}`);
-      await controller.refresh(ctx as never);
-
-      expect(ctx.responseData.status).toBe(409);
-      const body = ctx.responseData.body as Record<string, unknown>;
-      expect(body.error).toBe("TOKEN_REUSE");
-      expect(mockTokenRecordsDb.invalidateByDelegate).toHaveBeenCalledWith(testDelegateId);
+      expect(body.error).toBe("TOKEN_INVALID");
     });
   });
 
   // --------------------------------------------------------------------------
-  // Error: delegate revoked / expired
+  // Error: delegate revoked / expired / not found
   // --------------------------------------------------------------------------
 
   describe("refresh — delegate status", () => {
     it("returns 401 when delegate is revoked", async () => {
-      const rt = await makeRefreshToken();
+      const rt = makeRefreshToken();
 
       mockDelegatesDb = createMockDelegatesDb({
-        get: mock(async () => makeDelegate({ isRevoked: true })),
+        get: mock(async () =>
+          makeDelegate({ isRevoked: true, currentRtHash: rt.hash })
+        ),
       });
-      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
-        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null
-      );
-      controller = createRefreshController({
-        delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
-      });
+
+      controller = createRefreshController({ delegatesDb: mockDelegatesDb });
 
       const ctx = createMockContext(`Bearer ${rt.base64}`);
       await controller.refresh(ctx as never);
@@ -468,18 +375,15 @@ describe("RefreshController", () => {
     });
 
     it("returns 401 when delegate has expired", async () => {
-      const rt = await makeRefreshToken();
+      const rt = makeRefreshToken();
 
       mockDelegatesDb = createMockDelegatesDb({
-        get: mock(async () => makeDelegate({ expiresAt: Date.now() - 1000 })),
+        get: mock(async () =>
+          makeDelegate({ expiresAt: Date.now() - 1000, currentRtHash: rt.hash })
+        ),
       });
-      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
-        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null
-      );
-      controller = createRefreshController({
-        delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
-      });
+
+      controller = createRefreshController({ delegatesDb: mockDelegatesDb });
 
       const ctx = createMockContext(`Bearer ${rt.base64}`);
       await controller.refresh(ctx as never);
@@ -490,18 +394,13 @@ describe("RefreshController", () => {
     });
 
     it("returns 401 when delegate not found", async () => {
-      const rt = await makeRefreshToken();
+      const rt = makeRefreshToken();
 
       mockDelegatesDb = createMockDelegatesDb({
         get: mock(async () => null),
       });
-      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
-        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null
-      );
-      controller = createRefreshController({
-        delegatesDb: mockDelegatesDb,
-        tokenRecordsDb: mockTokenRecordsDb,
-      });
+
+      controller = createRefreshController({ delegatesDb: mockDelegatesDb });
 
       const ctx = createMockContext(`Bearer ${rt.base64}`);
       await controller.refresh(ctx as never);

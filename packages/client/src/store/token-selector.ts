@@ -53,16 +53,12 @@ type RootTokenResponse = {
   };
   refreshToken: string;
   accessToken: string;
-  refreshTokenId: string;
-  accessTokenId: string;
   accessTokenExpiresAt: number;
 };
 
 type RefreshTokenResponse = {
   refreshToken: string;
   accessToken: string;
-  refreshTokenId: string;
-  accessTokenId: string;
   accessTokenExpiresAt: number;
   delegateId: string;
 };
@@ -166,9 +162,7 @@ export const createTokenSelector = (config: TokenSelectorConfig): TokenSelector 
           delegateId: result.delegate.delegateId,
           realm: result.delegate.realm,
           refreshToken: result.refreshToken,
-          refreshTokenId: result.refreshTokenId,
           accessToken: result.accessToken,
-          accessTokenId: result.accessTokenId,
           accessTokenExpiresAt: result.accessTokenExpiresAt,
           depth: result.delegate.depth,
           canUpload: result.delegate.canUpload,
@@ -197,9 +191,7 @@ export const createTokenSelector = (config: TokenSelectorConfig): TokenSelector 
     const updatedRd: StoredRootDelegate = {
       ...currentRd,
       refreshToken: result.refreshToken,
-      refreshTokenId: result.refreshTokenId,
       accessToken: result.accessToken,
-      accessTokenId: result.accessTokenId,
       accessTokenExpiresAt: result.accessTokenExpiresAt,
     };
 
