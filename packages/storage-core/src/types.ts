@@ -2,7 +2,7 @@
  * Storage Provider interface for CAS
  *
  * Provides content-addressable storage operations.
- * All keys are in format "sha256:{64-char-hex}"
+ * All keys are 26-character Crockford Base32 encoded BLAKE3s-128 hashes.
  */
 export type StorageProvider = {
   /**
@@ -18,7 +18,7 @@ export type StorageProvider = {
 
   /**
    * Store blob content
-   * Key must be the correct SHA-256 hash of the content
+   * Key must be the correct BLAKE3s-128 hash of the content (CB32 encoded)
    */
   put: (key: string, value: Uint8Array) => Promise<void>;
 };
@@ -30,7 +30,7 @@ export type StorageProvider = {
  */
 export type HashProvider = {
   /**
-   * Compute SHA-256 hash of data
+   * Compute SHA-256 hash of data (used for content verification)
    */
   sha256: (data: Uint8Array) => Promise<Uint8Array>;
 };
@@ -41,7 +41,7 @@ export type HashProvider = {
 export type StorageConfig = {
   /**
    * Key prefix in storage
-   * Default: "cas/sha256/"
+   * Default: "cas/blake3s/"
    */
   prefix?: string;
 

@@ -43,18 +43,18 @@ describe("Well-known Keys", () => {
   });
 
   describe("EMPTY_DICT_KEY", () => {
-    it("should be a valid hex storage key format (32 chars)", () => {
-      expect(EMPTY_DICT_KEY).toMatch(/^[a-f0-9]{32}$/);
+    it("should be a valid CB32 storage key format (26 chars)", () => {
+      expect(EMPTY_DICT_KEY).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
     });
 
     it("should match the BLAKE3-128 hash of EMPTY_DICT_BYTES", async () => {
       // Import BLAKE3 dynamically for test
       const { blake3 } = await import("@noble/hashes/blake3");
       const fullHash = blake3(EMPTY_DICT_BYTES);
-      const truncatedHashHex = Array.from(fullHash.slice(0, 16))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-      expect(EMPTY_DICT_KEY).toBe(truncatedHashHex);
+      const truncatedHash = fullHash.slice(0, 16);
+      // Encode to CB32 and compare
+      const { encodeCB32 } = await import("../src/utils.ts");
+      expect(EMPTY_DICT_KEY).toBe(encodeCB32(truncatedHash));
     });
   });
 

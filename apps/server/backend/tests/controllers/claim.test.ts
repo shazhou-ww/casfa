@@ -14,7 +14,7 @@
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { PopContext } from "@casfa/proof";
-import { nodeKeyToHex } from "@casfa/protocol";
+import { nodeKeyToStorageKey } from "@casfa/protocol";
 import { type ClaimController, createClaimController } from "../../src/controllers/claim.ts";
 import type { OwnershipV2Db } from "../../src/db/ownership-v2.ts";
 
@@ -27,8 +27,8 @@ const TEST_DELEGATE_ID = "dlg_child";
 const TEST_ROOT_DELEGATE_ID = "dlg_root";
 /** Node key in nod_XXXX (Crockford base32) format */
 const TEST_NODE_KEY = "nod_NF6YY4HMASW91AYDXW938NKRJ0";
-/** Corresponding hex storage key */
-const TEST_STORAGE_KEY = nodeKeyToHex(TEST_NODE_KEY);
+/** Corresponding CB32 storage key */
+const TEST_STORAGE_KEY = nodeKeyToStorageKey(TEST_NODE_KEY);
 const TEST_TOKEN_BYTES = new Uint8Array(128).fill(0x42);
 const TEST_CONTENT = new Uint8Array([0xca, 0xfe, 0xba, 0xbe]);
 const TEST_POP = "pop:VALID_POP_STRING";

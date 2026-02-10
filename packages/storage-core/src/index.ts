@@ -7,10 +7,8 @@
 // Key utilities
 export {
   bytesToHex,
-  extractHash,
   hexToBytes,
   isValidKey,
-  toKey,
   toStoragePath,
 } from "./key.ts";
 // LRU Cache

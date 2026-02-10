@@ -6,12 +6,16 @@
  */
 
 import { type CasNode, decodeNode, encodeDictNode, getWellKnownNodeData } from "@casfa/core";
-import { FS_MAX_COLLECTION_CHILDREN, FS_MAX_NAME_BYTES, nodeKeyToHex } from "@casfa/protocol";
+import {
+  FS_MAX_COLLECTION_CHILDREN,
+  FS_MAX_NAME_BYTES,
+  nodeKeyToStorageKey,
+} from "@casfa/protocol";
 
 import {
   findChildByIndex,
   findChildByName,
-  hashToHex,
+  hashToStorageKey,
   parseIndexPath,
   parsePath,
 } from "./helpers.ts";
@@ -32,17 +36,17 @@ export const createTreeOps = (deps: FsServiceDeps) => {
   // Node I/O
   // --------------------------------------------------------------------------
 
-  /** Get raw node bytes from storage by hex key */
-  const getNodeData = async (hexKey: string): Promise<Uint8Array | null> => {
+  /** Get raw node bytes from storage by CB32 key */
+  const getNodeData = async (storageKey: string): Promise<Uint8Array | null> => {
     // Well-known nodes — return in-memory bytes, skip storage
-    const wellKnown = getWellKnownNodeData(hexKey);
+    const wellKnown = getWellKnownNodeData(storageKey);
     if (wellKnown) return wellKnown;
-    return storage.get(hexKey);
+    return storage.get(storageKey);
   };
 
-  /** Decode a CAS node from storage by hex key */
-  const getAndDecodeNode = async (hexKey: string): Promise<CasNode | null> => {
-    const data = await getNodeData(hexKey);
+  /** Decode a CAS node from storage by CB32 key */
+  const getAndDecodeNode = async (storageKey: string): Promise<CasNode | null> => {
+    const data = await getNodeData(storageKey);
     if (!data) return null;
     try {
       return decodeNode(data);
@@ -65,15 +69,15 @@ export const createTreeOps = (deps: FsServiceDeps) => {
     kind: "dict" | "file",
     logicalSize: number
   ): Promise<string> => {
-    const hexKey = hashToHex(hash);
+    const storageKey = hashToStorageKey(hash);
 
-    const exists = await storage.has(hexKey);
+    const exists = await storage.has(storageKey);
     if (!exists) {
-      await storage.put(hexKey, bytes);
+      await storage.put(storageKey, bytes);
       // Write ownership for the current delegate (single-record).
       // Full-chain writes for user content happen in chunks.ts PUT handler.
       await ownershipV2Db.addOwnership(
-        hexKey,
+        storageKey,
         [ownerId],
         ownerId,
         "application/octet-stream",
@@ -82,7 +86,7 @@ export const createTreeOps = (deps: FsServiceDeps) => {
       );
       const { isNewToRealm } = await refCountDb.incrementRef(
         realm,
-        hexKey,
+        storageKey,
         bytes.length,
         logicalSize
       );
@@ -94,10 +98,10 @@ export const createTreeOps = (deps: FsServiceDeps) => {
         });
       }
     } else {
-      await refCountDb.incrementRef(realm, hexKey, bytes.length, logicalSize);
+      await refCountDb.incrementRef(realm, storageKey, bytes.length, logicalSize);
     }
 
-    return hexKey;
+    return storageKey;
   };
 
   // --------------------------------------------------------------------------
@@ -109,14 +113,14 @@ export const createTreeOps = (deps: FsServiceDeps) => {
    */
   const resolveNodeKey = async (realm: string, nodeKey: string): Promise<string | FsError> => {
     if (nodeKey.startsWith("nod_")) {
-      return nodeKeyToHex(nodeKey);
+      return nodeKeyToStorageKey(nodeKey);
     }
     if (nodeKey.startsWith("dpt_")) {
       const depot = await depotsDb.get(realm, nodeKey);
       if (!depot) {
         return fsError("INVALID_ROOT", 400, `Depot not found: ${nodeKey}`);
       }
-      return nodeKeyToHex(depot.root);
+      return nodeKeyToStorageKey(depot.root);
     }
     return fsError("INVALID_ROOT", 400, `Invalid nodeKey format: ${nodeKey}`);
   };
@@ -178,14 +182,14 @@ export const createTreeOps = (deps: FsServiceDeps) => {
         });
       }
 
-      const childHex = hashToHex(child.hash);
-      const childNode = await getAndDecodeNode(childHex);
+      const childStorageKey = hashToStorageKey(child.hash);
+      const childNode = await getAndDecodeNode(childStorageKey);
       if (!childNode) {
         return fsError("PATH_NOT_FOUND", 404, `Node data not found for '${segment}'`);
       }
 
       parentPath.push({ hash: currentHash, node: currentNode, childIndex: child.index });
-      currentHash = childHex;
+      currentHash = childStorageKey;
       currentNode = childNode;
       currentName = segment;
     }
@@ -203,14 +207,14 @@ export const createTreeOps = (deps: FsServiceDeps) => {
         });
       }
 
-      const childHex = hashToHex(child.hash);
-      const childNode = await getAndDecodeNode(childHex);
+      const childStorageKey = hashToStorageKey(child.hash);
+      const childNode = await getAndDecodeNode(childStorageKey);
       if (!childNode) {
         return fsError("PATH_NOT_FOUND", 404, `Node data not found at index ${index}`);
       }
 
       parentPath.push({ hash: currentHash, node: currentNode, childIndex: index });
-      currentHash = childHex;
+      currentHash = childStorageKey;
       currentNode = childNode;
       currentName = child.name;
     }
@@ -249,7 +253,7 @@ export const createTreeOps = (deps: FsServiceDeps) => {
       currentChildHash = encoded.hash;
     }
 
-    return hashToHex(currentChildHash);
+    return hashToStorageKey(currentChildHash);
   };
 
   // --------------------------------------------------------------------------
@@ -353,8 +357,8 @@ export const createTreeOps = (deps: FsServiceDeps) => {
 
       const child = findChildByName(currentNode, seg);
       if (child) {
-        const childHex = hashToHex(child.hash);
-        const childNode = await getAndDecodeNode(childHex);
+        const childStorageKey = hashToStorageKey(child.hash);
+        const childNode = await getAndDecodeNode(childStorageKey);
         if (!childNode) {
           return fsError("PATH_NOT_FOUND", 404, `Node data not found for '${seg}'`);
         }
@@ -362,7 +366,7 @@ export const createTreeOps = (deps: FsServiceDeps) => {
           return fsError("NOT_A_DIRECTORY", 400, `'${seg}' exists but is not a directory`);
         }
         builtParentPath.push({ hash: currentHash, node: currentNode, childIndex: child.index });
-        currentHash = childHex;
+        currentHash = childStorageKey;
         currentNode = childNode;
       } else {
         // Create all remaining intermediate dirs bottom-up

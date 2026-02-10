@@ -6,35 +6,32 @@
  */
 
 import type { CasNode } from "@casfa/core";
-import { FS_MAX_NAME_BYTES, hashToNodeKey } from "@casfa/protocol";
+import {
+  decodeCrockfordBase32,
+  encodeCrockfordBase32,
+  FS_MAX_NAME_BYTES,
+  storageKeyToNodeKey,
+} from "@casfa/protocol";
 import { type FsError, fsError } from "./types.ts";
 
 const textEncoder = new TextEncoder();
 
 // ============================================================================
-// Hash / Hex Conversions
+// Hash / Storage Key Conversions (CB32 format)
 // ============================================================================
 
-/** Convert Uint8Array hash → lowercase hex string */
-export const hashToHex = (hash: Uint8Array): string => {
-  return Array.from(hash)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+/** Convert Uint8Array hash → CB32 storage key string */
+export const hashToStorageKey = (hash: Uint8Array): string => {
+  return encodeCrockfordBase32(hash);
 };
 
-/** Convert hex string → Uint8Array */
-export const hexToHash = (hex: string): Uint8Array => {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
+/** Convert CB32 storage key → Uint8Array hash bytes */
+export const storageKeyToHash = (key: string): Uint8Array => {
+  return decodeCrockfordBase32(key);
 };
 
-/** Convert hex storage key → "node:{crockford_base32}" */
-export const hexToNodeKey = (hex: string): string => {
-  return hashToNodeKey(hexToHash(hex));
-};
+/** Convert CB32 storage key → "nod_{cb32}" node key */
+export const storageKeyToNodeKey_ = storageKeyToNodeKey;
 
 // ============================================================================
 // Path Parsing

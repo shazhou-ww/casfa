@@ -64,7 +64,7 @@ describe("Controller", () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
       const result = await writeFile(ctx, data, "application/octet-stream");
 
-      expect(result.key).toMatch(/^[a-f0-9]{32}$/);
+      expect(result.key).toMatch(/^[0-9A-Z]{26}$/);
       expect(result.size).toBe(5);
       expect(result.nodeCount).toBe(1);
       expect(storage.size()).toBe(1);
@@ -175,13 +175,13 @@ describe("Controller", () => {
         { name: "file2.txt", key: file2.key },
       ]);
 
-      expect(dictKey).toMatch(/^[a-f0-9]{32}$/);
+      expect(dictKey).toMatch(/^[0-9A-Z]{26}$/);
       expect(storage.size()).toBe(3); // 2 files + 1 dict
     });
 
     it("should make empty dict", async () => {
       const key = await makeDict(ctx, []);
-      expect(key).toMatch(/^[a-f0-9]{32}$/);
+      expect(key).toMatch(/^[0-9A-Z]{26}$/);
     });
 
     it("should create dict with children", async () => {
@@ -355,7 +355,7 @@ describe("Controller", () => {
       const data = new Uint8Array([100, 200, 255]);
       const key = await putFileNode(ctx, data, "application/octet-stream");
 
-      expect(key).toMatch(/^[a-f0-9]{32}$/);
+      expect(key).toMatch(/^[0-9A-Z]{26}$/);
       expect(await has(ctx, key)).toBe(true);
     });
   });

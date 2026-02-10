@@ -135,34 +135,29 @@ export function nodeKeyToHash(key: string): Uint8Array {
 }
 
 /**
- * Convert hex storage key to node key string
+ * Convert CB32 storage key to node key string.
+ * Storage keys are already CB32, so just prepend the prefix.
  */
-export function hexToNodeKey(hexKey: string): string {
-  if (hexKey.length !== 32) {
-    throw new Error(`Invalid hex key length: expected 32 chars, got ${hexKey.length}`);
-  }
-  const bytes = new Uint8Array(16);
-  for (let i = 0; i < 16; i++) {
-    bytes[i] = Number.parseInt(hexKey.slice(i * 2, i * 2 + 2), 16);
-  }
-  return hashToNodeKey(bytes);
+export function storageKeyToNodeKey(storageKey: string): string {
+  return `${NODE_KEY_PREFIX}${storageKey}`;
 }
 
 /**
- * Convert node key to hex storage key
+ * Convert node key to CB32 storage key.
+ * Just strips the "nod_" prefix.
  */
-export function nodeKeyToHex(nodeKey: string): string {
-  const hash = nodeKeyToHash(nodeKey);
-  return Array.from(hash)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+export function nodeKeyToStorageKey(nodeKey: string): string {
+  if (!nodeKey.startsWith(NODE_KEY_PREFIX)) {
+    throw new Error(`Invalid node key format: ${nodeKey}`);
+  }
+  return nodeKey.slice(NODE_KEY_PREFIX.length);
 }
 
 /**
  * Well-known empty dict node key (API format)
- * Corresponds to cas-core's EMPTY_DICT_KEY (hex format)
+ * Corresponds to cas-core's EMPTY_DICT_KEY (CB32 format)
  */
-export const EMPTY_DICT_NODE_KEY = hexToNodeKey("0000b2da2b8398251c05e6a73a6f1918");
+export const EMPTY_DICT_NODE_KEY = storageKeyToNodeKey("000B5PHBGEC2A705WTKKMVRS30");
 
 // ============================================================================
 // ID Format Patterns — unified prefix_[CB32]{26}

@@ -8,7 +8,7 @@
  * See docs/put-node-children-auth.md §4.3–4.4
  */
 
-import { decodeNode } from "@casfa/core";
+import { decodeNode, encodeCB32 } from "@casfa/core";
 import type { StorageProvider } from "@casfa/storage-core";
 import type { ScopeSetNodesDb } from "../db/scope-set-nodes.ts";
 import type { AccessTokenAuthContext } from "../types.ts";
@@ -26,11 +26,8 @@ export type ScopeProofDeps = {
 // Helpers
 // ============================================================================
 
-/** Convert Uint8Array hash → lowercase hex string */
-const hashToHex = (hash: Uint8Array): string =>
-  Array.from(hash)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+/** Convert Uint8Array hash → CB32 storage key string */
+const hashToStorageKey = (hash: Uint8Array): string => encodeCB32(hash);
 
 // ============================================================================
 // Public API
@@ -64,14 +61,14 @@ export function parseProof(proof: string): number[] | null {
  * 2. Multi scope (scopeSetNodeId) — a DB ScopeSetNode containing multiple roots
  *
  * @param proof - Index-path string, e.g. "0:1:2"
- * @param targetNodeHex - The hex hash of the node to verify
+ * @param targetStorageKey - The CB32 storage key of the node to verify
  * @param auth - The Access Token auth context
  * @param deps - Storage and ScopeSetNodesDb
  * @returns true if the proof is valid (target is reachable from scope)
  */
 export async function validateProofAgainstScope(
   proof: string,
-  targetNodeHex: string,
+  targetStorageKey: string,
   auth: AccessTokenAuthContext,
   deps: ScopeProofDeps
 ): Promise<boolean> {
@@ -121,20 +118,20 @@ export async function validateProofAgainstScope(
     const idx = indices[i]!;
     if (!node.children || idx >= node.children.length) return false;
 
-    currentHash = hashToHex(node.children[idx]!);
+    currentHash = hashToStorageKey(node.children[idx]!);
   }
 
   // 4. Check if the final node matches the target
-  return currentHash === targetNodeHex;
+  return currentHash === targetStorageKey;
 }
 
 /**
  * Parse the X-CAS-Child-Proofs header into a Map of childKey → proof.
  *
- * Header format: "child1_hex=0:1:2,child2_hex=0:3"
+ * Header format: "child1_key=0:1:2,child2_key=0:3"
  *
  * @param headerValue - The raw header string
- * @returns Map from child hex key to proof string
+ * @returns Map from child storage key to proof string
  */
 export function parseChildProofsHeader(headerValue: string | undefined): Map<string, string> {
   const proofs = new Map<string, string>();

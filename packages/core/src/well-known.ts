@@ -30,12 +30,12 @@ export const EMPTY_DICT_BYTES = new Uint8Array(HEADER_SIZE);
 })();
 
 /**
- * BLAKE3s-128 hash of EMPTY_DICT_BYTES (hex format for storage)
+ * BLAKE3s-128 hash of EMPTY_DICT_BYTES (CB32 format for storage)
  *
  * Computed from: blake3(16-byte header with d-node flags, count=0, size=0)
- * truncated to 128 bits (16 bytes).
+ * truncated to 128 bits (16 bytes), then Crockford Base32 encoded.
  */
-export const EMPTY_DICT_KEY = "0000b2da2b8398251c05e6a73a6f1918";
+export const EMPTY_DICT_KEY = "000B5PHBGEC2A705WTKKMVRS30";
 
 /**
  * Well-known keys for system-level CAS nodes
@@ -50,7 +50,7 @@ export const WELL_KNOWN_KEYS = {
 // ============================================================================
 
 /**
- * Map from hex storage key → raw node bytes for all well-known nodes.
+ * Map from CB32 storage key → raw node bytes for all well-known nodes.
  *
  * These nodes are virtual — they are never persisted to storage but can be
  * referenced by depots, ownership records, etc.  Any code path that reads a
@@ -62,14 +62,14 @@ export const WELL_KNOWN_NODES: ReadonlyMap<string, Uint8Array> = new Map([
 ]);
 
 /**
- * Check whether a hex storage key is a well-known node.
+ * Check whether a storage key is a well-known node.
  */
-export const isWellKnownNode = (hexKey: string): boolean => WELL_KNOWN_NODES.has(hexKey);
+export const isWellKnownNode = (storageKey: string): boolean => WELL_KNOWN_NODES.has(storageKey);
 
 /**
  * Get the raw bytes of a well-known node (returns a fresh copy), or null.
  */
-export const getWellKnownNodeData = (hexKey: string): Uint8Array | null => {
-  const bytes = WELL_KNOWN_NODES.get(hexKey);
+export const getWellKnownNodeData = (storageKey: string): Uint8Array | null => {
+  const bytes = WELL_KNOWN_NODES.get(storageKey);
   return bytes ? bytes.slice() : null;
 };

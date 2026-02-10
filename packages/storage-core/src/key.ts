@@ -1,22 +1,13 @@
 /**
  * CAS key utilities
  *
- * Keys are in format "sha256:{64-char-hex}"
+ * Storage keys are 26-character Crockford Base32 encoded BLAKE3s-128 hashes.
  */
 
 /**
- * Extract hex hash from CAS key
+ * Crockford Base32 charset for validation (uppercase)
  */
-export const extractHash = (casKey: string): string => {
-  return casKey.startsWith("sha256:") ? casKey.slice(7) : casKey;
-};
-
-/**
- * Create CAS key from hex hash
- */
-export const toKey = (hexHash: string): string => {
-  return `sha256:${hexHash}`;
-};
+const CB32_CHARS = /^[0-9A-HJKMNP-TV-Z]+$/;
 
 /**
  * Convert hex string to Uint8Array
@@ -39,22 +30,19 @@ export const bytesToHex = (bytes: Uint8Array): string => {
 };
 
 /**
- * Validate CAS key format
+ * Validate storage key format (26-char CB32 for 128-bit hash)
  */
 export const isValidKey = (key: string): boolean => {
-  if (!key.startsWith("sha256:")) return false;
-  const hash = key.slice(7);
-  return hash.length === 64 && /^[a-f0-9]+$/.test(hash);
+  return key.length === 26 && CB32_CHARS.test(key);
 };
 
 /**
- * Create storage path from CAS key
- * Uses first 2 chars of hash as subdirectory for better distribution
+ * Create storage path from a CB32 storage key.
+ * Uses first 2 chars of the key as subdirectory for better distribution.
  *
- * Example: sha256:abcdef... -> cas/sha256/ab/abcdef...
+ * Example: 000B5PHBGEC2A705WTKKMVRS30 -> cas/blake3s/00/000B5PHBGEC2A705WTKKMVRS30
  */
-export const toStoragePath = (casKey: string, prefix = "cas/sha256/"): string => {
-  const hash = extractHash(casKey);
-  const subdir = hash.slice(0, 2);
-  return `${prefix}${subdir}/${hash}`;
+export const toStoragePath = (key: string, prefix = "cas/blake3s/"): string => {
+  const subdir = key.slice(0, 2);
+  return `${prefix}${subdir}/${key}`;
 };

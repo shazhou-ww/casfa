@@ -6,8 +6,14 @@
  */
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import { encodeDictNode, encodeFileNode, type HashProvider } from "@casfa/core";
-import { hashToNodeKey, nodeKeyToHex } from "@casfa/protocol";
+import {
+  decodeCB32,
+  encodeCB32,
+  encodeDictNode,
+  encodeFileNode,
+  type HashProvider,
+} from "@casfa/core";
+import { hashToNodeKey, nodeKeyToStorageKey } from "@casfa/protocol";
 import type { StorageProvider } from "@casfa/storage-core";
 import type { DepotsDb } from "../../src/db/depots.ts";
 import type { OwnershipV2Db } from "../../src/db/ownership-v2.ts";
@@ -27,20 +33,11 @@ const TOKEN_ID = "test-token";
 /** Hash utility */
 const hashProvider: HashProvider = createNodeHashProvider();
 
-/** Convert Uint8Array hash → hex key (for in-memory storage) */
-const hashToHex = (hash: Uint8Array): string =>
-  Array.from(hash)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+/** Convert Uint8Array hash → CB32 storage key */
+const hashToStorageKey = (hash: Uint8Array): string => encodeCB32(hash);
 
-/** Convert hex → Uint8Array */
-const hexToHash = (hex: string): Uint8Array => {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
-};
+/** Convert CB32 storage key → Uint8Array */
+const storageKeyToHash = (key: string): Uint8Array => decodeCB32(key);
 
 /** Helper to check if result is an FsError */
 function isFsError(result: unknown): result is FsError {
@@ -177,7 +174,7 @@ function createMockScopeSetNodesDb(): ScopeSetNodesDb {
 
 /**
  * Build a tree from a simple object structure and store it.
- * Returns the root hex key.
+ * Returns the root CB32 storage key.
  *
  * Example:
  *   { "README.md": "Hello", "src": { "main.ts": "code" } }
@@ -204,26 +201,26 @@ async function buildTreeNode(
         { data, contentType: "text/plain", fileSize: data.length },
         hashProvider
       );
-      const hex = hashToHex(encoded.hash);
-      await storage.put(hex, encoded.bytes);
+      const key = hashToStorageKey(encoded.hash);
+      await storage.put(key, encoded.bytes);
       names.push(name);
       hashes.push(encoded.hash);
     } else {
       // Directory (recurse)
-      const childHex = await buildTreeNode(
+      const childKey = await buildTreeNode(
         storage,
         value as Record<string, string | Record<string, unknown>>
       );
       names.push(name);
-      hashes.push(hexToHash(childHex));
+      hashes.push(storageKeyToHash(childKey));
     }
   }
 
   // Encode dict node
   const encoded = await encodeDictNode({ children: hashes, childNames: names }, hashProvider);
-  const hex = hashToHex(encoded.hash);
-  await storage.put(hex, encoded.bytes);
-  return hex;
+  const key = hashToStorageKey(encoded.hash);
+  await storage.put(key, encoded.bytes);
+  return key;
 }
 
 // ============================================================================
@@ -252,9 +249,9 @@ function createTestService() {
   return { service, storage, ownershipV2Db, refCountDb, usageDb, depotsDb };
 }
 
-/** Convert hex to nod_ key */
-function hexToNodeKey(hex: string): string {
-  return hashToNodeKey(hexToHash(hex));
+/** Convert CB32 storage key to nod_ node key */
+function storageKeyToNodeKey(key: string): string {
+  return hashToNodeKey(storageKeyToHash(key));
 }
 
 // ============================================================================
@@ -277,7 +274,7 @@ describe("Filesystem Service", () => {
    *   docs/
    *     guide.md (content: "Guide content")
    */
-  let rootHex: string;
+  let rootKey: string;
   let rootNodeKey: string;
 
   beforeEach(async () => {
@@ -285,7 +282,7 @@ describe("Filesystem Service", () => {
     service = ctx.service;
     storage = ctx.storage;
 
-    rootHex = await buildTree(storage, {
+    rootKey = await buildTree(storage, {
       "README.md": "# Hello",
       src: {
         "main.ts": "console.log('hi')",
@@ -297,7 +294,7 @@ describe("Filesystem Service", () => {
         "guide.md": "Guide content",
       },
     });
-    rootNodeKey = hexToNodeKey(rootHex);
+    rootNodeKey = storageKeyToNodeKey(rootKey);
   });
 
   // ==========================================================================
@@ -572,7 +569,7 @@ describe("Filesystem Service", () => {
       expect(result.file.size).toBe(content.length);
 
       // Verify new root has the new file
-      const _newRootHex = nodeKeyToHex(result.newRoot);
+      const _newRootKey = nodeKeyToStorageKey(result.newRoot);
       const lsResult = await service.ls(REALM, result.newRoot);
       if (isFsError(lsResult)) throw new Error("ls failed");
 
@@ -1071,7 +1068,7 @@ describe("Filesystem Service", () => {
     it("should resolve dpt_ prefix", async () => {
       // Create a service with depot support
       const depots = new Map<string, { root: string }>();
-      depots.set("dpt_testdepot", { root: hexToNodeKey(rootHex) });
+      depots.set("dpt_testdepot", { root: storageKeyToNodeKey(rootKey) });
 
       const ctx = createTestService();
       // Manually override the depots db to return our depot
@@ -1194,8 +1191,8 @@ describe("Filesystem Service", () => {
     let emptyRootNodeKey: string;
 
     beforeEach(async () => {
-      const emptyHex = await buildTree(storage, {});
-      emptyRootNodeKey = hexToNodeKey(emptyHex);
+      const emptyKey = await buildTree(storage, {});
+      emptyRootNodeKey = storageKeyToNodeKey(emptyKey);
     });
 
     it("should stat empty root", async () => {

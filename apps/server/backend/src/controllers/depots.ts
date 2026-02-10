@@ -9,8 +9,8 @@ import { EMPTY_DICT_KEY } from "@casfa/core";
 import {
   CreateDepotSchema,
   DepotCommitSchema,
-  hexToNodeKey,
-  nodeKeyToHex,
+  nodeKeyToStorageKey,
+  storageKeyToNodeKey,
   UpdateDepotSchema,
 } from "@casfa/protocol";
 import type { StorageProvider } from "@casfa/storage-core";
@@ -115,7 +115,7 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
       const depot = await depotsDb.create(realm, {
         name: title ?? `depot-${Date.now()}`,
         title: title ?? `Depot ${Date.now()}`,
-        root: hexToNodeKey(EMPTY_DICT_KEY),
+        root: storageKeyToNodeKey(EMPTY_DICT_KEY),
         maxHistory,
       });
 
@@ -167,8 +167,8 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
 
       const { root: newRoot } = DepotCommitSchema.parse(await c.req.json());
 
-      // Convert node key to hex storage key for storage/ownership lookups
-      const storageKey = nodeKeyToHex(newRoot);
+      // Convert node key to CB32 storage key for storage/ownership lookups
+      const storageKey = nodeKeyToStorageKey(newRoot);
 
       // Check if new root exists in storage
       const exists = await storage.has(storageKey);
