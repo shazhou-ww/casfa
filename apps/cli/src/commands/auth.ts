@@ -47,8 +47,8 @@ export function registerAuthCommands(program: Command): void {
 
         // After successful OAuth login, auto-set realm and acquire root delegate
         if (result.success && result.userId) {
-          // realm === userId; auto-save to profile so subsequent commands work
-          if (!profile.realm) {
+          // realm === userId; always update to match current login
+          if (profile.realm !== result.userId) {
             profile.realm = result.userId;
             saveConfig(config);
             formatter.info(`Realm set to ${result.userId}`);
@@ -122,6 +122,12 @@ export function registerAuthCommands(program: Command): void {
         formatter.success(`Root delegate cleared for profile: ${profileName}`);
       } else {
         deleteCredentials(profileName);
+        // Clear realm from profile config
+        const profile = config.profiles[profileName];
+        if (profile?.realm) {
+          delete profile.realm;
+          saveConfig(config);
+        }
         formatter.success(`Logged out from profile: ${profileName}`);
       }
     });

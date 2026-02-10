@@ -34,20 +34,12 @@ export type FsResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 /**
  * Get the access token base64 from the client.
- * The client's TokenSelector auto-issues access tokens as needed.
+ * The client's TokenSelector auto-issues and refreshes tokens as needed.
  */
 async function getAccessToken(): Promise<string | null> {
   const client = await getClient();
-  const state = client.getState();
-  if (state.access?.tokenBase64) return state.access.tokenBase64;
-
-  // Trigger auto-issuance by calling a depot method (which calls ensureAccessToken)
-  // We do a lightweight call to trigger the token selector
-  const result = await client.depots.list({ limit: 1 });
-  if (!result.ok) return null;
-
-  const newState = client.getState();
-  return newState.access?.tokenBase64 ?? null;
+  const token = await client.getAccessToken();
+  return token?.tokenBase64 ?? null;
 }
 
 /**
