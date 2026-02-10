@@ -102,7 +102,11 @@ function createMockDelegatesDb(overrides?: Partial<DelegatesDb>): DelegatesDb {
     listChildren: mock(async () => ({ delegates: [], nextCursor: undefined })),
     rotateTokens: mock(async () => true),
     getOrCreateRoot: mock(
-      async (realm: string, id: string, tokenHashes: { currentRtHash: string; currentAtHash: string; atExpiresAt: number }) => ({
+      async (
+        realm: string,
+        id: string,
+        tokenHashes: { currentRtHash: string; currentAtHash: string; atExpiresAt: number }
+      ) => ({
         delegate: makeDelegate({
           delegateId: id,
           realm,
@@ -509,9 +513,7 @@ describe("DelegatesController", () => {
         chain: ["other-parent", "target-dlg"],
       });
       mockDelegatesDb = createMockDelegatesDb({
-        get: mock(async (id: string) =>
-          id === "target-dlg" ? targetDelegate : makeDelegate()
-        ),
+        get: mock(async (id: string) => (id === "target-dlg" ? targetDelegate : makeDelegate())),
       });
       controller = createDelegatesController({
         delegatesDb: mockDelegatesDb,

@@ -362,7 +362,11 @@ describe("DelegatesDb", () => {
         currentAtHash: "b".repeat(32),
         atExpiresAt: Date.now() + 3600_000,
       };
-      const { delegate: root, created } = await db.getOrCreateRoot("realm-1", "dlg-new-root", tokenHashes);
+      const { delegate: root, created } = await db.getOrCreateRoot(
+        "realm-1",
+        "dlg-new-root",
+        tokenHashes
+      );
       expect(created).toBe(true);
       expect(root.delegateId).toBe("dlg-new-root");
       expect(root.realm).toBe("realm-1");
@@ -384,9 +388,17 @@ describe("DelegatesDb", () => {
         currentAtHash: "d".repeat(32),
         atExpiresAt: Date.now() + 3600_000,
       };
-      const { delegate: _root1, created: created1 } = await db.getOrCreateRoot("realm-1", "dlg-root-1", tokenHashes1);
+      const { delegate: _root1, created: created1 } = await db.getOrCreateRoot(
+        "realm-1",
+        "dlg-root-1",
+        tokenHashes1
+      );
       expect(created1).toBe(true);
-      const { delegate: root2, created: created2 } = await db.getOrCreateRoot("realm-1", "dlg-root-2", tokenHashes2);
+      const { delegate: root2, created: created2 } = await db.getOrCreateRoot(
+        "realm-1",
+        "dlg-root-2",
+        tokenHashes2
+      );
 
       // Should return the same root (first one created)
       expect(created2).toBe(false);

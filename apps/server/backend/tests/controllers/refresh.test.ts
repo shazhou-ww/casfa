@@ -12,14 +12,11 @@
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { Delegate } from "@casfa/delegate";
-import { encodeAccessToken, encodeRefreshToken, RT_SIZE } from "@casfa/delegate-token";
-import {
-  createRefreshController,
-  type RefreshController,
-} from "../../src/controllers/refresh.ts";
+import { encodeAccessToken, encodeRefreshToken } from "@casfa/delegate-token";
+import { createRefreshController, type RefreshController } from "../../src/controllers/refresh.ts";
 import type { DelegatesDb } from "../../src/db/delegates.ts";
-import { fromCrockfordBase32 } from "../../src/util/encoding.ts";
 import { computeTokenHash } from "../../src/util/delegate-token-utils.ts";
+import { fromCrockfordBase32 } from "../../src/util/encoding.ts";
 
 // ============================================================================
 // Helpers
@@ -192,13 +189,17 @@ describe("RefreshController", () => {
       await controller.refresh(ctx as never);
 
       expect(rotateTokensMock).toHaveBeenCalledTimes(1);
-      const calls = rotateTokensMock.mock.calls as unknown as Array<[{
-        delegateId: string;
-        expectedRtHash: string;
-        newRtHash: string;
-        newAtHash: string;
-        newAtExpiresAt: number;
-      }]>;
+      const calls = rotateTokensMock.mock.calls as unknown as Array<
+        [
+          {
+            delegateId: string;
+            expectedRtHash: string;
+            newRtHash: string;
+            newAtHash: string;
+            newAtExpiresAt: number;
+          },
+        ]
+      >;
       const args = calls[0]![0];
 
       expect(args.delegateId).toBe(testDelegateId);
@@ -359,9 +360,7 @@ describe("RefreshController", () => {
       const rt = makeRefreshToken();
 
       mockDelegatesDb = createMockDelegatesDb({
-        get: mock(async () =>
-          makeDelegate({ isRevoked: true, currentRtHash: rt.hash })
-        ),
+        get: mock(async () => makeDelegate({ isRevoked: true, currentRtHash: rt.hash })),
       });
 
       controller = createRefreshController({ delegatesDb: mockDelegatesDb });
