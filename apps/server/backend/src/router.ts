@@ -29,7 +29,29 @@ import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
-import { ZodError } from "zod";
+import { type ZodSchema, ZodError } from "zod";
+
+/**
+ * Wrapper around zValidator("json", schema) with a consistent error hook.
+ * Returns { error, message, details } on validation failure instead of raw ZodError.
+ */
+const validatedJson = <T extends ZodSchema>(schema: T) =>
+  zValidator("json", schema, (result, c) => {
+    if (!result.success) {
+      const issues = result.error.errors.map((e) => ({
+        path: e.path.join("."),
+        message: e.message,
+      }));
+      return c.json(
+        {
+          error: "validation_error",
+          message: issues.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join("; "),
+          details: issues,
+        },
+        400
+      );
+    }
+  });
 import type { AdminController } from "./controllers/admin.ts";
 import type { ChunksController } from "./controllers/chunks.ts";
 import type { ClaimController } from "./controllers/claim.ts";
@@ -134,9 +156,9 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   // ============================================================================
 
   app.get("/api/oauth/config", deps.oauth.getConfig);
-  app.post("/api/oauth/login", zValidator("json", LoginSchema), deps.oauth.login);
-  app.post("/api/oauth/refresh", zValidator("json", RefreshSchema), deps.oauth.refresh);
-  app.post("/api/oauth/token", zValidator("json", TokenExchangeSchema), deps.oauth.exchangeToken);
+  app.post("/api/oauth/login", validatedJson(LoginSchema), deps.oauth.login);
+  app.post("/api/oauth/refresh", validatedJson(RefreshSchema), deps.oauth.refresh);
+  app.post("/api/oauth/token", validatedJson(TokenExchangeSchema), deps.oauth.exchangeToken);
   app.get("/api/oauth/me", deps.jwtAuthMiddleware, deps.oauth.me);
 
   // ============================================================================
@@ -144,9 +166,9 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   // ============================================================================
 
   if (deps.localAuth) {
-    app.post("/api/local/register", zValidator("json", RegisterSchema), deps.localAuth.register);
-    app.post("/api/local/login", zValidator("json", LoginSchema), deps.localAuth.login);
-    app.post("/api/local/refresh", zValidator("json", RefreshSchema), deps.localAuth.refresh);
+    app.post("/api/local/register", validatedJson(RegisterSchema), deps.localAuth.register);
+    app.post("/api/local/login", validatedJson(LoginSchema), deps.localAuth.login);
+    app.post("/api/local/refresh", validatedJson(RefreshSchema), deps.localAuth.refresh);
   }
 
   // ============================================================================
@@ -163,7 +185,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
     "/api/admin/users/:userId",
     deps.jwtAuthMiddleware,
     deps.adminAccessMiddleware,
-    zValidator("json", UpdateUserRoleSchema),
+    validatedJson(UpdateUserRoleSchema),
     deps.admin.updateRole
   );
 
@@ -182,7 +204,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
     "/api/tokens/root",
     deps.jwtAuthMiddleware,
     deps.authorizedUserMiddleware,
-    zValidator("json", RootTokenRequestSchema),
+    validatedJson(RootTokenRequestSchema),
     deps.rootToken.create
   );
 
@@ -204,7 +226,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   // Nodes
   realmRouter.post(
     "/:realmId/nodes/prepare",
-    zValidator("json", PrepareNodesSchema),
+    validatedJson(PrepareNodesSchema),
     deps.chunks.prepareNodes
   );
   realmRouter.put("/:realmId/nodes/:key", deps.canUploadMiddleware, deps.chunks.put);
@@ -219,7 +241,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   realmRouter.post(
     "/:realmId/nodes/:key/claim",
     deps.canUploadMiddleware,
-    zValidator("json", ClaimNodeRequestSchema),
+    validatedJson(ClaimNodeRequestSchema),
     deps.claim.claim
   );
 
@@ -245,42 +267,42 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
     "/:realmId/nodes/:key/fs/mkdir",
     deps.proofValidationMiddleware,
     deps.canUploadMiddleware,
-    zValidator("json", FsMkdirRequestSchema),
+    validatedJson(FsMkdirRequestSchema),
     deps.filesystem.mkdir
   );
   realmRouter.post(
     "/:realmId/nodes/:key/fs/rm",
     deps.proofValidationMiddleware,
     deps.canUploadMiddleware,
-    zValidator("json", FsRmRequestSchema),
+    validatedJson(FsRmRequestSchema),
     deps.filesystem.rm
   );
   realmRouter.post(
     "/:realmId/nodes/:key/fs/mv",
     deps.proofValidationMiddleware,
     deps.canUploadMiddleware,
-    zValidator("json", FsMvRequestSchema),
+    validatedJson(FsMvRequestSchema),
     deps.filesystem.mv
   );
   realmRouter.post(
     "/:realmId/nodes/:key/fs/cp",
     deps.proofValidationMiddleware,
     deps.canUploadMiddleware,
-    zValidator("json", FsCpRequestSchema),
+    validatedJson(FsCpRequestSchema),
     deps.filesystem.cp
   );
   realmRouter.post(
     "/:realmId/nodes/:key/fs/rewrite",
     deps.proofValidationMiddleware,
     deps.canUploadMiddleware,
-    zValidator("json", FsRewriteRequestSchema),
+    validatedJson(FsRewriteRequestSchema),
     deps.filesystem.rewrite
   );
 
   // Delegates (new delegate model)
   realmRouter.post(
     "/:realmId/delegates",
-    zValidator("json", CreateDelegateRequestSchema),
+    validatedJson(CreateDelegateRequestSchema),
     deps.delegates.create
   );
   realmRouter.get("/:realmId/delegates", deps.delegates.list);
@@ -292,14 +314,14 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   realmRouter.post(
     "/:realmId/depots",
     deps.canManageDepotMiddleware,
-    zValidator("json", CreateDepotSchema),
+    validatedJson(CreateDepotSchema),
     deps.depots.create
   );
   realmRouter.get("/:realmId/depots/:depotId", deps.depots.get);
   realmRouter.patch(
     "/:realmId/depots/:depotId",
     deps.canManageDepotMiddleware,
-    zValidator("json", UpdateDepotSchema),
+    validatedJson(UpdateDepotSchema),
     deps.depots.update
   );
   realmRouter.delete(
@@ -310,7 +332,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   realmRouter.post(
     "/:realmId/depots/:depotId/commit",
     deps.canUploadMiddleware,
-    zValidator("json", DepotCommitSchema),
+    validatedJson(DepotCommitSchema),
     deps.depots.commit
   );
 
