@@ -19,6 +19,7 @@
 import { createFsStorage } from "@casfa/storage-fs";
 import { createMemoryStorage } from "@casfa/storage-memory";
 import { createS3Storage } from "@casfa/storage-s3";
+import { serveStatic } from "hono/bun";
 import { createApp, createNodeHashProvider } from "./src/app.ts";
 import { createCognitoJwtVerifier, createMockJwtVerifier } from "./src/auth/index.ts";
 import { createDbInstances } from "./src/bootstrap.ts";
@@ -114,6 +115,9 @@ const app = createApp({
     authType: getAuthType(),
     databaseType: getDatabaseType(),
   },
+  // Static file serving for local dev (production uses S3 + CloudFront)
+  serveStaticMiddleware: serveStatic({ root: "./backend/public" }),
+  serveStaticFallbackMiddleware: serveStatic({ root: "./backend/public", path: "index.html" }),
 });
 
 // ============================================================================

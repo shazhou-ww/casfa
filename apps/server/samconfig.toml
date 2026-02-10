@@ -1,0 +1,84 @@
+# CASFA SAM Deployment Configuration
+#
+# Usage:
+#   sam deploy                          # Uses defaults from this file
+#   sam deploy --guided                 # Interactive mode (first time)
+#   sam deploy --parameter-overrides \
+#     CognitoUserPoolId=us-east-1_XXXXX \
+#     CognitoClientId=XXXXX
+#
+# Prerequisites:
+#   1. AWS CLI configured (~/.aws/credentials)
+#   2. SAM CLI installed (brew install aws-sam-cli)
+#   3. Backend built (bun run build)
+
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "casfa-prod"
+resolve_s3 = true
+s3_prefix = "casfa-sam"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+disable_rollback = false
+
+parameter_overrides = [
+  # ── Cognito (REQUIRED: fill in your values) ──
+  "CognitoUserPoolId=",
+  "CognitoClientId=",
+  "CognitoRegion=us-east-1",
+  "CognitoHostedUiUrl=",
+
+  # ── Domain ──
+  "CustomDomainName=casfa.shazhou.me",
+  # TODO: Replace with your ACM certificate ARN after creating it
+  # Certificate must be in us-east-1 for CloudFront
+  # Create via: aws acm request-certificate --domain-name casfa.shazhou.me --validation-method DNS --region us-east-1
+  "AcmCertificateArn=",
+  # TODO: Replace with your Route53 Hosted Zone ID for shazhou.me
+  # Find via: aws route53 list-hosted-zones-by-name --dns-name shazhou.me --query 'HostedZones[0].Id' --output text
+  "HostedZoneId=",
+
+  # ── Environment ──
+  "StageName=prod",
+
+  # ── Lambda ──
+  "LambdaMemorySize=512",
+  "LambdaTimeout=30",
+
+  # ── Throttling ──
+  "ApiThrottlingRate=100",
+  "ApiThrottlingBurst=200",
+  "WriteThrottlingRate=20",
+  "WriteThrottlingBurst=50",
+  "WafRateLimit=1000",
+
+  # ── Server ──
+  "CasNodeLimit=4194304",
+  "CasMaxPayloadSize=10485760",
+]
+
+[default.build.parameters]
+use_container = false
+
+# ── Staging environment ──
+[staging.deploy.parameters]
+stack_name = "casfa-staging"
+resolve_s3 = true
+s3_prefix = "casfa-sam-staging"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+
+parameter_overrides = [
+  "CognitoUserPoolId=",
+  "CognitoClientId=",
+  "CognitoRegion=us-east-1",
+  "CognitoHostedUiUrl=",
+  "StageName=staging",
+  "LambdaMemorySize=256",
+  "ApiThrottlingRate=50",
+  "ApiThrottlingBurst=100",
+  "WafRateLimit=500",
+]
