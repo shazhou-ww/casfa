@@ -53,7 +53,7 @@
     "@casfa/storage-fs": "workspace:*",
     "@casfa/storage-memory": "workspace:*",
     "@casfa/storage-s3": "workspace:*",
-    "@cubone/react-file-manager": "^1.35.0",
+    "@casfa/explorer": "workspace:*",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
     "@hono/zod-validator": "^0.4.1",
