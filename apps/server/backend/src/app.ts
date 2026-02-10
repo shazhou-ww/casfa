@@ -9,7 +9,7 @@ import { decodeNode } from "@casfa/core";
 import type { PopContext } from "@casfa/proof";
 import type { StorageProvider } from "@casfa/storage-core";
 import { blake3 } from "@noble/hashes/blake3";
-import type { Hono } from "hono";
+import type { Hono, MiddlewareHandler } from "hono";
 import type { DbInstances } from "./bootstrap.ts";
 import type { AppConfig } from "./config.ts";
 // Controllers
@@ -79,6 +79,9 @@ export type AppDependencies = {
     authType: "mock" | "cognito" | "tokens-only";
     databaseType: "local" | "aws";
   };
+  /** Static file serving middleware (local dev only, not used on Lambda) */
+  serveStaticMiddleware?: MiddlewareHandler<Env>;
+  serveStaticFallbackMiddleware?: MiddlewareHandler<Env>;
 };
 
 // ============================================================================
@@ -91,7 +94,8 @@ export type AppDependencies = {
  * This is a pure assembly function - all dependencies must be provided.
  */
 export const createApp = (deps: AppDependencies): Hono<Env> => {
-  const { config, db, storage, hashProvider, jwtVerifier, mockJwtSecret, runtimeInfo } = deps;
+  const { config, db, storage, hashProvider, jwtVerifier, mockJwtSecret, runtimeInfo,
+    serveStaticMiddleware, serveStaticFallbackMiddleware } = deps;
   const {
     delegatesDb,
     scopeSetNodesDb,
@@ -265,6 +269,8 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     proofValidationMiddleware,
     canUploadMiddleware,
     canManageDepotMiddleware,
+    serveStaticMiddleware,
+    serveStaticFallbackMiddleware,
   });
 };
 

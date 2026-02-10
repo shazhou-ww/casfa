@@ -1,0 +1,747 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  CASFA Server - Content-Addressable Storage for Agents
+  Hono Lambda + API Gateway HTTP API (HTTP/2) + CloudFront + S3 + DynamoDB + WAF
+
+# =============================================================================
+# Parameters
+# =============================================================================
+
+Parameters:
+  # ── Cognito (existing, parameterized) ──
+  CognitoUserPoolId:
+    Type: String
+    Description: Existing Cognito User Pool ID
+    Default: ""
+  CognitoClientId:
+    Type: String
+    Description: Existing Cognito App Client ID
+    Default: ""
+  CognitoRegion:
+    Type: String
+    Description: Cognito region
+    Default: us-east-1
+  CognitoHostedUiUrl:
+    Type: String
+    Description: Cognito Hosted UI domain URL
+    Default: ""
+
+  # ── Domain ──
+  CustomDomainName:
+    Type: String
+    Description: Custom domain for CloudFront (e.g. casfa.example.com). Leave empty to use CloudFront default domain.
+    Default: ""
+  AcmCertificateArn:
+    Type: String
+    Description: ACM certificate ARN for custom domain (must be in us-east-1 for CloudFront)
+    Default: ""
+  HostedZoneId:
+    Type: String
+    Description: Route53 Hosted Zone ID for the domain (e.g. shazhou.me zone). Leave empty to skip DNS record creation.
+    Default: ""
+
+  # ── Environment ──
+  StageName:
+    Type: String
+    Description: Deployment stage name
+    Default: prod
+    AllowedValues: [dev, staging, prod]
+
+  # ── Lambda ──
+  LambdaMemorySize:
+    Type: Number
+    Description: Lambda function memory (MB)
+    Default: 512
+    MinValue: 128
+    MaxValue: 3008
+  LambdaTimeout:
+    Type: Number
+    Description: Lambda function timeout (seconds)
+    Default: 30
+    MinValue: 5
+    MaxValue: 900
+
+  # ── Throttling ──
+  ApiThrottlingRate:
+    Type: Number
+    Description: API Gateway default throttling rate (requests/second)
+    Default: 100
+  ApiThrottlingBurst:
+    Type: Number
+    Description: API Gateway default throttling burst
+    Default: 200
+  WriteThrottlingRate:
+    Type: Number
+    Description: Throttling rate for write operations (requests/second)
+    Default: 20
+  WriteThrottlingBurst:
+    Type: Number
+    Description: Throttling burst for write operations
+    Default: 50
+  WafRateLimit:
+    Type: Number
+    Description: WAF per-IP rate limit (requests per 5-minute window)
+    Default: 1000
+
+  # ── S3 ──
+  CasStoragePrefix:
+    Type: String
+    Description: S3 key prefix for CAS blob storage
+    Default: "cas/blake3s/"
+
+  # ── Server Config ──
+  CasNodeLimit:
+    Type: Number
+    Description: Max single node size in bytes
+    Default: 4194304
+  CasMaxPayloadSize:
+    Type: Number
+    Description: Max upload payload size in bytes
+    Default: 10485760
+
+# =============================================================================
+# Conditions
+# =============================================================================
+
+Conditions:
+  HasCustomDomain: !Not [!Equals [!Ref CustomDomainName, ""]]
+  HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
+  CreateDnsRecord: !And
+    - !Condition HasCustomDomain
+    - !Condition HasHostedZone
+
+# =============================================================================
+# Globals
+# =============================================================================
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures:
+      - arm64
+    Timeout: !Ref LambdaTimeout
+    MemorySize: !Ref LambdaMemorySize
+    Environment:
+      Variables:
+        NODE_OPTIONS: "--enable-source-maps"
+
+# =============================================================================
+# Resources
+# =============================================================================
+
+Resources:
+
+  # ===========================================================================
+  # API Gateway HTTP API (native HTTP/2 + connection reuse)
+  # ===========================================================================
+
+  CasfaHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref StageName
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-CAS-Proof
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: !Ref ApiThrottlingBurst
+        ThrottlingRateLimit: !Ref ApiThrottlingRate
+      RouteSettings:
+        # Fine-grained throttling for write-heavy endpoints
+        "POST /api/realm/{realmId}/nodes/{key}/fs/write":
+          ThrottlingBurstLimit: !Ref WriteThrottlingBurst
+          ThrottlingRateLimit: !Ref WriteThrottlingRate
+        "POST /api/realm/{realmId}/nodes/{key}/fs/rewrite":
+          ThrottlingBurstLimit: !Ref WriteThrottlingBurst
+          ThrottlingRateLimit: !Ref WriteThrottlingRate
+        "PUT /api/realm/{realmId}/nodes/{key}":
+          ThrottlingBurstLimit: !Ref WriteThrottlingBurst
+          ThrottlingRateLimit: !Ref WriteThrottlingRate
+
+  # ===========================================================================
+  # Lambda Function
+  # ===========================================================================
+
+  CasfaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "casfa-${StageName}"
+      Handler: handler.handler
+      CodeUri: backend/dist/
+      Description: CASFA API server (Hono on Lambda)
+      Events:
+        ApiProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref CasfaHttpApi
+            Path: /{proxy+}
+            Method: ANY
+        ApiRoot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref CasfaHttpApi
+            Path: /
+            Method: ANY
+      Environment:
+        Variables:
+          # Storage
+          CAS_STORAGE_TYPE: s3
+          CAS_BUCKET: !Ref CasStorageBucket
+          CAS_PREFIX: !Ref CasStoragePrefix
+          CAS_REGION: !Ref AWS::Region
+          # DynamoDB
+          TOKENS_TABLE: !Ref TokensTable
+          CAS_REALM_TABLE: !Ref RealmTable
+          CAS_REFCOUNT_TABLE: !Ref RefCountTable
+          CAS_USAGE_TABLE: !Ref UsageTable
+          # Cognito
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          CASFA_COGNITO_CLIENT_ID: !Ref CognitoClientId
+          COGNITO_REGION: !Ref CognitoRegion
+          COGNITO_HOSTED_UI_URL: !Ref CognitoHostedUiUrl
+          # Server
+          CAS_NODE_LIMIT: !Ref CasNodeLimit
+          CAS_MAX_PAYLOAD_SIZE: !Ref CasMaxPayloadSize
+          CAS_BASE_URL: !If
+            - HasCustomDomain
+            - !Sub "https://${CustomDomainName}"
+            - !Sub "https://${CloudFrontDistribution.DomainName}"
+      Policies:
+        # DynamoDB access
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TokensTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RealmTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RefCountTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsageTable
+        # S3 access
+        - S3CrudPolicy:
+            BucketName: !Ref CasStorageBucket
+        # Cognito (for admin operations)
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminGetUser
+                - cognito-idp:ListUsers
+              Resource: !Sub "arn:aws:cognito-idp:${CognitoRegion}:${AWS::AccountId}:userpool/${CognitoUserPoolId}"
+
+  # ===========================================================================
+  # DynamoDB Tables
+  # ===========================================================================
+
+  # ── cas-tokens: Single-table design (delegates, scope sets, ownership, roles, local users) ──
+  TokensTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "cas-tokens-${StageName}"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: "N"
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+        - AttributeName: gsi2pk
+          AttributeType: S
+        - AttributeName: gsi2sk
+          AttributeType: S
+        - AttributeName: gsi3pk
+          AttributeType: S
+        - AttributeName: gsi3sk
+          AttributeType: S
+        - AttributeName: gsi4pk
+          AttributeType: S
+        - AttributeName: gsi4sk
+          AttributeType: S
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      GlobalSecondaryIndexes:
+        - IndexName: userId-index
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi1
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi2
+          KeySchema:
+            - AttributeName: gsi2pk
+              KeyType: HASH
+            - AttributeName: gsi2sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi3
+          KeySchema:
+            - AttributeName: gsi3pk
+              KeyType: HASH
+            - AttributeName: gsi3sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi4
+          KeySchema:
+            - AttributeName: gsi4pk
+              KeyType: HASH
+            - AttributeName: gsi4sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: KEYS_ONLY
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  # ── cas-realm: Depots and realm-level data ──
+  RealmTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "cas-realm-${StageName}"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: realm
+          KeyType: HASH
+        - AttributeName: key
+          KeyType: RANGE
+      AttributeDefinitions:
+        - AttributeName: realm
+          AttributeType: S
+        - AttributeName: key
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+        - AttributeName: gsi3pk
+          AttributeType: S
+        - AttributeName: gsi3sk
+          AttributeType: S
+      GlobalSecondaryIndexes:
+        - IndexName: by-key
+          KeySchema:
+            - AttributeName: key
+              KeyType: HASH
+            - AttributeName: realm
+              KeyType: RANGE
+          Projection:
+            ProjectionType: KEYS_ONLY
+        - IndexName: gsi1
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: gsi3
+          KeySchema:
+            - AttributeName: gsi3pk
+              KeyType: HASH
+            - AttributeName: gsi3sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  # ── cas-refcount: Reference counting for GC ──
+  RefCountTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "cas-refcount-${StageName}"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gcStatus
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: "N"
+      GlobalSecondaryIndexes:
+        - IndexName: by-gc-status
+          KeySchema:
+            - AttributeName: gcStatus
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: by-key
+          KeySchema:
+            - AttributeName: sk
+              KeyType: HASH
+            - AttributeName: pk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes:
+              - count
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  # ── cas-usage: Quota management ──
+  UsageTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub "cas-usage-${StageName}"
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+
+  # ===========================================================================
+  # S3 Buckets
+  # ===========================================================================
+
+  # ── CAS Blob Storage ──
+  CasStorageBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "casfa-storage-${StageName}-${AWS::AccountId}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortIncompleteMultipartUpload
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+
+  # ── Frontend Static Assets ──
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Sub "casfa-frontend-${StageName}-${AWS::AccountId}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                "AWS:SourceArn": !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+
+  # ===========================================================================
+  # CloudFront Distribution (HTTP/2 + HTTP/3, dual origin)
+  # ===========================================================================
+
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "casfa-frontend-oac-${StageName}"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        HttpVersion: http2and3
+        Comment: !Sub "CASFA ${StageName} distribution"
+        PriceClass: PriceClass_100
+        DefaultRootObject: index.html
+
+        # Custom domain + TLS
+        Aliases: !If
+          - HasCustomDomain
+          - - !Ref CustomDomainName
+          - !Ref AWS::NoValue
+        ViewerCertificate: !If
+          - HasCustomDomain
+          - AcmCertificateArn: !Ref AcmCertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+
+        # WAF
+        WebACLId: !GetAtt WafWebAcl.Arn
+
+        # Origins
+        Origins:
+          # Origin 1: Frontend S3 bucket (via OAC)
+          - Id: FrontendS3Origin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !Ref CloudFrontOAC
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+          # Origin 2: API Gateway HTTP API
+          - Id: ApiGatewayOrigin
+            DomainName: !Sub "${CasfaHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+            CustomOriginConfig:
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols:
+                - TLSv1.2
+            OriginPath: !Sub "/${StageName}"
+
+        # Default: serve frontend from S3
+        DefaultCacheBehavior:
+          TargetOriginId: FrontendS3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+
+        CacheBehaviors:
+          # /api/* → API Gateway (no cache, forward all)
+          - PathPattern: "/api/*"
+            TargetOriginId: ApiGatewayOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac  # AllViewerExceptHostHeader
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - POST
+              - PATCH
+              - DELETE
+
+        # SPA fallback: 403/404 from S3 → /index.html (200)
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+
+  # ===========================================================================
+  # WAF WebACL (per-IP rate limiting)
+  # ===========================================================================
+
+  WafWebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub "casfa-waf-${StageName}"
+      Scope: CLOUDFRONT
+      DefaultAction:
+        Allow: {}
+      Description: !Sub "CASFA ${StageName} WAF - per-IP rate limiting"
+      VisibilityConfig:
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub "casfa-waf-${StageName}"
+        SampledRequestsEnabled: true
+      Rules:
+        # Rule 1: Per-IP rate limit (all requests)
+        - Name: PerIpRateLimit
+          Priority: 1
+          Action:
+            Block:
+              CustomResponse:
+                ResponseCode: 429
+                ResponseHeaders:
+                  - Name: Retry-After
+                    Value: "60"
+          Statement:
+            RateBasedStatement:
+              Limit: !Ref WafRateLimit
+              AggregateKeyType: IP
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub "casfa-per-ip-rate-${StageName}"
+            SampledRequestsEnabled: true
+        # Rule 2: Stricter rate limit for write APIs
+        - Name: WriteApiRateLimit
+          Priority: 2
+          Action:
+            Block:
+              CustomResponse:
+                ResponseCode: 429
+                ResponseHeaders:
+                  - Name: Retry-After
+                    Value: "60"
+          Statement:
+            RateBasedStatement:
+              Limit: 200
+              AggregateKeyType: IP
+              ScopeDownStatement:
+                ByteMatchStatement:
+                  SearchString: "/api/realm/"
+                  FieldToMatch:
+                    UriPath: {}
+                  TextTransformations:
+                    - Priority: 0
+                      Type: LOWERCASE
+                  PositionalConstraint: STARTS_WITH
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub "casfa-write-rate-${StageName}"
+            SampledRequestsEnabled: true
+
+  # ===========================================================================
+  # Route53 DNS Record (alias to CloudFront)
+  # ===========================================================================
+
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: CreateDnsRecord
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref CustomDomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2  # CloudFront global hosted zone ID (fixed)
+        EvaluateTargetHealth: false
+
+  DnsRecordAAAA:
+    Type: AWS::Route53::RecordSet
+    Condition: CreateDnsRecord
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref CustomDomainName
+      Type: AAAA
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2  # CloudFront global hosted zone ID (fixed)
+        EvaluateTargetHealth: false
+
+# =============================================================================
+# Outputs
+# =============================================================================
+
+Outputs:
+  ApiGatewayUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${CasfaHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
+
+  CloudFrontUrl:
+    Description: CloudFront distribution URL
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}"
+
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID (for cache invalidation)
+    Value: !Ref CloudFrontDistribution
+
+  SiteUrl:
+    Description: Public site URL (custom domain or CloudFront)
+    Value: !If
+      - HasCustomDomain
+      - !Sub "https://${CustomDomainName}"
+      - !Sub "https://${CloudFrontDistribution.DomainName}"
+
+  FrontendBucketName:
+    Description: Frontend S3 bucket name (for deploying static assets)
+    Value: !Ref FrontendBucket
+
+  CasStorageBucketName:
+    Description: CAS blob storage S3 bucket name
+    Value: !Ref CasStorageBucket
+
+  TokensTableName:
+    Description: DynamoDB tokens table name
+    Value: !Ref TokensTable
+
+  RealmTableName:
+    Description: DynamoDB realm table name
+    Value: !Ref RealmTable
+
+  RefCountTableName:
+    Description: DynamoDB ref count table name
+    Value: !Ref RefCountTable
+
+  UsageTableName:
+    Description: DynamoDB usage table name
+    Value: !Ref UsageTable
+
+  LambdaFunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt CasfaFunction.Arn

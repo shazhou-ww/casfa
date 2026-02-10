@@ -152,6 +152,24 @@
         "typescript": "^5.3.0",
       },
     },
+    "packages/explorer": {
+      "name": "@casfa/explorer",
+      "version": "0.1.0",
+      "dependencies": {
+        "zustand": "^5.0.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.0.0",
+      },
+      "peerDependencies": {
+        "@casfa/client": "workspace:*",
+        "@casfa/protocol": "workspace:*",
+        "@mui/icons-material": "^6.0.0",
+        "@mui/material": "^6.0.0",
+        "react": "^18.0.0 || ^19.0.0",
+        "react-dom": "^18.0.0 || ^19.0.0",
+      },
+    },
     "packages/proof": {
       "name": "@casfa/proof",
       "version": "0.1.0",
@@ -365,6 +383,8 @@
     "@casfa/delegate": ["@casfa/delegate@workspace:packages/delegate"],
 
     "@casfa/delegate-token": ["@casfa/delegate-token@workspace:packages/delegate-token"],
+
+    "@casfa/explorer": ["@casfa/explorer@workspace:packages/explorer"],
 
     "@casfa/proof": ["@casfa/proof@workspace:packages/proof"],
 

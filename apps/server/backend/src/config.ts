@@ -37,7 +37,6 @@ export const loadServerConfig = (): ServerConfig => ({
 export type DbConfig = {
   tokensTable: string;
   casRealmTable: string;
-  casDagTable: string;
   refCountTable: string;
   usageTable: string;
   dynamoEndpoint?: string;
@@ -46,7 +45,6 @@ export type DbConfig = {
 export const loadDbConfig = (): DbConfig => ({
   tokensTable: process.env.TOKENS_TABLE ?? "cas-tokens",
   casRealmTable: process.env.CAS_REALM_TABLE ?? "cas-realm",
-  casDagTable: process.env.CAS_DAG_TABLE ?? "cas-dag",
   refCountTable: process.env.CAS_REFCOUNT_TABLE ?? "cas-refcount",
   usageTable: process.env.CAS_USAGE_TABLE ?? "cas-usage",
   dynamoEndpoint: process.env.DYNAMODB_ENDPOINT,

@@ -27,7 +27,6 @@ import {
 import { zValidator } from "@hono/zod-validator";
 import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
-import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { ZodError, type ZodSchema } from "zod";
 
@@ -99,6 +98,10 @@ export type RouterDeps = {
   proofValidationMiddleware: MiddlewareHandler<Env>;
   canUploadMiddleware: MiddlewareHandler<Env>;
   canManageDepotMiddleware: MiddlewareHandler<Env>;
+
+  // Static file serving (optional, only for local dev with hono/bun)
+  serveStaticMiddleware?: MiddlewareHandler<Env>;
+  serveStaticFallbackMiddleware?: MiddlewareHandler<Env>;
 };
 
 // ============================================================================
@@ -340,13 +343,15 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   app.route("/api/realm", realmRouter);
 
   // ============================================================================
-  // Static File Serving (production frontend build)
+  // Static File Serving (local dev only — production uses S3 + CloudFront)
   // ============================================================================
 
-  app.use("*", serveStatic({ root: "./backend/public" }));
-
-  // SPA fallback: serve index.html for non-API routes
-  app.use("*", serveStatic({ root: "./backend/public", path: "index.html" }));
+  if (deps.serveStaticMiddleware) {
+    app.use("*", deps.serveStaticMiddleware);
+  }
+  if (deps.serveStaticFallbackMiddleware) {
+    app.use("*", deps.serveStaticFallbackMiddleware);
+  }
 
   // ============================================================================
   // 404 Handler
