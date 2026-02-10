@@ -8,8 +8,6 @@ import {
   ClaimNodeRequestSchema,
   CreateDelegateRequestSchema,
   CreateDepotSchema,
-  // Ticket request schemas
-  CreateTicketSchema,
   DepotCommitSchema,
   FsCpRequestSchema,
   // Filesystem request schemas
@@ -22,7 +20,6 @@ import {
   RefreshSchema,
   RegisterSchema,
   RootTokenRequestSchema,
-  TicketSubmitSchema,
   TokenExchangeSchema,
   UpdateDepotSchema,
   UpdateUserRoleSchema,
@@ -46,7 +43,6 @@ import type { OAuthController } from "./controllers/oauth.ts";
 import type { RealmController } from "./controllers/realm.ts";
 import type { RefreshController } from "./controllers/refresh.ts";
 import type { RootTokenController } from "./controllers/root-token.ts";
-import type { TicketsController } from "./controllers/tickets.ts";
 import type { McpController } from "./mcp/handler.ts";
 import type { Env } from "./types.ts";
 
@@ -62,7 +58,6 @@ export type RouterDeps = {
   localAuth?: LocalAuthController;
   admin: AdminController;
   realm: RealmController;
-  tickets: TicketsController;
   chunks: ChunksController;
   depots: DepotsController;
   filesystem: FilesystemController;
@@ -205,23 +200,6 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   // Realm info
   realmRouter.get("/:realmId", deps.realm.getInfo);
   realmRouter.get("/:realmId/usage", deps.realm.getUsage);
-
-  // Tickets
-  realmRouter.post(
-    "/:realmId/tickets",
-    deps.canUploadMiddleware,
-    zValidator("json", CreateTicketSchema),
-    deps.tickets.create
-  );
-  realmRouter.get("/:realmId/tickets", deps.tickets.list);
-  realmRouter.get("/:realmId/tickets/:ticketId", deps.tickets.get);
-  realmRouter.post(
-    "/:realmId/tickets/:ticketId/submit",
-    zValidator("json", TicketSubmitSchema),
-    deps.tickets.submit
-  );
-  realmRouter.post("/:realmId/tickets/:ticketId/revoke", deps.tickets.revoke);
-  realmRouter.delete("/:realmId/tickets/:ticketId", deps.tickets.delete);
 
   // Nodes
   realmRouter.post(

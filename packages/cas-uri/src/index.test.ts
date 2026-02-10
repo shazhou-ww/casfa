@@ -19,7 +19,6 @@ import {
   parseCasUriOrThrow,
   resolvePath,
   rootUri,
-  ticketUri,
   uriEquals,
   withIndexPath,
 } from "./index.ts";
@@ -31,7 +30,6 @@ import {
 // Valid 26-character Crockford Base32 strings
 const VALID_HASH = "A6JCHNMFWRT90AXMYWHJ8HKS90";
 const VALID_DEPOT_ID = "01HQXK5V8N3Y7M2P4R6T9W0ABC";
-const VALID_TICKET_ID = "01HQXK5V8N3Y7M2P4R6T9W0DEF";
 
 // ============================================================================
 // Parsing Tests
@@ -40,26 +38,26 @@ const VALID_TICKET_ID = "01HQXK5V8N3Y7M2P4R6T9W0DEF";
 describe("parseCasUri", () => {
   describe("node URIs", () => {
     it("should parse node URI without path", () => {
-      const result = parseCasUri(`node:${VALID_HASH}`);
+      const result = parseCasUri(`nod_${VALID_HASH}`);
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.uri.root).toEqual({ type: "node", hash: VALID_HASH });
+        expect(result.uri.root).toEqual({ type: "nod", hash: VALID_HASH });
         expect(result.uri.path).toEqual([]);
         expect(result.uri.indexPath).toBeNull();
       }
     });
 
     it("should parse node URI with path", () => {
-      const result = parseCasUri(`node:${VALID_HASH}/docs/readme.md`);
+      const result = parseCasUri(`nod_${VALID_HASH}/docs/readme.md`);
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.uri.root).toEqual({ type: "node", hash: VALID_HASH });
+        expect(result.uri.root).toEqual({ type: "nod", hash: VALID_HASH });
         expect(result.uri.path).toEqual(["docs", "readme.md"]);
       }
     });
 
     it("should parse node URI with index path", () => {
-      const result = parseCasUri(`node:${VALID_HASH}/config#version`);
+      const result = parseCasUri(`nod_${VALID_HASH}/config#version`);
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.uri.path).toEqual(["config"]);
@@ -70,30 +68,20 @@ describe("parseCasUri", () => {
 
   describe("depot URIs", () => {
     it("should parse depot URI", () => {
-      const result = parseCasUri(`depot:${VALID_DEPOT_ID}`);
+      const result = parseCasUri(`dpt_${VALID_DEPOT_ID}`);
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.uri.root).toEqual({ type: "depot", id: VALID_DEPOT_ID });
+        expect(result.uri.root).toEqual({ type: "dpt", id: VALID_DEPOT_ID });
       }
     });
 
     it("should parse depot URI with path and fragment", () => {
-      const result = parseCasUri(`depot:${VALID_DEPOT_ID}/src/main.ts#exports`);
+      const result = parseCasUri(`dpt_${VALID_DEPOT_ID}/src/main.ts#exports`);
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.uri.root).toEqual({ type: "depot", id: VALID_DEPOT_ID });
+        expect(result.uri.root).toEqual({ type: "dpt", id: VALID_DEPOT_ID });
         expect(result.uri.path).toEqual(["src", "main.ts"]);
         expect(result.uri.indexPath).toBe("exports");
-      }
-    });
-  });
-
-  describe("ticket URIs", () => {
-    it("should parse ticket URI", () => {
-      const result = parseCasUri(`ticket:${VALID_TICKET_ID}`);
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.uri.root).toEqual({ type: "ticket", id: VALID_TICKET_ID });
       }
     });
   });
@@ -108,7 +96,7 @@ describe("parseCasUri", () => {
     });
 
     it("should fail on invalid root type", () => {
-      const result = parseCasUri(`invalid:${VALID_HASH}`);
+      const result = parseCasUri(`invalid_${VALID_HASH}`);
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe("invalid_root");
@@ -116,7 +104,7 @@ describe("parseCasUri", () => {
     });
 
     it("should fail on invalid hash format", () => {
-      const result = parseCasUri("node:invalid-hash");
+      const result = parseCasUri("nod_invalid-hash");
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe("invalid_hash");
@@ -124,15 +112,15 @@ describe("parseCasUri", () => {
     });
 
     it("should fail on invalid depot ID", () => {
-      const result = parseCasUri("depot:short");
+      const result = parseCasUri("dpt_short");
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe("invalid_id");
       }
     });
 
-    it("should fail on missing colon", () => {
-      const result = parseCasUri("node");
+    it("should fail on missing underscore", () => {
+      const result = parseCasUri("nod");
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe("invalid_format");
@@ -142,7 +130,7 @@ describe("parseCasUri", () => {
 
   describe("edge cases", () => {
     it("should handle consecutive slashes", () => {
-      const result = parseCasUri(`node:${VALID_HASH}//docs///file.txt`);
+      const result = parseCasUri(`nod_${VALID_HASH}//docs///file.txt`);
       expect(result.ok).toBe(true);
       if (result.ok) {
         // Empty segments are filtered
@@ -151,7 +139,7 @@ describe("parseCasUri", () => {
     });
 
     it("should handle fragment-only after root", () => {
-      const result = parseCasUri(`node:${VALID_HASH}#index`);
+      const result = parseCasUri(`nod_${VALID_HASH}#index`);
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.uri.path).toEqual([]);
@@ -163,8 +151,8 @@ describe("parseCasUri", () => {
 
 describe("parseCasUriOrThrow", () => {
   it("should return parsed URI on success", () => {
-    const uri = parseCasUriOrThrow(`node:${VALID_HASH}/path`);
-    expect(uri.root).toEqual({ type: "node", hash: VALID_HASH });
+    const uri = parseCasUriOrThrow(`nod_${VALID_HASH}/path`);
+    expect(uri.root).toEqual({ type: "nod", hash: VALID_HASH });
     expect(uri.path).toEqual(["path"]);
   });
 
@@ -180,40 +168,33 @@ describe("parseCasUriOrThrow", () => {
 describe("formatCasUri", () => {
   it("should format node URI without path", () => {
     const uri = nodeUri(VALID_HASH);
-    expect(formatCasUri(uri)).toBe(`node:${VALID_HASH}`);
+    expect(formatCasUri(uri)).toBe(`nod_${VALID_HASH}`);
   });
 
   it("should format node URI with path", () => {
     const uri = nodeUri(VALID_HASH, ["docs", "readme.md"]);
-    expect(formatCasUri(uri)).toBe(`node:${VALID_HASH}/docs/readme.md`);
+    expect(formatCasUri(uri)).toBe(`nod_${VALID_HASH}/docs/readme.md`);
   });
 
   it("should format URI with index path", () => {
     const uri = nodeUri(VALID_HASH, ["config"], "version");
-    expect(formatCasUri(uri)).toBe(`node:${VALID_HASH}/config#version`);
+    expect(formatCasUri(uri)).toBe(`nod_${VALID_HASH}/config#version`);
   });
 
   it("should format depot URI", () => {
     const uri = depotUri(VALID_DEPOT_ID, ["src"]);
-    expect(formatCasUri(uri)).toBe(`depot:${VALID_DEPOT_ID}/src`);
-  });
-
-  it("should format ticket URI", () => {
-    const uri = ticketUri(VALID_TICKET_ID);
-    expect(formatCasUri(uri)).toBe(`ticket:${VALID_TICKET_ID}`);
+    expect(formatCasUri(uri)).toBe(`dpt_${VALID_DEPOT_ID}/src`);
   });
 });
 
 describe("parse/format roundtrip", () => {
   const testCases = [
-    `node:${VALID_HASH}`,
-    `node:${VALID_HASH}/path`,
-    `node:${VALID_HASH}/docs/readme.md`,
-    `node:${VALID_HASH}/config#version`,
-    `depot:${VALID_DEPOT_ID}`,
-    `depot:${VALID_DEPOT_ID}/src/main.ts#exports`,
-    `ticket:${VALID_TICKET_ID}`,
-    `ticket:${VALID_TICKET_ID}/output`,
+    `nod_${VALID_HASH}`,
+    `nod_${VALID_HASH}/path`,
+    `nod_${VALID_HASH}/docs/readme.md`,
+    `nod_${VALID_HASH}/config#version`,
+    `dpt_${VALID_DEPOT_ID}`,
+    `dpt_${VALID_DEPOT_ID}/src/main.ts#exports`,
   ];
 
   for (const uriStr of testCases) {
@@ -231,14 +212,14 @@ describe("parse/format roundtrip", () => {
 
 describe("createCasUri", () => {
   it("should create URI with all components", () => {
-    const uri = createCasUri({ type: "node", hash: VALID_HASH }, ["path", "to", "file"], "index");
-    expect(uri.root).toEqual({ type: "node", hash: VALID_HASH });
+    const uri = createCasUri({ type: "nod", hash: VALID_HASH }, ["path", "to", "file"], "index");
+    expect(uri.root).toEqual({ type: "nod", hash: VALID_HASH });
     expect(uri.path).toEqual(["path", "to", "file"]);
     expect(uri.indexPath).toBe("index");
   });
 
   it("should default path and indexPath", () => {
-    const uri = createCasUri({ type: "depot", id: VALID_DEPOT_ID });
+    const uri = createCasUri({ type: "dpt", id: VALID_DEPOT_ID });
     expect(uri.path).toEqual([]);
     expect(uri.indexPath).toBeNull();
   });

@@ -131,7 +131,7 @@ describe("Depot Management", () => {
 
       expect(response.status).toBe(201);
       const data = (await response.json()) as any;
-      expect(data.depotId).toMatch(/^depot:/);
+      expect(data.depotId).toMatch(/^dpt_/);
       expect(data.title).toBe("My Documents");
       expect(data.maxHistory).toBe(10);
     });
@@ -251,7 +251,7 @@ describe("Depot Management", () => {
       const response = await ctx.helpers.accessRequest(
         accessToken.tokenBase64,
         "GET",
-        `/api/realm/${realm}/depots/depot:nonexistent123`
+        `/api/realm/${realm}/depots/dpt_nonexistent123`
       );
 
       expect(response.status).toBe(404);

@@ -21,6 +21,7 @@ import {
   computeScopeHash,
   generateTokenPair,
 } from "../util/delegate-token-utils.ts";
+import { generateDelegateId } from "../util/token-id.ts";
 import { resolveRelativeScope } from "../util/scope.ts";
 import { blake3Hash } from "../util/hashing.ts";
 
@@ -141,7 +142,7 @@ export const createDelegatesController = (
     }
 
     // Build the child delegate
-    const newDelegateId = crypto.randomUUID();
+    const newDelegateId = generateDelegateId();
     const chain = buildChain(parentDelegate.chain, newDelegateId);
     const depth = parentDelegate.depth + 1;
 
@@ -223,14 +224,12 @@ export const createDelegatesController = (
     });
 
     // Store token records for RT rotation
-    const familyId = crypto.randomUUID();
     await tokenRecordsDb.create({
       tokenId: tokenPair.refreshToken.id,
       tokenType: "refresh",
       delegateId: newDelegateId,
       realm: realmId,
       expiresAt: 0, // RT never expires independently
-      familyId,
     });
     await tokenRecordsDb.create({
       tokenId: tokenPair.accessToken.id,
@@ -238,7 +237,6 @@ export const createDelegatesController = (
       delegateId: newDelegateId,
       realm: realmId,
       expiresAt: tokenPair.accessToken.expiresAt,
-      familyId,
     });
 
     return c.json(

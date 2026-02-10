@@ -9,20 +9,6 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { fromCrockfordBase32, toCrockfordBase32 } from "./encoding.ts";
 
 // ============================================================================
-// Request ID Generation
-// ============================================================================
-
-/**
- * Generate a unique request ID
- *
- * Format: req_{base64url random bytes}
- */
-export function generateRequestId(): string {
-  const bytes = randomBytes(16);
-  return `req_${bytes.toString("base64url")}`;
-}
-
-// ============================================================================
 // Display Code Generation
 // ============================================================================
 

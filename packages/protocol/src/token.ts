@@ -29,7 +29,7 @@ export const CreateDelegateTokenSchema = z.object({
   canUpload: z.boolean().optional().default(false),
   /** Whether token can manage depots */
   canManageDepot: z.boolean().optional().default(false),
-  /** Scope: array of CAS URIs (e.g., ["cas://depot:MAIN", "cas://node:abc123"]) */
+  /** Scope: array of CAS URIs (e.g., ["cas://dpt_MAIN", "cas://nod_abc123"]) */
   scope: z.array(z.string()).min(1),
 });
 export type CreateDelegateToken = z.infer<typeof CreateDelegateTokenSchema>;

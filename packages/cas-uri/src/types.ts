@@ -4,29 +4,27 @@
  * CAS URI format: {root}[/path...][#index-path]
  *
  * Root types:
- * - node:{hash}     - Direct node reference
- * - depot:{id}      - Depot current root
- * - ticket:{id}     - Ticket output root
+ * - nod_{hash}     - Direct node reference
+ * - dpt_{id}       - Depot current root
  */
 
 /**
  * CAS URI root types
  */
-export type CasUriRootType = "node" | "depot" | "ticket";
+export type CasUriRootType = "nod" | "dpt";
 
 /**
  * Parsed CAS URI root
  */
 export type CasUriRoot =
-  | { type: "node"; hash: string }
-  | { type: "depot"; id: string }
-  | { type: "ticket"; id: string };
+  | { type: "nod"; hash: string }
+  | { type: "dpt"; id: string };
 
 /**
  * Parsed CAS URI
  */
 export type CasUri = {
-  /** Root reference (node, depot, or ticket) */
+  /** Root reference (nod or dpt) */
   root: CasUriRoot;
   /** Path segments (after root, before fragment) */
   path: string[];

@@ -32,8 +32,6 @@ export const ServiceLimitsSchema = z.object({
   maxCollectionChildren: z.number().int().positive(),
   /** Maximum payload size for uploads in bytes */
   maxPayloadSize: z.number().int().positive(),
-  /** Maximum ticket TTL in seconds */
-  maxTicketTtl: z.number().int().positive(),
   /** Maximum Delegate Token TTL in seconds */
   maxDelegateTokenTtl: z.number().int().positive(),
   /** Maximum Access Token TTL in seconds */

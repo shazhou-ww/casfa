@@ -411,7 +411,7 @@ describe("computeTokenId", () => {
 });
 
 describe("formatTokenId", () => {
-  it("should format with dlt1_ prefix", () => {
+  it("should format with tkn_ prefix", () => {
     const id = new Uint8Array(16).fill(0);
     expect(formatTokenId(id).startsWith(TOKEN_ID_PREFIX)).toBe(true);
   });
@@ -439,7 +439,7 @@ describe("parseTokenId", () => {
   });
 
   it("should throw on wrong length", () => {
-    expect(() => parseTokenId("dlt1_SHORT")).toThrow(/Invalid Token ID length/);
+    expect(() => parseTokenId("tkn_SHORT")).toThrow(/Invalid Token ID length/);
   });
 });
 
@@ -454,11 +454,11 @@ describe("isValidTokenIdFormat", () => {
   });
 
   it("should return false for invalid characters", () => {
-    expect(isValidTokenIdFormat("dlt1_0000000000000000000000!@")).toBe(false);
+    expect(isValidTokenIdFormat("tkn_0000000000000000000000!@")).toBe(false);
   });
 
   it("should return false for wrong length", () => {
-    expect(isValidTokenIdFormat("dlt1_SHORT")).toBe(false);
+    expect(isValidTokenIdFormat("tkn_SHORT")).toBe(false);
   });
 });
 

@@ -29,8 +29,8 @@ import type { OwnershipV2Db } from "../../src/db/ownership-v2.ts";
 const TEST_REALM = "usr_testuser";
 const TEST_DELEGATE_ID = "dlg_child";
 const TEST_ROOT_DELEGATE_ID = "dlg_root";
-/** Node key in node:XXXX (Crockford base32) format */
-const TEST_NODE_KEY = "node:NF6YY4HMASW91AYDXW938NKRJ0";
+/** Node key in nod_XXXX (Crockford base32) format */
+const TEST_NODE_KEY = "nod_NF6YY4HMASW91AYDXW938NKRJ0";
 /** Corresponding hex storage key */
 const TEST_STORAGE_KEY = nodeKeyToHex(TEST_NODE_KEY);
 const TEST_TOKEN_BYTES = new Uint8Array(128).fill(0x42);
@@ -119,13 +119,13 @@ function createAccessTokenAuth(overrides?: Record<string, unknown>) {
   return {
     type: "access",
     realm: TEST_REALM,
-    tokenId: "dlt1_test",
+    tokenId: "tkn_test",
     tokenBytes: TEST_TOKEN_BYTES,
     canUpload: true,
     canManageDepot: false,
     issuerChain: [TEST_ROOT_DELEGATE_ID, TEST_DELEGATE_ID],
     tokenRecord: {
-      tokenId: "dlt1_test",
+      tokenId: "tkn_test",
       tokenType: "access",
       realm: TEST_REALM,
     },
@@ -389,7 +389,7 @@ describe("ClaimController", () => {
       const c = createMockContext({
         auth: createAccessTokenAuth({
           issuerChain: [],
-          tokenId: "dlt1_fallback",
+          tokenId: "tkn_fallback",
         }),
         body: { pop: TEST_POP },
         params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
@@ -398,7 +398,7 @@ describe("ClaimController", () => {
       await controller.claim(c as any);
 
       const body = c.responseData.body as Record<string, unknown>;
-      expect(body.delegateId).toBe("dlt1_fallback");
+      expect(body.delegateId).toBe("tkn_fallback");
     });
 
     it("passes tokenBytes from auth to verifyPoP", async () => {

@@ -12,34 +12,31 @@ export type {
   AuthRequestStatus,
   NodeKind,
   PaginationQuery,
-  TicketStatus,
   TokenType,
   UserRole,
 } from "./common.ts";
 export {
   // Enum schemas
   AuthRequestStatusSchema,
-  // Deprecated (for backward compatibility)
-  /** @deprecated Use DELEGATE_TOKEN_ID_REGEX instead */
-  CLIENT_ID_REGEX,
-  /** @deprecated Use DelegateTokenIdSchema instead */
-  ClientIdSchema,
-  // ID regex patterns (new format)
-  DELEGATE_TOKEN_ID_REGEX,
-  DEPOT_ID_REGEX,
-  // ID schemas (new format)
-  DelegateTokenIdSchema,
-  DepotIdSchema,
   // Crockford Base32 encoding
   decodeCrockfordBase32,
+  encodeCrockfordBase32,
+  // ID regex patterns
+  DELEGATE_ID_REGEX,
+  DELEGATE_TOKEN_ID_REGEX,
+  DEPOT_ID_REGEX,
+  // ID schemas
+  DelegateIdSchema,
+  DelegateTokenIdSchema,
+  DepotIdSchema,
   // Well-known keys
   EMPTY_DICT_NODE_KEY,
-  encodeCrockfordBase32,
   // Node key conversion
   hashToNodeKey,
   hexToNodeKey,
   ISSUER_ID_REGEX,
   IssuerIdSchema,
+  NODE_KEY_PREFIX,
   NODE_KEY_REGEX,
   NodeKeySchema,
   NodeKindSchema,
@@ -48,13 +45,6 @@ export {
   PaginationQuerySchema,
   REQUEST_ID_REGEX,
   RequestIdSchema,
-  TICKET_ID_REGEX,
-  TicketIdSchema,
-  TicketStatusSchema,
-  /** @deprecated Use DELEGATE_TOKEN_ID_REGEX instead */
-  TOKEN_ID_REGEX,
-  /** @deprecated Use DelegateTokenIdSchema instead */
-  TokenIdSchema,
   TokenTypeSchema,
   USER_ID_REGEX,
   UserIdSchema,
@@ -80,7 +70,6 @@ export type {
   Refresh,
   Register,
   TokenExchange,
-  WritableConfig,
 } from "./auth.ts";
 export {
   // Client Auth
@@ -93,32 +82,7 @@ export {
   RefreshSchema,
   RegisterSchema,
   TokenExchangeSchema,
-  WritableConfigSchema,
 } from "./auth.ts";
-
-// ============================================================================
-// Ticket schemas
-// ============================================================================
-
-export type {
-  CreateTicket,
-  CreateTicketResponse,
-  ListTicketsQuery,
-  TicketCommit,
-  TicketDetail,
-  TicketListItem,
-  TicketSubmit,
-} from "./ticket.ts";
-export {
-  CreateTicketResponseSchema,
-  CreateTicketSchema,
-  ListTicketsQuerySchema,
-  /** @deprecated Use TicketSubmitSchema instead */
-  TicketCommitSchema,
-  TicketDetailSchema,
-  TicketListItemSchema,
-  TicketSubmitSchema,
-} from "./ticket.ts";
 
 // ============================================================================
 // Token schemas
@@ -320,10 +284,6 @@ export {
   REQUEST_NOT_FOUND,
   REQUEST_NOT_PENDING,
   SCOPE_MISMATCH,
-  TICKET_BIND_PERMISSION_DENIED,
-  TICKET_EXPIRED,
-  TICKET_NOT_FOUND,
-  TICKET_NOT_PENDING,
   TOKEN_ALREADY_BOUND,
   TOKEN_EXPIRED,
   TOKEN_INVALID,

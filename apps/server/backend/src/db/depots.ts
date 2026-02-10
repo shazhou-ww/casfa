@@ -215,14 +215,11 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
   };
 
   const get = async (realm: string, depotId: string): Promise<ExtendedDepot | null> => {
-    // Normalize depotId (remove depot: prefix if present)
-    const rawId = depotId.startsWith("depot:") ? depotId.slice(6) : depotId;
-
     // Query using legacy key format
     const result = await client.send(
       new GetCommand({
         TableName: tableName,
-        Key: { realm, key: toLegacyDepotKey(rawId) },
+        Key: { realm, key: toLegacyDepotKey(depotId) },
       })
     );
 
@@ -245,7 +242,6 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
     depotId: string,
     options: UpdateDepotOptions
   ): Promise<ExtendedDepot | null> => {
-    const rawId = depotId.startsWith("depot:") ? depotId.slice(6) : depotId;
     const now = Date.now();
 
     // Build update expression dynamically
@@ -272,7 +268,7 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
       const result = await client.send(
         new UpdateCommand({
           TableName: tableName,
-          Key: { realm, key: toLegacyDepotKey(rawId) },
+          Key: { realm, key: toLegacyDepotKey(depotId) },
           UpdateExpression: `SET ${updates.join(", ")}`,
           ExpressionAttributeNames: Object.keys(names).length > 0 ? names : undefined,
           ExpressionAttributeValues: values,
@@ -289,7 +285,7 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
         await client.send(
           new UpdateCommand({
             TableName: tableName,
-            Key: { realm, key: toLegacyDepotKey(rawId) },
+            Key: { realm, key: toLegacyDepotKey(depotId) },
             UpdateExpression: "SET history = :history",
             ExpressionAttributeValues: { ":history": truncatedHistory },
           })
@@ -310,11 +306,10 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
     depotId: string,
     newRoot: string
   ): Promise<ExtendedDepot | null> => {
-    const rawId = depotId.startsWith("depot:") ? depotId.slice(6) : depotId;
     const now = Date.now();
 
     // Get current depot
-    const current = await get(realm, rawId);
+    const current = await get(realm, depotId);
     if (!current) return null;
 
     const oldRoot = current.root;
@@ -331,7 +326,7 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
     const result = await client.send(
       new UpdateCommand({
         TableName: tableName,
-        Key: { realm, key: toLegacyDepotKey(rawId) },
+        Key: { realm, key: toLegacyDepotKey(depotId) },
         UpdateExpression: "SET #root = :root, history = :history, updatedAt = :now",
         ExpressionAttributeNames: { "#root": "root" },
         ExpressionAttributeValues: {
@@ -347,13 +342,11 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
   };
 
   const deleteDepot = async (realm: string, depotId: string): Promise<boolean> => {
-    const rawId = depotId.startsWith("depot:") ? depotId.slice(6) : depotId;
-
     try {
       await client.send(
         new DeleteCommand({
           TableName: tableName,
-          Key: { realm, key: toLegacyDepotKey(rawId) },
+          Key: { realm, key: toLegacyDepotKey(depotId) },
           ConditionExpression: "attribute_exists(realm)",
         })
       );

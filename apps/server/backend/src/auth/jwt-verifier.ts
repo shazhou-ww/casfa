@@ -33,7 +33,7 @@ export const createCognitoJwtVerifier = (config: CognitoConfig): JwtVerifier => 
       const sub = payload.sub;
       if (!sub) return null;
 
-      // Convert Cognito UUID to user:base32 format
+      // Convert Cognito UUID to usr_ format
       const userId = uuidToUserId(sub);
 
       return {
@@ -98,8 +98,8 @@ export const createMockJwtVerifier = (secret: string): JwtVerifier => {
         return null;
       }
 
-      // Convert UUID to user:base32 format (for mock tokens, sub may already be in user: format)
-      const userId = sub.startsWith("user:") ? sub : uuidToUserId(sub);
+      // Convert UUID to usr_ format (for mock tokens, sub may already be in usr_ format)
+      const userId = sub.startsWith("usr_") ? sub : uuidToUserId(sub);
 
       return {
         userId,

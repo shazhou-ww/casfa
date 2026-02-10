@@ -20,7 +20,7 @@ export type DelegateTokenRecord = {
   sk: string; // METADATA
 
   // Token 基本信息
-  tokenId: string; // dlt1_xxx 格式
+  tokenId: string; // tkn_xxx 格式
   tokenType: "delegate" | "access";
   realm: string; // 32 bytes hash 的 hex 表示
   expiresAt: number; // Unix epoch ms
@@ -51,9 +51,6 @@ export type DelegateTokenRecord = {
   revokedAt?: number;
   revokedBy?: string;
 
-  // Ticket 绑定（仅 Access Token）
-  boundTicketId?: string; // 绑定的 Ticket ID，一个 Token 只能绑定一个 Ticket
-
   // 时间戳
   createdAt: number;
 
@@ -75,57 +72,6 @@ export type CreateDelegateTokenInput = Omit<
   DelegateTokenRecord,
   "pk" | "sk" | "gsi1pk" | "gsi1sk" | "gsi2pk" | "gsi2sk" | "ttl" | "isRevoked" | "createdAt"
 >;
-
-// ============================================================================
-// Ticket Types
-// ============================================================================
-
-/**
- * Ticket 工作空间记录
- *
- * 简化设计：权限由绑定的 Access Token 承载
- * 主键设计：使用 REALM#{realm} 分区，可直接按 realm 查询，无需 GSI
- *
- * 创建流程（两步）：
- *   1. 用 Delegate Token 签发 Access Token（POST /api/tokens/delegate）
- *   2. 用 Access Token 创建 Ticket 并绑定（POST /api/realm/:realmId/tickets）
- *
- * 注意：expiresAt 不存储在 Ticket 中，查询时从关联的 Access Token 获取
- */
-export type TicketRecord = {
-  // 主键
-  pk: string; // REALM#{realm}
-  sk: string; // TICKET#{ticketId}
-
-  // 基本信息
-  ticketId: string;
-  realm: string;
-  title: string;
-
-  // 工作空间状态
-  status: "pending" | "submitted";
-  submittedAt?: number;
-
-  // Submit 输出
-  root?: string; // submit 的输出节点 hash
-
-  // 关联的 Access Token（绑定的 Token，给 Tool 使用）
-  accessTokenId: string;
-
-  // 创建信息
-  creatorIssuerId: string; // 创建者 Token 的 issuer ID，用于 Issuer Chain 可见性验证
-
-  // 时间戳
-  createdAt: number;
-
-  // TTL（DynamoDB 自动删除）
-  ttl: number; // Unix epoch 秒，= createdAt / 1000 + 86400（24 小时超时）
-};
-
-/**
- * 创建 Ticket 时的输入类型
- */
-export type CreateTicketInput = Omit<TicketRecord, "pk" | "sk" | "ttl" | "status" | "createdAt">;
 
 // ============================================================================
 // ScopeSetNode Types
@@ -303,12 +249,10 @@ export type UserQuotaRecord = {
 
   // 存储使用量
   bytesUsed: number; // 已提交的存储使用量
-  bytesInProgress: number; // 进行中的 Ticket 占用（预扣）
 
   // 资源计数
   tokenCount: number; // 当前有效 Token 数量
   depotCount: number; // 当前 Depot 数量
-  ticketCount: number; // 当前活跃 Ticket 数量
 
   // 时间戳
   createdAt: number;

@@ -131,18 +131,13 @@ export function uriEquals(a: CasUri, b: CasUri): boolean {
   }
 
   switch (a.root.type) {
-    case "node":
-      if (b.root.type !== "node" || a.root.hash !== b.root.hash) {
+    case "nod":
+      if (b.root.type !== "nod" || a.root.hash !== b.root.hash) {
         return false;
       }
       break;
-    case "depot":
-      if (b.root.type !== "depot" || a.root.id !== b.root.id) {
-        return false;
-      }
-      break;
-    case "ticket":
-      if (b.root.type !== "ticket" || a.root.id !== b.root.id) {
+    case "dpt":
+      if (b.root.type !== "dpt" || a.root.id !== b.root.id) {
         return false;
       }
       break;
@@ -176,18 +171,13 @@ export function isAncestorOf(ancestor: CasUri, descendant: CasUri): boolean {
   }
 
   switch (ancestor.root.type) {
-    case "node":
-      if (descendant.root.type !== "node" || ancestor.root.hash !== descendant.root.hash) {
+    case "nod":
+      if (descendant.root.type !== "nod" || ancestor.root.hash !== descendant.root.hash) {
         return false;
       }
       break;
-    case "depot":
-      if (descendant.root.type !== "depot" || ancestor.root.id !== descendant.root.id) {
-        return false;
-      }
-      break;
-    case "ticket":
-      if (descendant.root.type !== "ticket" || ancestor.root.id !== descendant.root.id) {
+    case "dpt":
+      if (descendant.root.type !== "dpt" || ancestor.root.id !== descendant.root.id) {
         return false;
       }
       break;

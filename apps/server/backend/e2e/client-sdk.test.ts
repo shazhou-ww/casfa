@@ -368,8 +368,8 @@ describe("Client SDK Integration", () => {
       const result = await client.depots.get(mainDepotId);
       expect(result.ok).toBe(true);
       if (!result.ok) throw new Error("get depot failed");
-      // Server response formats depotId with depot: prefix
-      expect(result.data.depotId).toBe(`depot:${mainDepotId}`);
+      // Server response returns depotId directly (dpt_ prefix)
+      expect(result.data.depotId).toBe(mainDepotId);
     });
 
     it("should commit root and update depot", async () => {

@@ -35,8 +35,6 @@ export {
   EMPTY_SET_NODE_ID,
   type ScopeSetNodesDb,
 } from "./scope-set-nodes.ts";
-// Ticket operations
-export { createTicketsDb, type TicketsDb } from "./tickets.ts";
 
 // ============================================================================
 // Other modules

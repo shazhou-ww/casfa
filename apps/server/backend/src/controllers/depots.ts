@@ -6,7 +6,7 @@
  */
 
 import { EMPTY_DICT_KEY } from "@casfa/core";
-import { CreateDepotSchema, DepotCommitSchema, nodeKeyToHex, UpdateDepotSchema } from "@casfa/protocol";
+import { CreateDepotSchema, DepotCommitSchema, hexToNodeKey, nodeKeyToHex, UpdateDepotSchema } from "@casfa/protocol";
 import type { StorageProvider } from "@casfa/storage-core";
 import type { Context } from "hono";
 import {
@@ -41,11 +41,7 @@ type DepotsControllerDeps = {
 // Helpers
 // ============================================================================
 
-const formatDepotId = (depotId: string): string =>
-  depotId.startsWith("depot:") ? depotId : `depot:${depotId}`;
-
-const formatRoot = (root: string): string => (root.startsWith("node:") ? root : `node:${root}`);
-
+/** Format depot response for API output. IDs are now canonical (dpt_, nod_). */
 const formatDepotResponse = (depot: {
   depotId: string;
   title: string;
@@ -55,11 +51,11 @@ const formatDepotResponse = (depot: {
   createdAt: number;
   updatedAt: number;
 }) => ({
-  depotId: formatDepotId(depot.depotId),
+  depotId: depot.depotId,
   title: depot.title,
-  root: formatRoot(depot.root),
+  root: depot.root,
   maxHistory: depot.maxHistory,
-  history: depot.history.map(formatRoot),
+  history: depot.history,
   createdAt: depot.createdAt,
   updatedAt: depot.updatedAt,
 });
@@ -109,11 +105,11 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
         }
       }
 
-      // Create depot with empty dict as initial root
+      // Create depot with empty dict as initial root (nod_ format)
       const depot = await depotsDb.create(realm, {
         name: title ?? `depot-${Date.now()}`,
         title: title ?? `Depot ${Date.now()}`,
-        root: EMPTY_DICT_KEY,
+        root: hexToNodeKey(EMPTY_DICT_KEY),
         maxHistory,
       });
 

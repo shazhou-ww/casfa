@@ -59,10 +59,9 @@ export {
 } from "./token.ts";
 export {
   extractTokenId,
-  generateAgentTokenId,
+  generateDelegateId,
   generateDepotId,
-  generateTicketId,
-  generateTokenId,
+  generateRequestId,
   toTokenPk,
 } from "./token-id.ts";
 
@@ -72,7 +71,6 @@ export {
   encryptToken,
   generateClientSecret,
   generateDisplayCode,
-  generateRequestId,
   hashClientSecret,
   isValidClientSecret,
 } from "./token-request.ts";

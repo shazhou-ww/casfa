@@ -95,10 +95,10 @@ export const isValidCrockfordBase32 = (str: string): boolean => {
  * Convert a UUID string to User ID format
  *
  * Converts Cognito UUID (e.g., "340804d8-50d1-7022-08cc-c93a7198cc99")
- * to User ID format (e.g., "user:A6JCHNMFWRT90AXMYWHJ8HKS90")
+ * to User ID format (e.g., "usr_A6JCHNMFWRT90AXMYWHJ8HKS90")
  *
  * @param uuid - UUID string (with or without hyphens)
- * @returns User ID in format "user:{26 char Crockford Base32}"
+ * @returns User ID in format "usr_{26 char Crockford Base32}"
  */
 export const uuidToUserId = (uuid: string): string => {
   // Remove hyphens from UUID
@@ -114,24 +114,24 @@ export const uuidToUserId = (uuid: string): string => {
   }
 
   // Encode to Crockford Base32
-  return `user:${toCrockfordBase32(bytes)}`;
+  return `usr_${toCrockfordBase32(bytes)}`;
 };
 
 /**
  * Convert a User ID to UUID format
  *
- * Converts User ID format (e.g., "user:A6JCHNMFWRT90AXMYWHJ8HKS90")
+ * Converts User ID format (e.g., "usr_A6JCHNMFWRT90AXMYWHJ8HKS90")
  * back to UUID format (e.g., "340804d8-50d1-7022-08cc-c93a7198cc99")
  *
- * @param userId - User ID in format "user:{26 char Crockford Base32}"
+ * @param userId - User ID in format "usr_{26 char Crockford Base32}"
  * @returns UUID string with hyphens
  */
 export const userIdToUuid = (userId: string): string => {
-  if (!userId.startsWith("user:")) {
-    throw new Error(`Invalid user ID format: expected "user:" prefix`);
+  if (!userId.startsWith("usr_")) {
+    throw new Error(`Invalid user ID format: expected "usr_" prefix`);
   }
 
-  const base32 = userId.slice(5);
+  const base32 = userId.slice(4);
   const bytes = fromCrockfordBase32(base32);
 
   if (bytes.length !== 16) {
@@ -151,15 +151,15 @@ export const userIdToUuid = (userId: string): string => {
  * Normalize a user identifier to User ID format
  *
  * Accepts either:
- * - UUID format: "340804d8-50d1-7022-08cc-c93a7198cc99" -> converts to user:xxx
- * - User ID format: "user:A6JCHNMFWRT90AXMYWHJ8HKS90" -> returns as-is
+ * - UUID format: "340804d8-50d1-7022-08cc-c93a7198cc99" -> converts to usr_xxx
+ * - User ID format: "usr_A6JCHNMFWRT90AXMYWHJ8HKS90" -> returns as-is
  *
  * @param input - UUID or User ID string
- * @returns User ID in format "user:{26 char Crockford Base32}"
+ * @returns User ID in format "usr_{26 char Crockford Base32}"
  */
 export const normalizeUserId = (input: string): string => {
-  // Already in user:xxx format
-  if (input.startsWith("user:")) {
+  // Already in usr_ format
+  if (input.startsWith("usr_")) {
     return input;
   }
 

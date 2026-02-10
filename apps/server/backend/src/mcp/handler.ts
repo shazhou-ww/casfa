@@ -10,9 +10,7 @@ import type { Context } from "hono";
 import { z } from "zod";
 import type { ServerConfig } from "../config.ts";
 import type { OwnershipV2Db } from "../db/ownership-v2.ts";
-import type { TicketsDb } from "../db/tickets.ts";
 import type { JwtAuthContext, Env } from "../types.ts";
-import { generateTicketId } from "../util/token-id.ts";
 import { MCP_TOOLS } from "./tools.ts";
 
 // ============================================================================
@@ -48,21 +46,8 @@ const MCP_INTERNAL_ERROR = -32603;
 // Schemas
 // ============================================================================
 
-const GetTicketSchema = z.object({
-  title: z.string().max(255).optional(),
-  writable: z.boolean().default(false),
-});
-
 const ReadBlobSchema = z.object({
-  endpoint: z.string().url(),
   key: z.string(),
-  path: z.string().default("."),
-});
-
-const WriteBlobSchema = z.object({
-  endpoint: z.string().url(),
-  content: z.string(),
-  contentType: z.string(),
 });
 
 // ============================================================================
@@ -91,7 +76,6 @@ const mcpError = (
 // ============================================================================
 
 export type McpHandlerDeps = {
-  ticketsDb: TicketsDb;
   ownershipV2Db: OwnershipV2Db;
   storage: StorageProvider;
   serverConfig: ServerConfig;
@@ -102,7 +86,7 @@ export type McpController = {
 };
 
 export const createMcpController = (deps: McpHandlerDeps): McpController => {
-  const { ticketsDb, ownershipV2Db, storage, serverConfig } = deps;
+  const { ownershipV2Db, storage } = deps;
 
   const handleInitialize = (id: string | number): McpResponse => {
     return mcpSuccess(id, {
@@ -116,69 +100,10 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
     return mcpSuccess(id, { tools: MCP_TOOLS });
   };
 
-  const handleGetTicket = async (
-    id: string | number,
-    args: unknown,
-    auth: JwtAuthContext
-  ): Promise<McpResponse> => {
-    const parsed = GetTicketSchema.safeParse(args);
-    if (!parsed.success) {
-      return mcpError(id, MCP_INVALID_PARAMS, "Invalid parameters", parsed.error.issues);
-    }
-
-    // Generate a new ticket ID
-    const ticketId = generateTicketId();
-
-    // Create the ticket (JWT users are always authorized to create tickets)
-    const ticket = await ticketsDb.create({
-      ticketId,
-      realm: auth.realm,
-      title: parsed.data.title ?? "",
-      accessTokenId: "", // MCP tickets created via JWT don't have an access token
-      creatorIssuerId: auth.userId,
-    });
-
-    const endpoint = `${serverConfig.baseUrl}/api/realm/${auth.realm}/tickets/${ticketId}`;
-
-    return mcpSuccess(id, {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            endpoint,
-            ticketId: ticket.ticketId,
-            createdAt: new Date(ticket.createdAt).toISOString(),
-          }),
-        },
-      ],
-    });
-  };
-
   const handleRead = async (id: string | number, args: unknown): Promise<McpResponse> => {
     const parsed = ReadBlobSchema.safeParse(args);
     if (!parsed.success) {
       return mcpError(id, MCP_INVALID_PARAMS, "Invalid parameters", parsed.error.issues);
-    }
-
-    // Path resolution not supported in this version
-    if (parsed.data.path !== ".") {
-      return mcpError(
-        id,
-        MCP_INVALID_PARAMS,
-        "Path resolution not yet supported. Use path='.' with direct key."
-      );
-    }
-
-    // Parse endpoint to get realm and ticket ID
-    const match = parsed.data.endpoint.match(/\/api\/realm\/([^/]+)\/tickets\/([^/]+)$/);
-    if (!match) {
-      return mcpError(id, MCP_INVALID_PARAMS, "Invalid endpoint URL format");
-    }
-
-    const [, realm, ticketId] = match;
-    const ticket = await ticketsDb.get(realm!, ticketId!);
-    if (!ticket) {
-      return mcpError(id, MCP_INVALID_PARAMS, "Invalid or expired ticket");
     }
 
     // Check ownership
@@ -210,37 +135,6 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
     });
   };
 
-  const handleWrite = async (id: string | number, args: unknown): Promise<McpResponse> => {
-    const parsed = WriteBlobSchema.safeParse(args);
-    if (!parsed.success) {
-      return mcpError(id, MCP_INVALID_PARAMS, "Invalid parameters", parsed.error.issues);
-    }
-
-    // Parse endpoint
-    const match = parsed.data.endpoint.match(/\/api\/realm\/([^/]+)\/tickets\/([^/]+)$/);
-    if (!match) {
-      return mcpError(id, MCP_INVALID_PARAMS, "Invalid endpoint URL format");
-    }
-
-    const [, realm, ticketId] = match;
-    const ticket = await ticketsDb.get(realm!, ticketId!);
-    if (!ticket) {
-      return mcpError(id, MCP_INVALID_PARAMS, "Invalid or expired ticket");
-    }
-
-    if (ticket.status !== "pending") {
-      return mcpError(id, MCP_INVALID_PARAMS, "Ticket already submitted");
-    }
-
-    // For simplicity, we'd need to implement full chunk creation here
-    // This is a placeholder
-    return mcpError(
-      id,
-      MCP_INTERNAL_ERROR,
-      "Write operation requires full CAS node creation - use HTTP API"
-    );
-  };
-
   const handleToolsCall = async (
     id: string | number,
     params: { name: string; arguments?: unknown } | undefined,
@@ -251,12 +145,8 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
     }
 
     switch (params.name) {
-      case "cas_get_ticket":
-        return handleGetTicket(id, params.arguments, auth);
       case "cas_read":
         return handleRead(id, params.arguments);
-      case "cas_write":
-        return handleWrite(id, params.arguments);
       default:
         return mcpError(id, MCP_METHOD_NOT_FOUND, `Unknown tool: ${params.name}`);
     }

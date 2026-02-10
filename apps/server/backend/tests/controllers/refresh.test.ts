@@ -41,9 +41,8 @@ import {
 
 const blake3_128 = (data: Uint8Array): Uint8Array => blake3(data, { dkLen: 16 });
 
-const testDelegateId = "01234567-89ab-7def-0123-456789abcdef";
+const testDelegateId = "dlt_04HMASW9NF6YY0938NKRKAYDXW";
 const testRealm = "usr_testuser";
-const testFamilyId = "fam-001";
 
 async function makeRefreshToken(): Promise<{ bytes: Uint8Array; base64: string; tokenId: string }> {
   const issuer = delegateIdToIssuer(testDelegateId);
@@ -102,7 +101,6 @@ function makeTokenRecord(tokenId: string, overrides?: Partial<TokenRecord>): Tok
     expiresAt: 0,
     isUsed: false,
     isInvalidated: false,
-    familyId: testFamilyId,
     createdAt: Date.now(),
     ...overrides,
   };
@@ -146,7 +144,7 @@ function createMockTokenRecordsDb(
     create: mock(async () => {}),
     get: mock(async (tokenId: string) => tokenRecordFn?.(tokenId) ?? null),
     markUsed: mock(async () => true),
-    invalidateFamily: mock(async () => 0),
+    invalidateByDelegate: mock(async () => 0),
     listByDelegate: mock(async () => ({ tokens: [], nextCursor: undefined })),
     ...overrides,
   };
@@ -217,9 +215,9 @@ describe("RefreshController", () => {
       expect(body.accessTokenId).toBeDefined();
       expect(body.delegateId).toBe(testDelegateId);
 
-      // New token IDs should be dlt1_*
-      expect((body.refreshTokenId as string).startsWith("dlt1_")).toBe(true);
-      expect((body.accessTokenId as string).startsWith("dlt1_")).toBe(true);
+      // New token IDs should be tkn_*
+      expect((body.refreshTokenId as string).startsWith("tkn_")).toBe(true);
+      expect((body.accessTokenId as string).startsWith("tkn_")).toBe(true);
     });
 
     it("marks old RT as used", async () => {
@@ -241,7 +239,7 @@ describe("RefreshController", () => {
       expect(mockTokenRecordsDb.markUsed).toHaveBeenCalledWith(rt.tokenId);
     });
 
-    it("stores 2 new token records with SAME familyId", async () => {
+    it("stores 2 new token records with same delegateId", async () => {
       const rt = await makeRefreshToken();
 
       mockTokenRecordsDb = createMockTokenRecordsDb(
@@ -264,8 +262,8 @@ describe("RefreshController", () => {
       const newAt = calls[1]![0] as CreateTokenRecordInput;
       expect(newRt.tokenType).toBe("refresh");
       expect(newAt.tokenType).toBe("access");
-      expect(newRt.familyId).toBe(testFamilyId);
-      expect(newAt.familyId).toBe(testFamilyId);
+      expect(newRt.delegateId).toBe(testDelegateId);
+      expect(newAt.delegateId).toBe(testDelegateId);
     });
   });
 
@@ -393,11 +391,11 @@ describe("RefreshController", () => {
   });
 
   // --------------------------------------------------------------------------
-  // Error: RT replay → 409 + family invalidation
+  // Error: RT replay → 409 + delegate invalidation
   // --------------------------------------------------------------------------
 
   describe("refresh — replay detection", () => {
-    it("returns 409 and invalidates family when RT is already used", async () => {
+    it("returns 409 and invalidates delegate when RT is already used", async () => {
       const rt = await makeRefreshToken();
 
       mockDelegatesDb = createMockDelegatesDb();
@@ -418,8 +416,8 @@ describe("RefreshController", () => {
       const body = ctx.responseData.body as Record<string, unknown>;
       expect(body.error).toBe("TOKEN_REUSE");
 
-      // Should have called invalidateFamily
-      expect(mockTokenRecordsDb.invalidateFamily).toHaveBeenCalledWith(testFamilyId);
+      // Should have called invalidateByDelegate
+      expect(mockTokenRecordsDb.invalidateByDelegate).toHaveBeenCalledWith(testDelegateId);
     });
 
     it("returns 409 when concurrent markUsed fails (race condition)", async () => {
@@ -444,7 +442,7 @@ describe("RefreshController", () => {
       expect(ctx.responseData.status).toBe(409);
       const body = ctx.responseData.body as Record<string, unknown>;
       expect(body.error).toBe("TOKEN_REUSE");
-      expect(mockTokenRecordsDb.invalidateFamily).toHaveBeenCalledWith(testFamilyId);
+      expect(mockTokenRecordsDb.invalidateByDelegate).toHaveBeenCalledWith(testDelegateId);
     });
   });
 

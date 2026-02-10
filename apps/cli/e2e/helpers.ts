@@ -253,11 +253,11 @@ export function cleanupTestFiles(): void {
 
 /**
  * Extract a node key from CLI output
- * Looks for patterns like "node:..." (Crockford Base32 - 26 chars)
+ * Looks for patterns like "nod_..." (Crockford Base32 - 26 chars)
  */
 export function extractNodeKey(output: string): string | null {
   // Crockford Base32 charset: 0-9A-HJKMNP-TV-Z (26 chars for 128-bit hash)
-  const nodeMatch = output.match(/node:[0-9A-HJKMNP-TV-Z]{26}/i);
+  const nodeMatch = output.match(/nod_[0-9A-HJKMNP-TV-Z]{26}/i);
   if (nodeMatch) {
     return nodeMatch[0];
   }
@@ -265,7 +265,7 @@ export function extractNodeKey(output: string): string | null {
   // Try to find just the Crockford Base32 key (26 chars)
   const base32Match = output.match(/[0-9A-HJKMNP-TV-Z]{26}/i);
   if (base32Match) {
-    return `node:${base32Match[0].toUpperCase()}`;
+    return `nod_${base32Match[0].toUpperCase()}`;
   }
 
   return null;

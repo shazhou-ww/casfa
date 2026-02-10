@@ -9,12 +9,10 @@ import type { CasUri, CasUriRoot } from "./types.ts";
  */
 function formatRoot(root: CasUriRoot): string {
   switch (root.type) {
-    case "node":
-      return `node:${root.hash}`;
-    case "depot":
-      return `depot:${root.id}`;
-    case "ticket":
-      return `ticket:${root.id}`;
+    case "nod":
+      return `nod_${root.hash}`;
+    case "dpt":
+      return `dpt_${root.id}`;
   }
 }
 
@@ -27,11 +25,11 @@ function formatRoot(root: CasUriRoot): string {
  * @example
  * ```ts
  * formatCasUri({
- *   root: { type: "node", hash: "ABC123...XYZ" },
+ *   root: { type: "nod", hash: "ABC123XYZ01234567890ABCD" },
  *   path: ["docs", "readme.md"],
  *   indexPath: null
  * })
- * // => "node:ABC123...XYZ/docs/readme.md"
+ * // => "nod_ABC123XYZ01234567890ABCD/docs/readme.md"
  * ```
  */
 export function formatCasUri(uri: CasUri): string {
@@ -76,7 +74,7 @@ export function nodeUri(
   path: string[] = [],
   indexPath: string | null = null
 ): CasUri {
-  return createCasUri({ type: "node", hash }, path, indexPath);
+  return createCasUri({ type: "nod", hash }, path, indexPath);
 }
 
 /**
@@ -87,20 +85,5 @@ export function nodeUri(
  * @param indexPath - Optional index path
  */
 export function depotUri(id: string, path: string[] = [], indexPath: string | null = null): CasUri {
-  return createCasUri({ type: "depot", id }, path, indexPath);
-}
-
-/**
- * Create a ticket URI
- *
- * @param id - Ticket ID (26 character Crockford Base32)
- * @param path - Optional path segments
- * @param indexPath - Optional index path
- */
-export function ticketUri(
-  id: string,
-  path: string[] = [],
-  indexPath: string | null = null
-): CasUri {
-  return createCasUri({ type: "ticket", id }, path, indexPath);
+  return createCasUri({ type: "dpt", id }, path, indexPath);
 }

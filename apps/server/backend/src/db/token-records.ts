@@ -29,7 +29,7 @@ import { createDocClient } from "./client.ts";
  * RT records track one-time-use state for rotation.
  */
 export type TokenRecord = {
-  /** Token ID: dlt1_xxx */
+  /** Token ID: tkn_xxx */
   tokenId: string;
   /** Token type */
   tokenType: "refresh" | "access";
@@ -41,10 +41,8 @@ export type TokenRecord = {
   expiresAt: number;
   /** Whether this RT has been used (for one-time-use rotation) */
   isUsed: boolean;
-  /** Whether this token has been invalidated (token family invalidation) */
+  /** Whether this token has been invalidated */
   isInvalidated: boolean;
-  /** Token family ID — all RT/AT in a rotation chain share this */
-  familyId: string;
   /** Creation timestamp (Unix epoch ms) */
   createdAt: number;
 };
@@ -66,10 +64,10 @@ export type TokenRecordsDb = {
   markUsed: (tokenId: string) => Promise<boolean>;
 
   /**
-   * Invalidate all tokens in a token family.
+   * Invalidate all tokens for a delegate.
    * Used when RT replay is detected.
    */
-  invalidateFamily: (familyId: string) => Promise<number>;
+  invalidateByDelegate: (delegateId: string) => Promise<number>;
 
   /**
    * List all tokens for a delegate (for debugging/admin)
@@ -91,7 +89,6 @@ type TokenRecordsDbConfig = {
 
 const toTokenRecPk = (tokenId: string): string => `TOKENREC#${tokenId}`;
 const METADATA_SK = "METADATA";
-const toFamilyGsiPk = (familyId: string): string => `TOKFAM#${familyId}`;
 const toDelegateGsiPk = (delegateId: string): string => `TOKDLG#${delegateId}`;
 
 // ============================================================================
@@ -114,7 +111,6 @@ export const createTokenRecordsDb = (config: TokenRecordsDbConfig): TokenRecords
     expiresAt: item.expiresAt as number,
     isUsed: (item.isUsed as boolean) ?? false,
     isInvalidated: (item.isInvalidated as boolean) ?? false,
-    familyId: item.familyId as string,
     createdAt: item.createdAt as number,
   });
 
@@ -134,13 +130,10 @@ export const createTokenRecordsDb = (config: TokenRecordsDbConfig): TokenRecords
       expiresAt: input.expiresAt,
       isUsed: false,
       isInvalidated: false,
-      familyId: input.familyId,
       createdAt: now,
-      // GSI keys for family and delegate queries
-      gsi1pk: toFamilyGsiPk(input.familyId),
+      // GSI key for delegate queries (also used for invalidation)
+      gsi1pk: toDelegateGsiPk(input.delegateId),
       gsi1sk: `TOKENREC#${input.tokenId}`,
-      gsi2pk: toDelegateGsiPk(input.delegateId),
-      gsi2sk: `TOKENREC#${input.tokenId}`,
     };
 
     // Set TTL for AT records (auto-cleanup)
@@ -192,15 +185,15 @@ export const createTokenRecordsDb = (config: TokenRecordsDbConfig): TokenRecords
     }
   };
 
-  const invalidateFamily = async (familyId: string): Promise<number> => {
-    // Query all tokens in the family
+  const invalidateByDelegate = async (delegateId: string): Promise<number> => {
+    // Query all tokens for the delegate
     const queryResult = await client.send(
       new QueryCommand({
         TableName: tableName,
         IndexName: "gsi1",
         KeyConditionExpression: "gsi1pk = :pk AND begins_with(gsi1sk, :prefix)",
         ExpressionAttributeValues: {
-          ":pk": toFamilyGsiPk(familyId),
+          ":pk": toDelegateGsiPk(delegateId),
           ":prefix": "TOKENREC#",
         },
       }),
@@ -244,8 +237,8 @@ export const createTokenRecordsDb = (config: TokenRecordsDbConfig): TokenRecords
 
     const params: Record<string, unknown> = {
       TableName: tableName,
-      IndexName: "gsi2",
-      KeyConditionExpression: "gsi2pk = :pk AND begins_with(gsi2sk, :prefix)",
+      IndexName: "gsi1",
+      KeyConditionExpression: "gsi1pk = :pk AND begins_with(gsi1sk, :prefix)",
       ExpressionAttributeValues: {
         ":pk": toDelegateGsiPk(delegateId),
         ":prefix": "TOKENREC#",
@@ -275,5 +268,5 @@ export const createTokenRecordsDb = (config: TokenRecordsDbConfig): TokenRecords
     return { tokens, nextCursor };
   };
 
-  return { create, get, markUsed, invalidateFamily, listByDelegate };
+  return { create, get, markUsed, invalidateByDelegate, listByDelegate };
 };

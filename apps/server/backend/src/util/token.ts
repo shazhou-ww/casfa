@@ -26,7 +26,7 @@ export const TOKEN_SIZE = 128;
 /**
  * Token ID prefix
  */
-export const TOKEN_ID_PREFIX = "dlt1_";
+export const TOKEN_ID_PREFIX = "tkn_";
 
 // ============================================================================
 // Types
@@ -93,10 +93,10 @@ export type GenerateTokenOptions = {
 /**
  * Compute Token ID from token bytes
  *
- * Token ID = "dlt1_" + Crockford Base32(Blake3-128(tokenBytes))
+ * Token ID = "tkn_" + Crockford Base32(Blake3-128(tokenBytes))
  *
  * @param tokenBytes - 128-byte token
- * @returns Token ID string (e.g., "dlt1_XXXX...")
+ * @returns Token ID string (e.g., "tkn_XXXX...")
  */
 export const computeTokenId = (tokenBytes: Uint8Array): string => {
   if (tokenBytes.length !== TOKEN_SIZE) {
@@ -249,7 +249,7 @@ export const computeUserIdHash = (userId: string): Uint8Array => {
 /**
  * Compute token ID hash (for issuer field when token-issued)
  *
- * @param tokenId - Token ID string (dlt1_xxx format)
+ * @param tokenId - Token ID string (tkn_xxx format)
  * @returns 32-byte hash
  */
 export const computeTokenIdHash = (tokenId: string): Uint8Array => {

@@ -636,7 +636,7 @@ export const createWriteOps = (deps: FsServiceDeps, tree: TreeOps) => {
           nodeHash = emptyEncoded.hash;
         } else if ("link" in entry) {
           const linkKey = entry.link;
-          if (!linkKey.startsWith("node:")) {
+          if (!linkKey.startsWith("nod_")) {
             return fsError("INVALID_PATH", 400, `Invalid link key format: ${linkKey}`);
           }
           const linkHex = nodeKeyToHex(linkKey);

@@ -16,6 +16,7 @@ import {
   computeScopeHash,
   generateTokenPair,
 } from "../util/delegate-token-utils.ts";
+import { generateDelegateId } from "../util/token-id.ts";
 
 // ============================================================================
 // Types
@@ -55,7 +56,7 @@ export const createRootTokenController = (
     const body = await c.req.json().catch(() => ({}));
 
     // Determine realm — user can only create root for their own realm
-    const expectedRealm = `usr_${auth.userId}`;
+    const expectedRealm = auth.userId;
     const realm = body.realm ?? expectedRealm;
 
     if (realm !== expectedRealm) {
@@ -69,7 +70,7 @@ export const createRootTokenController = (
     }
 
     // Get or create root delegate
-    const rootDelegateId = crypto.randomUUID();
+    const rootDelegateId = generateDelegateId();
     const rootDelegate = await delegatesDb.getOrCreateRoot(realm, rootDelegateId);
 
     if (rootDelegate.isRevoked) {
@@ -98,14 +99,12 @@ export const createRootTokenController = (
     });
 
     // Store token records for RT rotation
-    const familyId = crypto.randomUUID();
     await tokenRecordsDb.create({
       tokenId: tokenPair.refreshToken.id,
       tokenType: "refresh",
       delegateId: rootDelegate.delegateId,
       realm,
       expiresAt: 0,
-      familyId,
     });
     await tokenRecordsDb.create({
       tokenId: tokenPair.accessToken.id,
@@ -113,7 +112,6 @@ export const createRootTokenController = (
       delegateId: rootDelegate.delegateId,
       realm,
       expiresAt: tokenPair.accessToken.expiresAt,
-      familyId,
     });
 
     return c.json(

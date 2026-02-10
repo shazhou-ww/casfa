@@ -39,7 +39,6 @@ export function registerInfoCommand(program: Command): void {
             `  Max Name Bytes:      ${info.limits.maxNameBytes}`,
             `  Max Collection Size: ${info.limits.maxCollectionChildren}`,
             `  Max Payload Size:    ${formatSize(info.limits.maxPayloadSize)}`,
-            `  Max Ticket TTL:      ${info.limits.maxTicketTtl}s`,
             `  Max Token TTL:       ${info.limits.maxAgentTokenTtl}s`,
             "",
             "Features:",

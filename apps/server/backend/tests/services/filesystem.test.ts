@@ -124,7 +124,6 @@ function createMockUsageDb(): UsageDb {
     updateUserQuota: mock(() => Promise.resolve()),
     incrementResourceCount: mock(() => Promise.resolve()),
     decrementResourceCount: mock(() => Promise.resolve()),
-    updateBytesInProgress: mock(() => Promise.resolve()),
     checkResourceLimit: mock(() => Promise.resolve({ allowed: true, currentCount: 0 })),
   } as unknown as UsageDb;
 }
@@ -253,7 +252,7 @@ function createTestService() {
   return { service, storage, ownershipV2Db, refCountDb, usageDb, depotsDb };
 }
 
-/** Convert hex to node: key */
+/** Convert hex to nod_ key */
 function hexToNodeKey(hex: string): string {
   return hashToNodeKey(hexToHash(hex));
 }
@@ -1063,16 +1062,16 @@ describe("Filesystem Service", () => {
   // ==========================================================================
 
   describe("resolveNodeKey", () => {
-    it("should resolve node: prefix", async () => {
-      // stat with the node key should work (tests node: resolution)
+    it("should resolve nod_ prefix", async () => {
+      // stat with the node key should work (tests nod_ resolution)
       const result = await service.stat(REALM, rootNodeKey);
       expect(isFsError(result)).toBe(false);
     });
 
-    it("should resolve depot: prefix", async () => {
+    it("should resolve dpt_ prefix", async () => {
       // Create a service with depot support
       const depots = new Map<string, { root: string }>();
-      depots.set("depot:test-depot", { root: rootHex });
+      depots.set("dpt_testdepot", { root: hexToNodeKey(rootHex) });
 
       const ctx = createTestService();
       // Manually override the depots db to return our depot
@@ -1099,7 +1098,7 @@ describe("Filesystem Service", () => {
         scopeSetNodesDb: createMockScopeSetNodesDb(),
       });
 
-      const result = await service3.stat(REALM, "depot:test-depot");
+      const result = await service3.stat(REALM, "dpt_testdepot");
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
