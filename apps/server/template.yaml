@@ -157,17 +157,6 @@ Resources:
       DefaultRouteSettings:
         ThrottlingBurstLimit: !Ref ApiThrottlingBurst
         ThrottlingRateLimit: !Ref ApiThrottlingRate
-      RouteSettings:
-        # Fine-grained throttling for write-heavy endpoints
-        "POST /api/realm/{realmId}/nodes/{key}/fs/write":
-          ThrottlingBurstLimit: !Ref WriteThrottlingBurst
-          ThrottlingRateLimit: !Ref WriteThrottlingRate
-        "POST /api/realm/{realmId}/nodes/{key}/fs/rewrite":
-          ThrottlingBurstLimit: !Ref WriteThrottlingBurst
-          ThrottlingRateLimit: !Ref WriteThrottlingRate
-        "PUT /api/realm/{realmId}/nodes/{key}":
-          ThrottlingBurstLimit: !Ref WriteThrottlingBurst
-          ThrottlingRateLimit: !Ref WriteThrottlingRate
 
   # ===========================================================================
   # Lambda Function

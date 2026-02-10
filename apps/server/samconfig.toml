@@ -19,26 +19,22 @@ stack_name = "casfa-prod"
 resolve_s3 = true
 s3_prefix = "casfa-sam"
 region = "us-east-1"
+profile = "AdministratorAccess-914369185440"
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 disable_rollback = false
 
 parameter_overrides = [
-  # ── Cognito (REQUIRED: fill in your values) ──
-  "CognitoUserPoolId=",
-  "CognitoClientId=",
+  # ── Cognito ──
+  "CognitoUserPoolId=us-east-1_gMTKxXOKo",
+  "CognitoClientId=rrr40170csj0160ptr9lusi3k",
   "CognitoRegion=us-east-1",
-  "CognitoHostedUiUrl=",
+  "CognitoHostedUiUrl=https://casfa-auth.auth.us-east-1.amazoncognito.com",
 
   # ── Domain ──
   "CustomDomainName=casfa.shazhou.me",
-  # TODO: Replace with your ACM certificate ARN after creating it
-  # Certificate must be in us-east-1 for CloudFront
-  # Create via: aws acm request-certificate --domain-name casfa.shazhou.me --validation-method DNS --region us-east-1
-  "AcmCertificateArn=",
-  # TODO: Replace with your Route53 Hosted Zone ID for shazhou.me
-  # Find via: aws route53 list-hosted-zones-by-name --dns-name shazhou.me --query 'HostedZones[0].Id' --output text
-  "HostedZoneId=",
+  "AcmCertificateArn=arn:aws:acm:us-east-1:914369185440:certificate/3d37ba1e-2d5a-4bc2-adf4-73642e1b02a0",
+  "HostedZoneId=Z02459572I8BNRDEU4P1F",
 
   # ── Environment ──
   "StageName=prod",
