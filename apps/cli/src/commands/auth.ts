@@ -149,11 +149,7 @@ export function registerAuthCommands(program: Command): void {
           process.exit(1);
         }
 
-        const rootResult = await api.createRootToken(
-          baseUrl,
-          cred.userToken.accessToken,
-          realm
-        );
+        const rootResult = await api.createRootToken(baseUrl, cred.userToken.accessToken, realm);
 
         if (!rootResult.ok) {
           formatter.error(`Failed to acquire root delegate: ${rootResult.error.message}`);
@@ -276,9 +272,7 @@ export function registerAuthCommands(program: Command): void {
           ? {
               delegateId: credentials.rootDelegate.delegateId,
               realm: credentials.rootDelegate.realm,
-              accessTokenExpiresIn: formatExpiresIn(
-                credentials.rootDelegate.accessTokenExpiresAt
-              ),
+              accessTokenExpiresIn: formatExpiresIn(credentials.rootDelegate.accessTokenExpiresAt),
               canUpload: credentials.rootDelegate.canUpload,
               canManageDepot: credentials.rootDelegate.canManageDepot,
             }
@@ -375,7 +369,10 @@ export function registerAuthCommands(program: Command): void {
           if (cmdOpts.canManageDepot) params.canManageDepot = true;
           if (cmdOpts.scope) params.scope = cmdOpts.scope;
 
-          const result = await api.createAuthRequest(baseUrl, params as Parameters<typeof api.createAuthRequest>[1]);
+          const result = await api.createAuthRequest(
+            baseUrl,
+            params as Parameters<typeof api.createAuthRequest>[1]
+          );
 
           if (!result.ok) {
             formatter.error(`Failed to create request: ${result.error.message}`);

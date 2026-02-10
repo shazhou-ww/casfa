@@ -7,12 +7,12 @@
 
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
-import type { AccessTokenAuthContext, Env } from "../../src/types.ts";
 import {
   createMultiNodeProofMiddleware,
   createProofValidationMiddleware,
   type ProofValidationMiddlewareDeps,
 } from "../../src/middleware/proof-validation.ts";
+import type { AccessTokenAuthContext, Env } from "../../src/types.ts";
 
 // ============================================================================
 // Mock DAG (same as @casfa/proof tests)
@@ -61,15 +61,13 @@ function resetState() {
 // ============================================================================
 
 const mockDeps: ProofValidationMiddlewareDeps = {
-  hasOwnership: async (nodeHash, delegateId) =>
-    ownershipSet.has(`${nodeHash}:${delegateId}`),
+  hasOwnership: async (nodeHash, delegateId) => ownershipSet.has(`${nodeHash}:${delegateId}`),
   isRootDelegate: async (id) => rootDelegateSet.has(id),
   getScopeRoots: async (id) => scopeRoots[id] ?? [],
   resolveNode: async (_realm, hash) => dagNodes[hash] ?? null,
   resolveDepotVersion: async (_realm, depotId, version) =>
     depotVersions[depotId]?.[version] ?? null,
-  hasDepotAccess: async (delegateId, depotId) =>
-    depotAccessSet.has(`${delegateId}:${depotId}`),
+  hasDepotAccess: async (delegateId, depotId) => depotAccessSet.has(`${delegateId}:${depotId}`),
 };
 
 // ============================================================================
@@ -111,10 +109,7 @@ function singleNodeApp() {
     c.set("auth", mockAuth());
     return next();
   });
-  app.use(
-    "/api/realm/:realmId/nodes/:key",
-    createProofValidationMiddleware(mockDeps),
-  );
+  app.use("/api/realm/:realmId/nodes/:key", createProofValidationMiddleware(mockDeps));
   app.get("/api/realm/:realmId/nodes/:key", (c) => {
     return c.json({ ok: true });
   });
@@ -129,7 +124,7 @@ function multiNodeApp() {
   });
   app.use(
     "/api/realm/:realmId/nodes/:key",
-    createMultiNodeProofMiddleware(mockDeps, () => ["bbb", "ccc"]),
+    createMultiNodeProofMiddleware(mockDeps, () => ["bbb", "ccc"])
   );
   app.put("/api/realm/:realmId/nodes/:key", (c) => {
     return c.json({ ok: true });
@@ -145,7 +140,7 @@ describe("proof middleware — single node", () => {
   it("passes with ownership (no proof needed)", async () => {
     resetState();
     ownershipSet.add("eee:dlg_child");
-    scopeRoots["dlg_child"] = ["root_aaa"];
+    scopeRoots.dlg_child = ["root_aaa"];
 
     const app = singleNodeApp();
     const res = await app.request("/api/realm/test-realm/nodes/eee");
@@ -157,27 +152,27 @@ describe("proof middleware — single node", () => {
     // Root delegate has depth=0, no parentId
     const app = new Hono<Env>();
     app.use("/api/realm/:realmId/nodes/:key", (c, next) => {
-      c.set("auth", mockAuth({
-        delegate: {
+      c.set(
+        "auth",
+        mockAuth({
+          delegate: {
+            delegateId: "dlg_root",
+            realm: "test-realm",
+            parentId: null,
+            chain: ["dlg_root"],
+            depth: 0,
+            canUpload: true,
+            canManageDepot: true,
+            isRevoked: false,
+            createdAt: Date.now(),
+          } as never,
           delegateId: "dlg_root",
-          realm: "test-realm",
-          parentId: null,
-          chain: ["dlg_root"],
-          depth: 0,
-          canUpload: true,
-          canManageDepot: true,
-          isRevoked: false,
-          createdAt: Date.now(),
-        } as never,
-        delegateId: "dlg_root",
-        issuerChain: ["dlg_root"],
-      }));
+          issuerChain: ["dlg_root"],
+        })
+      );
       return next();
     });
-    app.use(
-      "/api/realm/:realmId/nodes/:key",
-      createProofValidationMiddleware(mockDeps),
-    );
+    app.use("/api/realm/:realmId/nodes/:key", createProofValidationMiddleware(mockDeps));
     app.get("/api/realm/:realmId/nodes/:key", (c) => {
       return c.json({ ok: true });
     });
@@ -187,7 +182,7 @@ describe("proof middleware — single node", () => {
 
   it("passes with valid ipath proof", async () => {
     resetState();
-    scopeRoots["dlg_child"] = ["root_aaa"];
+    scopeRoots.dlg_child = ["root_aaa"];
 
     const app = singleNodeApp();
     const proof = JSON.stringify({ eee: "ipath#0:0:1" });
@@ -199,7 +194,7 @@ describe("proof middleware — single node", () => {
 
   it("returns 403 when no proof and no ownership", async () => {
     resetState();
-    scopeRoots["dlg_child"] = ["root_aaa"];
+    scopeRoots.dlg_child = ["root_aaa"];
 
     const app = singleNodeApp();
     const res = await app.request("/api/realm/test-realm/nodes/eee");
@@ -210,7 +205,7 @@ describe("proof middleware — single node", () => {
 
   it("returns 403 when proof path leads to wrong node", async () => {
     resetState();
-    scopeRoots["dlg_child"] = ["root_aaa"];
+    scopeRoots.dlg_child = ["root_aaa"];
 
     const app = singleNodeApp();
     // Path 0:0:0 → ddd, but we're requesting eee
@@ -225,7 +220,7 @@ describe("proof middleware — single node", () => {
 
   it("returns 400 for malformed proof header", async () => {
     resetState();
-    scopeRoots["dlg_child"] = ["root_aaa"];
+    scopeRoots.dlg_child = ["root_aaa"];
 
     const app = singleNodeApp();
     const res = await app.request("/api/realm/test-realm/nodes/eee", {
@@ -238,7 +233,7 @@ describe("proof middleware — single node", () => {
 
   it("returns 403 for scope root out of bounds", async () => {
     resetState();
-    scopeRoots["dlg_child"] = ["root_aaa"]; // only 1 root
+    scopeRoots.dlg_child = ["root_aaa"]; // only 1 root
 
     const app = singleNodeApp();
     const proof = JSON.stringify({ eee: "ipath#5:0:1" });
@@ -252,7 +247,7 @@ describe("proof middleware — single node", () => {
 
   it("returns 404 for node not found during proof walk", async () => {
     resetState();
-    scopeRoots["dlg_child"] = ["ghost_node"]; // doesn't exist in DAG
+    scopeRoots.dlg_child = ["ghost_node"]; // doesn't exist in DAG
 
     const app = singleNodeApp();
     const proof = JSON.stringify({ eee: "ipath#0:0" });
@@ -298,7 +293,7 @@ describe("proof middleware — single node", () => {
 describe("proof middleware — multi node", () => {
   it("passes when all children have valid proofs", async () => {
     resetState();
-    scopeRoots["dlg_child"] = ["root_aaa"];
+    scopeRoots.dlg_child = ["root_aaa"];
 
     const app = multiNodeApp();
     const proof = JSON.stringify({
@@ -326,7 +321,7 @@ describe("proof middleware — multi node", () => {
 
   it("fails when one child has no proof or ownership", async () => {
     resetState();
-    scopeRoots["dlg_child"] = ["root_aaa"];
+    scopeRoots.dlg_child = ["root_aaa"];
     ownershipSet.add("bbb:dlg_child");
     // ccc has no ownership and no proof
 
@@ -370,7 +365,7 @@ describe("proof middleware — edge cases", () => {
     // During transition, both X-CAS-Index-Path and X-CAS-Proof may coexist
     // The new middleware only reads X-CAS-Proof
     resetState();
-    scopeRoots["dlg_child"] = ["root_aaa"];
+    scopeRoots.dlg_child = ["root_aaa"];
 
     const app = singleNodeApp();
     const proof = JSON.stringify({ eee: "ipath#0:0:1" });

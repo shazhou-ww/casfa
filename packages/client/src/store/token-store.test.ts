@@ -4,11 +4,7 @@
 
 import { describe, expect, it, mock } from "bun:test";
 import type { TokenStorageProvider } from "../types/client.ts";
-import type {
-  StoredRootDelegate,
-  StoredUserToken,
-  TokenState,
-} from "../types/tokens.ts";
+import type { StoredRootDelegate, StoredUserToken, TokenState } from "../types/tokens.ts";
 import { emptyTokenState } from "../types/tokens.ts";
 import { createTokenStore } from "./token-store.ts";
 
@@ -24,9 +20,7 @@ const createUserToken = (overrides: Partial<StoredUserToken> = {}): StoredUserTo
   ...overrides,
 });
 
-const createRootDelegate = (
-  overrides: Partial<StoredRootDelegate> = {},
-): StoredRootDelegate => ({
+const createRootDelegate = (overrides: Partial<StoredRootDelegate> = {}): StoredRootDelegate => ({
   delegateId: "dlg_root123",
   realm: "test-realm",
   refreshToken: "base64-refresh-token",
@@ -167,9 +161,7 @@ describe("createTokenStore", () => {
       store.setRootDelegate(rd);
 
       expect(onTokenChange).toHaveBeenCalledTimes(1);
-      expect(onTokenChange).toHaveBeenCalledWith(
-        expect.objectContaining({ rootDelegate: rd }),
-      );
+      expect(onTokenChange).toHaveBeenCalledWith(expect.objectContaining({ rootDelegate: rd }));
     });
 
     it("should persist to storage", async () => {

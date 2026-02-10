@@ -9,9 +9,9 @@ import {
 import { getProfile, loadConfig } from "./config";
 import {
   type Credentials,
-  type RootDelegateCredential,
   getCredentials,
   isUserTokenExpired,
+  type RootDelegateCredential,
   setCredentials,
 } from "./credentials";
 
@@ -52,9 +52,7 @@ export interface ResolvedClient {
 /**
  * Convert RootDelegateCredential (epoch seconds) to StoredRootDelegate (epoch ms).
  */
-function credentialToStoredRootDelegate(
-  cred: RootDelegateCredential
-): StoredRootDelegate {
+function credentialToStoredRootDelegate(cred: RootDelegateCredential): StoredRootDelegate {
   return {
     delegateId: cred.delegateId,
     realm: cred.realm,
@@ -72,9 +70,7 @@ function credentialToStoredRootDelegate(
 /**
  * Convert StoredRootDelegate (epoch ms) to RootDelegateCredential (epoch seconds).
  */
-function storedRootDelegateToCredential(
-  rd: StoredRootDelegate
-): RootDelegateCredential {
+function storedRootDelegateToCredential(rd: StoredRootDelegate): RootDelegateCredential {
   return {
     delegateId: rd.delegateId,
     realm: rd.realm,
@@ -217,9 +213,7 @@ export function isUserAuthenticated(resolved: ResolvedClient): boolean {
  */
 export function requireAuth(resolved: ResolvedClient): void {
   if (!isAuthenticated(resolved)) {
-    throw new Error(
-      "Authentication required. Run 'casfa auth login'."
-    );
+    throw new Error("Authentication required. Run 'casfa auth login'.");
   }
 }
 
@@ -250,4 +244,3 @@ export function requireRealmAuth(resolved: ResolvedClient): void {
   requireRealm(resolved);
   requireAuth(resolved);
 }
-

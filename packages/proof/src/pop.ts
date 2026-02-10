@@ -44,11 +44,7 @@ const POP_PREFIX = "pop:";
  * @param ctx        - Injected hash functions
  * @returns PoP string in format "pop:XXXXXX..."
  */
-export function computePoP(
-  tokenBytes: Uint8Array,
-  content: Uint8Array,
-  ctx: PopContext,
-): string {
+export function computePoP(tokenBytes: Uint8Array, content: Uint8Array, ctx: PopContext): string {
   const popKey = ctx.blake3_256(tokenBytes); // 128B → 32B key
   const popHash = ctx.blake3_128_keyed(content, popKey); // keyed hash → 16B
   return POP_PREFIX + ctx.crockfordBase32Encode(popHash);
@@ -67,7 +63,7 @@ export function verifyPoP(
   pop: string,
   tokenBytes: Uint8Array,
   content: Uint8Array,
-  ctx: PopContext,
+  ctx: PopContext
 ): boolean {
   if (!pop.startsWith(POP_PREFIX)) return false;
   const expected = computePoP(tokenBytes, content, ctx);

@@ -10,10 +10,7 @@
  */
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import {
-  createOwnershipV2Db,
-  type OwnershipV2Db,
-} from "../../src/db/ownership-v2.ts";
+import { createOwnershipV2Db, type OwnershipV2Db } from "../../src/db/ownership-v2.ts";
 
 // ============================================================================
 // In-memory DynamoDB mock (pk/sk composite key table)
@@ -36,10 +33,7 @@ function createMockDynamoClient() {
 
     if (cmdName === "BatchWriteCommand") {
       const input = cmd.input as {
-        RequestItems: Record<
-          string,
-          Array<{ PutRequest: { Item: Item } }>
-        >;
+        RequestItems: Record<string, Array<{ PutRequest: { Item: Item } }>>;
       };
       for (const [, requests] of Object.entries(input.RequestItems)) {
         for (const req of requests) {
@@ -72,7 +66,7 @@ function createMockDynamoClient() {
       const pkValue = vals[":pk"] as string | undefined;
 
       const matching: Item[] = [];
-      for (const [key, item] of items.entries()) {
+      for (const [_key, item] of items.entries()) {
         if (pkValue && item.pk === pkValue) {
           matching.push(item);
         }
@@ -149,7 +143,7 @@ describe("OwnershipV2Db", () => {
         ["dlg-root", "dlg-aaa", "dlg-a1"],
         "dlg-a1",
         "application/octet-stream",
-        1024,
+        1024
       );
 
       // dlg-b1 is a cousin (under dlg-bbb, not dlg-aaa)
@@ -164,7 +158,7 @@ describe("OwnershipV2Db", () => {
         ["dlg-root", "dlg-aaa"],
         "dlg-aaa",
         "application/octet-stream",
-        1024,
+        1024
       );
       // Branch B uploads nodeY
       await db.addOwnership(
@@ -172,7 +166,7 @@ describe("OwnershipV2Db", () => {
         ["dlg-root", "dlg-bbb"],
         "dlg-bbb",
         "application/octet-stream",
-        2048,
+        2048
       );
 
       // Root owns both
@@ -234,7 +228,7 @@ describe("OwnershipV2Db", () => {
         ["dlg-root", "dlg-a"],
         "dlg-a",
         "application/octet-stream",
-        1024,
+        1024
       );
       // dlg-b uploads the same nodeX (CAS — same content hash)
       await db.addOwnership(
@@ -242,7 +236,7 @@ describe("OwnershipV2Db", () => {
         ["dlg-root", "dlg-b"],
         "dlg-b",
         "application/octet-stream",
-        1024,
+        1024
       );
 
       // Root is in both chains
@@ -259,13 +253,7 @@ describe("OwnershipV2Db", () => {
 
   describe("hasAnyOwnership", () => {
     it("returns true when node has ownership records", async () => {
-      await db.addOwnership(
-        "nodeX",
-        ["dlg-root"],
-        "dlg-root",
-        "application/octet-stream",
-        1024,
-      );
+      await db.addOwnership("nodeX", ["dlg-root"], "dlg-root", "application/octet-stream", 1024);
       expect(await db.hasAnyOwnership("nodeX")).toBe(true);
     });
 
@@ -302,7 +290,7 @@ describe("OwnershipV2Db", () => {
         ["dlg-root", "dlg-a"],
         "dlg-a",
         "application/octet-stream",
-        1024,
+        1024
       );
       expect(await db.getOwnership("nodeX", "dlg-b")).toBeNull();
     });

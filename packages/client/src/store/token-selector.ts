@@ -10,11 +10,7 @@
 
 import type { StoredAccessToken, StoredRootDelegate } from "../types/tokens.ts";
 import { rootDelegateToAccessToken } from "../types/tokens.ts";
-import {
-  isAccessTokenValid,
-  isUserTokenValid,
-  needsRootDelegate,
-} from "./token-checks.ts";
+import { isAccessTokenValid, isUserTokenValid, needsRootDelegate } from "./token-checks.ts";
 import type { TokenStore } from "./token-store.ts";
 
 // ============================================================================
@@ -78,7 +74,7 @@ type RefreshTokenResponse = {
 const createRootToken = async (
   baseUrl: string,
   userAccessToken: string,
-  realm: string,
+  realm: string
 ): Promise<RootTokenResponse | null> => {
   try {
     const response = await fetch(`${baseUrl}/api/tokens/root`, {
@@ -91,10 +87,7 @@ const createRootToken = async (
     });
 
     if (!response.ok) {
-      console.error(
-        "[TokenSelector] Failed to create root token:",
-        response.status,
-      );
+      console.error("[TokenSelector] Failed to create root token:", response.status);
       return null;
     }
 
@@ -111,7 +104,7 @@ const createRootToken = async (
  */
 const refreshTokens = async (
   baseUrl: string,
-  refreshTokenBase64: string,
+  refreshTokenBase64: string
 ): Promise<RefreshTokenResponse | null> => {
   try {
     const response = await fetch(`${baseUrl}/api/tokens/refresh`, {
@@ -122,10 +115,7 @@ const refreshTokens = async (
     });
 
     if (!response.ok) {
-      console.error(
-        "[TokenSelector] Failed to refresh tokens:",
-        response.status,
-      );
+      console.error("[TokenSelector] Failed to refresh tokens:", response.status);
       return null;
     }
 
@@ -143,9 +133,7 @@ const refreshTokens = async (
 /**
  * Create a token selector instance.
  */
-export const createTokenSelector = (
-  config: TokenSelectorConfig,
-): TokenSelector => {
+export const createTokenSelector = (config: TokenSelectorConfig): TokenSelector => {
   const { store, baseUrl, realm } = config;
 
   // Promise deduplication for root token creation
@@ -170,11 +158,7 @@ export const createTokenSelector = (
     // Deduplicate concurrent calls
     if (!rootTokenPromise) {
       rootTokenPromise = (async () => {
-        const result = await createRootToken(
-          baseUrl,
-          userToken!.accessToken,
-          realm,
-        );
+        const result = await createRootToken(baseUrl, userToken!.accessToken, realm);
 
         if (!result) return null;
 
@@ -201,9 +185,7 @@ export const createTokenSelector = (
     return rootTokenPromise;
   };
 
-  const doRefresh = async (
-    currentRd: StoredRootDelegate,
-  ): Promise<StoredRootDelegate | null> => {
+  const doRefresh = async (currentRd: StoredRootDelegate): Promise<StoredRootDelegate | null> => {
     const result = await refreshTokens(baseUrl, currentRd.refreshToken);
 
     if (!result) {

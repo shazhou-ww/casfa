@@ -17,11 +17,7 @@ import type {
   OnTokenChangeCallback,
   TokenStorageProvider,
 } from "../types/client.ts";
-import type {
-  StoredAccessToken,
-  StoredRootDelegate,
-  TokenState,
-} from "../types/tokens.ts";
+import type { StoredAccessToken, StoredRootDelegate, TokenState } from "../types/tokens.ts";
 import { createDelegateMethods, type DelegateMethods } from "./delegates.ts";
 import { createDepotMethods, type DepotMethods } from "./depots.ts";
 import { createNodeMethods, type NodeMethods } from "./nodes.ts";
@@ -32,20 +28,9 @@ import { createTokenMethods, type TokenMethods } from "./tokens.ts";
 // Re-exports
 // ============================================================================
 
-export type {
-  DelegateMethods,
-  DepotMethods,
-  NodeMethods,
-  OAuthMethods,
-  TokenMethods,
-};
+export type { DelegateMethods, DepotMethods, NodeMethods, OAuthMethods, TokenMethods };
 
-export type {
-  ClientConfig,
-  OnAuthRequiredCallback,
-  OnTokenChangeCallback,
-  TokenStorageProvider,
-};
+export type { ClientConfig, OnAuthRequiredCallback, OnTokenChangeCallback, TokenStorageProvider };
 
 // ============================================================================
 // Client Type
@@ -86,16 +71,8 @@ export type CasfaClient = {
 /**
  * Create a stateful CASFA client.
  */
-export const createClient = async (
-  config: ClientConfig,
-): Promise<CasfaClient> => {
-  const {
-    baseUrl,
-    realm,
-    tokenStorage,
-    onTokenChange,
-    onAuthRequired,
-  } = config;
+export const createClient = async (config: ClientConfig): Promise<CasfaClient> => {
+  const { baseUrl, realm, tokenStorage, onTokenChange, onAuthRequired } = config;
 
   // Initialize token store
   const store = createTokenStore({

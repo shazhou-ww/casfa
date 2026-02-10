@@ -43,7 +43,7 @@ export const createDelegate = async (
   baseUrl: string,
   realm: string,
   accessTokenBase64: string,
-  params: CreateDelegateRequest,
+  params: CreateDelegateRequest
 ): Promise<FetchResult<CreateDelegateResponse>> => {
   return fetchWithAuth<CreateDelegateResponse>(
     `${baseUrl}/api/realm/${encodeURIComponent(realm)}/delegates`,
@@ -51,7 +51,7 @@ export const createDelegate = async (
     {
       method: "POST",
       body: params,
-    },
+    }
   );
 };
 
@@ -63,7 +63,7 @@ export const listDelegates = async (
   baseUrl: string,
   realm: string,
   accessTokenBase64: string,
-  params?: ListDelegatesQuery,
+  params?: ListDelegatesQuery
 ): Promise<FetchResult<ListDelegatesResponse>> => {
   const query = new URLSearchParams();
   if (params?.limit) query.set("limit", String(params.limit));
@@ -84,11 +84,11 @@ export const getDelegate = async (
   baseUrl: string,
   realm: string,
   accessTokenBase64: string,
-  delegateId: string,
+  delegateId: string
 ): Promise<FetchResult<DelegateDetail>> => {
   return fetchWithAuth<DelegateDetail>(
     `${baseUrl}/api/realm/${encodeURIComponent(realm)}/delegates/${encodeURIComponent(delegateId)}`,
-    `Bearer ${accessTokenBase64}`,
+    `Bearer ${accessTokenBase64}`
   );
 };
 
@@ -100,13 +100,13 @@ export const revokeDelegate = async (
   baseUrl: string,
   realm: string,
   accessTokenBase64: string,
-  delegateId: string,
+  delegateId: string
 ): Promise<FetchResult<RevokeDelegateResponse>> => {
   return fetchWithAuth<RevokeDelegateResponse>(
     `${baseUrl}/api/realm/${encodeURIComponent(realm)}/delegates/${encodeURIComponent(delegateId)}/revoke`,
     `Bearer ${accessTokenBase64}`,
     {
       method: "POST",
-    },
+    }
   );
 };

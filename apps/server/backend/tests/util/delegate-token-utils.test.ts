@@ -6,12 +6,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import {
-  decodeDelegateToken,
-  formatTokenId,
-  computeTokenId as computeTokenIdRaw,
-  isValidTokenIdFormat,
-} from "@casfa/delegate-token";
+import { decodeDelegateToken, isValidTokenIdFormat } from "@casfa/delegate-token";
 import { blake3 } from "@noble/hashes/blake3";
 import {
   computeRealmHash,

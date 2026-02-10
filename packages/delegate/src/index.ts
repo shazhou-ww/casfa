@@ -10,18 +10,6 @@
  * It has NO runtime dependencies and NO I/O — everything is pure.
  */
 
-// Constants
-export { MAX_DEPTH, ROOT_DEPTH } from "./constants.ts";
-
-// Types
-export type {
-  CreateDelegateInput,
-  Delegate,
-  DelegatePermissions,
-  DelegateValidationError,
-  DelegateValidationResult,
-} from "./types.ts";
-
 // Chain utilities
 export {
   buildChain,
@@ -31,6 +19,16 @@ export {
   isChainValid,
   isDirectChildChain,
 } from "./chain.ts";
+// Constants
+export { MAX_DEPTH, ROOT_DEPTH } from "./constants.ts";
+// Types
+export type {
+  CreateDelegateInput,
+  Delegate,
+  DelegatePermissions,
+  DelegateValidationError,
+  DelegateValidationResult,
+} from "./types.ts";
 
 // Validation
 export {

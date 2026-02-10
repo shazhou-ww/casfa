@@ -102,11 +102,6 @@ export interface CredentialsStore {
   [profileName: string]: Credentials;
 }
 
-/** Legacy store for migration */
-interface LegacyCredentialsStore {
-  [profileName: string]: LegacyCredentials;
-}
-
 // ============================================================================
 // File Path
 // ============================================================================
@@ -285,10 +280,7 @@ export function clearUserToken(profileName: string): void {
 // Root Delegate Operations
 // ============================================================================
 
-export function setRootDelegate(
-  profileName: string,
-  rootDelegate: RootDelegateCredential
-): void {
+export function setRootDelegate(profileName: string, rootDelegate: RootDelegateCredential): void {
   const store = loadCredentials();
   const existing = store[profileName] ?? { version: 3 as const };
   store[profileName] = {

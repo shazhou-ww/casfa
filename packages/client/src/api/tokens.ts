@@ -6,7 +6,7 @@
  * - POST /api/tokens/refresh: Bearer RT → new RT + AT
  */
 
-import type { RootTokenResponse, RefreshTokenResponse } from "@casfa/protocol";
+import type { RefreshTokenResponse, RootTokenResponse } from "@casfa/protocol";
 import type { FetchResult } from "../types/client.ts";
 import { fetchWithAuth } from "../utils/http.ts";
 
@@ -21,7 +21,7 @@ import { fetchWithAuth } from "../utils/http.ts";
 export const createRootToken = async (
   baseUrl: string,
   userAccessToken: string,
-  realm: string,
+  realm: string
 ): Promise<FetchResult<RootTokenResponse>> => {
   return fetchWithAuth<RootTokenResponse>(
     `${baseUrl}/api/tokens/root`,
@@ -29,7 +29,7 @@ export const createRootToken = async (
     {
       method: "POST",
       body: { realm },
-    },
+    }
   );
 };
 
@@ -43,13 +43,13 @@ export const createRootToken = async (
  */
 export const refreshToken = async (
   baseUrl: string,
-  refreshTokenBase64: string,
+  refreshTokenBase64: string
 ): Promise<FetchResult<RefreshTokenResponse>> => {
   return fetchWithAuth<RefreshTokenResponse>(
     `${baseUrl}/api/tokens/refresh`,
     `Bearer ${refreshTokenBase64}`,
     {
       method: "POST",
-    },
+    }
   );
 };

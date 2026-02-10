@@ -46,14 +46,10 @@ function createMockDynamoClient() {
       const cKey = compositeKey(realm, key);
 
       // Check condition expression (attribute_not_exists)
-      if (
-        input.ConditionExpression &&
-        input.ConditionExpression.includes("attribute_not_exists")
-      ) {
+      if (input.ConditionExpression?.includes("attribute_not_exists")) {
         if (items.has(cKey)) {
           const error = new Error("Condition not met");
-          (error as unknown as { name: string }).name =
-            "ConditionalCheckFailedException";
+          (error as unknown as { name: string }).name = "ConditionalCheckFailedException";
           throw error;
         }
       }
@@ -83,18 +79,13 @@ function createMockDynamoClient() {
       if (input.ConditionExpression) {
         if (!item) {
           const error = new Error("Condition not met");
-          (error as unknown as { name: string }).name =
-            "ConditionalCheckFailedException";
+          (error as unknown as { name: string }).name = "ConditionalCheckFailedException";
           throw error;
         }
         // Check isRevoked = :false condition
-        if (
-          input.ConditionExpression.includes("isRevoked = :false") &&
-          item.isRevoked === true
-        ) {
+        if (input.ConditionExpression.includes("isRevoked = :false") && item.isRevoked === true) {
           const error = new Error("Condition not met");
-          (error as unknown as { name: string }).name =
-            "ConditionalCheckFailedException";
+          (error as unknown as { name: string }).name = "ConditionalCheckFailedException";
           throw error;
         }
       }
@@ -161,7 +152,7 @@ function createMockDynamoClient() {
 function makeRootDelegate(
   realm: string,
   delegateId: string,
-  overrides?: Partial<Delegate>,
+  overrides?: Partial<Delegate>
 ): Delegate {
   return {
     delegateId,
@@ -182,7 +173,7 @@ function makeChildDelegate(
   delegateId: string,
   parentId: string,
   parentChain: string[],
-  overrides?: Partial<Delegate>,
+  overrides?: Partial<Delegate>
 ): Delegate {
   return {
     delegateId,
@@ -235,9 +226,7 @@ describe("DelegatesDb", () => {
     });
 
     it("creates a child delegate with all fields", async () => {
-      const child = makeChildDelegate("realm-1", "dlg-child", "dlg-root", [
-        "dlg-root",
-      ], {
+      const child = makeChildDelegate("realm-1", "dlg-child", "dlg-root", ["dlg-root"], {
         name: "Agent-A",
         canManageDepot: true,
         delegatedDepots: ["depot-1", "depot-2"],
@@ -310,12 +299,8 @@ describe("DelegatesDb", () => {
   describe("listChildren", () => {
     it("lists children of a parent delegate", async () => {
       const root = makeRootDelegate("realm-1", "dlg-root");
-      const child1 = makeChildDelegate("realm-1", "dlg-a", "dlg-root", [
-        "dlg-root",
-      ]);
-      const child2 = makeChildDelegate("realm-1", "dlg-b", "dlg-root", [
-        "dlg-root",
-      ]);
+      const child1 = makeChildDelegate("realm-1", "dlg-a", "dlg-root", ["dlg-root"]);
+      const child2 = makeChildDelegate("realm-1", "dlg-b", "dlg-root", ["dlg-root"]);
 
       await db.create(root);
       await db.create(child1);
@@ -353,7 +338,7 @@ describe("DelegatesDb", () => {
     });
 
     it("returns existing root on second call", async () => {
-      const root1 = await db.getOrCreateRoot("realm-1", "dlg-root-1");
+      const _root1 = await db.getOrCreateRoot("realm-1", "dlg-root-1");
       const root2 = await db.getOrCreateRoot("realm-1", "dlg-root-2");
 
       // Should return the same root (first one created)

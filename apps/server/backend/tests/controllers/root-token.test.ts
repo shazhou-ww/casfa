@@ -12,7 +12,6 @@ import type { Delegate } from "@casfa/delegate";
 import {
   createRootTokenController,
   type RootTokenController,
-  type RootTokenControllerDeps,
 } from "../../src/controllers/root-token.ts";
 import type { DelegatesDb } from "../../src/db/delegates.ts";
 import type { TokenRecordsDb } from "../../src/db/token-records.ts";
@@ -27,17 +26,19 @@ function createMockDelegatesDb(overrides?: Partial<DelegatesDb>): DelegatesDb {
     get: mock(async () => null),
     revoke: mock(async () => true),
     listChildren: mock(async () => ({ delegates: [], nextCursor: undefined })),
-    getOrCreateRoot: mock(async (realm: string, delegateId: string): Promise<Delegate> => ({
-      delegateId,
-      realm,
-      parentId: null,
-      chain: [delegateId],
-      depth: 0,
-      canUpload: true,
-      canManageDepot: true,
-      isRevoked: false,
-      createdAt: Date.now(),
-    })),
+    getOrCreateRoot: mock(
+      async (realm: string, delegateId: string): Promise<Delegate> => ({
+        delegateId,
+        realm,
+        parentId: null,
+        chain: [delegateId],
+        depth: 0,
+        canUpload: true,
+        canManageDepot: true,
+        isRevoked: false,
+        createdAt: Date.now(),
+      })
+    ),
     ...overrides,
   };
 }
@@ -72,8 +73,8 @@ function createMockContext(options: {
     set: mock(() => {}),
     req: {
       json: mock(async () => options.body ?? {}),
-      param: mock((name: string) => (options.params ?? {})[name]),
-      query: mock((name: string) => (options.query ?? {})[name]),
+      param: mock((name: string) => options.params?.[name]),
+      query: mock((name: string) => options.query?.[name]),
       header: mock((_name: string) => undefined),
     },
     json: mock((body: unknown, status?: number) => {
@@ -230,19 +231,21 @@ describe("RootTokenController", () => {
 
     it("rejects revoked root delegate (403)", async () => {
       mockDelegatesDb = createMockDelegatesDb({
-        getOrCreateRoot: mock(async (realm: string, delegateId: string): Promise<Delegate> => ({
-          delegateId,
-          realm,
-          parentId: null,
-          chain: [delegateId],
-          depth: 0,
-          canUpload: true,
-          canManageDepot: true,
-          isRevoked: true,
-          revokedAt: Date.now(),
-          revokedBy: "admin",
-          createdAt: Date.now() - 3600_000,
-        })),
+        getOrCreateRoot: mock(
+          async (realm: string, delegateId: string): Promise<Delegate> => ({
+            delegateId,
+            realm,
+            parentId: null,
+            chain: [delegateId],
+            depth: 0,
+            canUpload: true,
+            canManageDepot: true,
+            isRevoked: true,
+            revokedAt: Date.now(),
+            revokedBy: "admin",
+            createdAt: Date.now() - 3600_000,
+          })
+        ),
       });
 
       controller = createRootTokenController({

@@ -15,8 +15,8 @@
 
 import {
   computeTokenId as computeTokenIdRaw,
-  decodeDelegateToken,
   DELEGATE_TOKEN_SIZE,
+  decodeDelegateToken,
   formatTokenId,
 } from "@casfa/delegate-token";
 import { blake3 } from "@noble/hashes/blake3";
@@ -60,9 +60,7 @@ const blake3_128 = (data: Uint8Array): Uint8Array => {
 // Controller Factory
 // ============================================================================
 
-export const createRefreshController = (
-  deps: RefreshControllerDeps,
-): RefreshController => {
+export const createRefreshController = (deps: RefreshControllerDeps): RefreshController => {
   const { delegatesDb, tokenRecordsDb } = deps;
 
   /**
@@ -74,18 +72,12 @@ export const createRefreshController = (
     // 1. Extract RT from Authorization header
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
-      return c.json(
-        { error: "UNAUTHORIZED", message: "Missing Authorization header" },
-        401,
-      );
+      return c.json({ error: "UNAUTHORIZED", message: "Missing Authorization header" }, 401);
     }
 
     const parts = authHeader.split(" ");
     if (parts.length !== 2 || parts[0] !== "Bearer") {
-      return c.json(
-        { error: "UNAUTHORIZED", message: "Invalid Authorization header format" },
-        401,
-      );
+      return c.json({ error: "UNAUTHORIZED", message: "Invalid Authorization header format" }, 401);
     }
 
     const tokenBase64 = parts[1]!;
@@ -100,15 +92,12 @@ export const createRefreshController = (
             error: "INVALID_TOKEN_FORMAT",
             message: `Token must be ${DELEGATE_TOKEN_SIZE} bytes`,
           },
-          401,
+          401
         );
       }
       tokenBytes = new Uint8Array(buffer);
     } catch {
-      return c.json(
-        { error: "INVALID_TOKEN_FORMAT", message: "Invalid Base64 encoding" },
-        401,
-      );
+      return c.json({ error: "INVALID_TOKEN_FORMAT", message: "Invalid Base64 encoding" }, 401);
     }
 
     // 3. Verify it's a refresh token
@@ -121,7 +110,7 @@ export const createRefreshController = (
           error: "INVALID_TOKEN_FORMAT",
           message: e instanceof Error ? e.message : "Invalid token format",
         },
-        401,
+        401
       );
     }
 
@@ -131,7 +120,7 @@ export const createRefreshController = (
           error: "NOT_REFRESH_TOKEN",
           message: "Expected a Refresh Token, got an Access Token",
         },
-        400,
+        400
       );
     }
 
@@ -142,10 +131,7 @@ export const createRefreshController = (
     // 5. Look up token record
     const tokenRecord = await tokenRecordsDb.get(tokenId);
     if (!tokenRecord) {
-      return c.json(
-        { error: "TOKEN_NOT_FOUND", message: "Refresh token not found" },
-        401,
-      );
+      return c.json({ error: "TOKEN_NOT_FOUND", message: "Refresh token not found" }, 401);
     }
 
     // 6. Check if token family is invalidated
@@ -155,7 +141,7 @@ export const createRefreshController = (
           error: "TOKEN_INVALIDATED",
           message: "Token family has been invalidated due to security concern",
         },
-        401,
+        401
       );
     }
 
@@ -169,7 +155,7 @@ export const createRefreshController = (
           message:
             "Refresh token has already been used. All tokens for this delegate have been invalidated.",
         },
-        409,
+        409
       );
     }
 
@@ -183,34 +169,25 @@ export const createRefreshController = (
           error: "TOKEN_REUSE",
           message: "Refresh token was already used (concurrent request detected)",
         },
-        409,
+        409
       );
     }
 
     // 9. Verify the delegate still exists and is not revoked
-    const delegate = await delegatesDb.get(
-      tokenRecord.realm,
-      tokenRecord.delegateId,
-    );
+    const delegate = await delegatesDb.get(tokenRecord.realm, tokenRecord.delegateId);
     if (!delegate) {
-      return c.json(
-        { error: "DELEGATE_NOT_FOUND", message: "Associated delegate not found" },
-        401,
-      );
+      return c.json({ error: "DELEGATE_NOT_FOUND", message: "Associated delegate not found" }, 401);
     }
 
     if (delegate.isRevoked) {
       return c.json(
         { error: "DELEGATE_REVOKED", message: "Associated delegate has been revoked" },
-        401,
+        401
       );
     }
 
     if (delegate.expiresAt && delegate.expiresAt < Date.now()) {
-      return c.json(
-        { error: "DELEGATE_EXPIRED", message: "Associated delegate has expired" },
-        401,
-      );
+      return c.json({ error: "DELEGATE_EXPIRED", message: "Associated delegate has expired" }, 401);
     }
 
     // 10. Issue new RT + AT pair

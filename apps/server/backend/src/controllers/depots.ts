@@ -6,7 +6,13 @@
  */
 
 import { EMPTY_DICT_KEY } from "@casfa/core";
-import { CreateDepotSchema, DepotCommitSchema, hexToNodeKey, nodeKeyToHex, UpdateDepotSchema } from "@casfa/protocol";
+import {
+  CreateDepotSchema,
+  DepotCommitSchema,
+  hexToNodeKey,
+  nodeKeyToHex,
+  UpdateDepotSchema,
+} from "@casfa/protocol";
 import type { StorageProvider } from "@casfa/storage-core";
 import type { Context } from "hono";
 import {

@@ -13,16 +13,12 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { Delegate } from "@casfa/delegate";
 import {
   computeTokenId as computeTokenIdRaw,
+  type DelegateTokenInput,
   encodeDelegateToken,
   formatTokenId,
-  type DelegateTokenInput,
 } from "@casfa/delegate-token";
 import { blake3 } from "@noble/hashes/blake3";
-import {
-  createRefreshController,
-  type RefreshController,
-  type RefreshControllerDeps,
-} from "../../src/controllers/refresh.ts";
+import { createRefreshController, type RefreshController } from "../../src/controllers/refresh.ts";
 import type { DelegatesDb } from "../../src/db/delegates.ts";
 import type {
   CreateTokenRecordInput,
@@ -131,14 +127,16 @@ function createMockDelegatesDb(overrides?: Partial<DelegatesDb>): DelegatesDb {
     get: mock(async () => makeDelegate()),
     revoke: mock(async () => true),
     listChildren: mock(async () => ({ delegates: [], nextCursor: undefined })),
-    getOrCreateRoot: mock(async (realm: string, id: string) => makeDelegate({ delegateId: id, realm })),
+    getOrCreateRoot: mock(async (realm: string, id: string) =>
+      makeDelegate({ delegateId: id, realm })
+    ),
     ...overrides,
   };
 }
 
 function createMockTokenRecordsDb(
   tokenRecordFn?: (tokenId: string) => TokenRecord | null,
-  overrides?: Partial<TokenRecordsDb>,
+  overrides?: Partial<TokenRecordsDb>
 ): TokenRecordsDb {
   return {
     create: mock(async () => {}),
@@ -193,8 +191,8 @@ describe("RefreshController", () => {
     it("rotates RT: returns new RT + AT", async () => {
       const rt = await makeRefreshToken();
 
-      mockTokenRecordsDb = createMockTokenRecordsDb(
-        (tokenId) => tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null,
+      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
+        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null
       );
       mockDelegatesDb = createMockDelegatesDb();
 
@@ -223,8 +221,8 @@ describe("RefreshController", () => {
     it("marks old RT as used", async () => {
       const rt = await makeRefreshToken();
 
-      mockTokenRecordsDb = createMockTokenRecordsDb(
-        (tokenId) => tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null,
+      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
+        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null
       );
       mockDelegatesDb = createMockDelegatesDb();
 
@@ -242,8 +240,8 @@ describe("RefreshController", () => {
     it("stores 2 new token records with same delegateId", async () => {
       const rt = await makeRefreshToken();
 
-      mockTokenRecordsDb = createMockTokenRecordsDb(
-        (tokenId) => tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null,
+      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
+        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null
       );
       mockDelegatesDb = createMockDelegatesDb();
 
@@ -371,10 +369,8 @@ describe("RefreshController", () => {
       const rt = await makeRefreshToken();
 
       mockDelegatesDb = createMockDelegatesDb();
-      mockTokenRecordsDb = createMockTokenRecordsDb(
-        (tokenId) => tokenId === rt.tokenId
-          ? makeTokenRecord(rt.tokenId, { isInvalidated: true })
-          : null,
+      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
+        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId, { isInvalidated: true }) : null
       );
       controller = createRefreshController({
         delegatesDb: mockDelegatesDb,
@@ -399,10 +395,8 @@ describe("RefreshController", () => {
       const rt = await makeRefreshToken();
 
       mockDelegatesDb = createMockDelegatesDb();
-      mockTokenRecordsDb = createMockTokenRecordsDb(
-        (tokenId) => tokenId === rt.tokenId
-          ? makeTokenRecord(rt.tokenId, { isUsed: true })
-          : null,
+      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
+        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId, { isUsed: true }) : null
       );
       controller = createRefreshController({
         delegatesDb: mockDelegatesDb,
@@ -425,11 +419,11 @@ describe("RefreshController", () => {
 
       mockDelegatesDb = createMockDelegatesDb();
       mockTokenRecordsDb = createMockTokenRecordsDb(
-        (tokenId) => tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null,
+        (tokenId) => (tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null),
         {
           // markUsed returns false (another request got there first)
           markUsed: mock(async () => false),
-        },
+        }
       );
       controller = createRefreshController({
         delegatesDb: mockDelegatesDb,
@@ -457,8 +451,8 @@ describe("RefreshController", () => {
       mockDelegatesDb = createMockDelegatesDb({
         get: mock(async () => makeDelegate({ isRevoked: true })),
       });
-      mockTokenRecordsDb = createMockTokenRecordsDb(
-        (tokenId) => tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null,
+      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
+        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null
       );
       controller = createRefreshController({
         delegatesDb: mockDelegatesDb,
@@ -479,8 +473,8 @@ describe("RefreshController", () => {
       mockDelegatesDb = createMockDelegatesDb({
         get: mock(async () => makeDelegate({ expiresAt: Date.now() - 1000 })),
       });
-      mockTokenRecordsDb = createMockTokenRecordsDb(
-        (tokenId) => tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null,
+      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
+        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null
       );
       controller = createRefreshController({
         delegatesDb: mockDelegatesDb,
@@ -501,8 +495,8 @@ describe("RefreshController", () => {
       mockDelegatesDb = createMockDelegatesDb({
         get: mock(async () => null),
       });
-      mockTokenRecordsDb = createMockTokenRecordsDb(
-        (tokenId) => tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null,
+      mockTokenRecordsDb = createMockTokenRecordsDb((tokenId) =>
+        tokenId === rt.tokenId ? makeTokenRecord(rt.tokenId) : null
       );
       controller = createRefreshController({
         delegatesDb: mockDelegatesDb,

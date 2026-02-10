@@ -2,7 +2,7 @@
  * Token management methods for the stateful client (new 2-tier model).
  */
 
-import type { RootTokenResponse, RefreshTokenResponse } from "@casfa/protocol";
+import type { RefreshTokenResponse, RootTokenResponse } from "@casfa/protocol";
 import * as api from "../api/index.ts";
 import type { RefreshManager } from "../store/jwt-refresh.ts";
 import type { TokenSelector } from "../store/token-selector.ts";
@@ -40,18 +40,12 @@ export const createTokenMethods = ({
   store,
   refreshManager,
 }: TokenDeps): TokenMethods => {
-  const requireUser = withUserToken(() =>
-    refreshManager.ensureValidUserToken(),
-  );
+  const requireUser = withUserToken(() => refreshManager.ensureValidUserToken());
 
   return {
     createRoot: (targetRealm) =>
       requireUser(async (user) => {
-        const result = await api.createRootToken(
-          baseUrl,
-          user.accessToken,
-          targetRealm,
-        );
+        const result = await api.createRootToken(baseUrl, user.accessToken, targetRealm);
         if (!result.ok) return result;
 
         const rd = toStoredRootDelegate(result.data);
@@ -91,9 +85,7 @@ export const createTokenMethods = ({
 // Helpers
 // ============================================================================
 
-const toStoredRootDelegate = (
-  response: RootTokenResponse,
-): StoredRootDelegate => ({
+const toStoredRootDelegate = (response: RootTokenResponse): StoredRootDelegate => ({
   delegateId: response.delegate.delegateId,
   realm: response.delegate.realm,
   refreshToken: response.refreshToken,
@@ -108,7 +100,7 @@ const toStoredRootDelegate = (
 
 const updateRootDelegate = (
   current: StoredRootDelegate,
-  response: RefreshTokenResponse,
+  response: RefreshTokenResponse
 ): StoredRootDelegate => ({
   ...current,
   refreshToken: response.refreshToken,

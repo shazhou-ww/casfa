@@ -22,19 +22,19 @@ export { createUserRolesDb, type UserRoleRecord, type UserRolesDb } from "./user
 // Token modules
 // ============================================================================
 
-// TokenRecord operations (delegate model RT/AT)
-export {
-  createTokenRecordsDb,
-  type CreateTokenRecordInput,
-  type TokenRecord,
-  type TokenRecordsDb,
-} from "./token-records.ts";
 // ScopeSetNode operations
 export {
   createScopeSetNodesDb,
   EMPTY_SET_NODE_ID,
   type ScopeSetNodesDb,
 } from "./scope-set-nodes.ts";
+// TokenRecord operations (delegate model RT/AT)
+export {
+  type CreateTokenRecordInput,
+  createTokenRecordsDb,
+  type TokenRecord,
+  type TokenRecordsDb,
+} from "./token-records.ts";
 
 // ============================================================================
 // Other modules

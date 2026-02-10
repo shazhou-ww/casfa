@@ -95,9 +95,7 @@ export const useDepotStore = create<DepotStore>((set, get) => ({
         set({ operating: false });
 
         // Find the newly created depot in the refreshed list
-        const newDepot = get().depots.find(
-          (d) => d.depotId === result.data.depotId
-        );
+        const newDepot = get().depots.find((d) => d.depotId === result.data.depotId);
         return newDepot ?? null;
       }
 

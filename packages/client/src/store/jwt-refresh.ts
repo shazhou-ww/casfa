@@ -47,7 +47,7 @@ type RefreshResponse = {
 
 const callRefreshApi = async (
   baseUrl: string,
-  refreshToken: string,
+  refreshToken: string
 ): Promise<RefreshResponse | null> => {
   try {
     const response = await fetch(`${baseUrl}/api/oauth/refresh`, {
@@ -73,9 +73,7 @@ const callRefreshApi = async (
 /**
  * Create a refresh manager for JWT token refresh.
  */
-export const createRefreshManager = (
-  config: RefreshManagerConfig,
-): RefreshManager => {
+export const createRefreshManager = (config: RefreshManagerConfig): RefreshManager => {
   const { store, baseUrl, onAuthRequired } = config;
 
   // Promise deduplication: only one refresh in flight at a time
@@ -113,30 +111,29 @@ export const createRefreshManager = (
     return newUserToken;
   };
 
-  const ensureValidUserToken =
-    async (): Promise<StoredUserToken | null> => {
-      const state = store.getState();
-      const userToken = state.user;
+  const ensureValidUserToken = async (): Promise<StoredUserToken | null> => {
+    const state = store.getState();
+    const userToken = state.user;
 
-      // Check if current token is valid
-      if (isUserTokenValid(userToken)) {
-        return userToken;
-      }
+    // Check if current token is valid
+    if (isUserTokenValid(userToken)) {
+      return userToken;
+    }
 
-      // No user token at all
-      if (!userToken) {
-        return null;
-      }
+    // No user token at all
+    if (!userToken) {
+      return null;
+    }
 
-      // Need to refresh - use deduplication
-      if (!refreshPromise) {
-        refreshPromise = doRefresh().finally(() => {
-          refreshPromise = null;
-        });
-      }
+    // Need to refresh - use deduplication
+    if (!refreshPromise) {
+      refreshPromise = doRefresh().finally(() => {
+        refreshPromise = null;
+      });
+    }
 
-      return refreshPromise;
-    };
+    return refreshPromise;
+  };
 
   const scheduleProactiveRefresh = () => {
     cancelScheduledRefresh();
@@ -147,8 +144,7 @@ export const createRefreshManager = (
     if (!userToken) return;
 
     // Schedule refresh 5 minutes before expiration
-    const refreshTime =
-      userToken.expiresAt - Date.now() - 5 * 60_000;
+    const refreshTime = userToken.expiresAt - Date.now() - 5 * 60_000;
 
     if (refreshTime <= 0) {
       // Already expiring soon, refresh immediately

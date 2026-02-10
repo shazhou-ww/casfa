@@ -70,7 +70,13 @@ export function LoginPage() {
   }
 
   return (
-    <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" bgcolor="grey.50">
+    <Box
+      display="flex"
+      justifyContent="center"
+      alignItems="center"
+      minHeight="100vh"
+      bgcolor="grey.50"
+    >
       <Card sx={{ maxWidth: 420, width: "100%", mx: 2 }}>
         <CardContent sx={{ p: 4 }}>
           <Typography variant="h4" component="h1" textAlign="center" gutterBottom fontWeight={600}>

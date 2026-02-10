@@ -13,8 +13,8 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { computePoP, isPopString, verifyPoP } from "./pop.ts";
 import type { PopContext } from "./pop.ts";
+import { computePoP, isPopString, verifyPoP } from "./pop.ts";
 
 // ============================================================================
 // Mock crypto context

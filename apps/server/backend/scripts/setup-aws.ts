@@ -29,8 +29,8 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import * as readline from "node:readline";
 import { resolve } from "node:path";
+import * as readline from "node:readline";
 
 // Load .env from monorepo root
 const monorepoRoot = resolve(import.meta.dir, "../../../../");
@@ -133,8 +133,7 @@ async function setupDynamoDBTables(autoYes: boolean): Promise<void> {
     console.log(`Found ${existingTables.length} existing tables.`);
     console.log(`Missing tables: ${missingTables.join(", ")}`);
 
-    const shouldCreate =
-      autoYes || (await promptYesNo("Create missing DynamoDB tables on AWS?"));
+    const shouldCreate = autoYes || (await promptYesNo("Create missing DynamoDB tables on AWS?"));
 
     if (!shouldCreate) {
       console.log("⏭️  Skipped DynamoDB table creation.");
@@ -220,8 +219,7 @@ async function setupCognitoIdPSecrets(autoYes: boolean): Promise<void> {
         console.log(`   client_secret: ${maskSecret(currentSecret)} → ${maskSecret(envSecret)}`);
       }
 
-      const shouldUpdate =
-        autoYes || (await promptYesNo(`Update ${name} IdP secrets in Cognito?`));
+      const shouldUpdate = autoYes || (await promptYesNo(`Update ${name} IdP secrets in Cognito?`));
 
       if (!shouldUpdate) {
         console.log(`⏭️  Skipped ${name} update.`);
@@ -305,8 +303,7 @@ async function setupCallbackUrls(autoYes: boolean): Promise<void> {
       for (const url of missingLogouts) console.log(`   + ${url}`);
     }
 
-    const shouldUpdate =
-      autoYes || (await promptYesNo("Add missing URLs to Cognito App Client?"));
+    const shouldUpdate = autoYes || (await promptYesNo("Add missing URLs to Cognito App Client?"));
 
     if (!shouldUpdate) {
       console.log("⏭️  Skipped callback URL update.");
@@ -380,7 +377,7 @@ async function main(): Promise<void> {
     console.log("\n⏭️  Step 3: Callback URLs — skipped (--skip-callbacks)");
   }
 
-  console.log("\n" + "=".repeat(60));
+  console.log(`\n${"=".repeat(60)}`);
   console.log("✅ AWS setup complete!");
   console.log("=".repeat(60));
   console.log("\nNext steps:");

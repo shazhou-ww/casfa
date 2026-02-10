@@ -11,6 +11,25 @@
  * ProofVerificationContext callbacks.
  */
 
+// Formatting
+export {
+  depot,
+  formatDepotProofWord,
+  formatIPathProofWord,
+  formatProofHeader,
+  formatProofWord,
+  ipath,
+} from "./format.ts";
+
+// Parsing
+export {
+  parseIndexPath,
+  parseProofHeader,
+  parseProofWord,
+} from "./parse.ts";
+// Proof-of-Possession (PoP)
+export type { PopContext } from "./pop.ts";
+export { computePoP, isPopString, verifyPoP } from "./pop.ts";
 // Types
 export type {
   DepotProofWord,
@@ -24,30 +43,8 @@ export type {
   ProofWord,
   ResolvedNode,
 } from "./types.ts";
-
-// Parsing
-export {
-  parseIndexPath,
-  parseProofHeader,
-  parseProofWord,
-} from "./parse.ts";
-
 // Verification
 export {
   verifyMultiNodeAccess,
   verifyNodeAccess,
 } from "./verify.ts";
-
-// Formatting
-export {
-  depot,
-  formatDepotProofWord,
-  formatIPathProofWord,
-  formatProofHeader,
-  formatProofWord,
-  ipath,
-} from "./format.ts";
-
-// Proof-of-Possession (PoP)
-export type { PopContext } from "./pop.ts";
-export { computePoP, isPopString, verifyPoP } from "./pop.ts";

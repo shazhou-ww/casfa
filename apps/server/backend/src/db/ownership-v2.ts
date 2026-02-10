@@ -14,11 +14,7 @@
  */
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import {
-  BatchWriteCommand,
-  GetCommand,
-  QueryCommand,
-} from "@aws-sdk/lib-dynamodb";
+import { BatchWriteCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { createDocClient } from "./client.ts";
 
 // ============================================================================
@@ -58,7 +54,7 @@ export type OwnershipV2Db = {
     uploadedBy: string,
     contentType: string,
     size: number,
-    kind?: string,
+    kind?: string
   ) => Promise<void>;
 
   /**
@@ -84,10 +80,7 @@ export type OwnershipV2Db = {
    * @param nodeHash - The CAS node hash (hex string)
    * @param delegateId - The delegate to look up
    */
-  getOwnership: (
-    nodeHash: string,
-    delegateId: string,
-  ) => Promise<OwnershipRecord | null>;
+  getOwnership: (nodeHash: string, delegateId: string) => Promise<OwnershipRecord | null>;
 
   /**
    * List all delegates that own a specific node.
@@ -113,9 +106,7 @@ const toOwnershipPk = (nodeHash: string): string => `OWN#${nodeHash}`;
 // Factory
 // ============================================================================
 
-export const createOwnershipV2Db = (
-  config: OwnershipV2DbConfig,
-): OwnershipV2Db => {
+export const createOwnershipV2Db = (config: OwnershipV2DbConfig): OwnershipV2Db => {
   const client = config.client ?? createDocClient();
   const tableName = config.tableName;
 
@@ -125,7 +116,7 @@ export const createOwnershipV2Db = (
     uploadedBy: string,
     contentType: string,
     size: number,
-    kind?: string,
+    kind?: string
   ): Promise<void> => {
     if (chain.length === 0) return;
 
@@ -158,15 +149,12 @@ export const createOwnershipV2Db = (
           RequestItems: {
             [tableName]: batch,
           },
-        }),
+        })
       );
     }
   };
 
-  const hasOwnership = async (
-    nodeHash: string,
-    delegateId: string,
-  ): Promise<boolean> => {
+  const hasOwnership = async (nodeHash: string, delegateId: string): Promise<boolean> => {
     const result = await client.send(
       new GetCommand({
         TableName: tableName,
@@ -175,7 +163,7 @@ export const createOwnershipV2Db = (
           sk: delegateId,
         },
         ProjectionExpression: "pk",
-      }),
+      })
     );
     return !!result.Item;
   };
@@ -190,14 +178,14 @@ export const createOwnershipV2Db = (
         },
         Limit: 1,
         ProjectionExpression: "pk",
-      }),
+      })
     );
     return (result.Items?.length ?? 0) > 0;
   };
 
   const getOwnership = async (
     nodeHash: string,
-    delegateId: string,
+    delegateId: string
   ): Promise<OwnershipRecord | null> => {
     const result = await client.send(
       new GetCommand({
@@ -206,7 +194,7 @@ export const createOwnershipV2Db = (
           pk: toOwnershipPk(nodeHash),
           sk: delegateId,
         },
-      }),
+      })
     );
     if (!result.Item) return null;
     const item = result.Item;
@@ -228,7 +216,7 @@ export const createOwnershipV2Db = (
           ":pk": toOwnershipPk(nodeHash),
         },
         ProjectionExpression: "sk",
-      }),
+      })
     );
     return (result.Items ?? []).map((item) => item.sk as string);
   };

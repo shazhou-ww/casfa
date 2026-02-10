@@ -10,9 +10,9 @@
 
 import {
   computeTokenId as computeTokenIdRaw,
+  type DelegateTokenInput,
   encodeDelegateToken,
   formatTokenId,
-  type DelegateTokenInput,
 } from "@casfa/delegate-token";
 import { decodeCrockfordBase32 } from "@casfa/protocol";
 import { blake3 } from "@noble/hashes/blake3";

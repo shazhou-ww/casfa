@@ -10,12 +10,7 @@
  */
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import {
-  GetCommand,
-  PutCommand,
-  QueryCommand,
-  UpdateCommand,
-} from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { createDocClient } from "./client.ts";
 
 // ============================================================================
@@ -74,7 +69,7 @@ export type TokenRecordsDb = {
    */
   listByDelegate: (
     delegateId: string,
-    options?: { limit?: number; cursor?: string },
+    options?: { limit?: number; cursor?: string }
   ) => Promise<{ tokens: TokenRecord[]; nextCursor?: string }>;
 };
 
@@ -145,7 +140,7 @@ export const createTokenRecordsDb = (config: TokenRecordsDbConfig): TokenRecords
       new PutCommand({
         TableName: tableName,
         Item: item,
-      }),
+      })
     );
   };
 
@@ -154,7 +149,7 @@ export const createTokenRecordsDb = (config: TokenRecordsDbConfig): TokenRecords
       new GetCommand({
         TableName: tableName,
         Key: { pk: toTokenRecPk(tokenId), sk: METADATA_SK },
-      }),
+      })
     );
     if (!result.Item) return null;
     return toRecord(result.Item as Record<string, unknown>);
@@ -173,7 +168,7 @@ export const createTokenRecordsDb = (config: TokenRecordsDbConfig): TokenRecords
             ":true": true,
             ":false": false,
           },
-        }),
+        })
       );
       return true;
     } catch (error: unknown) {
@@ -196,7 +191,7 @@ export const createTokenRecordsDb = (config: TokenRecordsDbConfig): TokenRecords
           ":pk": toDelegateGsiPk(delegateId),
           ":prefix": "TOKENREC#",
         },
-      }),
+      })
     );
 
     if (!queryResult.Items || queryResult.Items.length === 0) return 0;
@@ -215,7 +210,7 @@ export const createTokenRecordsDb = (config: TokenRecordsDbConfig): TokenRecords
               ":true": true,
               ":false": false,
             },
-          }),
+          })
         );
         count++;
       } catch (error: unknown) {
@@ -231,7 +226,7 @@ export const createTokenRecordsDb = (config: TokenRecordsDbConfig): TokenRecords
 
   const listByDelegate = async (
     delegateId: string,
-    options?: { limit?: number; cursor?: string },
+    options?: { limit?: number; cursor?: string }
   ): Promise<{ tokens: TokenRecord[]; nextCursor?: string }> => {
     const limit = options?.limit ?? 100;
 
@@ -247,22 +242,16 @@ export const createTokenRecordsDb = (config: TokenRecordsDbConfig): TokenRecords
     };
 
     if (options?.cursor) {
-      params.ExclusiveStartKey = JSON.parse(
-        Buffer.from(options.cursor, "base64").toString(),
-      );
+      params.ExclusiveStartKey = JSON.parse(Buffer.from(options.cursor, "base64").toString());
     }
 
     const result = await client.send(new QueryCommand(params as never));
 
-    const tokens = (result.Items ?? []).map((item) =>
-      toRecord(item as Record<string, unknown>),
-    );
+    const tokens = (result.Items ?? []).map((item) => toRecord(item as Record<string, unknown>));
 
     let nextCursor: string | undefined;
     if (result.LastEvaluatedKey) {
-      nextCursor = Buffer.from(
-        JSON.stringify(result.LastEvaluatedKey),
-      ).toString("base64");
+      nextCursor = Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString("base64");
     }
 
     return { tokens, nextCursor };

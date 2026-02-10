@@ -21,24 +21,15 @@ import { withAccessToken } from "./helpers.ts";
 
 export type DelegateMethods = {
   /** Create a child delegate */
-  create: (
-    params: CreateDelegateRequest,
-  ) => Promise<FetchResult<CreateDelegateResponse>>;
+  create: (params: CreateDelegateRequest) => Promise<FetchResult<CreateDelegateResponse>>;
   /** List child delegates */
-  list: (
-    params?: ListDelegatesQuery,
-  ) => Promise<FetchResult<api.ListDelegatesResponse>>;
+  list: (params?: ListDelegatesQuery) => Promise<FetchResult<api.ListDelegatesResponse>>;
   /** Get delegate details */
   get: (delegateId: string) => Promise<FetchResult<DelegateDetail>>;
   /** Revoke a delegate */
-  revoke: (
-    delegateId: string,
-  ) => Promise<FetchResult<RevokeDelegateResponse>>;
+  revoke: (delegateId: string) => Promise<FetchResult<RevokeDelegateResponse>>;
   /** Claim ownership of a CAS node via PoP */
-  claimNode: (
-    nodeKey: string,
-    pop: string,
-  ) => Promise<FetchResult<ClaimNodeResponse>>;
+  claimNode: (nodeKey: string, pop: string) => Promise<FetchResult<ClaimNodeResponse>>;
 };
 
 export type DelegateDeps = {
@@ -56,34 +47,22 @@ export const createDelegateMethods = ({
   realm,
   tokenSelector,
 }: DelegateDeps): DelegateMethods => {
-  const requireAccess = withAccessToken(() =>
-    tokenSelector.ensureAccessToken(),
-  );
+  const requireAccess = withAccessToken(() => tokenSelector.ensureAccessToken());
 
   return {
     create: (params) =>
-      requireAccess((t) =>
-        api.createDelegate(baseUrl, realm, t.tokenBase64, params),
-      ),
+      requireAccess((t) => api.createDelegate(baseUrl, realm, t.tokenBase64, params)),
 
     list: (params) =>
-      requireAccess((t) =>
-        api.listDelegates(baseUrl, realm, t.tokenBase64, params),
-      ),
+      requireAccess((t) => api.listDelegates(baseUrl, realm, t.tokenBase64, params)),
 
     get: (delegateId) =>
-      requireAccess((t) =>
-        api.getDelegate(baseUrl, realm, t.tokenBase64, delegateId),
-      ),
+      requireAccess((t) => api.getDelegate(baseUrl, realm, t.tokenBase64, delegateId)),
 
     revoke: (delegateId) =>
-      requireAccess((t) =>
-        api.revokeDelegate(baseUrl, realm, t.tokenBase64, delegateId),
-      ),
+      requireAccess((t) => api.revokeDelegate(baseUrl, realm, t.tokenBase64, delegateId)),
 
     claimNode: (nodeKey, pop) =>
-      requireAccess((t) =>
-        api.claimNode(baseUrl, realm, t.tokenBase64, nodeKey, { pop }),
-      ),
+      requireAccess((t) => api.claimNode(baseUrl, realm, t.tokenBase64, nodeKey, { pop })),
   };
 };

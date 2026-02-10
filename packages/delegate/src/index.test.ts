@@ -1,14 +1,14 @@
 import { describe, expect, it } from "bun:test";
 
 import {
-  MAX_DEPTH,
-  ROOT_DEPTH,
   buildChain,
   buildRootChain,
   chainDepth,
   isAncestor,
   isChainValid,
   isDirectChildChain,
+  MAX_DEPTH,
+  ROOT_DEPTH,
   validateCreateDelegate,
   validateDelegatedDepots,
   validateDepth,
@@ -16,10 +16,7 @@ import {
   validatePermissions,
 } from "./index.ts";
 
-import type {
-  CreateDelegateInput,
-  DelegatePermissions,
-} from "./types.ts";
+import type { CreateDelegateInput, DelegatePermissions } from "./types.ts";
 
 // ============================================================================
 // Helper factories
@@ -196,7 +193,7 @@ describe("validatePermissions", () => {
     const parent = rootPerms();
     const result = validatePermissions(
       parent,
-      childInput({ canUpload: false, canManageDepot: false }),
+      childInput({ canUpload: false, canManageDepot: false })
     );
     expect(result.valid).toBe(true);
   });
@@ -213,10 +210,7 @@ describe("validatePermissions", () => {
 
   it("rejects canManageDepot escalation", () => {
     const parent = rootPerms({ canManageDepot: false });
-    const result = validatePermissions(
-      parent,
-      childInput({ canManageDepot: true }),
-    );
+    const result = validatePermissions(parent, childInput({ canManageDepot: true }));
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.error).toBe("PERMISSION_ESCALATION");
@@ -228,7 +222,7 @@ describe("validatePermissions", () => {
     const parent = rootPerms({ canUpload: false, canManageDepot: false });
     const result = validatePermissions(
       parent,
-      childInput({ canUpload: false, canManageDepot: false }),
+      childInput({ canUpload: false, canManageDepot: false })
     );
     expect(result.valid).toBe(true);
   });
@@ -316,23 +310,17 @@ describe("validateDelegatedDepots", () => {
   });
 
   it("allows subset of parent's manageable depots", () => {
-    expect(
-      validateDelegatedDepots(parentDepots, ["depot-1", "depot-3"]).valid,
-    ).toBe(true);
+    expect(validateDelegatedDepots(parentDepots, ["depot-1", "depot-3"]).valid).toBe(true);
   });
 
   it("allows all of parent's manageable depots", () => {
-    expect(
-      validateDelegatedDepots(parentDepots, ["depot-1", "depot-2", "depot-3"])
-        .valid,
-    ).toBe(true);
+    expect(validateDelegatedDepots(parentDepots, ["depot-1", "depot-2", "depot-3"]).valid).toBe(
+      true
+    );
   });
 
   it("rejects depot not in parent's range", () => {
-    const result = validateDelegatedDepots(parentDepots, [
-      "depot-1",
-      "depot-unknown",
-    ]);
+    const result = validateDelegatedDepots(parentDepots, ["depot-1", "depot-unknown"]);
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.error).toBe("DELEGATED_DEPOTS_ESCALATION");
@@ -390,8 +378,7 @@ describe("validateCreateDelegate", () => {
     const input = childInput({ delegatedDepots: ["depot-x"] });
     const result = validateCreateDelegate(parent, input, new Set(["depot-a"]));
     expect(result.valid).toBe(false);
-    if (!result.valid)
-      expect(result.error).toBe("DELEGATED_DEPOTS_ESCALATION");
+    if (!result.valid) expect(result.error).toBe("DELEGATED_DEPOTS_ESCALATION");
   });
 
   it("passes full scenario: depth=2, reduced perms, valid depots, valid expiresAt", () => {
@@ -407,11 +394,7 @@ describe("validateCreateDelegate", () => {
       delegatedDepots: ["depot-1"],
       expiresAt: 3000,
     });
-    const result = validateCreateDelegate(
-      parent,
-      input,
-      new Set(["depot-1", "depot-2"]),
-    );
+    const result = validateCreateDelegate(parent, input, new Set(["depot-1", "depot-2"]));
     expect(result.valid).toBe(true);
   });
 

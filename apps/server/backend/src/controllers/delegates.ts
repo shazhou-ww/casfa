@@ -8,22 +8,22 @@
  * - POST /api/realm/{realmId}/delegates/:delegateId/revoke — revoke
  */
 
-import { buildChain, validateCreateDelegate } from "@casfa/delegate";
 import type { Delegate } from "@casfa/delegate";
+import { buildChain, validateCreateDelegate } from "@casfa/delegate";
 import type { Context } from "hono";
 import type { DelegatesDb } from "../db/delegates.ts";
-import type { TokenRecordsDb } from "../db/token-records.ts";
-import type { ScopeSetNodesDb } from "../db/scope-set-nodes.ts";
 import type { DepotsDb } from "../db/depots.ts";
+import type { ScopeSetNodesDb } from "../db/scope-set-nodes.ts";
+import type { TokenRecordsDb } from "../db/token-records.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
 import {
   computeRealmHash,
   computeScopeHash,
   generateTokenPair,
 } from "../util/delegate-token-utils.ts";
-import { generateDelegateId } from "../util/token-id.ts";
-import { resolveRelativeScope } from "../util/scope.ts";
 import { blake3Hash } from "../util/hashing.ts";
+import { resolveRelativeScope } from "../util/scope.ts";
+import { generateDelegateId } from "../util/token-id.ts";
 
 // ============================================================================
 // Types
@@ -55,10 +55,8 @@ const DEFAULT_AT_TTL_SECONDS = 3600; // 1 hour
 // Controller Factory
 // ============================================================================
 
-export const createDelegatesController = (
-  deps: DelegatesControllerDeps,
-): DelegatesController => {
-  const { delegatesDb, tokenRecordsDb, scopeSetNodesDb, depotsDb, getNode } = deps;
+export const createDelegatesController = (deps: DelegatesControllerDeps): DelegatesController => {
+  const { delegatesDb, tokenRecordsDb, scopeSetNodesDb, getNode } = deps;
 
   /**
    * POST /api/realm/{realmId}/delegates
@@ -75,7 +73,7 @@ export const createDelegatesController = (
     if (auth.realm !== realmId) {
       return c.json(
         { error: "REALM_MISMATCH", message: "Token realm does not match request realm" },
-        403,
+        403
       );
     }
 
@@ -85,22 +83,19 @@ export const createDelegatesController = (
     if (!parentDelegateId) {
       return c.json(
         { error: "INVALID_TOKEN", message: "Cannot determine parent delegate from token" },
-        400,
+        400
       );
     }
 
     const parentDelegate = await delegatesDb.get(realmId, parentDelegateId);
     if (!parentDelegate) {
-      return c.json(
-        { error: "DELEGATE_NOT_FOUND", message: "Parent delegate not found" },
-        404,
-      );
+      return c.json({ error: "DELEGATE_NOT_FOUND", message: "Parent delegate not found" }, 404);
     }
 
     if (parentDelegate.isRevoked) {
       return c.json(
         { error: "DELEGATE_REVOKED", message: "Parent delegate has been revoked" },
-        403,
+        403
       );
     }
 
@@ -112,26 +107,19 @@ export const createDelegatesController = (
     if (body.scope) {
       const parentScopeRoots = await getParentScopeRoots(parentDelegate);
       const getNodeInRealm = async (hash: string) => getNode(realmId, hash);
-      const scopeResult = await resolveRelativeScope(
-        body.scope,
-        parentScopeRoots,
-        getNodeInRealm,
-      );
+      const scopeResult = await resolveRelativeScope(body.scope, parentScopeRoots, getNodeInRealm);
 
       if (!scopeResult.valid) {
-        return c.json(
-          { error: "INVALID_SCOPE", message: scopeResult.error },
-          400,
-        );
+        return c.json({ error: "INVALID_SCOPE", message: scopeResult.error }, 400);
       }
 
       resolvedRoots = scopeResult.resolvedRoots!;
       if (resolvedRoots.length === 1) {
         scopeNodeHash = resolvedRoots[0];
       } else if (resolvedRoots.length > 1) {
-        const setNodeId = Buffer.from(
-          blake3Hash(resolvedRoots.join(",")).slice(0, 16),
-        ).toString("hex");
+        const setNodeId = Buffer.from(blake3Hash(resolvedRoots.join(",")).slice(0, 16)).toString(
+          "hex"
+        );
         await scopeSetNodesDb.createOrIncrement(setNodeId, resolvedRoots);
         scopeSetNodeId = setNodeId;
       }
@@ -161,20 +149,16 @@ export const createDelegatesController = (
       canUpload,
       canManageDepot,
       delegatedDepots: body.delegatedDepots,
-      expiresAt: body.expiresIn
-        ? Date.now() + body.expiresIn * 1000
-        : undefined,
+      expiresAt: body.expiresIn ? Date.now() + body.expiresIn * 1000 : undefined,
     };
 
     // Build parent's manageable depots set
-    const parentManageableDepots = new Set<string>(
-      parentDelegate.delegatedDepots ?? [],
-    );
+    const parentManageableDepots = new Set<string>(parentDelegate.delegatedDepots ?? []);
 
     const validationResult = validateCreateDelegate(
       parentPermissions,
       childInput,
-      parentManageableDepots,
+      parentManageableDepots
     );
 
     if (!validationResult.valid) {
@@ -183,7 +167,7 @@ export const createDelegatesController = (
           error: "PERMISSION_ESCALATION",
           message: validationResult.message,
         },
-        400,
+        400
       );
     }
 
@@ -259,7 +243,7 @@ export const createDelegatesController = (
         accessTokenId: tokenPair.accessToken.id,
         accessTokenExpiresAt: tokenPair.accessToken.expiresAt,
       },
-      201,
+      201
     );
   };
 
@@ -275,7 +259,7 @@ export const createDelegatesController = (
     if (auth.realm !== realmId) {
       return c.json(
         { error: "REALM_MISMATCH", message: "Token realm does not match request realm" },
-        403,
+        403
       );
     }
 
@@ -283,7 +267,7 @@ export const createDelegatesController = (
     if (!parentDelegateId) {
       return c.json(
         { error: "INVALID_TOKEN", message: "Cannot determine delegate from token" },
-        400,
+        400
       );
     }
 
@@ -326,28 +310,19 @@ export const createDelegatesController = (
     if (auth.realm !== realmId) {
       return c.json(
         { error: "REALM_MISMATCH", message: "Token realm does not match request realm" },
-        403,
+        403
       );
     }
 
     const delegate = await delegatesDb.get(realmId, delegateId);
     if (!delegate) {
-      return c.json(
-        { error: "DELEGATE_NOT_FOUND", message: "Delegate not found" },
-        404,
-      );
+      return c.json({ error: "DELEGATE_NOT_FOUND", message: "Delegate not found" }, 404);
     }
 
     // Verify the caller is an ancestor of this delegate
     const callerDelegateId = resolveParentDelegateId(auth);
-    if (
-      callerDelegateId &&
-      !delegate.chain.includes(callerDelegateId)
-    ) {
-      return c.json(
-        { error: "DELEGATE_NOT_FOUND", message: "Delegate not found" },
-        404,
-      );
+    if (callerDelegateId && !delegate.chain.includes(callerDelegateId)) {
+      return c.json({ error: "DELEGATE_NOT_FOUND", message: "Delegate not found" }, 404);
     }
 
     return c.json({
@@ -381,34 +356,25 @@ export const createDelegatesController = (
     if (auth.realm !== realmId) {
       return c.json(
         { error: "REALM_MISMATCH", message: "Token realm does not match request realm" },
-        403,
+        403
       );
     }
 
     const delegate = await delegatesDb.get(realmId, delegateId);
     if (!delegate) {
-      return c.json(
-        { error: "DELEGATE_NOT_FOUND", message: "Delegate not found" },
-        404,
-      );
+      return c.json({ error: "DELEGATE_NOT_FOUND", message: "Delegate not found" }, 404);
     }
 
     // Verify the caller is an ancestor of this delegate
     const callerDelegateId = resolveParentDelegateId(auth);
-    if (
-      callerDelegateId &&
-      !delegate.chain.includes(callerDelegateId)
-    ) {
-      return c.json(
-        { error: "DELEGATE_NOT_FOUND", message: "Delegate not found" },
-        404,
-      );
+    if (callerDelegateId && !delegate.chain.includes(callerDelegateId)) {
+      return c.json({ error: "DELEGATE_NOT_FOUND", message: "Delegate not found" }, 404);
     }
 
     if (delegate.isRevoked) {
       return c.json(
         { error: "DELEGATE_ALREADY_REVOKED", message: "Delegate already revoked" },
-        409,
+        409
       );
     }
 
@@ -418,7 +384,7 @@ export const createDelegatesController = (
     if (!success) {
       return c.json(
         { error: "DELEGATE_ALREADY_REVOKED", message: "Delegate already revoked" },
-        409,
+        409
       );
     }
 
@@ -441,7 +407,7 @@ export const createDelegatesController = (
   async function revokeDescendants(
     realm: string,
     parentId: string,
-    revokedBy: string,
+    revokedBy: string
   ): Promise<void> {
     const result = await delegatesDb.listChildren(parentId);
     for (const child of result.delegates) {
@@ -457,9 +423,7 @@ export const createDelegatesController = (
    *
    * In the new Delegate model, the auth context carries `delegateId` directly.
    */
-  function resolveParentDelegateId(
-    auth: AccessTokenAuthContext,
-  ): string | undefined {
+  function resolveParentDelegateId(auth: AccessTokenAuthContext): string | undefined {
     return auth.delegateId;
   }
 

@@ -6,24 +6,14 @@
  * After every mutation, the new root is committed to the depot.
  */
 
+// @cubone/react-file-manager types
+import { FileManager } from "@cubone/react-file-manager";
 import { Alert, Box, CircularProgress, Snackbar, Typography } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { getClient } from "../lib/client.ts";
-import {
-  commitDepot,
-  fsCp,
-  fsLs,
-  fsMkdir,
-  fsMv,
-  fsRead,
-  fsRm,
-  fsWrite,
-} from "../lib/fs-api.ts";
+import { commitDepot, fsCp, fsLs, fsMkdir, fsMv, fsRead, fsRm, fsWrite } from "../lib/fs-api.ts";
 import { useDepotStore } from "../stores/depot-store.ts";
-
-// @cubone/react-file-manager types
-import { FileManager } from "@cubone/react-file-manager";
 import "@cubone/react-file-manager/dist/style.css";
 
 // ============================================================================
@@ -61,12 +51,12 @@ export function FileBrowserPage() {
     severity: "success" | "error";
   }>({ open: false, message: "", severity: "success" });
 
-  const showError = (msg: string) => {
+  const showError = useCallback((msg: string) => {
     setSnackbar({ open: true, message: msg, severity: "error" });
-  };
-  const showSuccess = (msg: string) => {
+  }, []);
+  const showSuccess = useCallback((msg: string) => {
     setSnackbar({ open: true, message: msg, severity: "success" });
-  };
+  }, []);
 
   // ============================================================================
   // Root management
@@ -86,7 +76,7 @@ export function FileBrowserPage() {
         showError(`Failed to commit: ${result.error}`);
       }
     },
-    [depotId]
+    [depotId, showError]
   );
 
   // ============================================================================
@@ -98,54 +88,51 @@ export function FileBrowserPage() {
    * @cubone/react-file-manager expects ALL files/folders in a flat array with paths.
    * We recursively list from root.
    */
-  const loadFiles = useCallback(
-    async (rootKey: string) => {
-      setLoading(true);
-      setError(null);
+  const loadFiles = useCallback(async (rootKey: string) => {
+    setLoading(true);
+    setError(null);
 
-      try {
-        const allFiles: FMFile[] = [];
-        const dirsToVisit: string[] = [""];
+    try {
+      const allFiles: FMFile[] = [];
+      const dirsToVisit: string[] = [""];
 
-        while (dirsToVisit.length > 0) {
-          const dir = dirsToVisit.pop()!;
-          let cursor: string | undefined;
+      while (dirsToVisit.length > 0) {
+        const dir = dirsToVisit.pop()!;
+        let cursor: string | undefined;
 
-          do {
-            const result = await fsLs(rootKey, dir, 500, cursor);
-            if (!result.ok) {
-              setError(result.error);
-              setLoading(false);
-              return;
+        do {
+          const result = await fsLs(rootKey, dir, 500, cursor);
+          if (!result.ok) {
+            setError(result.error);
+            setLoading(false);
+            return;
+          }
+
+          for (const child of result.data.children) {
+            const childPath = dir ? `${dir}/${child.name}` : child.name;
+            allFiles.push({
+              name: child.name,
+              isDirectory: child.type === "dir",
+              path: `/${childPath}`,
+              size: child.size,
+            });
+
+            if (child.type === "dir") {
+              dirsToVisit.push(childPath);
             }
+          }
 
-            for (const child of result.data.children) {
-              const childPath = dir ? `${dir}/${child.name}` : child.name;
-              allFiles.push({
-                name: child.name,
-                isDirectory: child.type === "dir",
-                path: `/${childPath}`,
-                size: child.size,
-              });
-
-              if (child.type === "dir") {
-                dirsToVisit.push(childPath);
-              }
-            }
-
-            cursor = result.data.nextCursor ?? undefined;
-          } while (cursor);
-        }
-
-        setFiles(allFiles);
-      } catch (err) {
-        setError(String(err));
-      } finally {
-        setLoading(false);
+          cursor = result.data.nextCursor ?? undefined;
+        } while (cursor);
       }
-    },
-    []
-  );
+
+      setFiles(allFiles);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   // ============================================================================
   // Initial load
@@ -204,17 +191,14 @@ export function FileBrowserPage() {
       if (result.ok) {
         await commitNewRoot(result.data.newRoot);
         // Add folder to local state
-        setFiles((prev) => [
-          ...prev,
-          { name, isDirectory: true, path: `/${fullPath}` },
-        ]);
+        setFiles((prev) => [...prev, { name, isDirectory: true, path: `/${fullPath}` }]);
         showSuccess(`Folder "${name}" created`);
       } else {
         showError(`mkdir failed: ${result.error}`);
       }
       setIsOperating(false);
     },
-    [depotId, commitNewRoot]
+    [depotId, commitNewRoot, showError, showSuccess]
   );
 
   const handleDelete = useCallback(
@@ -244,17 +228,13 @@ export function FileBrowserPage() {
         prev.filter(
           (f) =>
             !deletedPaths.has(f.path) &&
-            !Array.from(deletedPaths).some(
-              (dp) => f.path.startsWith(dp + "/")
-            )
+            !Array.from(deletedPaths).some((dp) => f.path.startsWith(`${dp}/`))
         )
       );
-      showSuccess(
-        `Deleted ${filesToDelete.length} item${filesToDelete.length > 1 ? "s" : ""}`
-      );
+      showSuccess(`Deleted ${filesToDelete.length} item${filesToDelete.length > 1 ? "s" : ""}`);
       setIsOperating(false);
     },
-    [commitNewRoot]
+    [commitNewRoot, showError, showSuccess]
   );
 
   const handleRename = useCallback(
@@ -263,9 +243,7 @@ export function FileBrowserPage() {
 
       setIsOperating(true);
       const oldPath = file.path.replace(/^\//, "");
-      const parentDir = oldPath.includes("/")
-        ? oldPath.substring(0, oldPath.lastIndexOf("/"))
-        : "";
+      const parentDir = oldPath.includes("/") ? oldPath.substring(0, oldPath.lastIndexOf("/")) : "";
       const newPath = parentDir ? `${parentDir}/${newName}` : newName;
 
       const result = await fsMv(rootKeyRef.current, oldPath, newPath);
@@ -278,7 +256,7 @@ export function FileBrowserPage() {
             if (f.path === oldPrefix) {
               return { ...f, name: newName, path: `/${newPath}` };
             }
-            if (f.path.startsWith(oldPrefix + "/")) {
+            if (f.path.startsWith(`${oldPrefix}/`)) {
               return {
                 ...f,
                 path: f.path.replace(oldPrefix, `/${newPath}`),
@@ -293,15 +271,11 @@ export function FileBrowserPage() {
       }
       setIsOperating(false);
     },
-    [commitNewRoot]
+    [commitNewRoot, showError, showSuccess]
   );
 
   const handlePaste = useCallback(
-    async (
-      filesToPaste: FMFile[],
-      destinationFolder: FMFile,
-      operationType: "copy" | "move"
-    ) => {
+    async (filesToPaste: FMFile[], destinationFolder: FMFile, operationType: "copy" | "move") => {
       if (!rootKeyRef.current) return;
 
       setIsOperating(true);
@@ -343,7 +317,7 @@ export function FileBrowserPage() {
       );
       setIsOperating(false);
     },
-    [commitNewRoot, loadFiles]
+    [commitNewRoot, loadFiles, showError, showSuccess]
   );
 
   const handleDownload = useCallback(
@@ -368,7 +342,7 @@ export function FileBrowserPage() {
         }
       }
     },
-    []
+    [showError]
   );
 
   const handleRefresh = useCallback(async () => {
@@ -376,9 +350,7 @@ export function FileBrowserPage() {
 
     // Re-fetch depot to get latest root
     await fetchDepots();
-    const updatedDepot = useDepotStore
-      .getState()
-      .depots.find((d) => d.depotId === depotId);
+    const updatedDepot = useDepotStore.getState().depots.find((d) => d.depotId === depotId);
 
     if (updatedDepot?.root) {
       rootKeyRef.current = updatedDepot.root;
@@ -462,7 +434,7 @@ export function FileBrowserPage() {
       e.target.value = "";
       setIsOperating(false);
     },
-    [commitNewRoot]
+    [commitNewRoot, showError, showSuccess]
   );
 
   // ============================================================================

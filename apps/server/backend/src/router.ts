@@ -27,8 +27,8 @@ import {
 import { zValidator } from "@hono/zod-validator";
 import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
-import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
+import { cors } from "hono/cors";
 import { ZodError } from "zod";
 import type { AdminController } from "./controllers/admin.ts";
 import type { ChunksController } from "./controllers/chunks.ts";
@@ -285,10 +285,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   );
   realmRouter.get("/:realmId/delegates", deps.delegates.list);
   realmRouter.get("/:realmId/delegates/:delegateId", deps.delegates.get);
-  realmRouter.post(
-    "/:realmId/delegates/:delegateId/revoke",
-    deps.delegates.revoke
-  );
+  realmRouter.post("/:realmId/delegates/:delegateId/revoke", deps.delegates.revoke);
 
   // Depots
   realmRouter.get("/:realmId/depots", deps.depots.list);

@@ -37,7 +37,7 @@ describe("Depot Management", () => {
   describe("GET /api/realm/{realmId}/depots", () => {
     it("should list depots with Access Token", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
@@ -54,7 +54,7 @@ describe("Depot Management", () => {
 
     it("should support pagination", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm, {
         canManageDepot: true,
@@ -83,7 +83,7 @@ describe("Depot Management", () => {
 
     it("should work with child delegate token", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // In the new model, child delegates are also access tokens
       const childToken = await ctx.helpers.createDelegateToken(token, realm, {
@@ -113,7 +113,7 @@ describe("Depot Management", () => {
   describe("POST /api/realm/{realmId}/depots", () => {
     it("should create a new depot with canManageDepot permission", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm, {
         canManageDepot: true,
@@ -138,7 +138,7 @@ describe("Depot Management", () => {
 
     it("should create depot with default maxHistory", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm, {
         canManageDepot: true,
@@ -159,7 +159,7 @@ describe("Depot Management", () => {
 
     it("should reject creation without canManageDepot permission", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm, {
         canManageDepot: false,
@@ -177,7 +177,7 @@ describe("Depot Management", () => {
 
     it("should create depot with empty body (auto-generated title)", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm, {
         canManageDepot: true,
@@ -212,7 +212,7 @@ describe("Depot Management", () => {
   describe("GET /api/realm/{realmId}/depots/:depotId", () => {
     it("should get depot details", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm, {
         canManageDepot: true,
@@ -244,7 +244,7 @@ describe("Depot Management", () => {
 
     it("should return 404 for non-existent depot", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
@@ -265,7 +265,7 @@ describe("Depot Management", () => {
   describe("PATCH /api/realm/{realmId}/depots/:depotId", () => {
     it("should update depot metadata with canManageDepot permission", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm, {
         canManageDepot: true,
@@ -296,7 +296,7 @@ describe("Depot Management", () => {
 
     it("should reject update without canManageDepot permission", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Create with permission
       const createToken = await ctx.helpers.createAccessToken(token, realm, {
@@ -335,7 +335,7 @@ describe("Depot Management", () => {
   describe("DELETE /api/realm/{realmId}/depots/:depotId", () => {
     it("should delete depot with canManageDepot permission", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm, {
         canManageDepot: true,
@@ -390,7 +390,7 @@ describe("Depot Management", () => {
 
     it("should reject delete without canManageDepot permission", async () => {
       const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Create with permission
       const createToken = await ctx.helpers.createAccessToken(token, realm, {
@@ -429,7 +429,7 @@ describe("Depot Management", () => {
     it("should reject access to other user's realm depots", async () => {
       const userId1 = uniqueId();
       const userId2 = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId1, "authorized");
+      const { token, realm } = await ctx.helpers.createTestUser(userId1, "authorized");
       const { realm: otherRealm } = await ctx.helpers.createTestUser(userId2, "authorized");
 
       const accessToken = await ctx.helpers.createAccessToken(token, realm);

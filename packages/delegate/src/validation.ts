@@ -33,7 +33,7 @@ import type {
  */
 export function validatePermissions(
   parent: DelegatePermissions,
-  child: Pick<CreateDelegateInput, "canUpload" | "canManageDepot">,
+  child: Pick<CreateDelegateInput, "canUpload" | "canManageDepot">
 ): DelegateValidationResult {
   if (child.canUpload && !parent.canUpload) {
     return {
@@ -46,8 +46,7 @@ export function validatePermissions(
     return {
       valid: false,
       error: "PERMISSION_ESCALATION",
-      message:
-        "Child canManageDepot exceeds parent (parent=false, child=true)",
+      message: "Child canManageDepot exceeds parent (parent=false, child=true)",
     };
   }
   return { valid: true };
@@ -94,7 +93,7 @@ export function validateDepth(parentDepth: number): DelegateValidationResult {
  */
 export function validateExpiresAt(
   parentExpiresAt: number | undefined,
-  childExpiresAt: number | undefined,
+  childExpiresAt: number | undefined
 ): DelegateValidationResult {
   // If parent has no expiration, child can do whatever it wants
   if (parentExpiresAt === undefined) {
@@ -106,8 +105,7 @@ export function validateExpiresAt(
     return {
       valid: false,
       error: "EXPIRES_AFTER_PARENT",
-      message:
-        "Child has no expiresAt but parent expires — child would outlive parent",
+      message: "Child has no expiresAt but parent expires — child would outlive parent",
     };
   }
 
@@ -143,7 +141,7 @@ export function validateExpiresAt(
  */
 export function validateDelegatedDepots(
   parentManageableDepots: Set<string>,
-  requestedDepots: string[] | undefined,
+  requestedDepots: string[] | undefined
 ): DelegateValidationResult {
   if (!requestedDepots || requestedDepots.length === 0) {
     return { valid: true };
@@ -178,7 +176,7 @@ export function validateDelegatedDepots(
 export function validateCreateDelegate(
   parent: DelegatePermissions,
   input: CreateDelegateInput,
-  parentManageableDepots: Set<string>,
+  parentManageableDepots: Set<string>
 ): DelegateValidationResult {
   // 1. Depth
   const depthResult = validateDepth(parent.depth);
@@ -193,10 +191,7 @@ export function validateCreateDelegate(
   if (!expiresResult.valid) return expiresResult;
 
   // 4. DelegatedDepots
-  const depotsResult = validateDelegatedDepots(
-    parentManageableDepots,
-    input.delegatedDepots,
-  );
+  const depotsResult = validateDelegatedDepots(parentManageableDepots, input.delegatedDepots);
   if (!depotsResult.valid) return depotsResult;
 
   return { valid: true };

@@ -5,13 +5,7 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { FetchResult } from "../types/client.ts";
 import type { StoredAccessToken, StoredUserToken } from "../types/tokens.ts";
-import {
-  ERRORS,
-  type TokenGetter,
-  withAccessToken,
-  withToken,
-  withUserToken,
-} from "./helpers.ts";
+import { ERRORS, type TokenGetter, withAccessToken, withToken, withUserToken } from "./helpers.ts";
 
 // ============================================================================
 // Test Helpers
@@ -66,7 +60,7 @@ describe("withToken", () => {
         ok: true,
         data: `received-${t.id}`,
         status: 200,
-      }),
+      })
     );
 
     const wrapped = withToken(getToken, { code: "ERROR", message: "Error" });
@@ -86,7 +80,7 @@ describe("withToken", () => {
         ok: true,
         data: "should not reach",
         status: 200,
-      }),
+      })
     );
     const error = { code: "MISSING_TOKEN", message: "Token is required" };
 
@@ -108,7 +102,7 @@ describe("withToken", () => {
         ok: true,
         data: 42,
         status: 200,
-      }),
+      })
     );
 
     const wrapped = withToken(getToken, { code: "ERROR", message: "Error" });
@@ -128,7 +122,7 @@ describe("withToken", () => {
       async (): Promise<FetchResult<number>> => ({
         ok: false,
         error: fnError,
-      }),
+      })
     );
 
     const wrapped = withToken(getToken, { code: "ERROR", message: "Error" });
@@ -154,7 +148,7 @@ describe("withUserToken", () => {
         ok: true,
         data: token.userId,
         status: 200,
-      }),
+      })
     );
 
     const wrapped = withUserToken(getToken);
@@ -174,7 +168,7 @@ describe("withUserToken", () => {
         ok: true,
         data: "should not reach",
         status: 200,
-      }),
+      })
     );
 
     const wrapped = withUserToken(getToken);
@@ -201,7 +195,7 @@ describe("withAccessToken", () => {
         ok: true,
         data: token.tokenBase64,
         status: 200,
-      }),
+      })
     );
 
     const wrapped = withAccessToken(getToken);
@@ -221,7 +215,7 @@ describe("withAccessToken", () => {
         ok: true,
         data: "should not reach",
         status: 200,
-      }),
+      })
     );
 
     const wrapped = withAccessToken(getToken);
@@ -249,7 +243,7 @@ describe("edge cases", () => {
         ok: true,
         data: "should not reach",
         status: 200,
-      }),
+      })
     );
 
     const wrapped = withToken(getToken, { code: "ERROR", message: "Error" });

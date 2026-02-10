@@ -7,25 +7,25 @@
 // ============================================================================
 
 export {
+  type ClaimController,
+  type ClaimControllerDeps,
+  createClaimController,
+} from "./claim.ts";
+export {
   createDelegatesController,
   type DelegatesController,
   type DelegatesControllerDeps,
 } from "./delegates.ts";
-export {
-  createRootTokenController,
-  type RootTokenController,
-  type RootTokenControllerDeps,
-} from "./root-token.ts";
 export {
   createRefreshController,
   type RefreshController,
   type RefreshControllerDeps,
 } from "./refresh.ts";
 export {
-  createClaimController,
-  type ClaimController,
-  type ClaimControllerDeps,
-} from "./claim.ts";
+  createRootTokenController,
+  type RootTokenController,
+  type RootTokenControllerDeps,
+} from "./root-token.ts";
 
 // ============================================================================
 // Core Controllers
