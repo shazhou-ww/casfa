@@ -25,6 +25,8 @@ import {
 export type S3StorageConfig = {
   /** S3 bucket name */
   bucket: string;
+  /** AWS region for the S3 bucket (e.g. "us-west-2") */
+  region?: string;
   /** Optional S3 client (for testing or custom config) */
   client?: S3Client;
   /** LRU cache size for key existence (default: 10000) */
@@ -37,7 +39,7 @@ export type S3StorageConfig = {
  * Create an S3-backed storage provider
  */
 export const createS3Storage = (config: S3StorageConfig): StorageProvider => {
-  const client = config.client ?? new S3Client({});
+  const client = config.client ?? new S3Client(config.region ? { region: config.region } : {});
   const bucket = config.bucket;
   const prefix = config.prefix ?? "cas/sha256/";
   const existsCache = createLRUCache<string, boolean>(config.cacheSize ?? DEFAULT_CACHE_SIZE);
@@ -128,7 +130,7 @@ export const createS3Storage = (config: S3StorageConfig): StorageProvider => {
  * Create S3 storage with cache control methods (for testing)
  */
 export const createS3StorageWithCache = (config: S3StorageConfig) => {
-  const client = config.client ?? new S3Client({});
+  const client = config.client ?? new S3Client(config.region ? { region: config.region } : {});
   const _bucket = config.bucket;
   const prefix = config.prefix ?? "cas/sha256/";
   const existsCache = createLRUCache<string, boolean>(config.cacheSize ?? DEFAULT_CACHE_SIZE);

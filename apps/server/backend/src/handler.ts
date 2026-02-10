@@ -21,6 +21,7 @@ const db = createDbInstances(config);
 const storage = createS3Storage({
   bucket: config.storage.bucket,
   prefix: config.storage.prefix,
+  region: config.storage.region,
 });
 
 const hashProvider = createNodeHashProvider();

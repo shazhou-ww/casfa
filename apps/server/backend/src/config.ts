@@ -59,11 +59,13 @@ export const loadDbConfig = (): DbConfig => ({
 export type StorageConfig = {
   bucket: string;
   prefix: string;
+  region?: string;
 };
 
 export const loadStorageConfig = (): StorageConfig => ({
   bucket: process.env.CAS_BUCKET ?? "cas-bucket",
   prefix: process.env.CAS_PREFIX ?? "cas/blake3s/",
+  region: process.env.CAS_REGION || undefined,
 });
 
 // ============================================================================
