@@ -1,9 +1,9 @@
 /**
  * CLI E2E Tests: Authentication
  *
- * Tests for CLI authentication and token handling:
- * - Token passing via environment variables
- * - Token passing via command line options
+ * Tests for CLI authentication and credential handling:
+ * - Credential file-based authentication (v3 format)
+ * - Profile and config management
  * - Authentication error handling
  * - Info command for checking connection
  */
@@ -19,8 +19,10 @@ import {
 import {
   type CliTestContext,
   createCliTestContext,
+  createTempHome,
   createTestUserWithToken,
   type TestUserSetup,
+  writeCredentialsFile,
 } from "./setup.ts";
 
 describe("CLI Authentication", () => {
@@ -31,6 +33,8 @@ describe("CLI Authentication", () => {
     ctx = createCliTestContext();
     await ctx.ready();
     user = await createTestUserWithToken(ctx, { canUpload: true, canManageDepot: true });
+    // Write credentials file for authenticated tests
+    writeCredentialsFile(ctx.tempHome, ctx.baseUrl, user);
   });
 
   afterAll(() => {
@@ -38,22 +42,14 @@ describe("CLI Authentication", () => {
   });
 
   // ==========================================================================
-  // Token via Environment Variable
+  // Credential File Authentication
   // ==========================================================================
 
-  describe("Token via Environment Variable", () => {
-    it("should accept CASFA_TOKEN environment variable", async () => {
-      const result = await runCli(["info"], {
-        env: {
-          HOME: ctx.tempHome,
-          CASFA_BASE_URL: ctx.baseUrl,
-          CASFA_REALM: user.realm,
-          CASFA_TOKEN: user.delegateToken,
-          NO_COLOR: "1",
-        },
-      });
+  describe("Credential File Authentication", () => {
+    it("should authenticate using credentials file", async () => {
+      const result = await runCliWithAuth(["info"], ctx, user);
 
-      expectSuccess(result, "info command should succeed with CASFA_TOKEN");
+      expectSuccess(result, "info command should succeed with credentials file");
       // Should show server info
       expect(result.output).toBeDefined();
     });
@@ -68,7 +64,7 @@ describe("CLI Authentication", () => {
         },
       });
 
-      // Even without token, info should work (shows server info)
+      // Even without credentials, info should work (shows server info)
       expectSuccess(result, "info command should work with realm set");
     });
 
@@ -87,20 +83,10 @@ describe("CLI Authentication", () => {
   });
 
   // ==========================================================================
-  // Token via Command Line Options
+  // Command Line Options
   // ==========================================================================
 
-  describe("Token via Command Line Options", () => {
-    it("should accept --delegate-token option", async () => {
-      const result = await runCliWithOptions(["info"], ctx, {
-        baseUrl: ctx.baseUrl,
-        realm: user.realm,
-        delegateToken: user.delegateToken,
-      });
-
-      expectSuccess(result, "info command should succeed with --delegate-token");
-    });
-
+  describe("Command Line Options", () => {
     it("should accept --base-url option", async () => {
       const result = await runCliWithOptions(["info"], ctx, {
         baseUrl: ctx.baseUrl,
@@ -141,23 +127,14 @@ describe("CLI Authentication", () => {
   // ==========================================================================
 
   describe("Authentication Errors", () => {
-    it("should fail with invalid token", async () => {
-      const result = await runCliWithAuth(["depot", "list"], ctx, {
-        ...user,
-        delegateToken: "invalid-token-base64",
-      });
-
-      // Should fail with auth error
-      expect(result.code).not.toBe(0);
-    });
-
     it("should fail when realm is missing for realm-specific commands", async () => {
+      // Use a fresh temp home to ensure no config.json with realm exists
+      const freshHome = createTempHome();
       const result = await runCli(["depot", "list"], {
         env: {
-          HOME: ctx.tempHome,
+          HOME: freshHome,
           CASFA_BASE_URL: ctx.baseUrl,
-          CASFA_TOKEN: user.delegateToken,
-          // CASFA_REALM is not set
+          // CASFA_REALM is not set, and no config.json exists
           NO_COLOR: "1",
         },
       });
@@ -259,28 +236,6 @@ describe("CLI Authentication", () => {
 
       expectSuccess(listResult);
       expect(listResult.output).toContain("test-profile");
-    });
-  });
-
-  // ==========================================================================
-  // Legacy Token Option
-  // ==========================================================================
-
-  describe("Legacy Token Option", () => {
-    it("should accept deprecated --token option", async () => {
-      // The --token option is deprecated but should still work
-      const result = await runCli(
-        ["--token", user.delegateToken, "--base-url", ctx.baseUrl, "--realm", user.realm, "info"],
-        {
-          env: {
-            HOME: ctx.tempHome,
-            NO_COLOR: "1",
-          },
-        }
-      );
-
-      // Should work (with or without deprecation warning)
-      expectSuccess(result, "deprecated --token option should still work");
     });
   });
 });

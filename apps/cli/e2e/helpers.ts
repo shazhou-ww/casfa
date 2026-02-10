@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CliTestContext, TestUserSetup } from "./setup.ts";
+import { writeCredentialsFile } from "./setup.ts";
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -117,11 +118,14 @@ export async function runCli(args: string[], options: RunCliOptions = {}): Promi
 }
 
 /**
- * Run a CLI command with authentication
+ * Run a CLI command with authentication.
+ *
+ * Writes credentials file to temp HOME so the CLI can read them,
+ * then executes the command.
  *
  * @param args - Command line arguments
  * @param ctx - CLI test context
- * @param user - Test user setup with tokens
+ * @param user - Test user setup with root delegate
  * @param options - Additional options
  */
 export async function runCliWithAuth(
@@ -132,13 +136,15 @@ export async function runCliWithAuth(
 ): Promise<CliResult> {
   const { extraEnv = {}, ...restOptions } = options;
 
+  // Write credentials file so CLI can authenticate
+  writeCredentialsFile(ctx.tempHome, ctx.baseUrl, user);
+
   return runCli(args, {
     ...restOptions,
     env: {
       HOME: ctx.tempHome,
       CASFA_BASE_URL: ctx.baseUrl,
       CASFA_REALM: user.realm,
-      CASFA_TOKEN: user.delegateToken,
       NO_COLOR: "1",
       FORCE_COLOR: "0",
       ...extraEnv,
@@ -155,7 +161,6 @@ export async function runCliWithOptions(
   options: {
     baseUrl?: string;
     realm?: string;
-    delegateToken?: string;
     profile?: string;
     extraEnv?: Record<string, string>;
   } = {}
@@ -167,9 +172,6 @@ export async function runCliWithOptions(
   }
   if (options.realm) {
     cliArgs.unshift("--realm", options.realm);
-  }
-  if (options.delegateToken) {
-    cliArgs.unshift("--delegate-token", options.delegateToken);
   }
   if (options.profile) {
     cliArgs.unshift("--profile", options.profile);
