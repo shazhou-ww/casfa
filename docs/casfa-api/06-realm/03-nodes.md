@@ -259,14 +259,14 @@ key = "node:" + hex(blake3(node_bytes))
 
 ---
 
-## POST /api/realm/{realmId}/nodes/prepare
+## POST /api/realm/{realmId}/nodes/check
 
-批量检查节点是否存在，返回需要上传的节点列表。这是上传流程的关键优化 API。
+批量检查节点的服务端状态，返回三类结果：已拥有、未拥有、不存在。
 
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/nodes/prepare
+POST /api/realm/usr_abc123/nodes/check
 Authorization: Bearer {access_token}
 Content-Type: application/json
 
@@ -287,18 +287,17 @@ Content-Type: application/json
 
 ```json
 {
-  "missing": [
-    "node:abc123...",
-    "node:ghi789..."
-  ],
-  "existing": 1
+  "missing": ["node:ghi789..."],
+  "owned": ["node:abc123..."],
+  "unowned": ["node:def456..."]
 }
 ```
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `missing` | `string[]` | 不存在的节点 key（需要上传） |
-| `existing` | `number` | 已存在的节点数量 |
+| `missing` | `string[]` | 不存在的节点 key |
+| `owned` | `string[]` | 存在且当前 delegate 有 ownership 的节点 |
+| `unowned` | `string[]` | 存在但当前 delegate 无 ownership 的节点 |
 
 ### 错误
 
@@ -309,28 +308,28 @@ Content-Type: application/json
 
 ### 使用场景
 
-客户端上传目录树时，先收集所有节点的 key，调用此 API 检查哪些已存在：
+客户端上传目录树时，先收集所有节点的 key，调用此 API 检查服务端状态：
 
 ```typescript
 // 1. 收集所有待上传节点的 key
 const allKeys = collectNodeKeys(directory);
 
-// 2. 调用 nodes/prepare 检查
-const { missing } = await api.prepareNodes(allKeys);
+// 2. 调用 nodes/check 检查
+const { missing, owned, unowned } = await api.checkNodes(allKeys);
 
-// 3. 只上传缺失的节点
-for (const key of missing) {
+// 3. 只上传缺失和未拥有的节点
+for (const key of [...missing, ...unowned]) {
   await api.uploadNode(key, nodeData[key]);
 }
 ```
 
-这样可以避免重复上传已存在的节点，大幅提升上传效率。
+这样可以避免重复上传已拥有的节点，大幅提升上传效率。
 
 ---
 
 ## 使用建议
 
-1. **批量上传前先检查**：使用 `nodes/prepare` API 检查哪些节点需要上传
+1. **批量上传前先检查**：使用 `nodes/check` API 检查哪些节点需要上传
 2. **提供校验和**：上传时提供 `Content-MD5` 或 `X-CAS-Blake3` 确保完整性
 3. **按依赖顺序上传**：先上传子节点，再上传父节点
 4. **合理使用 Index-Path**：客户端需要追踪节点的路径以便读取时提供证明

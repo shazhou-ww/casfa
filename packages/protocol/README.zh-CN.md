@@ -22,7 +22,7 @@ import {
   // 请求/响应模式
   CreateTicketSchema,
   CreateDepotSchema,
-  PrepareNodesSchema,
+  CheckNodesSchema,
   
   // 类型
   type UserRole,
@@ -57,7 +57,7 @@ if (result.success) {
 - **Admin**：`UpdateUserRoleSchema`
 - **Ticket**：`TicketCommitSchema`、`ListTicketsQuerySchema`
 - **Depot**：`CreateDepotSchema`、`UpdateDepotSchema`、`DepotCommitSchema`
-- **Node**：`PrepareNodesSchema`、`NodeMetadataSchema`
+- **Node**：`CheckNodesSchema`、`NodeMetadataSchema`
 
 ### 类型
 

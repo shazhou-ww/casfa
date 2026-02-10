@@ -267,7 +267,7 @@ export function registerNodeCommands(program: Command): void {
         const resolved = await createClient(opts);
         requireRealmAuth(resolved);
 
-        const result = await resolved.client.nodes.prepare({ keys });
+        const result = await resolved.client.nodes.check({ keys });
         if (!result.ok) {
           formatter.error(`Failed to check nodes: ${result.error.message}`);
           process.exit(1);

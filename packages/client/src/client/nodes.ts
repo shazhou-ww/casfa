@@ -3,10 +3,10 @@
  */
 
 import type {
+  CheckNodes,
+  CheckNodesResponse,
   ClaimNodeResponse,
   NodeMetadata,
-  PrepareNodes,
-  PrepareNodesResponse,
 } from "@casfa/protocol";
 import * as api from "../api/index.ts";
 import type { TokenSelector } from "../store/token-selector.ts";
@@ -22,8 +22,8 @@ export type NodeMethods = {
   get: (nodeKey: string, proof?: string) => Promise<FetchResult<Uint8Array>>;
   /** Get node metadata (proof is optional for root delegates) */
   getMetadata: (nodeKey: string, proof?: string) => Promise<FetchResult<NodeMetadata>>;
-  /** Prepare nodes for upload */
-  prepare: (params: PrepareNodes) => Promise<FetchResult<PrepareNodesResponse>>;
+  /** Check nodes status on the server */
+  check: (params: CheckNodes) => Promise<FetchResult<CheckNodesResponse>>;
   /** Upload a node */
   put: (nodeKey: string, content: Uint8Array) => Promise<FetchResult<api.NodeUploadResult>>;
   /** Claim ownership of a node via PoP */
@@ -50,8 +50,7 @@ export const createNodeMethods = ({ baseUrl, realm, tokenSelector }: NodeDeps): 
     getMetadata: (nodeKey, proof?) =>
       requireAccess((t) => api.getNodeMetadata(baseUrl, realm, t.tokenBase64, nodeKey, proof)),
 
-    prepare: (params) =>
-      requireAccess((t) => api.prepareNodes(baseUrl, realm, t.tokenBase64, params)),
+    check: (params) => requireAccess((t) => api.checkNodes(baseUrl, realm, t.tokenBase64, params)),
 
     put: (nodeKey, content) =>
       requireAccess((t) => api.putNode(baseUrl, realm, t.tokenBase64, nodeKey, content)),

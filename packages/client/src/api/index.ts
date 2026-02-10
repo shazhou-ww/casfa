@@ -27,10 +27,10 @@ export {
 export { fetchServiceInfo, healthCheck } from "./info.ts";
 // Node API
 export {
+  checkNodes,
   getNode,
   getNodeMetadata,
   type NodeUploadResult,
-  prepareNodes,
   putNode,
 } from "./nodes.ts";
 // OAuth API

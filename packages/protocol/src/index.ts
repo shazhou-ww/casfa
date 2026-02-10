@@ -179,24 +179,24 @@ export {
 // ============================================================================
 
 export type {
+  CheckNodes,
+  CheckNodesResponse,
   DictNodeMetadata,
   FileNodeMetadata,
   NodeMetadata,
   NodeUploadResponse,
-  PrepareNodes,
-  PrepareNodesResponse,
   SuccessorNodeMetadata,
 } from "./node.ts";
 export {
+  // Operation schemas
+  CheckNodesResponseSchema,
+  CheckNodesSchema,
   // Metadata schemas
   DictNodeMetadataSchema,
   FileNodeMetadataSchema,
   NodeMetadataSchema,
   // Upload response
   NodeUploadResponseSchema,
-  // Operation schemas
-  PrepareNodesResponseSchema,
-  PrepareNodesSchema,
   SuccessorNodeMetadataSchema,
 } from "./node.ts";
 
