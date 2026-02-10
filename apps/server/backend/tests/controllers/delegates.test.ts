@@ -80,7 +80,7 @@ function createMockAuth(overrides?: Partial<AccessTokenAuthContext>): AccessToke
   return {
     type: "access",
     realm: TEST_REALM,
-    tokenBytes: new Uint8Array(128),
+    tokenBytes: new Uint8Array(32),
     delegate: { delegateId: ROOT_DELEGATE_ID, chain: [ROOT_DELEGATE_ID] } as never,
     delegateId: ROOT_DELEGATE_ID,
     canUpload: true,

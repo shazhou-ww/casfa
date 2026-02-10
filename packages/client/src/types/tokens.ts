@@ -98,7 +98,7 @@ export type AuthHeader = {
 export type StoredAccessToken = {
   /** Access Token (base64-encoded) */
   tokenBase64: string;
-  /** Raw 128-byte access token (for PoP computation) */
+  /** Raw 32-byte access token (for PoP computation) */
   tokenBytes: Uint8Array;
   /** Access Token expiration time (epoch ms) */
   expiresAt: number;

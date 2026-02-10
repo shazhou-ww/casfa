@@ -254,7 +254,7 @@ describe("encryptAesGcm / decryptAesGcm", () => {
 
 describe("encryptToken / decryptToken", () => {
   it("should encrypt and decrypt token", async () => {
-    const token = new Uint8Array(128);
+    const token = new Uint8Array(32);
     crypto.getRandomValues(token);
     const secret = new Uint8Array(32);
     crypto.getRandomValues(secret);
@@ -286,7 +286,7 @@ describe("formatEncryptedToken / parseEncryptedToken", () => {
   });
 
   it("should roundtrip format/parse", async () => {
-    const token = new Uint8Array(128);
+    const token = new Uint8Array(32);
     crypto.getRandomValues(token);
     const secret = new Uint8Array(32);
     crypto.getRandomValues(secret);

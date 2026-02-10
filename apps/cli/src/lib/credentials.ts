@@ -31,11 +31,11 @@ export interface RootDelegateCredential {
   delegateId: string;
   /** Realm this delegate belongs to */
   realm: string;
-  /** Refresh Token (base64-encoded 128-byte binary) */
+  /** Refresh Token (base64-encoded 24-byte binary) */
   refreshToken: string;
   /** Refresh Token ID */
   refreshTokenId: string;
-  /** Access Token (base64-encoded 128-byte binary) */
+  /** Access Token (base64-encoded 32-byte binary) */
   accessToken: string;
   /** Access Token ID */
   accessTokenId: string;

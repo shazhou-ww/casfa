@@ -27,8 +27,8 @@ const createRootDelegate = (overrides: Partial<StoredRootDelegate> = {}): Stored
   delegateId: "dlg_root123",
   realm: "test-realm",
   refreshToken: "base64-refresh-token",
-  // A valid base64 for 128 bytes (all zeros)
-  accessToken: Buffer.from(new Uint8Array(128)).toString("base64"),
+  // A valid base64 for 32 bytes (all zeros)
+  accessToken: Buffer.from(new Uint8Array(32)).toString("base64"),
   accessTokenExpiresAt: Date.now() + 3600_000,
   depth: 0,
   canUpload: true,
@@ -63,8 +63,8 @@ describe("emptyTokenState", () => {
 
 describe("rootDelegateToAccessToken", () => {
   it("should extract access token view from root delegate", () => {
-    // 128 bytes filled with 0x42
-    const rawBytes = new Uint8Array(128).fill(0x42);
+    // 32 bytes filled with 0x42
+    const rawBytes = new Uint8Array(32).fill(0x42);
     const base64 = Buffer.from(rawBytes).toString("base64");
 
     const rd = createRootDelegate({
@@ -78,7 +78,7 @@ describe("rootDelegateToAccessToken", () => {
 
     expect(at.tokenBase64).toBe(base64);
     expect(at.tokenBytes).toBeInstanceOf(Uint8Array);
-    expect(at.tokenBytes.length).toBe(128);
+    expect(at.tokenBytes.length).toBe(32);
     expect(at.tokenBytes).toEqual(rawBytes);
     expect(at.expiresAt).toBe(1234567890);
     expect(at.canUpload).toBe(true);
@@ -91,7 +91,7 @@ describe("rootDelegateToAccessToken", () => {
 
     expect(at.tokenBase64).toBe(rd.accessToken);
     expect(at.tokenBytes).toBeInstanceOf(Uint8Array);
-    expect(at.tokenBytes.length).toBe(128);
+    expect(at.tokenBytes.length).toBe(32);
     expect(at.expiresAt).toBe(rd.accessTokenExpiresAt);
     expect(at.canUpload).toBe(rd.canUpload);
     expect(at.canManageDepot).toBe(rd.canManageDepot);
@@ -211,7 +211,7 @@ describe("StoredAccessToken structure", () => {
   it("should have all required fields", () => {
     const token: StoredAccessToken = {
       tokenBase64: "base64",
-      tokenBytes: new Uint8Array(128),
+      tokenBytes: new Uint8Array(32),
       expiresAt: Date.now(),
       canUpload: false,
       canManageDepot: true,

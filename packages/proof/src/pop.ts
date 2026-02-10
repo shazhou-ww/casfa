@@ -5,7 +5,7 @@
  * possession of both the token bytes and the content to claim ownership.
  *
  * Algorithm (see ownership-and-permissions.md §6.4):
- *   1. popKey  = blake3_256(tokenBytes)        — derive 32-byte key from 128B token
+ *   1. popKey  = blake3_256(tokenBytes)        — derive 32-byte key from 32B token
  *   2. popHash = blake3_128(content, {key: popKey})  — keyed hash of content
  *   3. pop     = "pop:" + crockfordBase32(popHash)
  *
@@ -39,13 +39,13 @@ const POP_PREFIX = "pop:";
 /**
  * Compute a Proof-of-Possession string.
  *
- * @param tokenBytes - The full 128-byte access token
+ * @param tokenBytes - The full 32-byte access token
  * @param content    - The CAS node content bytes
  * @param ctx        - Injected hash functions
  * @returns PoP string in format "pop:XXXXXX..."
  */
 export function computePoP(tokenBytes: Uint8Array, content: Uint8Array, ctx: PopContext): string {
-  const popKey = ctx.blake3_256(tokenBytes); // 128B → 32B key
+  const popKey = ctx.blake3_256(tokenBytes); // 32B → 32B key
   const popHash = ctx.blake3_128_keyed(content, popKey); // keyed hash → 16B
   return POP_PREFIX + ctx.crockfordBase32Encode(popHash);
 }
@@ -54,7 +54,7 @@ export function computePoP(tokenBytes: Uint8Array, content: Uint8Array, ctx: Pop
  * Verify a Proof-of-Possession string.
  *
  * @param pop        - The PoP string to verify (e.g., "pop:XXXXXX...")
- * @param tokenBytes - The full 128-byte access token
+ * @param tokenBytes - The full 32-byte access token
  * @param content    - The CAS node content bytes
  * @param ctx        - Injected hash functions
  * @returns true if the PoP matches
