@@ -1,5 +1,8 @@
 /**
  * CAS URI parsing
+ *
+ * Root format: prefix_CB32VALUE (using underscore separator)
+ * e.g., nod_ABCDEF.../path or dpt_ABCDEF.../path
  */
 
 import { CROCKFORD_BASE32_26, ROOT_TYPES } from "./constants.ts";
@@ -13,18 +16,20 @@ import type {
 
 /**
  * Parse a root string into CasUriRoot
+ *
+ * Root format: prefix_CB32VALUE (e.g., nod_XXXX..., dpt_XXXX...)
  */
 function parseRoot(rootStr: string): CasUriRoot | CasUriParseError {
-  const colonIndex = rootStr.indexOf(":");
-  if (colonIndex === -1) {
+  const underscoreIndex = rootStr.indexOf("_");
+  if (underscoreIndex === -1) {
     return {
       code: "invalid_format",
-      message: `Invalid root format: missing ':' separator`,
+      message: `Invalid root format: missing '_' separator`,
     };
   }
 
-  const type = rootStr.slice(0, colonIndex) as CasUriRootType;
-  const value = rootStr.slice(colonIndex + 1);
+  const type = rootStr.slice(0, underscoreIndex) as CasUriRootType;
+  const value = rootStr.slice(underscoreIndex + 1);
 
   if (!ROOT_TYPES.includes(type)) {
     return {
@@ -36,18 +41,16 @@ function parseRoot(rootStr: string): CasUriRoot | CasUriParseError {
   // Validate the ID/hash format
   if (!CROCKFORD_BASE32_26.test(value)) {
     return {
-      code: type === "node" ? "invalid_hash" : "invalid_id",
-      message: `Invalid ${type === "node" ? "hash" : "ID"}: "${value}". Expected 26-character Crockford Base32`,
+      code: type === "nod" ? "invalid_hash" : "invalid_id",
+      message: `Invalid ${type === "nod" ? "hash" : "ID"}: "${value}". Expected 26-character Crockford Base32`,
     };
   }
 
   switch (type) {
-    case "node":
-      return { type: "node", hash: value };
-    case "depot":
-      return { type: "depot", id: value };
-    case "ticket":
-      return { type: "ticket", id: value };
+    case "nod":
+      return { type: "nod", hash: value };
+    case "dpt":
+      return { type: "dpt", id: value };
   }
 }
 
@@ -61,11 +64,11 @@ function parseRoot(rootStr: string): CasUriRoot | CasUriParseError {
  *
  * @example
  * ```ts
- * parseCasUri("node:ABC123...XYZ/docs/readme.md")
- * // => { ok: true, uri: { root: { type: "node", hash: "ABC123...XYZ" }, path: ["docs", "readme.md"], indexPath: null } }
+ * parseCasUri("nod_ABC123XYZ01234567890ABCD/docs/readme.md")
+ * // => { ok: true, uri: { root: { type: "nod", hash: "ABC123XYZ01234567890ABCD" }, path: ["docs", "readme.md"], indexPath: null } }
  *
- * parseCasUri("depot:01HQ.../config#version")
- * // => { ok: true, uri: { root: { type: "depot", id: "01HQ..." }, path: ["config"], indexPath: "version" } }
+ * parseCasUri("dpt_01HQABC123XYZ456789012/config#version")
+ * // => { ok: true, uri: { root: { type: "dpt", id: "01HQABC123XYZ456789012" }, path: ["config"], indexPath: "version" } }
  * ```
  */
 export function parseCasUri(uriStr: string): CasUriParseResult {

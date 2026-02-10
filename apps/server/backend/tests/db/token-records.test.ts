@@ -2,7 +2,7 @@
  * Unit tests for TokenRecords DB module
  *
  * Tests the token records database layer using mocked DynamoDB client.
- * Tests cover: create, get, markUsed (atomic), invalidateFamily, listByDelegate.
+ * Tests cover: create, get, markUsed (atomic), invalidateByDelegate, listByDelegate.
  */
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
@@ -123,18 +123,10 @@ function createMockDynamoClient() {
       const matching: Item[] = [];
 
       if (input.IndexName === "gsi1") {
-        // Family query: gsi1pk = :pk
+        // Delegate query: gsi1pk = :pk
         const gsi1pkValue = vals[":pk"] as string;
         for (const item of items.values()) {
           if (item.gsi1pk === gsi1pkValue) {
-            matching.push(item);
-          }
-        }
-      } else if (input.IndexName === "gsi2") {
-        // Delegate query: gsi2pk = :pk
-        const gsi2pkValue = vals[":pk"] as string;
-        for (const item of items.values()) {
-          if (item.gsi2pk === gsi2pkValue) {
             matching.push(item);
           }
         }
@@ -158,12 +150,11 @@ function createMockDynamoClient() {
 
 function makeTokenInput(overrides?: Partial<CreateTokenRecordInput>): CreateTokenRecordInput {
   return {
-    tokenId: "dlt1_abc123",
+    tokenId: "tkn_abc123",
     tokenType: "refresh",
-    delegateId: "dlg-001",
+    delegateId: "dlt_TESTDLG00000000000000001",
     realm: "usr_user1",
     expiresAt: 0,
-    familyId: "fam-001",
     ...overrides,
   };
 }
@@ -193,36 +184,35 @@ describe("TokenRecordsDb", () => {
       const input = makeTokenInput();
       await db.create(input);
 
-      const record = await db.get("dlt1_abc123");
+      const record = await db.get("tkn_abc123");
       expect(record).not.toBeNull();
-      expect(record!.tokenId).toBe("dlt1_abc123");
+      expect(record!.tokenId).toBe("tkn_abc123");
       expect(record!.tokenType).toBe("refresh");
-      expect(record!.delegateId).toBe("dlg-001");
+      expect(record!.delegateId).toBe("dlt_TESTDLG00000000000000001");
       expect(record!.realm).toBe("usr_user1");
       expect(record!.expiresAt).toBe(0);
       expect(record!.isUsed).toBe(false);
       expect(record!.isInvalidated).toBe(false);
-      expect(record!.familyId).toBe("fam-001");
       expect(record!.createdAt).toBeGreaterThan(0);
     });
 
     it("creates and retrieves an access token record", async () => {
       const expiresAt = Date.now() + 3600_000;
       const input = makeTokenInput({
-        tokenId: "dlt1_at456",
+        tokenId: "tkn_at456",
         tokenType: "access",
         expiresAt,
       });
       await db.create(input);
 
-      const record = await db.get("dlt1_at456");
+      const record = await db.get("tkn_at456");
       expect(record).not.toBeNull();
       expect(record!.tokenType).toBe("access");
       expect(record!.expiresAt).toBe(expiresAt);
     });
 
     it("returns null for non-existent token", async () => {
-      const record = await db.get("dlt1_nonexistent");
+      const record = await db.get("tkn_nonexistent");
       expect(record).toBeNull();
     });
   });
@@ -235,10 +225,10 @@ describe("TokenRecordsDb", () => {
     it("marks an unused RT as used (returns true)", async () => {
       await db.create(makeTokenInput());
 
-      const success = await db.markUsed("dlt1_abc123");
+      const success = await db.markUsed("tkn_abc123");
       expect(success).toBe(true);
 
-      const record = await db.get("dlt1_abc123");
+      const record = await db.get("tkn_abc123");
       expect(record!.isUsed).toBe(true);
     });
 
@@ -246,77 +236,77 @@ describe("TokenRecordsDb", () => {
       await db.create(makeTokenInput());
 
       // First mark — succeeds
-      const first = await db.markUsed("dlt1_abc123");
+      const first = await db.markUsed("tkn_abc123");
       expect(first).toBe(true);
 
       // Second mark — fails atomically
-      const second = await db.markUsed("dlt1_abc123");
+      const second = await db.markUsed("tkn_abc123");
       expect(second).toBe(false);
     });
 
     it("returns false for non-existent token", async () => {
-      const success = await db.markUsed("dlt1_ghost");
+      const success = await db.markUsed("tkn_ghost");
       expect(success).toBe(false);
     });
 
     it("returns false for already-invalidated token", async () => {
-      await db.create(makeTokenInput({ familyId: "fam-inv" }));
-      // Invalidate via family
-      await db.invalidateFamily("fam-inv");
+      await db.create(makeTokenInput({ delegateId: "dlt_INVALIDATED0000000000001" }));
+      // Invalidate via delegate
+      await db.invalidateByDelegate("dlt_INVALIDATED0000000000001");
 
       // Now markUsed should fail because isInvalidated = true
-      const success = await db.markUsed("dlt1_abc123");
+      const success = await db.markUsed("tkn_abc123");
       expect(success).toBe(false);
     });
   });
 
   // --------------------------------------------------------------------------
-  // invalidateFamily
+  // invalidateByDelegate
   // --------------------------------------------------------------------------
 
-  describe("invalidateFamily", () => {
-    it("invalidates all tokens in a family", async () => {
-      // Create 3 tokens in the same family
-      await db.create(makeTokenInput({ tokenId: "dlt1_rt1", tokenType: "refresh", familyId: "fam-x" }));
-      await db.create(makeTokenInput({ tokenId: "dlt1_at1", tokenType: "access", familyId: "fam-x" }));
-      await db.create(makeTokenInput({ tokenId: "dlt1_rt2", tokenType: "refresh", familyId: "fam-x" }));
+  describe("invalidateByDelegate", () => {
+    it("invalidates all tokens for a delegate", async () => {
+      // Create 3 tokens for the same delegate
+      await db.create(makeTokenInput({ tokenId: "tkn_rt1", tokenType: "refresh", delegateId: "dlt_DLGX00000000000000000001" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_at1", tokenType: "access", delegateId: "dlt_DLGX00000000000000000001" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_rt2", tokenType: "refresh", delegateId: "dlt_DLGX00000000000000000001" }));
 
-      const count = await db.invalidateFamily("fam-x");
+      const count = await db.invalidateByDelegate("dlt_DLGX00000000000000000001");
       expect(count).toBe(3);
 
       // All should be invalidated
-      const rt1 = await db.get("dlt1_rt1");
-      const at1 = await db.get("dlt1_at1");
-      const rt2 = await db.get("dlt1_rt2");
+      const rt1 = await db.get("tkn_rt1");
+      const at1 = await db.get("tkn_at1");
+      const rt2 = await db.get("tkn_rt2");
       expect(rt1!.isInvalidated).toBe(true);
       expect(at1!.isInvalidated).toBe(true);
       expect(rt2!.isInvalidated).toBe(true);
     });
 
-    it("returns 0 for non-existent family", async () => {
-      const count = await db.invalidateFamily("fam-nonexistent");
+    it("returns 0 for non-existent delegate", async () => {
+      const count = await db.invalidateByDelegate("dlt_NONEXISTENT000000000001");
       expect(count).toBe(0);
     });
 
-    it("does not affect tokens in other families", async () => {
-      await db.create(makeTokenInput({ tokenId: "dlt1_a", familyId: "fam-A" }));
-      await db.create(makeTokenInput({ tokenId: "dlt1_b", familyId: "fam-B" }));
+    it("does not affect tokens for other delegates", async () => {
+      await db.create(makeTokenInput({ tokenId: "tkn_a", delegateId: "dlt_DLGA00000000000000000001" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_b", delegateId: "dlt_DLGB00000000000000000001" }));
 
-      await db.invalidateFamily("fam-A");
+      await db.invalidateByDelegate("dlt_DLGA00000000000000000001");
 
-      const a = await db.get("dlt1_a");
-      const b = await db.get("dlt1_b");
+      const a = await db.get("tkn_a");
+      const b = await db.get("tkn_b");
       expect(a!.isInvalidated).toBe(true);
       expect(b!.isInvalidated).toBe(false);
     });
 
-    it("idempotent — re-invalidating already-invalidated family returns 0", async () => {
-      await db.create(makeTokenInput({ tokenId: "dlt1_x", familyId: "fam-idem" }));
+    it("idempotent — re-invalidating already-invalidated delegate returns 0", async () => {
+      await db.create(makeTokenInput({ tokenId: "tkn_x", delegateId: "dlt_IDEM00000000000000000001" }));
 
-      const first = await db.invalidateFamily("fam-idem");
+      const first = await db.invalidateByDelegate("dlt_IDEM00000000000000000001");
       expect(first).toBe(1);
 
-      const second = await db.invalidateFamily("fam-idem");
+      const second = await db.invalidateByDelegate("dlt_IDEM00000000000000000001");
       expect(second).toBe(0);
     });
   });
@@ -327,27 +317,27 @@ describe("TokenRecordsDb", () => {
 
   describe("listByDelegate", () => {
     it("lists all tokens for a delegate", async () => {
-      await db.create(makeTokenInput({ tokenId: "dlt1_r1", tokenType: "refresh", delegateId: "dlg-1" }));
-      await db.create(makeTokenInput({ tokenId: "dlt1_a1", tokenType: "access", delegateId: "dlg-1" }));
-      await db.create(makeTokenInput({ tokenId: "dlt1_r2", tokenType: "refresh", delegateId: "dlg-2" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_r1", tokenType: "refresh", delegateId: "dlt_DLG100000000000000000001" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_a1", tokenType: "access", delegateId: "dlt_DLG100000000000000000001" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_r2", tokenType: "refresh", delegateId: "dlt_DLG200000000000000000001" }));
 
-      const result = await db.listByDelegate("dlg-1");
+      const result = await db.listByDelegate("dlt_DLG100000000000000000001");
       expect(result.tokens.length).toBe(2);
       const ids = result.tokens.map((t) => t.tokenId).sort();
-      expect(ids).toEqual(["dlt1_a1", "dlt1_r1"]);
+      expect(ids).toEqual(["tkn_a1", "tkn_r1"]);
     });
 
     it("returns empty for delegate with no tokens", async () => {
-      const result = await db.listByDelegate("dlg-nonexistent");
+      const result = await db.listByDelegate("dlt_NONEXISTENT000000000001");
       expect(result.tokens.length).toBe(0);
     });
 
     it("respects limit parameter", async () => {
-      await db.create(makeTokenInput({ tokenId: "dlt1_t1", delegateId: "dlg-lim" }));
-      await db.create(makeTokenInput({ tokenId: "dlt1_t2", delegateId: "dlg-lim" }));
-      await db.create(makeTokenInput({ tokenId: "dlt1_t3", delegateId: "dlg-lim" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_t1", delegateId: "dlt_DLGLIM000000000000000001" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_t2", delegateId: "dlt_DLGLIM000000000000000001" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_t3", delegateId: "dlt_DLGLIM000000000000000001" }));
 
-      const result = await db.listByDelegate("dlg-lim", { limit: 2 });
+      const result = await db.listByDelegate("dlt_DLGLIM000000000000000001", { limit: 2 });
       expect(result.tokens.length).toBe(2);
     });
   });
@@ -359,46 +349,46 @@ describe("TokenRecordsDb", () => {
   describe("RT rotation scenario", () => {
     it("models a full RT rotation flow", async () => {
       // 1. Create initial RT + AT
-      await db.create(makeTokenInput({ tokenId: "dlt1_rt_v1", tokenType: "refresh", familyId: "fam-rot" }));
-      await db.create(makeTokenInput({ tokenId: "dlt1_at_v1", tokenType: "access", familyId: "fam-rot" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_rt_v1", tokenType: "refresh", delegateId: "dlt_DLGROT000000000000000001" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_at_v1", tokenType: "access", delegateId: "dlt_DLGROT000000000000000001" }));
 
       // 2. Use RT v1 → mark used
-      const used = await db.markUsed("dlt1_rt_v1");
+      const used = await db.markUsed("tkn_rt_v1");
       expect(used).toBe(true);
 
       // 3. Issue RT v2 + AT v2
-      await db.create(makeTokenInput({ tokenId: "dlt1_rt_v2", tokenType: "refresh", familyId: "fam-rot" }));
-      await db.create(makeTokenInput({ tokenId: "dlt1_at_v2", tokenType: "access", familyId: "fam-rot" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_rt_v2", tokenType: "refresh", delegateId: "dlt_DLGROT000000000000000001" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_at_v2", tokenType: "access", delegateId: "dlt_DLGROT000000000000000001" }));
 
       // 4. Verify RT v1 cannot be reused
-      const reuse = await db.markUsed("dlt1_rt_v1");
+      const reuse = await db.markUsed("tkn_rt_v1");
       expect(reuse).toBe(false);
 
       // 5. RT v2 is fresh
-      const v2Record = await db.get("dlt1_rt_v2");
+      const v2Record = await db.get("tkn_rt_v2");
       expect(v2Record!.isUsed).toBe(false);
     });
 
-    it("replay detection invalidates entire family", async () => {
+    it("replay detection invalidates entire delegate", async () => {
       // Setup: RT v1 used, RT v2 issued
-      await db.create(makeTokenInput({ tokenId: "dlt1_rt_v1", tokenType: "refresh", familyId: "fam-replay" }));
-      await db.create(makeTokenInput({ tokenId: "dlt1_at_v1", tokenType: "access", familyId: "fam-replay" }));
-      await db.markUsed("dlt1_rt_v1");
-      await db.create(makeTokenInput({ tokenId: "dlt1_rt_v2", tokenType: "refresh", familyId: "fam-replay" }));
-      await db.create(makeTokenInput({ tokenId: "dlt1_at_v2", tokenType: "access", familyId: "fam-replay" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_rt_v1", tokenType: "refresh", delegateId: "dlt_DLGREP000000000000000001" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_at_v1", tokenType: "access", delegateId: "dlt_DLGREP000000000000000001" }));
+      await db.markUsed("tkn_rt_v1");
+      await db.create(makeTokenInput({ tokenId: "tkn_rt_v2", tokenType: "refresh", delegateId: "dlt_DLGREP000000000000000001" }));
+      await db.create(makeTokenInput({ tokenId: "tkn_at_v2", tokenType: "access", delegateId: "dlt_DLGREP000000000000000001" }));
 
       // Attacker replays RT v1 — markUsed fails
-      const replay = await db.markUsed("dlt1_rt_v1");
+      const replay = await db.markUsed("tkn_rt_v1");
       expect(replay).toBe(false);
 
-      // Server invalidates the entire family
-      const count = await db.invalidateFamily("fam-replay");
+      // Server invalidates all tokens for the delegate
+      const count = await db.invalidateByDelegate("dlt_DLGREP000000000000000001");
       // RT v2 + AT v2 should be invalidated (RT v1 and AT v1 may also be, depending on isInvalidated state)
       expect(count).toBeGreaterThanOrEqual(2);
 
-      // All tokens in family should be invalidated
-      const rtV2 = await db.get("dlt1_rt_v2");
-      const atV2 = await db.get("dlt1_at_v2");
+      // All tokens for delegate should be invalidated
+      const rtV2 = await db.get("tkn_rt_v2");
+      const atV2 = await db.get("tkn_at_v2");
       expect(rtV2!.isInvalidated).toBe(true);
       expect(atV2!.isInvalidated).toBe(true);
     });

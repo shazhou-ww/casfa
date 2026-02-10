@@ -41,7 +41,6 @@ export {
   depotUri,
   formatCasUri,
   nodeUri,
-  ticketUri,
 } from "./format.ts";
 
 // ============================================================================

@@ -13,7 +13,6 @@ export type ServerConfig = {
   maxNameBytes: number;
   maxCollectionChildren: number;
   maxPayloadSize: number;
-  maxTicketTtl: number;
   maxDelegateTokenTtl: number;
   maxAccessTokenTtl: number;
   maxTokenDepth: number;
@@ -25,7 +24,6 @@ export const loadServerConfig = (): ServerConfig => ({
   maxNameBytes: Number.parseInt(process.env.CAS_MAX_NAME_BYTES ?? "255", 10),
   maxCollectionChildren: Number.parseInt(process.env.CAS_MAX_COLLECTION_CHILDREN ?? "10000", 10),
   maxPayloadSize: Number.parseInt(process.env.CAS_MAX_PAYLOAD_SIZE ?? "10485760", 10),
-  maxTicketTtl: Number.parseInt(process.env.CAS_MAX_TICKET_TTL ?? "86400", 10),
   maxDelegateTokenTtl: Number.parseInt(process.env.CAS_MAX_DELEGATE_TOKEN_TTL ?? "2592000", 10), // 30 days
   maxAccessTokenTtl: Number.parseInt(process.env.CAS_MAX_ACCESS_TOKEN_TTL ?? "86400", 10), // 24 hours
   maxTokenDepth: Number.parseInt(process.env.CAS_MAX_TOKEN_DEPTH ?? "10", 10),

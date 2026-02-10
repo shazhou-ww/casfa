@@ -47,7 +47,7 @@ function createMockTokenRecordsDb(overrides?: Partial<TokenRecordsDb>): TokenRec
     create: mock(async () => {}),
     get: mock(async () => null),
     markUsed: mock(async () => true),
-    invalidateFamily: mock(async () => 0),
+    invalidateByDelegate: mock(async () => 0),
     listByDelegate: mock(async () => ({ tokens: [], nextCursor: undefined })),
     ...overrides,
   };
@@ -115,7 +115,7 @@ describe("RootTokenController", () => {
       const ctx = createMockContext({
         auth: {
           type: "jwt",
-          userId: "user123",
+          userId: "usr_user123",
           realm: "usr_user123",
           role: "authorized",
         },
@@ -142,16 +142,16 @@ describe("RootTokenController", () => {
       expect(body.accessTokenId).toBeDefined();
       expect(body.accessTokenExpiresAt).toBeGreaterThan(Date.now());
 
-      // Token IDs should have dlt1_ prefix
-      expect((body.refreshTokenId as string).startsWith("dlt1_")).toBe(true);
-      expect((body.accessTokenId as string).startsWith("dlt1_")).toBe(true);
+      // Token IDs should have tkn_ prefix
+      expect((body.refreshTokenId as string).startsWith("tkn_")).toBe(true);
+      expect((body.accessTokenId as string).startsWith("tkn_")).toBe(true);
     });
 
     it("uses default realm from userId when body.realm is omitted", async () => {
       const ctx = createMockContext({
         auth: {
           type: "jwt",
-          userId: "bob",
+          userId: "usr_bob",
           realm: "usr_bob",
           role: "authorized",
         },
@@ -168,7 +168,7 @@ describe("RootTokenController", () => {
 
     it("calls getOrCreateRoot with correct realm", async () => {
       const ctx = createMockContext({
-        auth: { type: "jwt", userId: "u1", realm: "usr_u1", role: "authorized" },
+        auth: { type: "jwt", userId: "usr_u1", realm: "usr_u1", role: "authorized" },
         body: { realm: "usr_u1" },
       });
 
@@ -181,7 +181,7 @@ describe("RootTokenController", () => {
 
     it("stores 2 token records (RT + AT)", async () => {
       const ctx = createMockContext({
-        auth: { type: "jwt", userId: "u1", realm: "usr_u1", role: "authorized" },
+        auth: { type: "jwt", userId: "usr_u1", realm: "usr_u1", role: "authorized" },
         body: { realm: "usr_u1" },
       });
 
@@ -200,8 +200,8 @@ describe("RootTokenController", () => {
       expect(atRecord.tokenType).toBe("access");
       expect(atRecord.expiresAt).toBeGreaterThan(0);
 
-      // Both should share the same familyId
-      expect(rtRecord.familyId).toBe(atRecord.familyId);
+      // Both should share the same delegateId
+      expect(rtRecord.delegateId).toBe(atRecord.delegateId);
     });
   });
 
@@ -214,7 +214,7 @@ describe("RootTokenController", () => {
       const ctx = createMockContext({
         auth: {
           type: "jwt",
-          userId: "alice",
+          userId: "usr_alice",
           realm: "usr_alice",
           role: "authorized",
         },
@@ -251,7 +251,7 @@ describe("RootTokenController", () => {
       });
 
       const ctx = createMockContext({
-        auth: { type: "jwt", userId: "u1", realm: "usr_u1", role: "authorized" },
+        auth: { type: "jwt", userId: "usr_u1", realm: "usr_u1", role: "authorized" },
         body: { realm: "usr_u1" },
       });
 

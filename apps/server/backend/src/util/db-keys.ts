@@ -23,30 +23,19 @@ export const extractTokenId = (pk: string): string => {
 };
 
 // ============================================================================
-// Realm Keys (用于 Depot 和 Ticket)
+// Realm Keys (用于 Depot)
 // ============================================================================
 
-/** Realm 主键（用于 Depot 和 Ticket） */
+/** Realm 主键（用于 Depot） */
 export const toRealmPk = (realm: string): string => `REALM#${realm}`;
 
 /** Depot 排序键 */
 export const toDepotSk = (depotId: string): string => `DEPOT#${depotId}`;
 
-/** Ticket 排序键 */
-export const toTicketSk = (ticketId: string): string => `TICKET#${ticketId}`;
-
 /** 从 Depot SK 提取 depotId */
 export const extractDepotId = (sk: string): string => {
   if (sk.startsWith("DEPOT#")) {
     return sk.slice(6);
-  }
-  return sk;
-};
-
-/** 从 Ticket SK 提取 ticketId */
-export const extractTicketId = (sk: string): string => {
-  if (sk.startsWith("TICKET#")) {
-    return sk.slice(7);
   }
   return sk;
 };
@@ -137,9 +126,6 @@ export const toDepotGsi3Sk = (depotId: string): string => `DEPOT#${depotId}`;
 
 /** 将毫秒时间戳转换为 TTL（Unix epoch 秒） */
 export const toTtl = (expiresAtMs: number): number => Math.floor(expiresAtMs / 1000);
-
-/** 计算 Ticket TTL（创建时间 + 24 小时） */
-export const toTicketTtl = (createdAtMs: number): number => Math.floor(createdAtMs / 1000) + 86400; // 24 hours
 
 /** 计算审计日志 TTL（时间戳 + 90 天） */
 export const toAuditTtl = (timestampMs: number): number =>

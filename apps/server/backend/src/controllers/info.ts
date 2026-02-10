@@ -50,7 +50,6 @@ export const createInfoController = (deps: InfoControllerDeps): InfoController =
       maxNameBytes: serverConfig.maxNameBytes,
       maxCollectionChildren: serverConfig.maxCollectionChildren,
       maxPayloadSize: serverConfig.maxPayloadSize,
-      maxTicketTtl: serverConfig.maxTicketTtl,
       maxDelegateTokenTtl: serverConfig.maxDelegateTokenTtl,
       maxAccessTokenTtl: serverConfig.maxAccessTokenTtl,
       maxTokenDepth: serverConfig.maxTokenDepth,

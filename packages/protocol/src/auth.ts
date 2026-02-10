@@ -65,40 +65,6 @@ export const ClientCompleteSchema = z.object({
 export type ClientComplete = z.infer<typeof ClientCompleteSchema>;
 
 // ============================================================================
-// Ticket Schemas
-// ============================================================================
-
-/**
- * @deprecated Use new CreateTicketSchema below
- * Old writable configuration for ticket
- */
-export const WritableConfigSchema = z.object({
-  quota: z.number().positive().optional(),
-  accept: z.array(z.string()).optional(),
-});
-
-export type WritableConfig = z.infer<typeof WritableConfigSchema>;
-
-/**
- * Schema for POST /api/realm/{realmId}/tickets
- * Create a new ticket and bind a pre-issued Access Token
- *
- * Note: Requires Access Token authentication
- *
- * Two-step creation flow:
- *   1. Issue Access Token using Delegate Token (POST /api/tokens/delegate)
- *   2. Create Ticket and bind the token (this endpoint)
- */
-export const CreateTicketSchema = z.object({
-  /** Ticket title (human-readable task description) */
-  title: z.string().min(1).max(256),
-  /** Pre-issued Access Token ID to bind to this ticket */
-  accessTokenId: z.string().min(1),
-});
-
-export type CreateTicket = z.infer<typeof CreateTicketSchema>;
-
-// ============================================================================
 // Token Schemas (Delegate Token management via User JWT)
 // ============================================================================
 

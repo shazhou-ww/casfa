@@ -3,9 +3,9 @@
  */
 
 /**
- * Valid root type prefixes
+ * Valid root type prefixes (use underscore separator)
  */
-export const ROOT_TYPES = ["node", "depot", "ticket"] as const;
+export const ROOT_TYPES = ["nod", "dpt"] as const;
 
 /**
  * Crockford Base32 regex pattern for 26 character IDs (128-bit)

@@ -25,16 +25,18 @@ import {
 // ============================================================================
 
 describe("delegateIdToIssuer", () => {
-  it("converts a UUID to a 32-byte issuer (left-padded)", () => {
-    const uuid = "01234567-89ab-cdef-0123-456789abcdef";
-    const issuer = delegateIdToIssuer(uuid);
+  // dlt_04HMASW9NF6YY0938NKRKAYDXW encodes bytes 0x0123456789abcdef0123456789abcdef
+  const testDelegateId = "dlt_04HMASW9NF6YY0938NKRKAYDXW";
+
+  it("converts a dlt_ CB32 ID to a 32-byte issuer (left-padded)", () => {
+    const issuer = delegateIdToIssuer(testDelegateId);
 
     expect(issuer.length).toBe(32);
     // First 16 bytes should be zeros (left-padding)
     for (let i = 0; i < 16; i++) {
       expect(issuer[i]).toBe(0);
     }
-    // Bytes 16-31 should be the UUID bytes
+    // Bytes 16-31 should be the decoded CB32 bytes
     expect(issuer[16]).toBe(0x01);
     expect(issuer[17]).toBe(0x23);
     expect(issuer[18]).toBe(0x45);
@@ -53,26 +55,17 @@ describe("delegateIdToIssuer", () => {
     expect(issuer[31]).toBe(0xef);
   });
 
-  it("throws for invalid UUID format (wrong length)", () => {
+  it("throws for missing dlt_ prefix", () => {
     expect(() => delegateIdToIssuer("short")).toThrow("Invalid delegate ID format");
   });
 
-  it("handles UUID without hyphens format gracefully", () => {
-    // Actually, it strips hyphens, so this tests that hyphens are stripped
-    const withHyphens = "aaaabbbb-cccc-dddd-eeee-ffffffffffff";
-    const issuer = delegateIdToIssuer(withHyphens);
-    expect(issuer.length).toBe(32);
-    // First 16 should be 0
-    expect(issuer[16]).toBe(0xaa);
-    expect(issuer[17]).toBe(0xaa);
-    expect(issuer[18]).toBe(0xbb);
-    expect(issuer[19]).toBe(0xbb);
+  it("throws for invalid CB32 length", () => {
+    expect(() => delegateIdToIssuer("dlt_SHORT")).toThrow();
   });
 
   it("is deterministic", () => {
-    const uuid = "11111111-2222-3333-4444-555555555555";
-    const a = delegateIdToIssuer(uuid);
-    const b = delegateIdToIssuer(uuid);
+    const a = delegateIdToIssuer(testDelegateId);
+    const b = delegateIdToIssuer(testDelegateId);
     expect(a).toEqual(b);
   });
 });
@@ -156,13 +149,13 @@ describe("computeScopeHash", () => {
 // ============================================================================
 
 describe("generateTokenPair", () => {
-  const testUuid = "01234567-89ab-7def-0123-456789abcdef";
+  const testDelegateId = "dlt_04HMASW9NF6YY0938NKRKAYDXW";
   const realmHash = computeRealmHash("usr_test");
   const scopeHash = computeScopeHash([]);
 
   it("generates RT + AT pair", async () => {
     const pair = await generateTokenPair({
-      delegateId: testUuid,
+      delegateId: testDelegateId,
       realmHash,
       scopeHash,
       depth: 0,
@@ -176,20 +169,20 @@ describe("generateTokenPair", () => {
     // RT fields
     expect(pair.refreshToken.bytes).toBeInstanceOf(Uint8Array);
     expect(pair.refreshToken.bytes.length).toBe(128);
-    expect(pair.refreshToken.id).toMatch(/^dlt1_/);
+    expect(pair.refreshToken.id).toMatch(/^tkn_/);
     expect(pair.refreshToken.base64.length).toBeGreaterThan(0);
 
     // AT fields
     expect(pair.accessToken.bytes).toBeInstanceOf(Uint8Array);
     expect(pair.accessToken.bytes.length).toBe(128);
-    expect(pair.accessToken.id).toMatch(/^dlt1_/);
+    expect(pair.accessToken.id).toMatch(/^tkn_/);
     expect(pair.accessToken.base64.length).toBeGreaterThan(0);
     expect(pair.accessToken.expiresAt).toBeGreaterThan(Date.now());
   });
 
   it("RT is decodable and has isRefresh flag", async () => {
     const pair = await generateTokenPair({
-      delegateId: testUuid,
+      delegateId: testDelegateId,
       realmHash,
       scopeHash,
       depth: 0,
@@ -208,7 +201,7 @@ describe("generateTokenPair", () => {
 
   it("AT is decodable and has correct flags", async () => {
     const pair = await generateTokenPair({
-      delegateId: testUuid,
+      delegateId: testDelegateId,
       realmHash,
       scopeHash,
       depth: 3,
@@ -228,7 +221,7 @@ describe("generateTokenPair", () => {
 
   it("RT and AT have different token IDs", async () => {
     const pair = await generateTokenPair({
-      delegateId: testUuid,
+      delegateId: testDelegateId,
       realmHash,
       scopeHash,
       depth: 0,
@@ -241,7 +234,7 @@ describe("generateTokenPair", () => {
 
   it("token IDs have valid format", async () => {
     const pair = await generateTokenPair({
-      delegateId: testUuid,
+      delegateId: testDelegateId,
       realmHash,
       scopeHash,
       depth: 0,
@@ -255,7 +248,7 @@ describe("generateTokenPair", () => {
 
   it("base64 roundtrips correctly", async () => {
     const pair = await generateTokenPair({
-      delegateId: testUuid,
+      delegateId: testDelegateId,
       realmHash,
       scopeHash,
       depth: 0,
@@ -265,17 +258,17 @@ describe("generateTokenPair", () => {
 
     // RT base64 roundtrip
     const rtDecoded = Buffer.from(pair.refreshToken.base64, "base64");
-    expect(new Uint8Array(rtDecoded.buffer, rtDecoded.byteOffset, rtDecoded.byteLength)).toEqual(pair.refreshToken.bytes);
+    expect(Uint8Array.from(rtDecoded)).toEqual(new Uint8Array(pair.refreshToken.bytes));
 
     // AT base64 roundtrip
     const atDecoded = Buffer.from(pair.accessToken.base64, "base64");
-    expect(new Uint8Array(atDecoded.buffer, atDecoded.byteOffset, atDecoded.byteLength)).toEqual(pair.accessToken.bytes);
+    expect(Uint8Array.from(atDecoded)).toEqual(new Uint8Array(pair.accessToken.bytes));
   });
 
   it("default AT TTL is ~1 hour", async () => {
     const before = Date.now();
     const pair = await generateTokenPair({
-      delegateId: testUuid,
+      delegateId: testDelegateId,
       realmHash,
       scopeHash,
       depth: 0,
@@ -294,7 +287,7 @@ describe("generateTokenPair", () => {
   it("custom AT TTL is respected", async () => {
     const before = Date.now();
     const pair = await generateTokenPair({
-      delegateId: testUuid,
+      delegateId: testDelegateId,
       realmHash,
       scopeHash,
       depth: 0,
@@ -312,7 +305,7 @@ describe("generateTokenPair", () => {
 
   it("realm and scope hashes are embedded in token bytes", async () => {
     const pair = await generateTokenPair({
-      delegateId: testUuid,
+      delegateId: testDelegateId,
       realmHash,
       scopeHash,
       depth: 0,
@@ -327,7 +320,7 @@ describe("generateTokenPair", () => {
 
   it("issuer is correctly embedded", async () => {
     const pair = await generateTokenPair({
-      delegateId: testUuid,
+      delegateId: testDelegateId,
       realmHash,
       scopeHash,
       depth: 0,
@@ -336,7 +329,7 @@ describe("generateTokenPair", () => {
     });
 
     const decoded = decodeDelegateToken(pair.refreshToken.bytes);
-    const expectedIssuer = delegateIdToIssuer(testUuid);
+    const expectedIssuer = delegateIdToIssuer(testDelegateId);
     expect(decoded.issuer).toEqual(expectedIssuer);
   });
 });

@@ -26,7 +26,6 @@ import { createDelegateMethods, type DelegateMethods } from "./delegates.ts";
 import { createDepotMethods, type DepotMethods } from "./depots.ts";
 import { createNodeMethods, type NodeMethods } from "./nodes.ts";
 import { createOAuthMethods, type OAuthMethods } from "./oauth.ts";
-import { createTicketMethods, type TicketMethods } from "./tickets.ts";
 import { createTokenMethods, type TokenMethods } from "./tokens.ts";
 
 // ============================================================================
@@ -38,7 +37,6 @@ export type {
   DepotMethods,
   NodeMethods,
   OAuthMethods,
-  TicketMethods,
   TokenMethods,
 };
 
@@ -75,8 +73,6 @@ export type CasfaClient = {
   tokens: TokenMethods;
   /** Delegate management methods */
   delegates: DelegateMethods;
-  /** Ticket methods */
-  tickets: TicketMethods;
   /** Depot methods */
   depots: DepotMethods;
   /** Node methods */
@@ -149,7 +145,6 @@ export const createClient = async (
     oauth: createOAuthMethods(deps),
     tokens: createTokenMethods(deps),
     delegates: createDelegateMethods(deps),
-    tickets: createTicketMethods(deps),
     depots: createDepotMethods(deps),
     nodes: createNodeMethods(deps),
   };

@@ -19,7 +19,7 @@ import { createDocClient } from "./client.ts";
 // Types
 // ============================================================================
 
-export type ResourceType = "token" | "depot" | "ticket";
+export type ResourceType = "token" | "depot";
 
 export type UsageDb = {
   // Existing methods (RealmUsage)
@@ -39,7 +39,6 @@ export type UsageDb = {
   updateUserQuota: (realm: string, updates: Partial<UserQuotaRecord>) => Promise<void>;
   incrementResourceCount: (realm: string, resource: ResourceType, delta?: number) => Promise<void>;
   decrementResourceCount: (realm: string, resource: ResourceType, delta?: number) => Promise<void>;
-  updateBytesInProgress: (realm: string, delta: number) => Promise<void>;
   checkResourceLimit: (
     realm: string,
     resource: ResourceType,
@@ -173,10 +172,8 @@ export const createUsageDb = (config: UsageDbConfig): UsageDb => {
     realm,
     quotaLimit: 0,
     bytesUsed: 0,
-    bytesInProgress: 0,
     tokenCount: 0,
     depotCount: 0,
-    ticketCount: 0,
     createdAt: Date.now(),
     lastUpdated: Date.now(),
   });
@@ -199,10 +196,8 @@ export const createUsageDb = (config: UsageDbConfig): UsageDb => {
       realm: result.Item.realm ?? realm,
       quotaLimit: result.Item.quotaLimit ?? 0,
       bytesUsed: result.Item.bytesUsed ?? 0,
-      bytesInProgress: result.Item.bytesInProgress ?? 0,
       tokenCount: result.Item.tokenCount ?? 0,
       depotCount: result.Item.depotCount ?? 0,
-      ticketCount: result.Item.ticketCount ?? 0,
       createdAt: result.Item.createdAt ?? Date.now(),
       lastUpdated: result.Item.lastUpdated ?? Date.now(),
     };
@@ -227,11 +222,6 @@ export const createUsageDb = (config: UsageDbConfig): UsageDb => {
       values[":bytesUsed"] = updates.bytesUsed;
     }
 
-    if (updates.bytesInProgress !== undefined) {
-      updateExpressions.push("bytesInProgress = :bytesInProgress");
-      values[":bytesInProgress"] = updates.bytesInProgress;
-    }
-
     if (updates.tokenCount !== undefined) {
       updateExpressions.push("tokenCount = :tokenCount");
       values[":tokenCount"] = updates.tokenCount;
@@ -240,11 +230,6 @@ export const createUsageDb = (config: UsageDbConfig): UsageDb => {
     if (updates.depotCount !== undefined) {
       updateExpressions.push("depotCount = :depotCount");
       values[":depotCount"] = updates.depotCount;
-    }
-
-    if (updates.ticketCount !== undefined) {
-      updateExpressions.push("ticketCount = :ticketCount");
-      values[":ticketCount"] = updates.ticketCount;
     }
 
     await client.send(
@@ -263,8 +248,6 @@ export const createUsageDb = (config: UsageDbConfig): UsageDb => {
         return "tokenCount";
       case "depot":
         return "depotCount";
-      case "ticket":
-        return "ticketCount";
     }
   };
 
@@ -313,24 +296,6 @@ export const createUsageDb = (config: UsageDbConfig): UsageDb => {
     );
   };
 
-  const updateBytesInProgress = async (realm: string, delta: number): Promise<void> => {
-    const now = Date.now();
-
-    await client.send(
-      new UpdateCommand({
-        TableName: tableName,
-        Key: { pk: toQuotaPk(realm), sk: toQuotaSk() },
-        UpdateExpression:
-          "SET bytesInProgress = if_not_exists(bytesInProgress, :zero) + :delta, lastUpdated = :now",
-        ExpressionAttributeValues: {
-          ":delta": delta,
-          ":zero": 0,
-          ":now": now,
-        },
-      })
-    );
-  };
-
   const checkResourceLimit = async (
     realm: string,
     resource: ResourceType,
@@ -345,9 +310,6 @@ export const createUsageDb = (config: UsageDbConfig): UsageDb => {
         break;
       case "depot":
         currentCount = quota.depotCount;
-        break;
-      case "ticket":
-        currentCount = quota.ticketCount;
         break;
     }
 
@@ -371,7 +333,6 @@ export const createUsageDb = (config: UsageDbConfig): UsageDb => {
     updateUserQuota,
     incrementResourceCount,
     decrementResourceCount,
-    updateBytesInProgress,
     checkResourceLimit,
   };
 };

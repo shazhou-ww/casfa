@@ -159,15 +159,15 @@ export const createRefreshController = (
       );
     }
 
-    // 7. Check one-time-use: if already used → replay detected → invalidate family
+    // 7. Check one-time-use: if already used → replay detected → invalidate all delegate tokens
     if (tokenRecord.isUsed) {
-      // RT replay detected! Invalidate the entire token family
-      await tokenRecordsDb.invalidateFamily(tokenRecord.familyId);
+      // RT replay detected! Invalidate all tokens for this delegate
+      await tokenRecordsDb.invalidateByDelegate(tokenRecord.delegateId);
       return c.json(
         {
           error: "TOKEN_REUSE",
           message:
-            "Refresh token has already been used. All tokens in this family have been invalidated.",
+            "Refresh token has already been used. All tokens for this delegate have been invalidated.",
         },
         409,
       );
@@ -177,7 +177,7 @@ export const createRefreshController = (
     const markSuccess = await tokenRecordsDb.markUsed(tokenId);
     if (!markSuccess) {
       // Race condition: another request used it first
-      await tokenRecordsDb.invalidateFamily(tokenRecord.familyId);
+      await tokenRecordsDb.invalidateByDelegate(tokenRecord.delegateId);
       return c.json(
         {
           error: "TOKEN_REUSE",
@@ -234,14 +234,13 @@ export const createRefreshController = (
       accessTokenTtlSeconds: DEFAULT_AT_TTL_SECONDS,
     });
 
-    // Store new token records with the SAME familyId for family tracking
+    // Store new token records with the SAME delegateId for tracking
     await tokenRecordsDb.create({
       tokenId: newTokenPair.refreshToken.id,
       tokenType: "refresh",
       delegateId: tokenRecord.delegateId,
       realm: tokenRecord.realm,
       expiresAt: 0,
-      familyId: tokenRecord.familyId,
     });
     await tokenRecordsDb.create({
       tokenId: newTokenPair.accessToken.id,
@@ -249,7 +248,6 @@ export const createRefreshController = (
       delegateId: tokenRecord.delegateId,
       realm: tokenRecord.realm,
       expiresAt: newTokenPair.accessToken.expiresAt,
-      familyId: tokenRecord.familyId,
     });
 
     return c.json({

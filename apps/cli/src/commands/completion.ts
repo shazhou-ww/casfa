@@ -54,13 +54,12 @@ _casfa_completions() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="config auth info node depot ticket realm cache completion"
+    local commands="config auth info node depot realm cache completion"
     local config_cmds="init list set get use path create delete"
     local auth_cmds="login logout whoami status token"
     local auth_token_cmds="create list revoke set"
     local node_cmds="get put info cat exists"
     local depot_cmds="list create show commit update delete"
-    local ticket_cmds="create list show submit revoke"
     local realm_cmds="info usage"
     local cache_cmds="stats clear path enable disable"
     local completion_cmds="bash zsh fish powershell"
@@ -99,10 +98,6 @@ _casfa_completions() {
             COMPREPLY=($(compgen -W "\${depot_cmds}" -- "\${cur}"))
             return
             ;;
-        ticket)
-            COMPREPLY=($(compgen -W "\${ticket_cmds}" -- "\${cur}"))
-            return
-            ;;
         realm)
             COMPREPLY=($(compgen -W "\${realm_cmds}" -- "\${cur}"))
             return
@@ -136,7 +131,7 @@ _casfa_completions() {
     esac
 
     if [[ "\${cur}" == -* ]]; then
-        COMPREPLY=($(compgen -W "-p --profile --base-url --token --ticket --realm --no-cache -f --format -v --verbose -q --quiet -h --help --version" -- "\${cur}"))
+        COMPREPLY=($(compgen -W "-p --profile --base-url --token --realm --no-cache -f --format -v --verbose -q --quiet -h --help --version" -- "\${cur}"))
         return
     fi
 
@@ -162,7 +157,6 @@ _casfa() {
         'info:Show service information'
         'node:Node operations'
         'depot:Depot management'
-        'ticket:Ticket management'
         'realm:Realm information'
         'cache:Local cache management'
         'completion:Generate shell completions'
@@ -208,15 +202,6 @@ _casfa() {
         'delete:Delete a depot'
     )
 
-    local -a ticket_cmds
-    ticket_cmds=(
-        'create:Create a new ticket'
-        'list:List tickets'
-        'show:Show ticket details'
-        'submit:Submit ticket result'
-        'revoke:Revoke a ticket'
-    )
-
     local -a profiles
     profiles=(${getProfileNames().join(" ")})
 
@@ -225,7 +210,6 @@ _casfa() {
         '--profile[Use specified profile]:profile:($profiles)' \\
         '--base-url[Override service base URL]:url:' \\
         '--token[Use agent token]:token:' \\
-        '--ticket[Use ticket]:ticket:' \\
         '--realm[Specify realm ID]:realm:' \\
         '--no-cache[Disable local cache]' \\
         '-f[Output format]:format:(text json yaml table)' \\
@@ -258,9 +242,6 @@ _casfa() {
                 depot)
                     _describe -t depot_cmds 'depot command' depot_cmds
                     ;;
-                ticket)
-                    _describe -t ticket_cmds 'ticket command' ticket_cmds
-                    ;;
                 realm)
                     _describe -t commands 'realm command' '(info usage)'
                     ;;
@@ -290,7 +271,6 @@ complete -c casfa -f
 complete -c casfa -s p -l profile -d 'Use specified profile' -xa '${getProfileNames().join(" ")}'
 complete -c casfa -l base-url -d 'Override service base URL'
 complete -c casfa -l token -d 'Use agent token'
-complete -c casfa -l ticket -d 'Use ticket'
 complete -c casfa -l realm -d 'Specify realm ID'
 complete -c casfa -l no-cache -d 'Disable local cache'
 complete -c casfa -s f -l format -d 'Output format' -xa 'text json yaml table'
@@ -305,7 +285,6 @@ complete -c casfa -n '__fish_use_subcommand' -a auth -d 'Authentication manageme
 complete -c casfa -n '__fish_use_subcommand' -a info -d 'Show service information'
 complete -c casfa -n '__fish_use_subcommand' -a node -d 'Node operations'
 complete -c casfa -n '__fish_use_subcommand' -a depot -d 'Depot management'
-complete -c casfa -n '__fish_use_subcommand' -a ticket -d 'Ticket management'
 complete -c casfa -n '__fish_use_subcommand' -a realm -d 'Realm information'
 complete -c casfa -n '__fish_use_subcommand' -a cache -d 'Local cache management'
 complete -c casfa -n '__fish_use_subcommand' -a completion -d 'Generate shell completions'
@@ -342,13 +321,6 @@ complete -c casfa -n '__fish_seen_subcommand_from depot' -a commit -d 'Commit a 
 complete -c casfa -n '__fish_seen_subcommand_from depot' -a update -d 'Update depot settings'
 complete -c casfa -n '__fish_seen_subcommand_from depot' -a delete -d 'Delete a depot'
 
-# ticket subcommands
-complete -c casfa -n '__fish_seen_subcommand_from ticket' -a create -d 'Create a new ticket'
-complete -c casfa -n '__fish_seen_subcommand_from ticket' -a list -d 'List tickets'
-complete -c casfa -n '__fish_seen_subcommand_from ticket' -a show -d 'Show ticket details'
-complete -c casfa -n '__fish_seen_subcommand_from ticket' -a submit -d 'Submit ticket result'
-complete -c casfa -n '__fish_seen_subcommand_from ticket' -a revoke -d 'Revoke a ticket'
-
 # realm subcommands
 complete -c casfa -n '__fish_seen_subcommand_from realm' -a info -d 'Show realm information'
 complete -c casfa -n '__fish_seen_subcommand_from realm' -a usage -d 'Show storage usage'
@@ -379,7 +351,6 @@ $script:CasfaCommands = @(
     @{ Name = 'info'; Description = 'Show service information' }
     @{ Name = 'node'; Description = 'Node operations' }
     @{ Name = 'depot'; Description = 'Depot management' }
-    @{ Name = 'ticket'; Description = 'Ticket management' }
     @{ Name = 'realm'; Description = 'Realm information' }
     @{ Name = 'cache'; Description = 'Local cache management' }
     @{ Name = 'completion'; Description = 'Generate shell completions' }
@@ -390,7 +361,6 @@ $script:CasfaSubCommands = @{
     'auth' = @('login', 'logout', 'whoami', 'status', 'token')
     'node' = @('get', 'put', 'info', 'cat', 'exists')
     'depot' = @('list', 'create', 'show', 'commit', 'update', 'delete')
-    'ticket' = @('create', 'list', 'show', 'submit', 'revoke')
     'realm' = @('info', 'usage')
     'cache' = @('stats', 'clear', 'path', 'enable', 'disable')
     'completion' = @('bash', 'zsh', 'fish', 'powershell')
@@ -414,7 +384,6 @@ Register-ArgumentCompleter -CommandName casfa -Native -ScriptBlock {
             @{ Name = '--profile'; Description = 'Use specified profile' }
             @{ Name = '--base-url'; Description = 'Override service base URL' }
             @{ Name = '--token'; Description = 'Use agent token' }
-            @{ Name = '--ticket'; Description = 'Use ticket' }
             @{ Name = '--realm'; Description = 'Specify realm ID' }
             @{ Name = '--no-cache'; Description = 'Disable local cache' }
             @{ Name = '-f'; Description = 'Output format' }
@@ -461,7 +430,7 @@ Register-ArgumentCompleter -CommandName casfa -Native -ScriptBlock {
     $subCmd = $null
     for ($i = 1; $i -lt $wordCount; $i++) {
         $word = $words[$i]
-        if ($word -notlike '-*' -and $words[$i - 1] -notmatch '^(-p|--profile|-f|--format|--base-url|--token|--ticket|--realm)$') {
+        if ($word -notlike '-*' -and $words[$i - 1] -notmatch '^(-p|--profile|-f|--format|--base-url|--token|--realm)$') {
             if ($null -eq $mainCmd) {
                 $mainCmd = $word
             } elseif ($null -eq $subCmd) {

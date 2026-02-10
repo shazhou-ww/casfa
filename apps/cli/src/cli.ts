@@ -10,7 +10,6 @@ import { registerDepotCommands } from "./commands/depot";
 import { registerInfoCommand } from "./commands/info";
 import { registerNodeCommands } from "./commands/node";
 import { registerRealmCommands } from "./commands/realm";
-import { registerTicketCommands } from "./commands/ticket";
 
 const program = new Command();
 
@@ -20,7 +19,6 @@ program
   .version("0.1.0")
   .option("-p, --profile <name>", "use specified profile")
   .option("--base-url <url>", "override service base URL")
-  .option("--ticket <ticket>", "use ticket for authentication")
   .option("--realm <realm-id>", "specify realm ID")
   .option("--no-cache", "disable local cache")
   .option("-f, --format <type>", "output format: text|json|yaml|table", "text")
@@ -34,7 +32,6 @@ registerInfoCommand(program);
 registerNodeCommands(program);
 registerDepotCommands(program);
 registerDelegateCommands(program);
-registerTicketCommands(program);
 registerRealmCommands(program);
 registerCacheCommands(program);
 registerCompletionCommands(program);

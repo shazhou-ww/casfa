@@ -102,22 +102,18 @@ export const createTreeOps = (deps: FsServiceDeps) => {
   // --------------------------------------------------------------------------
 
   /**
-   * Resolve a user-facing nodeKey (node:xxx / depot:xxx / ticket:xxx) to a hex
-   * storage key.
+   * Resolve a user-facing nodeKey (nod_xxx / dpt_xxx) to a hex storage key.
    */
   const resolveNodeKey = async (realm: string, nodeKey: string): Promise<string | FsError> => {
-    if (nodeKey.startsWith("node:")) {
+    if (nodeKey.startsWith("nod_")) {
       return nodeKeyToHex(nodeKey);
     }
-    if (nodeKey.startsWith("depot:")) {
+    if (nodeKey.startsWith("dpt_")) {
       const depot = await depotsDb.get(realm, nodeKey);
       if (!depot) {
         return fsError("INVALID_ROOT", 400, `Depot not found: ${nodeKey}`);
       }
-      return depot.root;
-    }
-    if (nodeKey.startsWith("ticket:")) {
-      return fsError("INVALID_ROOT", 400, `Ticket root resolution not yet supported: ${nodeKey}`);
+      return nodeKeyToHex(depot.root);
     }
     return fsError("INVALID_ROOT", 400, `Invalid nodeKey format: ${nodeKey}`);
   };

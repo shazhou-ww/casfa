@@ -26,7 +26,7 @@ export const MAGIC_NUMBER = 0x01544c44;
 /**
  * Prefix for Token ID string format
  */
-export const TOKEN_ID_PREFIX = "dlt1_";
+export const TOKEN_ID_PREFIX = "tkn_";
 
 /**
  * Maximum delegation depth (0-15, stored in high nibble)

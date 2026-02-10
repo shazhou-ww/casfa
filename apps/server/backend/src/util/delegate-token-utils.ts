@@ -14,6 +14,7 @@ import {
   formatTokenId,
   type DelegateTokenInput,
 } from "@casfa/delegate-token";
+import { decodeCrockfordBase32 } from "@casfa/protocol";
 import { blake3 } from "@noble/hashes/blake3";
 
 // ============================================================================
@@ -33,7 +34,7 @@ const blake3_128: (data: Uint8Array) => Uint8Array = (data) => {
 // ============================================================================
 
 export type TokenPairInput = {
-  /** Delegate ID (UUID v7) — will be left-padded to 32 bytes */
+  /** Delegate ID (dlt_CB32 format) — will be decoded + left-padded to 32 bytes */
   delegateId: string;
   /** Realm hash (32 bytes) */
   realmHash: Uint8Array;
@@ -64,21 +65,22 @@ export type TokenPair = {
 };
 
 /**
- * Convert a delegate UUID string to a 32-byte issuer field.
- * UUID v7 is 16 bytes — left-pad with zeros to 32 bytes.
+ * Convert a delegate ID (dlt_CB32) to a 32-byte issuer field.
+ * Decode CB32 to get 16 bytes, left-pad with zeros to 32 bytes.
  */
 export function delegateIdToIssuer(delegateId: string): Uint8Array {
-  // Parse UUID hex — remove hyphens
-  const hex = delegateId.replace(/-/g, "");
-  if (hex.length !== 32) {
-    throw new Error(`Invalid delegate ID format (expected UUID): ${delegateId}`);
+  if (!delegateId.startsWith("dlt_")) {
+    throw new Error(`Invalid delegate ID format (expected dlt_ prefix): ${delegateId}`);
+  }
+  const base32Part = delegateId.slice(4);
+  const decoded = decodeCrockfordBase32(base32Part);
+  if (decoded.length !== 16) {
+    throw new Error(`Invalid delegate ID: expected 16 bytes, got ${decoded.length}`);
   }
 
   const issuer = new Uint8Array(32);
-  // Left-pad: write 16-byte UUID to bytes 16-31
-  for (let i = 0; i < 16; i++) {
-    issuer[16 + i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
+  // Left-pad: write 16-byte ID to bytes 16-31
+  issuer.set(decoded, 16);
   return issuer;
 }
 

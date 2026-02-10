@@ -238,8 +238,8 @@ export async function resolveRelativeScope(
  * Parse a CAS URI and extract the node hash
  *
  * CAS URI formats:
- * - cas://depot:DEPOT_ID - Reference to depot's current root
- * - cas://node:HASH - Direct node reference
+ * - cas://dpt_ID - Reference to depot's current root
+ * - cas://nod_HASH - Direct node reference
  *
  * @param uri - CAS URI string
  * @returns Parsed URI info or null if invalid
@@ -253,15 +253,13 @@ export function parseCasUri(
 
   const path = uri.slice(6);
 
-  if (path.startsWith("depot:")) {
-    const depotId = path.slice(6);
-    if (!depotId) return null;
+  if (path.startsWith("dpt_")) {
+    const depotId = path;
     return { type: "depot", depotId };
   }
 
-  if (path.startsWith("node:")) {
-    const hash = path.slice(5);
-    if (!hash) return null;
+  if (path.startsWith("nod_")) {
+    const hash = path;
     return { type: "node", hash };
   }
 

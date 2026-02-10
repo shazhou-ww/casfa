@@ -69,7 +69,7 @@ export const createJwtAuthMiddleware = (deps: JwtAuthMiddlewareDeps): Middleware
       const auth: JwtAuthContext = {
         type: "jwt",
         userId,
-        realm: `usr_${userId}`,
+        realm: userId,
         email,
         name,
         role,

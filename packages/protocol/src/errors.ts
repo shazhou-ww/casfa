@@ -71,20 +71,8 @@ export const REQUEST_DENIED = "REQUEST_DENIED";
 // Resource Error Codes
 // ============================================================================
 
-/** Ticket not found */
-export const TICKET_NOT_FOUND = "TICKET_NOT_FOUND";
-
-/** Ticket is not in pending status */
-export const TICKET_NOT_PENDING = "TICKET_NOT_PENDING";
-
-/** Ticket has expired */
-export const TICKET_EXPIRED = "TICKET_EXPIRED";
-
-/** Access Token is already bound to another ticket */
+/** Access Token is already bound to another entity */
 export const TOKEN_ALREADY_BOUND = "TOKEN_ALREADY_BOUND";
-
-/** No permission to bind the specified Access Token */
-export const TICKET_BIND_PERMISSION_DENIED = "TICKET_BIND_PERMISSION_DENIED";
 
 /** Bound token is invalid (not found, not access type, or revoked) */
 export const INVALID_BOUND_TOKEN = "INVALID_BOUND_TOKEN";
@@ -169,11 +157,7 @@ export const ErrorCodeSchema = z.enum([
   REQUEST_NOT_PENDING,
   REQUEST_DENIED,
   // Resources
-  TICKET_NOT_FOUND,
-  TICKET_NOT_PENDING,
-  TICKET_EXPIRED,
   TOKEN_ALREADY_BOUND,
-  TICKET_BIND_PERMISSION_DENIED,
   INVALID_BOUND_TOKEN,
   DEPOT_NOT_FOUND,
   NODE_NOT_FOUND,

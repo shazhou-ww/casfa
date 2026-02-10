@@ -1,14 +1,16 @@
 /**
  * Common schema definitions and ID format patterns
  *
- * All 128-bit identifiers use Crockford Base32 encoding (26 characters).
+ * All 128-bit identifiers use Crockford Base32 encoding (26 characters)
+ * with a 4-character prefix: prefix_[CB32]{26}
+ *
  * Crockford Base32 charset: 0-9, A-H, J-K, M-N, P-T, V-Z (excludes I, L, O, U)
  */
 
 import { z } from "zod";
 
 // ============================================================================
-// ID Format Patterns
+// Crockford Base32 Encoding
 // ============================================================================
 
 /**
@@ -89,25 +91,34 @@ export function decodeCrockfordBase32(str: string): Uint8Array {
   return new Uint8Array(result);
 }
 
+// ============================================================================
+// Node Key Conversion (nod_ prefix)
+// ============================================================================
+
+/**
+ * Node key prefix
+ */
+export const NODE_KEY_PREFIX = "nod_";
+
 /**
  * Convert 128-bit hash bytes to node key string
- * Format: node:{crockford_base32(hash)}
+ * Format: nod_{crockford_base32(hash)}
  */
 export function hashToNodeKey(hash: Uint8Array): string {
   if (hash.length !== 16) {
     throw new Error(`Invalid hash length: expected 16 bytes, got ${hash.length}`);
   }
-  return `node:${encodeCrockfordBase32(hash)}`;
+  return `${NODE_KEY_PREFIX}${encodeCrockfordBase32(hash)}`;
 }
 
 /**
  * Extract 128-bit hash bytes from node key string
  */
 export function nodeKeyToHash(key: string): Uint8Array {
-  if (!key.startsWith("node:")) {
+  if (!key.startsWith(NODE_KEY_PREFIX)) {
     throw new Error(`Invalid node key format: ${key}`);
   }
-  const base32Part = key.slice(5);
+  const base32Part = key.slice(NODE_KEY_PREFIX.length);
   const hash = decodeCrockfordBase32(base32Part);
   if (hash.length !== 16) {
     throw new Error(`Invalid hash length after decode: expected 16 bytes, got ${hash.length}`);
@@ -145,80 +156,71 @@ export function nodeKeyToHex(nodeKey: string): string {
  */
 export const EMPTY_DICT_NODE_KEY = hexToNodeKey("0000b2da2b8398251c05e6a73a6f1918");
 
+// ============================================================================
+// ID Format Patterns — unified prefix_[CB32]{26}
+// ============================================================================
+
 /**
  * User ID format: usr_{base32}
+ * Also serves as realm ID.
  * Example: usr_A6JCHNMFWRT90AXMYWHJ8HKS90
  */
 export const USER_ID_REGEX = new RegExp(`^usr_[${CROCKFORD_BASE32}]{26}$`);
 
 /**
- * Ticket ID format: ticket:{ulid}
- * Example: ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC
+ * Delegate ID format: dlt_{base32} (ULID-based)
+ * Example: dlt_01HQXK5V8N3Y7M2P4R6T9W0ABC
  */
-export const TICKET_ID_REGEX = new RegExp(`^ticket:[${CROCKFORD_BASE32}]{26}$`);
+export const DELEGATE_ID_REGEX = new RegExp(`^dlt_[${CROCKFORD_BASE32}]{26}$`);
 
 /**
- * Depot ID format: depot:{name} or depot:{ulid}
- * Examples: depot:MAIN, depot:01HQXK5V8N3Y7M2P4R6T9W0ABC
+ * Token ID format: tkn_{base32}
+ * blake3_128(token_bytes) encoded as CB32
+ * Example: tkn_5R8F1Y3GHKM9QXW2TV4BCEJN70
  */
-export const DEPOT_ID_REGEX = /^depot:[A-Za-z0-9_-]+$/;
+export const DELEGATE_TOKEN_ID_REGEX = new RegExp(`^tkn_[${CROCKFORD_BASE32}]{26}$`);
 
 /**
- * @deprecated Use DELEGATE_TOKEN_ID_REGEX instead
- * Old client ID format: client:{blake3s(pubkey)}
+ * Depot ID format: dpt_{base32}
+ * Example: dpt_7QWER2T8Y3M5K9BXFNHJC6D0PV
  */
-export const CLIENT_ID_REGEX = new RegExp(`^client:[${CROCKFORD_BASE32}]{26}$`);
+export const DEPOT_ID_REGEX = new RegExp(`^dpt_[${CROCKFORD_BASE32}]{26}$`);
 
 /**
- * @deprecated Use DELEGATE_TOKEN_ID_REGEX instead
- * Old token ID format: token:{blake3s(token)}
+ * Node key format: nod_{crockford_base32(blake3s(content))}
+ * 26 characters (128-bit BLAKE3s hash)
+ * Example: nod_A6JCHNMFWRT90AXMYWHJ8HKS90
  */
-export const TOKEN_ID_REGEX = new RegExp(`^token:[${CROCKFORD_BASE32}]{26}$`);
+export const NODE_KEY_REGEX = new RegExp(`^nod_[${CROCKFORD_BASE32}]{26}$`);
 
 /**
- * Delegate Token ID format: dlt1_{base32}
- * Example: dlt1_4xzrt7y2m5k9bqwp3fnhjc6d
- * Note: Uses lowercase Crockford Base32 (24 characters for 120 bits)
+ * Authorization Request ID format: req_{base32}
+ * Example: req_9X2M5K8BFNHJC6D0PV3QWER2T7Y
  */
-export const DELEGATE_TOKEN_ID_REGEX = /^dlt1_[0-9a-hjkmnp-tv-z]{24}$/;
+export const REQUEST_ID_REGEX = new RegExp(`^req_[${CROCKFORD_BASE32}]{26}$`);
 
 /**
- * Authorization Request ID format: req_{base64url}
- * Example: req_xxxxxxxxxxxxxxxxxxxxxxxx
- */
-export const REQUEST_ID_REGEX = /^req_[A-Za-z0-9_-]{22,}$/;
-
-/**
- * Node key format: node:{crockford_base32(blake3s(content))}
- * Uses Crockford Base32, 26 characters (128-bit BLAKE3s hash)
- * Example: node:A6JCHNMFWRT90AXMYWHJ8HKS90
- */
-export const NODE_KEY_REGEX = new RegExp(`^node:[${CROCKFORD_BASE32}]{26}$`);
-
-/**
- * Issuer ID format: can be usr_{id} or dlt1_{hash}
+ * Issuer ID format: can be usr_{id} or tkn_{hash}
  * - usr_{base32}: User ID (for user-issued tokens)
- * - dlt1_{base32}: Delegate Token ID (for delegated tokens)
+ * - tkn_{base32}: Token ID (for delegated tokens)
  */
-export const ISSUER_ID_REGEX = /^(usr_[0-9A-HJKMNP-TV-Z]{26}|dlt1_[0-9a-hjkmnp-tv-z]{24})$/i;
+export const ISSUER_ID_REGEX = new RegExp(
+  `^(usr_[${CROCKFORD_BASE32}]{26}|tkn_[${CROCKFORD_BASE32}]{26})$`,
+);
 
 // ============================================================================
 // Zod Schemas for IDs
 // ============================================================================
 
 export const UserIdSchema = z.string().regex(USER_ID_REGEX, "Invalid user ID format");
-export const TicketIdSchema = z.string().regex(TICKET_ID_REGEX, "Invalid ticket ID format");
-export const DepotIdSchema = z.string().regex(DEPOT_ID_REGEX, "Invalid depot ID format");
-/** @deprecated Use DelegateTokenIdSchema instead */
-export const ClientIdSchema = z.string().regex(CLIENT_ID_REGEX, "Invalid client ID format");
-/** @deprecated Use DelegateTokenIdSchema instead */
-export const TokenIdSchema = z.string().regex(TOKEN_ID_REGEX, "Invalid token ID format");
-export const NodeKeySchema = z.string().regex(NODE_KEY_REGEX, "Invalid node key format");
-export const IssuerIdSchema = z.string().regex(ISSUER_ID_REGEX, "Invalid issuer ID format");
+export const DelegateIdSchema = z.string().regex(DELEGATE_ID_REGEX, "Invalid delegate ID format");
 export const DelegateTokenIdSchema = z
   .string()
-  .regex(DELEGATE_TOKEN_ID_REGEX, "Invalid delegate token ID format");
+  .regex(DELEGATE_TOKEN_ID_REGEX, "Invalid token ID format");
+export const DepotIdSchema = z.string().regex(DEPOT_ID_REGEX, "Invalid depot ID format");
+export const NodeKeySchema = z.string().regex(NODE_KEY_REGEX, "Invalid node key format");
 export const RequestIdSchema = z.string().regex(REQUEST_ID_REGEX, "Invalid request ID format");
+export const IssuerIdSchema = z.string().regex(ISSUER_ID_REGEX, "Invalid issuer ID format");
 
 // ============================================================================
 // User Role
@@ -234,24 +236,12 @@ export const UserRoleSchema = z.enum(["unauthorized", "authorized", "admin"]);
 export type UserRole = z.infer<typeof UserRoleSchema>;
 
 // ============================================================================
-// Ticket Status
-// ============================================================================
-
-/**
- * Ticket status:
- * - pending: Waiting for submission, task in progress
- * - submitted: Task completed, root node set
- */
-export const TicketStatusSchema = z.enum(["pending", "submitted"]);
-export type TicketStatus = z.infer<typeof TicketStatusSchema>;
-
-// ============================================================================
 // Token Type
 // ============================================================================
 
 /**
  * Delegate Token types:
- * - delegate: Re-authorization token, can issue child tokens and create tickets
+ * - delegate: Re-authorization token, can issue child tokens
  * - access: Access token, can read/write data but cannot issue tokens
  */
 export const TokenTypeSchema = z.enum(["delegate", "access"]);

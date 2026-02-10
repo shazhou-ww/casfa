@@ -329,7 +329,7 @@ export function registerNodeCommands(program: Command): void {
 
 function getDefaultFilename(key: string): string {
   // Extract node ID from key
-  const nodeId = key.startsWith("node:") ? key.slice(5) : key;
+  const nodeId = key.startsWith("nod_") ? key.slice(4) : key;
   return nodeId.slice(0, 12);
 }
 

@@ -23,7 +23,6 @@ import {
   createRealmController,
   createRefreshController,
   createRootTokenController,
-  createTicketsController,
 } from "./controllers/index.ts";
 import { createLocalAuthController } from "./controllers/local-auth.ts";
 // MCP
@@ -96,7 +95,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   const {
     delegatesDb,
     tokenRecordsDb,
-    ticketsDb,
     scopeSetNodesDb,
     ownershipV2Db,
     depotsDb,
@@ -187,10 +185,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     usageDb,
     serverConfig: config.server,
   });
-  const tickets = createTicketsController({
-    ticketsDb,
-    depotsDb,
-  });
   const chunks = createChunksController({
     storage,
     hashProvider,
@@ -205,7 +199,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     ownershipV2Db,
   });
   const mcp = createMcpController({
-    ticketsDb,
     ownershipV2Db,
     storage,
     serverConfig: config.server,
@@ -264,7 +257,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     localAuth,
     admin,
     realm,
-    tickets,
     chunks,
     depots,
     filesystem,

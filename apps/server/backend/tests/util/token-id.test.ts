@@ -5,61 +5,60 @@
 import { describe, expect, it } from "bun:test";
 import {
   extractTokenId,
-  generateAgentTokenId,
+  generateDelegateId,
   generateDepotId,
-  generateTicketId,
-  generateTokenId,
+  generateRequestId,
   toTokenPk,
 } from "../../src/util/token-id.ts";
 
 describe("Token ID Utilities", () => {
-  describe("generateTokenId", () => {
-    it("should generate ID with default prefix", () => {
-      const id = generateTokenId();
-      expect(id.startsWith("tok_")).toBe(true);
+  describe("generateDelegateId", () => {
+    it("should generate ID with dlt_ prefix", () => {
+      const id = generateDelegateId();
+      expect(id.startsWith("dlt_")).toBe(true);
     });
 
-    it("should generate ID with custom prefix", () => {
-      const id = generateTokenId("custom");
-      expect(id.startsWith("custom_")).toBe(true);
-    });
-
-    it("should generate 32-character hex after prefix", () => {
-      const id = generateTokenId();
-      const parts = id.split("_");
-      expect(parts.length).toBe(2);
-      const hex = parts[1] as string;
-      expect(hex.length).toBe(32);
-      expect(/^[0-9a-f]+$/.test(hex)).toBe(true);
+    it("should generate 26-character CB32 after prefix", () => {
+      const id = generateDelegateId();
+      const suffix = id.slice(4); // after "dlt_"
+      expect(suffix.length).toBe(26);
+      expect(/^[0-9A-HJKMNP-TV-Z]+$/.test(suffix)).toBe(true);
     });
 
     it("should generate unique IDs", () => {
       const ids = new Set<string>();
       for (let i = 0; i < 100; i++) {
-        ids.add(generateTokenId());
+        ids.add(generateDelegateId());
       }
       expect(ids.size).toBe(100);
     });
   });
 
-  describe("generateTicketId", () => {
-    it("should generate ID with tkt prefix", () => {
-      const id = generateTicketId();
-      expect(id.startsWith("tkt_")).toBe(true);
-    });
-  });
-
-  describe("generateAgentTokenId", () => {
-    it("should generate ID with agt prefix", () => {
-      const id = generateAgentTokenId();
-      expect(id.startsWith("agt_")).toBe(true);
-    });
-  });
-
   describe("generateDepotId", () => {
-    it("should generate ID with dpt prefix", () => {
+    it("should generate ID with dpt_ prefix", () => {
       const id = generateDepotId();
       expect(id.startsWith("dpt_")).toBe(true);
+    });
+
+    it("should generate 26-character CB32 after prefix", () => {
+      const id = generateDepotId();
+      const suffix = id.slice(4); // after "dpt_"
+      expect(suffix.length).toBe(26);
+      expect(/^[0-9A-HJKMNP-TV-Z]+$/.test(suffix)).toBe(true);
+    });
+  });
+
+  describe("generateRequestId", () => {
+    it("should generate ID with req_ prefix", () => {
+      const id = generateRequestId();
+      expect(id.startsWith("req_")).toBe(true);
+    });
+
+    it("should generate 26-character CB32 after prefix", () => {
+      const id = generateRequestId();
+      const suffix = id.slice(4); // after "req_"
+      expect(suffix.length).toBe(26);
+      expect(/^[0-9A-HJKMNP-TV-Z]+$/.test(suffix)).toBe(true);
     });
   });
 
@@ -94,7 +93,7 @@ describe("Token ID Utilities", () => {
 
   describe("roundtrip", () => {
     it("should roundtrip token ID through pk", () => {
-      const original = generateTokenId();
+      const original = generateDelegateId();
       const pk = toTokenPk(original);
       const extracted = extractTokenId(pk);
       expect(extracted).toBe(original);

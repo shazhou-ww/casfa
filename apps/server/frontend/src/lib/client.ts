@@ -64,7 +64,7 @@ export function getClient(): Promise<CasfaClient> {
         try {
           const state = JSON.parse(raw) as TokenState;
           if (state.user?.userId) {
-            realm = `usr_${state.user.userId}`;
+            realm = state.user.userId;
           }
         } catch {
           // ignore
@@ -87,7 +87,7 @@ export function getClient(): Promise<CasfaClient> {
         // Need to recreate client with the correct realm
         const newClient = await createClient({
           baseUrl: "",
-          realm: `usr_${state.user.userId}`,
+          realm: state.user.userId,
           tokenStorage: localStorageProvider,
           onAuthRequired: () => {
             window.location.href = "/login";

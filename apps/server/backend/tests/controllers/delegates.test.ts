@@ -96,7 +96,7 @@ function createMockTokenRecordsDb(): TokenRecordsDb {
     create: mock(async () => {}),
     get: mock(async () => null),
     markUsed: mock(async () => true),
-    invalidateFamily: mock(async () => 0),
+    invalidateByDelegate: mock(async () => 0),
     listByDelegate: mock(async () => ({ tokens: [], nextCursor: undefined })),
   };
 }
@@ -197,7 +197,7 @@ describe("DelegatesController", () => {
       expect(body.accessToken).toBeDefined();
       expect(body.refreshTokenId).toBeDefined();
       expect(body.accessTokenId).toBeDefined();
-      expect((body.refreshTokenId as string).startsWith("dlt1_")).toBe(true);
+      expect((body.refreshTokenId as string).startsWith("tkn_")).toBe(true);
     });
 
     it("stores delegate in DB", async () => {

@@ -56,7 +56,7 @@ describe("CLI Node Commands", () => {
       // Output should contain a node key (Crockford Base32, 26 chars)
       const nodeKey = extractNodeKey(result.stdout);
       expect(nodeKey).not.toBeNull();
-      expect(nodeKey).toMatch(/^node:[0-9A-HJKMNP-TV-Z]{26}$/i);
+      expect(nodeKey).toMatch(/^nod_[0-9A-HJKMNP-TV-Z]{26}$/i);
     });
 
     it("should upload a binary file", async () => {
@@ -166,7 +166,7 @@ describe("CLI Node Commands", () => {
 
     it("should show non-existent nodes", async () => {
       // Use a fake node key (26 chars Crockford Base32)
-      const fakeNodeKey = `node:${"A".repeat(26)}`;
+      const fakeNodeKey = `nod_${"A".repeat(26)}`;
 
       const result = await runCliWithAuth(["node", "exists", fakeNodeKey], ctx, user);
 
@@ -189,7 +189,7 @@ describe("CLI Node Commands", () => {
 
       const key1 = extractNodeKey(put1.stdout);
       const key2 = extractNodeKey(put2.stdout);
-      const fakeKey = `node:${"B".repeat(26)}`;
+      const fakeKey = `nod_${"B".repeat(26)}`;
 
       expect(key1).not.toBeNull();
       expect(key2).not.toBeNull();

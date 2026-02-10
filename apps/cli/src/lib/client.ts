@@ -22,7 +22,6 @@ import {
 export interface ClientOptions {
   profile?: string;
   baseUrl?: string;
-  ticket?: string;
   realm?: string;
 }
 
@@ -43,7 +42,7 @@ export interface ResolvedClient {
   /** Realm ID (if set) */
   realm: string;
   /** Authentication type */
-  authType: "none" | "user" | "delegate" | "ticket";
+  authType: "none" | "user" | "delegate";
 }
 
 // ============================================================================
@@ -163,27 +162,8 @@ export async function createClient(options: ClientOptions): Promise<ResolvedClie
     );
   }
 
-  const ticketId = options.ticket || process.env.CASFA_TICKET;
-
   // Determine auth type and create appropriate client
   let authType: ResolvedClient["authType"] = "none";
-
-  if (ticketId) {
-    // Ticket authentication
-    authType = "ticket";
-    const client = await createCasfaClient({
-      baseUrl,
-      realm,
-    });
-
-    return {
-      client,
-      profile: profileName,
-      baseUrl,
-      realm,
-      authType,
-    };
-  }
 
   // Use stored credentials via TokenStorageProvider
   const tokenStorage = createCliTokenStorage(profileName);
@@ -271,13 +251,3 @@ export function requireRealmAuth(resolved: ResolvedClient): void {
   requireAuth(resolved);
 }
 
-// ============================================================================
-// API Helpers for Ticket Auth
-// ============================================================================
-
-/**
- * Get the ticket ID from client options.
- */
-export function getTicketId(options: ClientOptions): string | undefined {
-  return options.ticket || process.env.CASFA_TICKET;
-}

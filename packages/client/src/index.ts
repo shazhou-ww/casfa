@@ -22,7 +22,6 @@ export {
   type OAuthMethods,
   type OnAuthRequiredCallback,
   type OnTokenChangeCallback,
-  type TicketMethods,
   type TokenMethods,
   type TokenStorageProvider,
 } from "./client/index.ts";

@@ -1,7 +1,7 @@
 /**
  * Delegate Token ID computation and formatting
  *
- * Token ID = dlt1_{crockford_base32(blake3_128(token_bytes))}
+ * Token ID = tkn_{crockford_base32(blake3_128(token_bytes))}
  */
 
 import { decodeCrockfordBase32, encodeCrockfordBase32 } from "@casfa/protocol";
@@ -39,7 +39,7 @@ export async function computeTokenId(bytes: Uint8Array, hashFn: HashFunction): P
  * Format Token ID hash as string
  *
  * @param id - 16-byte Token ID hash
- * @returns Formatted Token ID (e.g., "dlt1_0A1B2C3D...")
+ * @returns Formatted Token ID (e.g., "tkn_0A1B2C3D...")
  */
 export function formatTokenId(id: Uint8Array): string {
   if (id.length !== TOKEN_ID_HASH_LENGTH) {
@@ -53,7 +53,7 @@ export function formatTokenId(id: Uint8Array): string {
 /**
  * Parse Token ID string to bytes
  *
- * @param str - Token ID string (e.g., "dlt1_0A1B2C3D...")
+ * @param str - Token ID string (e.g., "tkn_0A1B2C3D...")
  * @returns 16-byte Token ID hash
  * @throws Error if format is invalid
  */

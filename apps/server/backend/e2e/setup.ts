@@ -35,7 +35,6 @@ import {
   createOwnershipV2Db,
   createRefCountDb,
   createScopeSetNodesDb,
-  createTicketsDb,
   createTokenRecordsDb,
   createUsageDb,
   createUserRolesDb,
@@ -55,7 +54,7 @@ export const uniqueId = () => randomUUID();
 
 /**
  * Generate a test node key from a simple numeric value
- * Creates a valid node:base32 format key
+ * Creates a valid nod_base32 format key
  */
 export const testNodeKey = (n: number): string => {
   // Create a 16-byte hash with the number at the end
@@ -178,14 +177,6 @@ export type DelegateTokenResult = {
 /** Access Token creation result (same as DelegateTokenResult in new model) */
 export type AccessTokenResult = DelegateTokenResult;
 
-/** Ticket creation result (Access Token creates Ticket) */
-export type TicketResult = {
-  ticketId: string;
-  title: string;
-  status: "pending" | "submitted";
-  expiresAt: number;
-};
-
 export type TestHelpers = {
   // ========================================================================
   // User JWT Helpers
@@ -280,19 +271,6 @@ export type TestHelpers = {
     }
   ) => Promise<AccessTokenResult>;
 
-  // ========================================================================
-  // Ticket Helpers (Access Token required)
-  // ========================================================================
-
-  /** Create a Ticket (Access Token creates Ticket) */
-  createTicket: (
-    accessTokenBase64: string,
-    realm: string,
-    options?: {
-      title?: string;
-      expiresIn?: number;
-    }
-  ) => Promise<TicketResult>;
 };
 
 // ============================================================================
@@ -320,7 +298,6 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
   const db: DbInstances = {
     delegatesDb: createDelegatesDb({ tableName: config.db.casRealmTable }),
     tokenRecordsDb: createTokenRecordsDb({ tableName: config.db.tokensTable }),
-    ticketsDb: createTicketsDb({ tableName: config.db.casRealmTable }),
     scopeSetNodesDb: createScopeSetNodesDb({ tableName: config.db.tokensTable }),
     ownershipV2Db: createOwnershipV2Db({ tableName: config.db.tokensTable }),
     depotsDb: createDepotsDb({ tableName: config.db.casRealmTable }),
@@ -374,7 +351,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
     createTestUser: async (userUuid: string, role: "admin" | "authorized" = "authorized") => {
       // Convert UUID to user:base32 format (like the real JWT verifier does)
       const userId = uuidToUserId(userUuid);
-      const realm = `usr_${userId}`;
+      const realm = userId; // realm = userId (already has usr_ prefix)
 
       // Set user role in database (uses user:base32 format)
       await db.userRolesDb.setRole(userId, role);
@@ -566,30 +543,6 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
       return helpers.createDelegateToken(userToken, realm, options);
     },
 
-    // ========================================================================
-    // Ticket Helpers (Access Token required)
-    // ========================================================================
-
-    createTicket: async (accessTokenBase64, realm, options = {}) => {
-      const { title = "Test Ticket", expiresIn } = options;
-
-      const response = await helpers.accessRequest(
-        accessTokenBase64,
-        "POST",
-        `/api/realm/${realm}/tickets`,
-        {
-          title,
-          expiresIn,
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Failed to create ticket: ${response.status} - ${error}`);
-      }
-
-      return (await response.json()) as TicketResult;
-    },
   };
 
   const stop = () => {

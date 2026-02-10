@@ -15,8 +15,8 @@ export function ensureCacheDir(): void {
 }
 
 export function getCachedNodePath(key: string): string {
-  // key format: "node:XXXX..." -> store as XXXX...
-  const nodeId = key.startsWith("node:") ? key.slice(5) : key;
+  // key format: "nod_XXXX..." -> store as XXXX...
+  const nodeId = key.startsWith("nod_") ? key.slice(4) : key;
   const cachePath = getCachePath();
   // Use first 2 chars as subdirectory for better filesystem performance
   const subdir = nodeId.slice(0, 2);

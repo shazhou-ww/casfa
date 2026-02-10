@@ -53,14 +53,5 @@ export {
   pollAuthRequest,
   rejectAuthRequest,
 } from "./requests.ts";
-// Ticket API
-export {
-  createTicket,
-  getTicket,
-  type ListTicketsResponse,
-  listTickets,
-  type SubmitTicketResponse,
-  submitTicket,
-} from "./tickets.ts";
 // Token management API (new 2-tier model)
 export { createRootToken, refreshToken } from "./tokens.ts";
