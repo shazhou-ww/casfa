@@ -14,6 +14,24 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
 
+    // Workspace paths — resolve @casfa/* to source for dev & IDE
+    "paths": {
+      "@casfa/cas-uri": ["./packages/cas-uri/src/index.ts"],
+      "@casfa/client": ["./packages/client/src/index.ts"],
+      "@casfa/client/types": ["./packages/client/src/types/index.ts"],
+      "@casfa/client/api": ["./packages/client/src/api/index.ts"],
+      "@casfa/client-auth-crypto": ["./packages/client-auth-crypto/src/index.ts"],
+      "@casfa/core": ["./packages/core/src/index.ts"],
+      "@casfa/delegate": ["./packages/delegate/src/index.ts"],
+      "@casfa/delegate-token": ["./packages/delegate-token/src/index.ts"],
+      "@casfa/proof": ["./packages/proof/src/index.ts"],
+      "@casfa/protocol": ["./packages/protocol/src/index.ts"],
+      "@casfa/storage-core": ["./packages/storage-core/src/index.ts"],
+      "@casfa/storage-fs": ["./packages/storage-fs/src/index.ts"],
+      "@casfa/storage-memory": ["./packages/storage-memory/src/index.ts"],
+      "@casfa/storage-s3": ["./packages/storage-s3/src/index.ts"]
+    },
+
     // Best practices
     "strict": true,
     "skipLibCheck": true,
