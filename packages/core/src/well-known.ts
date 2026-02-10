@@ -44,3 +44,32 @@ export const WELL_KNOWN_KEYS = {
   /** Empty dict node - used as initial root for new Depots */
   EMPTY_DICT: EMPTY_DICT_KEY,
 } as const;
+
+// ============================================================================
+// Unified well-known node registry
+// ============================================================================
+
+/**
+ * Map from hex storage key → raw node bytes for all well-known nodes.
+ *
+ * These nodes are virtual — they are never persisted to storage but can be
+ * referenced by depots, ownership records, etc.  Any code path that reads a
+ * node from storage should first check this map so it never hits the backend
+ * for well-known keys.
+ */
+export const WELL_KNOWN_NODES: ReadonlyMap<string, Uint8Array> = new Map([
+  [EMPTY_DICT_KEY, EMPTY_DICT_BYTES],
+]);
+
+/**
+ * Check whether a hex storage key is a well-known node.
+ */
+export const isWellKnownNode = (hexKey: string): boolean => WELL_KNOWN_NODES.has(hexKey);
+
+/**
+ * Get the raw bytes of a well-known node (returns a fresh copy), or null.
+ */
+export const getWellKnownNodeData = (hexKey: string): Uint8Array | null => {
+  const bytes = WELL_KNOWN_NODES.get(hexKey);
+  return bytes ? bytes.slice() : null;
+};
