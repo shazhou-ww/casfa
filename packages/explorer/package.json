@@ -16,7 +16,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "bun run build:js && bun run build:dts",
+    "build:js": "bun build src/index.ts --outdir dist --format esm --sourcemap=external --packages=external --external '@casfa/*' --external '@mui/*' --external react --external react-dom --external 'react/jsx-runtime' --external zod --external zustand --external 'zustand/*' --target=browser --production",
+    "build:dts": "tsup --dts-only",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
