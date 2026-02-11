@@ -229,7 +229,7 @@ export type HashProvider = KeyProvider;
 |----|------|------|
 | **Key 格式** | 🔴 不兼容 | 所有 node key 改变（首字节不同）|
 | **Well-known keys** | 🔴 需更新 | `EMPTY_DICT_KEY` 需重新计算 |
-| **S3 存储路径** | 🟡 路径前缀变化 | 首 2 字符现在由 flag byte 决定，分布特性改变 |
+| **S3 存储路径** | 🟡 路径前缀变化 | 默认前缀从 `cas/blake3s/` 改为 `cas/v1/` |
 | **NODE_KEY_REGEX** | 🟢 不需要改 | CB32 字符集不变 |
 | **DB 中已有 key** | � 需清理 | 服务未上线，直接删除旧数据即可 |
 | **客户端缓存** | 🟢 自动失效 | IndexedDB 中缓存的 node 数据（key 不匹配，自动 miss）|
@@ -241,12 +241,12 @@ export type HashProvider = KeyProvider;
 | 文件 | 改动 |
 |------|------|
 | `types.ts` | `HashProvider` → `KeyProvider` (保留 deprecated alias) |
-| `constants.ts` | 新增 `HASH_ALGO.BLAKE3S_128_SF: 1`（SF = Size-Flagged）|
+| `constants.ts` | 无需修改（Magic 和 HASH_ALGO 不变） |
 | `node.ts` | `encode*Node` 中 `hashProvider.hash` → `keyProvider.computeKey` |
 | `validation.ts` | `validateNode` 参数类型更新 |
 | `controller.ts` | `CasContext.hash` → `CasContext.key` |
 | `well-known.ts` | `EMPTY_DICT_KEY` 重新计算 |
-| `header.ts` | `build*Flags` 函数使用新 hash algo 值 |
+| `header.ts` | 无需修改 |
 | `utils.ts` | 新增 `computeSizeFlagByte()` |
 | `index.ts` | 导出新类型和函数 |
 
@@ -275,8 +275,8 @@ export type HashProvider = KeyProvider;
 
 | 文件 | 改动 |
 |------|------|
-| `s3-storage.ts` | S3 prefix 默认值建议改为 `cas/v2/`（version-based） |
-| `storage-utils.ts` | `toStoragePath` 默认 prefix 更新 |
+| `s3-storage.ts` | S3 prefix 默认值从 `cas/blake3s/` 改为 `cas/v1/` |
+| `storage-utils.ts` | `toStoragePath` 默认 prefix 更新为 `cas/v1/` |
 
 #### `apps/server/backend`
 
@@ -299,15 +299,17 @@ export type HashProvider = KeyProvider;
 |------|------|
 | `src/commands/node.ts` | 内联的 hashProvider 更新为 KeyProvider 实现 |
 
-### 5.3 S3 路径分布影响
+### 5.3 S3 路径与 CB32 编码
 
-当前 S3 路径使用 CB32 key 的前 2 位字符作为子目录，hash 均匀分布时提供良好的
-分散性。改造后，第一字节固定为 size flag，CB32 编码的前 ~1.6 个字符受 flag 控制。
+**CB32 编码不变**：key 仍然是完整的 16 字节，使用相同的 Crockford Base32 编码，
+不跳过 flag byte。这意味着 CB32 字符串的前几个字符会受 flag byte 影响，但这不会
+造成混乱——CB32 key 只是一个 opaque 的标识符，外部不应依赖其字符分布。
 
-**影响**：如果大部分 node 落在少数几个 size 级别内，前缀分布会不均匀。
+S3 子目录仍使用 CB32 key 的前 2 个字符。虽然 flag byte 使分布不再完全均匀，但
+S3 不像传统文件系统那样依赖目录均匀分散来获得性能，实际影响可忽略。
 
-**对策**：S3 路径前缀改为使用 key 的**第 2、3 字符**（跳过 flag byte 的 CB32 编码），
-或者直接使用基于版本的平级前缀 `cas/v2/{2-char-subdir}/{key}`。
+**S3 路径前缀**：默认前缀从 `cas/blake3s/` 改为 `cas/v1/`。服务未正式上线，
+不需要 `v2` 标记。`blake3s` 不再适合作为前缀名（key 不再是纯 hash）。
 
 ---
 
@@ -358,17 +360,9 @@ export type HashProvider = KeyProvider;
 
 **目标：切换到新的 key 生成逻辑。**
 
-1. **`packages/core/src/utils.ts`**
-   - 新增 `computeSizeFlagByte(size: number): number`
-   - 新增 `decodeSizeFlagByte(flag: number): number`（返回上界）
+> `computeSizeFlagByte()` 和 `decodeSizeFlagByte()` 已在 Phase 0 完成。
 
-2. **`packages/core/src/constants.ts`**
-   - 新增 `HASH_ALGO.BLAKE3S_128_SF = 1`（SF = Size-Flagged）
-
-3. **`packages/core/src/header.ts`**
-   - `build*Flags` 函数使用 `HASH_ALGO.BLAKE3S_128_SF`
-
-4. **所有 `KeyProvider` 实现点**
+1. **所有 `KeyProvider` 实现点**
    - `computeKey` 实现改为：
      ```typescript
      async computeKey(data: Uint8Array): Promise<Uint8Array> {
@@ -377,25 +371,35 @@ export type HashProvider = KeyProvider;
        return rawHash;
      }
      ```
+   - 涉及文件：
+     - `apps/server/backend/src/util/hash-provider.ts`
+     - `apps/server/frontend/src/lib/storage.ts`
+     - `apps/cli/src/commands/node.ts`
 
-5. **`packages/core/src/well-known.ts`**
+2. **`packages/core/src/well-known.ts`**
    - 重新计算 `EMPTY_DICT_KEY`
    - 更新 `WELL_KNOWN_NODES` 映射
 
-6. **`packages/protocol/src/common.ts`**
+3. **`packages/protocol/src/common.ts`**
    - 更新 `EMPTY_DICT_NODE_KEY`
 
-7. **`packages/storage-s3/src/storage-utils.ts`**
-   - `toStoragePath` 改用 key 的第 2-3 字符做子目录
-   - 默认 prefix 改为 `cas/v2/`
+4. **`packages/storage-s3/src/storage-utils.ts` + `s3-storage.ts`**
+   - 默认 prefix 从 `cas/blake3s/` 改为 `cas/v1/`
+   - 子目录仍使用 CB32 key 的前 2 字符（不跳过 flag byte）
 
-8. **`packages/core/src/validation.ts`**
+5. **`packages/core/src/validation.ts`**
    - `validateNode` 增加 size flag 一致性校验：
      ```
      computeSizeFlagByte(bytes.length) === actualKey[0]
      ```
 
-9. **更新所有测试**
+6. **不需要修改的文件**
+   - `packages/core/src/constants.ts` — Magic 保持 `CAS\01`，`HASH_ALGO` 保持
+     `BLAKE3S_128 = 0`（hash 算法本身未变，只是 key 首字节被后处理替换）
+   - `packages/core/src/header.ts` — flags 不变
+   - CB32 编码/解码逻辑 — key 仍是完整 16 字节，不跳过 flag byte
+
+7. **更新所有测试**
    - 涉及硬编码 key 值的测试用例全部更新
    - 新增 size flag 相关测试
 
@@ -405,7 +409,6 @@ export type HashProvider = KeyProvider;
 
 - 清理 S3 旧前缀数据、DB 表数据
 - 移除 `HashProvider` deprecated alias
-- 移除 `HASH_ALGO.BLAKE3S_128 = 0`
 - 更新 `CAS_BINARY_FORMAT.md` 规范文档
 
 ---
@@ -419,6 +422,7 @@ export type HashProvider = KeyProvider;
 删除旧前缀下所有对象：
 
 ```bash
+# 旧前缀（如果有历史数据）
 aws s3 rm s3://<bucket>/cas/blake3s/ --recursive
 ```
 
@@ -455,6 +459,6 @@ IndexedDB 缓存在 key 变化后自动 miss，无需特殊处理。
 | 碰撞概率增加 (128→120 bit) | 🟢 低 | $2^{-41}$ @ 万亿 node，可忽略 |
 | 大量代码需改动（类型重命名） | 🟡 中 | Phase 1 做纯重构，与功能变更分离 |
 | 旧数据清理 | 🟢 低 | 服务未上线，直接删除旧数据 |
-| S3 路径分布不均 | 🟡 中 | 改用第 2-3 字符做子目录 |
+| S3 路径分布不均 | � 低 | S3 性能不依赖目录均匀分布，影响可忽略 |
 | 第三方集成中断 | 🟢 低 | 保留 deprecated alias，版本号 major bump |
 | 上线后发现遗漏旧数据引用 | 🟢 低 | 部署前 grep 全量代码确认无硬编码旧 key |
