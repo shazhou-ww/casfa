@@ -177,6 +177,11 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
         const unauthorized: string[] = [];
 
         for (const childKey of childKeys) {
+          // Well-known nodes are universally owned — skip ownership check
+          if (isWellKnownNode(childKey)) {
+            continue;
+          }
+
           // Step 1: ownership verification — check if any delegate in chain owns this child
           let authorized = false;
           for (const id of delegateChain) {

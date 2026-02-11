@@ -5,6 +5,7 @@
  * to interact with the CAS system via the MCP protocol.
  */
 
+import { isWellKnownNode } from "@casfa/core";
 import type { StorageProvider } from "@casfa/storage-core";
 import type { Context } from "hono";
 import { z } from "zod";
@@ -106,8 +107,8 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
       return mcpError(id, MCP_INVALID_PARAMS, "Invalid parameters", parsed.error.issues);
     }
 
-    // Check ownership
-    const hasAccess = await ownershipV2Db.hasAnyOwnership(parsed.data.key);
+    // Check ownership (well-known nodes are universally accessible)
+    const hasAccess = isWellKnownNode(parsed.data.key) || await ownershipV2Db.hasAnyOwnership(parsed.data.key);
     if (!hasAccess) {
       return mcpError(id, MCP_INVALID_PARAMS, "Node not found or not accessible");
     }
