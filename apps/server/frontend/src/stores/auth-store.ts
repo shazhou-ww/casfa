@@ -103,7 +103,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         // ignore
       }
       resetClient();
-      resetStorage();
+      await resetStorage();
       set({
         initialized: false,
         isLoggedIn: false,

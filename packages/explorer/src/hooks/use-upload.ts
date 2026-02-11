@@ -19,6 +19,7 @@ type UseUploadOpts = {
 export function useUpload({ onError }: UseUploadOpts = {}) {
   const client = useExplorerStore((s) => s.client);
   const localFs = useExplorerStore((s) => s.localFs);
+  const beforeCommit = useExplorerStore((s) => s.beforeCommit);
   const depotId = useExplorerStore((s) => s.depotId);
   const depotRoot = useExplorerStore((s) => s.depotRoot);
   const addToUploadQueue = useExplorerStore((s) => s.addToUploadQueue);
@@ -94,6 +95,7 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
         if (!isFsError(result)) {
           // Commit new root to depot (persists across refresh)
           if (depotId) {
+            await beforeCommit?.();
             await client.depots.commit(depotId, { root: result.newRoot }).catch(() => {});
           }
           updateDepotRoot(result.newRoot);
@@ -126,6 +128,7 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
     depotId,
     client,
     localFs,
+    beforeCommit,
     updateUploadItem,
     updateDepotRoot,
     onError,

@@ -26,6 +26,8 @@ export type ExplorerState = {
   client: CasfaClient;
   /** Local @casfa/fs service — all tree operations (read & write) run locally */
   localFs: FsService;
+  /** Called before committing a new root to the server (e.g., flush pending uploads) */
+  beforeCommit: (() => Promise<void>) | null;
   depotId: string | null;
   depotRoot: string | null; // current root node key
 
@@ -148,6 +150,8 @@ export type CreateExplorerStoreOpts = {
   depotId?: string;
   initialPath?: string;
   initialLayout?: "list" | "grid";
+  /** Called before committing a new root to the server (e.g., flush pending uploads) */
+  beforeCommit?: () => Promise<void>;
 };
 
 const LS_PAGE_SIZE = 200;
@@ -172,6 +176,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     // ── Initial state ──
     client: opts.client,
     localFs,
+    beforeCommit: opts.beforeCommit ?? null,
     depotId: opts.depotId ?? null,
     depotRoot: null,
     depots: [],
@@ -404,6 +409,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           return false;
         }
         // Commit new root to depot (persists across refresh)
+        await get().beforeCommit?.();
         await client.depots.commit(depotId, { root: result.newRoot });
         set({
           depotRoot: result.newRoot,
@@ -446,6 +452,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
       // Commit final root to depot (single commit for all deletions)
       if (currentRoot !== depotRoot) {
+        await get().beforeCommit?.();
         await client.depots.commit(depotId, { root: currentRoot }).catch(() => {});
       }
 
@@ -477,6 +484,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           return false;
         }
         // Commit new root to depot
+        await get().beforeCommit?.();
         await client.depots.commit(depotId, { root: result.newRoot });
         set({
           depotRoot: result.newRoot,

@@ -9,4 +9,10 @@
  * consumers of @casfa/storage-indexeddb.
  */
 
-export { type CachedStorageConfig, createCachedStorage } from "@casfa/storage-cached";
+export {
+  type CachedStorageConfig,
+  type CachedStorageProvider,
+  createCachedStorage,
+  type SyncResult,
+  type WriteBackConfig,
+} from "@casfa/storage-cached";

@@ -70,7 +70,7 @@ export function SuccessPage() {
       // ignore
     }
     resetClient();
-    resetStorage();
+    await resetStorage();
     navigate("/login", { replace: true });
   };
 
