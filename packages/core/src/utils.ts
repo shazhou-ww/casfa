@@ -198,3 +198,62 @@ export function hashToKey(hash: Uint8Array): string {
 export function keyToHash(key: string): Uint8Array {
   return decodeCB32(key);
 }
+
+// ============================================================================
+// Size Flag Byte — encode node size magnitude into a single byte
+// ============================================================================
+
+/**
+ * Compute the size flag byte for a given node byte length.
+ *
+ * The byte is split into high nibble H (bits 7–4) and low nibble L (bits 3–0).
+ * It represents the **minimum upper bound** of the size:
+ *
+ *     sizeUpperBound = L × 16^H
+ *
+ * The algorithm finds the smallest (H, L) such that L × 16^H >= size,
+ * with L in [0, 15] and H in [0, 15].
+ *
+ * Key properties:
+ * - **Monotonic**: byte value order ≡ size order (enables range queries)
+ * - **2-power aligned**: each H step is ×16 = ×2⁴
+ * - **Max representable**: 15 × 16¹⁵ ≈ 17.3 EB
+ *
+ * @param size - Node serialized byte length (non-negative integer)
+ * @returns Flag byte (0x00–0xFF)
+ */
+export function computeSizeFlagByte(size: number): number {
+  if (size <= 0) return 0x00;
+
+  // Find smallest (H, L) where L × 16^H >= size, L ∈ [1,15]
+  let power = 1; // 16^H
+  for (let H = 0; H <= 15; H++) {
+    const L = Math.ceil(size / power);
+    if (L <= 15) {
+      return (H << 4) | L;
+    }
+    power *= 16;
+  }
+
+  // Unreachable for any practical size (> 15 × 16^15 ≈ 17.3 EB)
+  return 0xff;
+}
+
+/**
+ * Decode a size flag byte back to its represented upper bound.
+ *
+ *     sizeUpperBound = L × 16^H
+ *
+ * where H = high nibble, L = low nibble.
+ *
+ * Note: when L = 0, the upper bound is 0 regardless of H.
+ *
+ * @param flag - Flag byte (0x00–0xFF)
+ * @returns The size upper bound this flag represents
+ */
+export function decodeSizeFlagByte(flag: number): number {
+  const H = (flag >> 4) & 0x0f;
+  const L = flag & 0x0f;
+  if (L === 0) return 0;
+  return L * 16 ** H;
+}

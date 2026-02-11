@@ -103,10 +103,12 @@ export type {
 // Utility functions
 export {
   bytesToHex,
+  computeSizeFlagByte,
   concatBytes,
   decodeCB32,
   decodePascalString,
   decodePascalStrings,
+  decodeSizeFlagByte,
   encodeCB32,
   encodePascalString,
   encodePascalStrings,
