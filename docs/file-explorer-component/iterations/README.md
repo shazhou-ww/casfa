@@ -72,12 +72,19 @@ graph LR
 
 ### Iter 3 — 导航 + 布局
 
-- [ ] 树形侧边栏
-- [ ] Grid view
-- [ ] 前进/后退导航
-- [ ] 路径输入框
-- [ ] 搜索
-- [ ] 列排序
+- [x] 3.1 `<DirectoryTree>` 树形侧边栏（懒加载展开、点击导航、高亮当前路径、可折叠）
+- [x] 3.2 `<FileGrid>` Grid view（CSS Grid 响应式列数、图标映射、选中/打开/右键交互）
+- [x] 3.3 `<ViewToggle>` List/Grid 视图切换（`ToggleButtonGroup` + Ctrl+Shift+1/2 快捷键）
+- [x] 3.4 前进/后退/上级导航（`pathHistory` + `historyIndex`，`<NavigationButtons>` + Alt+Arrow 快捷键）
+- [x] 3.5 `<PathInput>` 路径输入框（面包屑双击切换、Autocomplete 自动补全、路径校验）
+- [x] 3.6 `<SearchBox>` 搜索过滤（前端模糊匹配、高亮匹配文本、Ctrl+F 聚焦）
+- [x] 3.7 列排序（`TableSortLabel`、名称/大小/类型、文件夹始终置顶）
+- [x] 3.8 `<ResizableSplitter>` 可拖拽面板（min 180px, max 40%）
+- [x] Store 扩展：`pathHistory`, `treeNodes`, `searchTerm`, `sortField/sortDirection`, `sidebarWidth/Collapsed`
+- [x] `utils/sort.ts` + `utils/icon-map.ts` 工具函数
+- [x] `use-navigation.ts` + `use-search.ts` hooks
+- [x] i18n 扩展：导航、搜索、路径输入、侧边栏相关文案（10 keys）
+- [x] TypeScript 编译通过，Biome lint 通过
 
 ### Iter 4 — 交互增强
 
