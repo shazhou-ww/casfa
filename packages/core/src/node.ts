@@ -31,7 +31,7 @@ import type {
   EncodedNode,
   FileInfo,
   FileNodeInput,
-  HashProvider,
+  KeyProvider,
   NodeKind,
   SetNodeInput,
   SuccessorNodeInput,
@@ -144,7 +144,7 @@ function sortChildrenByHash(children: Uint8Array[]): Uint8Array[] {
  */
 export async function encodeSetNode(
   input: SetNodeInput,
-  hashProvider: HashProvider
+  keyProvider: KeyProvider
 ): Promise<EncodedNode> {
   const { children } = input;
 
@@ -166,8 +166,8 @@ export async function encodeSetNode(
   // Combine all sections
   const nodeBytes = concatBytes(headerBytes, childrenBytes);
 
-  // Compute hash
-  const hash = await hashProvider.hash(nodeBytes);
+  // Compute key
+  const hash = await keyProvider.computeKey(nodeBytes);
 
   return { bytes: nodeBytes, hash };
 }
@@ -177,7 +177,7 @@ export async function encodeSetNode(
  */
 export async function encodeDictNode(
   input: DictNodeInput,
-  hashProvider: HashProvider
+  keyProvider: KeyProvider
 ): Promise<EncodedNode> {
   const { children, childNames } = input;
 
@@ -201,8 +201,8 @@ export async function encodeDictNode(
   // Combine all sections
   const nodeBytes = concatBytes(headerBytes, childrenBytes, namesBytes);
 
-  // Compute hash
-  const hash = await hashProvider.hash(nodeBytes);
+  // Compute key
+  const hash = await keyProvider.computeKey(nodeBytes);
 
   return { bytes: nodeBytes, hash };
 }
@@ -212,7 +212,7 @@ export async function encodeDictNode(
  */
 export async function encodeSuccessorNode(
   input: SuccessorNodeInput,
-  hashProvider: HashProvider
+  keyProvider: KeyProvider
 ): Promise<EncodedNode> {
   const { data, children = [] } = input;
 
@@ -226,8 +226,8 @@ export async function encodeSuccessorNode(
   // Combine all sections (no padding needed - Header and Children are 16-byte aligned)
   const nodeBytes = concatBytes(headerBytes, childrenBytes, data);
 
-  // Compute hash
-  const hash = await hashProvider.hash(nodeBytes);
+  // Compute key
+  const hash = await keyProvider.computeKey(nodeBytes);
 
   return { bytes: nodeBytes, hash };
 }
@@ -237,7 +237,7 @@ export async function encodeSuccessorNode(
  */
 export async function encodeFileNode(
   input: FileNodeInput,
-  hashProvider: HashProvider
+  keyProvider: KeyProvider
 ): Promise<EncodedNode> {
   const { data, contentType, fileSize, children = [] } = input;
 
@@ -253,8 +253,8 @@ export async function encodeFileNode(
   // Combine all sections
   const nodeBytes = concatBytes(headerBytes, childrenBytes, fileInfoBytes, data);
 
-  // Compute hash
-  const hash = await hashProvider.hash(nodeBytes);
+  // Compute key
+  const hash = await keyProvider.computeKey(nodeBytes);
 
   return { bytes: nodeBytes, hash };
 }

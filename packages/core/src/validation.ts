@@ -28,7 +28,7 @@ import {
   NODE_TYPE,
 } from "./constants.ts";
 import { decodeHeader, getNodeType } from "./header.ts";
-import type { HashProvider, NodeKind } from "./types.ts";
+import type { KeyProvider, NodeKind } from "./types.ts";
 import { hashToKey } from "./utils.ts";
 
 /**
@@ -184,14 +184,14 @@ function _validatePascalStringsNoExtract(
  * 5. All children exist (if existsChecker provided)
  *
  * @param bytes - Raw node bytes
- * @param expectedKey - Expected hash key (blake3s:...)
- * @param hashProvider - Hash provider for verification
+ * @param expectedKey - Expected storage key (CB32)
+ * @param keyProvider - Key provider for verification
  * @param existsChecker - Optional function to check child existence
  */
 export async function validateNode(
   bytes: Uint8Array,
   expectedKey: string,
-  hashProvider: HashProvider,
+  keyProvider: KeyProvider,
   existsChecker?: ExistsChecker
 ): Promise<ValidationResult> {
   // 1. Check minimum size
@@ -391,7 +391,7 @@ export async function validateNode(
   }
 
   // 11. Verify hash
-  const actualHash = await hashProvider.hash(bytes);
+  const actualHash = await keyProvider.computeKey(bytes);
   const actualKey = hashToKey(actualHash);
   if (actualKey !== expectedKey) {
     return {

@@ -20,7 +20,7 @@ import { createFsStorage } from "@casfa/storage-fs";
 import { createMemoryStorage } from "@casfa/storage-memory";
 import { createS3Storage } from "@casfa/storage-s3";
 import { serveStatic } from "hono/bun";
-import { createApp, createNodeHashProvider } from "./src/app.ts";
+import { createApp, createNodeKeyProvider } from "./src/app.ts";
 import { createCognitoJwtVerifier, createMockJwtVerifier } from "./src/auth/index.ts";
 import { createDbInstances } from "./src/bootstrap.ts";
 import { loadConfig } from "./src/config.ts";
@@ -85,8 +85,8 @@ const createJwtVerifier = () => {
 
 const jwtVerifier = createJwtVerifier();
 
-// Create hash provider
-const hashProvider = createNodeHashProvider();
+// Create key provider
+const keyProvider = createNodeKeyProvider();
 
 // Determine runtime info for /api/info endpoint
 const getAuthType = (): "mock" | "cognito" | "tokens-only" => {
@@ -107,7 +107,7 @@ const app = createApp({
   config,
   db,
   storage,
-  hashProvider,
+  keyProvider,
   jwtVerifier,
   mockJwtSecret,
   runtimeInfo: {

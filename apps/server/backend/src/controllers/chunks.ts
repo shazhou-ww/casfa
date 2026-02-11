@@ -8,7 +8,7 @@
 import {
   decodeNode,
   getWellKnownNodeData,
-  type HashProvider,
+  type KeyProvider,
   isWellKnownNode,
   validateNode,
   validateNodeStructure,
@@ -41,7 +41,7 @@ export type ChunksController = {
 
 type ChunksControllerDeps = {
   storage: StorageProvider;
-  hashProvider: HashProvider;
+  keyProvider: KeyProvider;
   ownershipV2Db: OwnershipV2Db;
   refCountDb: RefCountDb;
   usageDb: UsageDb;
@@ -49,7 +49,7 @@ type ChunksControllerDeps = {
 };
 
 export const createChunksController = (deps: ChunksControllerDeps): ChunksController => {
-  const { storage, hashProvider, ownershipV2Db, refCountDb, usageDb, scopeSetNodesDb } = deps;
+  const { storage, keyProvider, ownershipV2Db, refCountDb, usageDb, scopeSetNodesDb } = deps;
 
   const getRealm = (c: Context<Env>): string => {
     return c.req.param("realmId") ?? c.get("auth").realm;
@@ -127,7 +127,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       }
 
       // Full validation (use storageKey which is hex format)
-      const validationResult = await validateNode(bytes, storageKey, hashProvider, (childKey) =>
+      const validationResult = await validateNode(bytes, storageKey, keyProvider, (childKey) =>
         storage.has(childKey)
       );
 

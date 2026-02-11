@@ -1,7 +1,7 @@
 /**
  * @casfa/fs
  *
- * CAS filesystem operations on top of StorageProvider + HashProvider.
+ * CAS filesystem operations on top of StorageProvider + KeyProvider.
  *
  * This package extracts the pure tree-manipulation logic from the server's
  * filesystem service. It depends only on @casfa/core (CasContext) and

@@ -48,13 +48,13 @@ import { createRouter } from "./router.ts";
 import { createFsService } from "./services/fs/index.ts";
 import type { Env } from "./types.ts";
 import { toCrockfordBase32 } from "./util/encoding.ts";
-import type { CombinedHashProvider } from "./util/hash-provider.ts";
+import type { CombinedKeyProvider } from "./util/hash-provider.ts";
 
 // Re-export DbInstances for convenience
 export type { DbInstances } from "./bootstrap.ts";
 
 // Re-export hash provider from util
-export { type CombinedHashProvider, createNodeHashProvider } from "./util/hash-provider.ts";
+export { type CombinedKeyProvider, type CombinedHashProvider, createNodeKeyProvider, createNodeHashProvider } from "./util/hash-provider.ts";
 
 // ============================================================================
 // Types
@@ -68,7 +68,7 @@ export type AppDependencies = {
   config: AppConfig;
   db: DbInstances;
   storage: StorageProvider;
-  hashProvider: CombinedHashProvider;
+  keyProvider: CombinedKeyProvider;
   /** JWT verifier for Bearer token auth */
   jwtVerifier: JwtVerifier;
   /** Mock JWT secret for local auth (enables local register/login) */
@@ -98,7 +98,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     config,
     db,
     storage,
-    hashProvider,
+    keyProvider,
     jwtVerifier,
     mockJwtSecret,
     runtimeInfo,
@@ -198,7 +198,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   });
   const chunks = createChunksController({
     storage,
-    hashProvider,
+    keyProvider,
     ownershipV2Db,
     refCountDb,
     usageDb,
@@ -248,7 +248,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   // Filesystem service & controller
   const fsService = createFsService({
     storage,
-    hashProvider,
+    keyProvider,
     ownershipV2Db,
     refCountDb,
     usageDb,

@@ -12,11 +12,11 @@ import {
   getNodeKind,
   isValidNode,
 } from "../src/node.ts";
-import type { HashProvider } from "../src/types.ts";
+import type { KeyProvider } from "../src/types.ts";
 
-// Mock hash provider for testing
-const mockHashProvider: HashProvider = {
-  async hash(data: Uint8Array): Promise<Uint8Array> {
+// Mock key provider for testing
+const mockKeyProvider: KeyProvider = {
+  async computeKey(data: Uint8Array): Promise<Uint8Array> {
     // Simple mock: just return first 16 bytes or pad with zeros
     const hash = new Uint8Array(HASH_SIZE);
     hash.set(data.slice(0, Math.min(data.length, HASH_SIZE)));
@@ -24,9 +24,9 @@ const mockHashProvider: HashProvider = {
   },
 };
 
-// Real hash provider using Web Crypto (truncated SHA-256 for testing)
-const realHashProvider: HashProvider = {
-  async hash(data: Uint8Array): Promise<Uint8Array> {
+// Real key provider using Web Crypto (truncated SHA-256 for testing)
+const realKeyProvider: KeyProvider = {
+  async computeKey(data: Uint8Array): Promise<Uint8Array> {
     const hashBuffer = await crypto.subtle.digest("SHA-256", data);
     return new Uint8Array(hashBuffer).slice(0, 16);
   },
@@ -36,7 +36,7 @@ describe("Node", () => {
   describe("encodeFileNode (f-node)", () => {
     it("should encode simple file node", async () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
-      const result = await encodeFileNode({ data, fileSize: 5 }, mockHashProvider);
+      const result = await encodeFileNode({ data, fileSize: 5 }, mockKeyProvider);
 
       // Header(16) + FileInfo(64) + data(5) = 85
       expect(result.bytes.length).toBe(HEADER_SIZE + FILEINFO_SIZE + 5);
@@ -47,7 +47,7 @@ describe("Node", () => {
       const data = new Uint8Array([1, 2, 3]);
       const result = await encodeFileNode(
         { data, contentType: "image/png", fileSize: 3 },
-        mockHashProvider
+        mockKeyProvider
       );
 
       const decoded = decodeNode(result.bytes);
@@ -64,7 +64,7 @@ describe("Node", () => {
 
       const result = await encodeFileNode(
         { data, children: [child1, child2], fileSize: 1000 },
-        mockHashProvider
+        mockKeyProvider
       );
 
       const decoded = decodeNode(result.bytes);
@@ -79,7 +79,7 @@ describe("Node", () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
       const result = await encodeFileNode(
         { data, fileSize: 1000000, contentType: "text/plain" },
-        mockHashProvider
+        mockKeyProvider
       );
 
       const decoded = decodeNode(result.bytes);
@@ -92,7 +92,7 @@ describe("Node", () => {
 
       const result = await encodeFileNode(
         { data, contentType: longContentType, fileSize: 3 },
-        mockHashProvider
+        mockKeyProvider
       );
 
       const decoded = decodeNode(result.bytes);
@@ -103,7 +103,7 @@ describe("Node", () => {
   describe("encodeSuccessorNode (s-node)", () => {
     it("should encode successor node", async () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
-      const result = await encodeSuccessorNode({ data }, mockHashProvider);
+      const result = await encodeSuccessorNode({ data }, mockKeyProvider);
 
       const decoded = decodeNode(result.bytes);
       expect(decoded.kind).toBe("successor");
@@ -115,7 +115,7 @@ describe("Node", () => {
       const data = new Uint8Array([1, 2, 3]);
       const child = new Uint8Array(HASH_SIZE).fill(0xcc);
 
-      const result = await encodeSuccessorNode({ data, children: [child] }, mockHashProvider);
+      const result = await encodeSuccessorNode({ data, children: [child] }, mockKeyProvider);
 
       const decoded = decodeNode(result.bytes);
       expect(decoded.kind).toBe("successor");
@@ -125,7 +125,7 @@ describe("Node", () => {
 
     it("should not have FileInfo", async () => {
       const data = new Uint8Array([1, 2, 3]);
-      const result = await encodeSuccessorNode({ data }, mockHashProvider);
+      const result = await encodeSuccessorNode({ data }, mockKeyProvider);
 
       // Header(16) + data(3) = 19 (no FileInfo)
       expect(result.bytes.length).toBe(HEADER_SIZE + 3);
@@ -139,7 +139,7 @@ describe("Node", () => {
       const child2 = new Uint8Array(HASH_SIZE).fill(0x11);
       const child3 = new Uint8Array(HASH_SIZE).fill(0x22);
 
-      const result = await encodeSetNode({ children: [child1, child2, child3] }, mockHashProvider);
+      const result = await encodeSetNode({ children: [child1, child2, child3] }, mockKeyProvider);
 
       const decoded = decodeNode(result.bytes);
       expect(decoded.kind).toBe("set");
@@ -154,7 +154,7 @@ describe("Node", () => {
       const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
       const child2 = new Uint8Array(HASH_SIZE).fill(0x22);
 
-      const result = await encodeSetNode({ children: [child1, child2] }, mockHashProvider);
+      const result = await encodeSetNode({ children: [child1, child2] }, mockKeyProvider);
 
       // Header(16) + 2 children(32) = 48
       expect(result.bytes.length).toBe(HEADER_SIZE + 2 * HASH_SIZE);
@@ -169,11 +169,11 @@ describe("Node", () => {
     it("should throw on less than 2 children", async () => {
       const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
 
-      await expect(encodeSetNode({ children: [child1] }, mockHashProvider)).rejects.toThrow(
+      await expect(encodeSetNode({ children: [child1] }, mockKeyProvider)).rejects.toThrow(
         /at least 2 children/
       );
 
-      await expect(encodeSetNode({ children: [] }, mockHashProvider)).rejects.toThrow(
+      await expect(encodeSetNode({ children: [] }, mockKeyProvider)).rejects.toThrow(
         /at least 2 children/
       );
     });
@@ -182,7 +182,7 @@ describe("Node", () => {
       const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
       const child2 = new Uint8Array(HASH_SIZE).fill(0x11); // duplicate
 
-      await expect(encodeSetNode({ children: [child1, child2] }, mockHashProvider)).rejects.toThrow(
+      await expect(encodeSetNode({ children: [child1, child2] }, mockKeyProvider)).rejects.toThrow(
         /unique|duplicate/i
       );
     });
@@ -192,8 +192,8 @@ describe("Node", () => {
       const childB = new Uint8Array(HASH_SIZE).fill(0xbb);
       const childC = new Uint8Array(HASH_SIZE).fill(0xcc);
 
-      const result1 = await encodeSetNode({ children: [childA, childB, childC] }, realHashProvider);
-      const result2 = await encodeSetNode({ children: [childC, childA, childB] }, realHashProvider);
+      const result1 = await encodeSetNode({ children: [childA, childB, childC] }, realKeyProvider);
+      const result2 = await encodeSetNode({ children: [childC, childA, childB] }, realKeyProvider);
 
       // After sorting, should be identical
       expect(result1.hash).toEqual(result2.hash);
@@ -211,7 +211,7 @@ describe("Node", () => {
           children: [child1, child2],
           childNames: ["file1.txt", "folder2"],
         },
-        mockHashProvider
+        mockKeyProvider
       );
 
       const decoded = decodeNode(result.bytes);
@@ -230,7 +230,7 @@ describe("Node", () => {
           children: [childC, childA, childB],
           childNames: ["zebra", "alpha", "beta"],
         },
-        mockHashProvider
+        mockKeyProvider
       );
 
       const decoded = decodeNode(result.bytes);
@@ -250,7 +250,7 @@ describe("Node", () => {
             children: [child1],
             childNames: ["a", "b"],
           },
-          mockHashProvider
+          mockKeyProvider
         )
       ).rejects.toThrow(/mismatch/);
     });
@@ -263,7 +263,7 @@ describe("Node", () => {
           children: [child1],
           childNames: ["文件夹 📁"],
         },
-        mockHashProvider
+        mockKeyProvider
       );
 
       const decoded = decodeNode(result.bytes);
@@ -276,7 +276,7 @@ describe("Node", () => {
           children: [],
           childNames: [],
         },
-        mockHashProvider
+        mockKeyProvider
       );
 
       const decoded = decodeNode(result.bytes);
@@ -289,7 +289,7 @@ describe("Node", () => {
       const child = new Uint8Array(HASH_SIZE).fill(0x11);
       const result = await encodeDictNode(
         { children: [child], childNames: ["x"] },
-        mockHashProvider
+        mockKeyProvider
       );
 
       const decoded = decodeNode(result.bytes);
@@ -301,7 +301,7 @@ describe("Node", () => {
     it("should decode set-node correctly", async () => {
       const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
       const child2 = new Uint8Array(HASH_SIZE).fill(0x22);
-      const encoded = await encodeSetNode({ children: [child1, child2] }, mockHashProvider);
+      const encoded = await encodeSetNode({ children: [child1, child2] }, mockKeyProvider);
       const decoded = decodeNode(encoded.bytes);
 
       expect(decoded.kind).toBe("set");
@@ -316,7 +316,7 @@ describe("Node", () => {
       const data = new Uint8Array([10, 20, 30, 40, 50]);
       const encoded = await encodeFileNode(
         { data, contentType: "application/octet-stream", fileSize: 5 },
-        mockHashProvider
+        mockKeyProvider
       );
       const decoded = decodeNode(encoded.bytes);
 
@@ -328,7 +328,7 @@ describe("Node", () => {
 
     it("should decode s-node correctly", async () => {
       const data = new Uint8Array([1, 2, 3]);
-      const encoded = await encodeSuccessorNode({ data }, mockHashProvider);
+      const encoded = await encodeSuccessorNode({ data }, mockKeyProvider);
       const decoded = decodeNode(encoded.bytes);
 
       expect(decoded.kind).toBe("successor");
@@ -343,7 +343,7 @@ describe("Node", () => {
           children: [child],
           childNames: ["test"],
         },
-        mockHashProvider
+        mockKeyProvider
       );
       const decoded = decodeNode(encoded.bytes);
 
@@ -355,7 +355,7 @@ describe("Node", () => {
   describe("isValidNode", () => {
     it("should return true for valid node", async () => {
       const data = new Uint8Array([1, 2, 3]);
-      const result = await encodeFileNode({ data, fileSize: 3 }, mockHashProvider);
+      const result = await encodeFileNode({ data, fileSize: 3 }, mockKeyProvider);
       expect(isValidNode(result.bytes)).toBe(true);
     });
 
@@ -373,19 +373,19 @@ describe("Node", () => {
     it("should return set for set-node", async () => {
       const child1 = new Uint8Array(HASH_SIZE).fill(0x11);
       const child2 = new Uint8Array(HASH_SIZE).fill(0x22);
-      const result = await encodeSetNode({ children: [child1, child2] }, mockHashProvider);
+      const result = await encodeSetNode({ children: [child1, child2] }, mockKeyProvider);
       expect(getNodeKind(result.bytes)).toBe("set");
     });
 
     it("should return file for f-node", async () => {
       const data = new Uint8Array([1, 2, 3]);
-      const result = await encodeFileNode({ data, fileSize: 3 }, mockHashProvider);
+      const result = await encodeFileNode({ data, fileSize: 3 }, mockKeyProvider);
       expect(getNodeKind(result.bytes)).toBe("file");
     });
 
     it("should return successor for s-node", async () => {
       const data = new Uint8Array([1, 2, 3]);
-      const result = await encodeSuccessorNode({ data }, mockHashProvider);
+      const result = await encodeSuccessorNode({ data }, mockKeyProvider);
       expect(getNodeKind(result.bytes)).toBe("successor");
     });
 
@@ -393,7 +393,7 @@ describe("Node", () => {
       const child = new Uint8Array(HASH_SIZE).fill(0x11);
       const result = await encodeDictNode(
         { children: [child], childNames: ["x"] },
-        mockHashProvider
+        mockKeyProvider
       );
       expect(getNodeKind(result.bytes)).toBe("dict");
     });
@@ -406,8 +406,8 @@ describe("Node", () => {
   describe("roundtrip with real hash", () => {
     it("should produce consistent hash", async () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
-      const result1 = await encodeFileNode({ data, fileSize: 5 }, realHashProvider);
-      const result2 = await encodeFileNode({ data, fileSize: 5 }, realHashProvider);
+      const result1 = await encodeFileNode({ data, fileSize: 5 }, realKeyProvider);
+      const result2 = await encodeFileNode({ data, fileSize: 5 }, realKeyProvider);
 
       expect(result1.hash).toEqual(result2.hash);
       expect(result1.bytes).toEqual(result2.bytes);
@@ -417,8 +417,8 @@ describe("Node", () => {
       const data1 = new Uint8Array([1, 2, 3]);
       const data2 = new Uint8Array([1, 2, 4]);
 
-      const result1 = await encodeFileNode({ data: data1, fileSize: 3 }, realHashProvider);
-      const result2 = await encodeFileNode({ data: data2, fileSize: 3 }, realHashProvider);
+      const result1 = await encodeFileNode({ data: data1, fileSize: 3 }, realKeyProvider);
+      const result2 = await encodeFileNode({ data: data2, fileSize: 3 }, realKeyProvider);
 
       expect(result1.hash).not.toEqual(result2.hash);
     });
@@ -430,11 +430,11 @@ describe("Node", () => {
       // Different input order, same logical content
       const result1 = await encodeDictNode(
         { children: [childA, childB], childNames: ["a", "b"] },
-        realHashProvider
+        realKeyProvider
       );
       const result2 = await encodeDictNode(
         { children: [childB, childA], childNames: ["b", "a"] },
-        realHashProvider
+        realKeyProvider
       );
 
       // After sorting, should be identical

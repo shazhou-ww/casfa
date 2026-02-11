@@ -6,12 +6,12 @@ import { describe, expect, it } from "bun:test";
 import { blake3 } from "@noble/hashes/blake3";
 import { FILEINFO_SIZE, HEADER_SIZE } from "../src/constants.ts";
 import { encodeDictNode, encodeFileNode, encodeSuccessorNode } from "../src/node.ts";
-import type { HashProvider, StorageProvider } from "../src/types.ts";
+import type { KeyProvider, StorageProvider } from "../src/types.ts";
 import { hashToKey } from "../src/utils.ts";
 import { validateNode, validateNodeStructure } from "../src/validation.ts";
 
-const hashProvider: HashProvider = {
-  hash: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
+const keyProvider: KeyProvider = {
+  computeKey: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
 };
 
 const createMemoryStorage = (): StorageProvider & { size: () => number } => {
@@ -31,7 +31,7 @@ describe("Validation", () => {
     it("should validate correct file node", async () => {
       const encoded = await encodeFileNode(
         { data: new Uint8Array([1, 2, 3]), contentType: "text/plain", fileSize: 3 },
-        hashProvider
+        keyProvider
       );
 
       const result = validateNodeStructure(encoded.bytes);
@@ -44,15 +44,15 @@ describe("Validation", () => {
 
     it("should validate correct dict node", async () => {
       // First create some children
-      const child1 = await encodeFileNode({ data: new Uint8Array([1]), fileSize: 1 }, hashProvider);
-      const child2 = await encodeFileNode({ data: new Uint8Array([2]), fileSize: 1 }, hashProvider);
+      const child1 = await encodeFileNode({ data: new Uint8Array([1]), fileSize: 1 }, keyProvider);
+      const child2 = await encodeFileNode({ data: new Uint8Array([2]), fileSize: 1 }, keyProvider);
 
       const encoded = await encodeDictNode(
         {
           children: [child1.hash, child2.hash],
           childNames: ["a.txt", "b.txt"],
         },
-        hashProvider
+        keyProvider
       );
 
       const result = validateNodeStructure(encoded.bytes);
@@ -64,7 +64,7 @@ describe("Validation", () => {
     it("should validate correct successor node", async () => {
       const encoded = await encodeSuccessorNode(
         { data: new Uint8Array([1, 2, 3, 4, 5]) },
-        hashProvider
+        keyProvider
       );
 
       const result = validateNodeStructure(encoded.bytes);
@@ -94,7 +94,7 @@ describe("Validation", () => {
           children: [new Uint8Array(16)],
           fileSize: 100,
         },
-        hashProvider
+        keyProvider
       );
 
       // Truncate to remove some data
@@ -105,14 +105,14 @@ describe("Validation", () => {
     });
 
     it("should validate unicode names in dict node", async () => {
-      const child = await encodeFileNode({ data: new Uint8Array([1]), fileSize: 1 }, hashProvider);
+      const child = await encodeFileNode({ data: new Uint8Array([1]), fileSize: 1 }, keyProvider);
 
       const encoded = await encodeDictNode(
         {
           children: [child.hash],
           childNames: ["文件.txt"],
         },
-        hashProvider
+        keyProvider
       );
 
       const result = validateNodeStructure(encoded.bytes);
@@ -156,8 +156,8 @@ describe("Validation", () => {
     });
 
     it("should reject dict with unsorted children names", async () => {
-      const child1 = await encodeFileNode({ data: new Uint8Array([1]), fileSize: 1 }, hashProvider);
-      const child2 = await encodeFileNode({ data: new Uint8Array([2]), fileSize: 1 }, hashProvider);
+      const child1 = await encodeFileNode({ data: new Uint8Array([1]), fileSize: 1 }, keyProvider);
+      const child2 = await encodeFileNode({ data: new Uint8Array([2]), fileSize: 1 }, keyProvider);
 
       // Create a dict node with sorted names
       const encoded = await encodeDictNode(
@@ -165,7 +165,7 @@ describe("Validation", () => {
           children: [child1.hash, child2.hash],
           childNames: ["a.txt", "b.txt"],
         },
-        hashProvider
+        keyProvider
       );
 
       // Manually corrupt the names to be unsorted by changing first name to "z.txt"
@@ -220,7 +220,7 @@ describe("Validation", () => {
     it("should reject content-type with non-printable ASCII", async () => {
       const validNode = await encodeFileNode(
         { data: new Uint8Array([1, 2, 3]), contentType: "text/plain", fileSize: 3 },
-        hashProvider
+        keyProvider
       );
 
       // Corrupt the contentType area with non-printable character
@@ -236,7 +236,7 @@ describe("Validation", () => {
     it("should reject content-type padding with non-zero bytes", async () => {
       const validNode = await encodeFileNode(
         { data: new Uint8Array([1, 2, 3]), contentType: "text/plain", fileSize: 3 },
-        hashProvider
+        keyProvider
       );
 
       // Corrupt the padding area after contentType
@@ -251,8 +251,8 @@ describe("Validation", () => {
     });
 
     it("should reject duplicate child names in d-node", async () => {
-      const child1 = await encodeFileNode({ data: new Uint8Array([1]), fileSize: 1 }, hashProvider);
-      const child2 = await encodeFileNode({ data: new Uint8Array([2]), fileSize: 1 }, hashProvider);
+      const child1 = await encodeFileNode({ data: new Uint8Array([1]), fileSize: 1 }, keyProvider);
+      const child2 = await encodeFileNode({ data: new Uint8Array([2]), fileSize: 1 }, keyProvider);
 
       // Create a d-node with sorted names
       const validNode = await encodeDictNode(
@@ -260,7 +260,7 @@ describe("Validation", () => {
           children: [child1.hash, child2.hash],
           childNames: ["a.txt", "b.txt"],
         },
-        hashProvider
+        keyProvider
       );
 
       // Corrupt second name to match first ("a.txt" -> "a.txt")
@@ -281,11 +281,11 @@ describe("Validation", () => {
     it("should validate hash matches", async () => {
       const encoded = await encodeFileNode(
         { data: new Uint8Array([1, 2, 3]), contentType: "text/plain", fileSize: 3 },
-        hashProvider
+        keyProvider
       );
       const key = hashToKey(encoded.hash);
 
-      const result = await validateNode(encoded.bytes, key, hashProvider);
+      const result = await validateNode(encoded.bytes, key, keyProvider);
       expect(result.valid).toBe(true);
       expect(result.kind).toBe("file");
     });
@@ -293,18 +293,18 @@ describe("Validation", () => {
     it("should reject hash mismatch", async () => {
       const encoded = await encodeFileNode(
         { data: new Uint8Array([1, 2, 3]), fileSize: 3 },
-        hashProvider
+        keyProvider
       );
 
       // Use wrong key (128-bit = 26 CB32 chars)
       const wrongKey = "00000000000000000000000000";
-      const result = await validateNode(encoded.bytes, wrongKey, hashProvider);
+      const result = await validateNode(encoded.bytes, wrongKey, keyProvider);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("Hash mismatch");
     });
 
     it("should check children existence", async () => {
-      const child = await encodeFileNode({ data: new Uint8Array([1]), fileSize: 1 }, hashProvider);
+      const child = await encodeFileNode({ data: new Uint8Array([1]), fileSize: 1 }, keyProvider);
       const childKey = hashToKey(child.hash);
 
       const storage = createMemoryStorage();
@@ -315,18 +315,18 @@ describe("Validation", () => {
           children: [child.hash],
           childNames: ["a.txt"],
         },
-        hashProvider
+        keyProvider
       );
       const dictKey = hashToKey(dict.hash);
 
       // With child existing
-      const result1 = await validateNode(dict.bytes, dictKey, hashProvider, (key) =>
+      const result1 = await validateNode(dict.bytes, dictKey, keyProvider, (key) =>
         storage.has(key)
       );
       expect(result1.valid).toBe(true);
 
       // With child missing
-      const result2 = await validateNode(dict.bytes, dictKey, hashProvider, () =>
+      const result2 = await validateNode(dict.bytes, dictKey, keyProvider, () =>
         Promise.resolve(false)
       );
       expect(result2.valid).toBe(false);

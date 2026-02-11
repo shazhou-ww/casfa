@@ -6,7 +6,7 @@
 
 import { createS3Storage } from "@casfa/storage-s3";
 import { handle } from "hono/aws-lambda";
-import { createApp, createNodeHashProvider } from "./app.ts";
+import { createApp, createNodeKeyProvider } from "./app.ts";
 import { createCognitoJwtVerifier } from "./auth/index.ts";
 import { createDbInstances } from "./bootstrap.ts";
 import { loadConfig } from "./config.ts";
@@ -24,7 +24,7 @@ const storage = createS3Storage({
   region: config.storage.region,
 });
 
-const hashProvider = createNodeHashProvider();
+const keyProvider = createNodeKeyProvider();
 
 // Create Cognito JWT verifier for production
 const jwtVerifier = config.cognito.userPoolId
@@ -39,7 +39,7 @@ const app = createApp({
   config,
   db,
   storage,
-  hashProvider,
+  keyProvider,
   jwtVerifier: jwtVerifier!,
   runtimeInfo: {
     storageType: "s3",

@@ -6,7 +6,7 @@
  */
 
 import type { CasfaClient } from "@casfa/client";
-import type { HashProvider, StorageProvider } from "@casfa/core";
+import type { KeyProvider, StorageProvider } from "@casfa/core";
 import { createFsService, type FsService, isFsError } from "@casfa/fs";
 import type { DepotListItem, FsLsChild } from "@casfa/protocol";
 import { createStore } from "zustand/vanilla";
@@ -189,8 +189,8 @@ export type CreateExplorerStoreOpts = {
   client: CasfaClient;
   /** CAS StorageProvider (CachedStorage: IndexedDB + HTTP) for local tree operations */
   storage: StorageProvider;
-  /** BLAKE3s-128 hash provider for CAS node encoding */
-  hash: HashProvider;
+  /** Key provider for CAS node encoding */
+  key: KeyProvider;
   depotId?: string;
   initialPath?: string;
   initialLayout?: "list" | "grid";
@@ -212,7 +212,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
   const localFs: FsService = createFsService({
     ctx: {
       storage: opts.storage,
-      hash: opts.hash,
+      key: opts.key,
     },
   });
 

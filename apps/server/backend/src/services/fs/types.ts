@@ -5,7 +5,7 @@
  * Pure tree types (ResolvedNode, ParentEntry, FsError etc.) live in @casfa/fs.
  */
 
-import type { HashProvider } from "@casfa/core";
+import type { KeyProvider } from "@casfa/core";
 import type { StorageProvider } from "@casfa/storage-core";
 import type { DepotsDb } from "../../db/depots.ts";
 import type { OwnershipV2Db } from "../../db/ownership-v2.ts";
@@ -22,7 +22,7 @@ export { type FsError, fsError, isFsError } from "@casfa/fs";
 
 export type FsServiceDeps = {
   storage: StorageProvider;
-  hashProvider: HashProvider;
+  keyProvider: KeyProvider;
   ownershipV2Db: OwnershipV2Db;
   refCountDb: RefCountDb;
   usageDb: UsageDb;

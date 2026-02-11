@@ -46,7 +46,7 @@ export type AuthorizeLinkFn = (linkStorageKey: string, proof?: string) => Promis
 export type WriteOps = ReturnType<typeof createWriteOps>;
 
 export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: AuthorizeLinkFn) => {
-  const { hash: hashProvider, storage } = ctx;
+  const { key: keyProvider, storage } = ctx;
 
   /**
    * write — Create or overwrite a single-block file.
@@ -68,7 +68,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
     // Encode file node
     const fileEncoded = await encodeFileNode(
       { data: fileContent, contentType, fileSize: fileContent.length },
-      hashProvider
+      keyProvider
     );
 
     const fileKey = await tree.storeNode(
@@ -144,7 +144,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
 
         const newRootEncoded = await encodeDictNode(
           { children: newChildren, childNames: rootNode.childNames ?? [] },
-          hashProvider
+          keyProvider
         );
         const newRootKey = await tree.storeNode(
           newRootEncoded.bytes,
@@ -202,7 +202,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
 
       const newParentEncoded = await encodeDictNode(
         { children: newChildren, childNames: parentNode.childNames ?? [] },
-        hashProvider
+        keyProvider
       );
       await tree.storeNode(newParentEncoded.bytes, newParentEncoded.hash, "dict", 0);
       const newRootKey = await tree.rebuildMerklePath(parentPath, newParentEncoded.hash);
@@ -269,7 +269,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
       return fsError("EXISTS_AS_FILE", 409, `Path '${pathStr}' already exists as a file`);
     }
 
-    const emptyDirEncoded = await encodeDictNode({ children: [], childNames: [] }, hashProvider);
+    const emptyDirEncoded = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
     await tree.storeNode(emptyDirEncoded.bytes, emptyDirEncoded.hash, "dict", 0);
     const dirKey = hashToStorageKey(emptyDirEncoded.hash);
     const dirName = segments[segments.length - 1]!;
@@ -574,7 +574,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
           }
           nodeHash = storageKeyToHash(source.hash);
         } else if ("dir" in entry) {
-          const emptyEncoded = await encodeDictNode({ children: [], childNames: [] }, hashProvider);
+          const emptyEncoded = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
           await tree.storeNode(emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
           nodeHash = emptyEncoded.hash;
         } else if ("link" in entry) {
@@ -621,7 +621,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
             newChildren[existingChild.index] = nodeHash;
             const encoded = await encodeDictNode(
               { children: newChildren, childNames: rootNode.childNames ?? [] },
-              hashProvider
+              keyProvider
             );
             currentRootKey = await tree.storeNode(encoded.bytes, encoded.hash, "dict", 0);
           } else {
@@ -646,7 +646,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
             newChildren[existingChild.index] = nodeHash;
             const encoded = await encodeDictNode(
               { children: newChildren, childNames: parentNode.childNames ?? [] },
-              hashProvider
+              keyProvider
             );
             await tree.storeNode(encoded.bytes, encoded.hash, "dict", 0);
             currentRootKey = await tree.rebuildMerklePath(parentPath, encoded.hash);

@@ -15,10 +15,10 @@ import {
   writeFile,
 } from "../src/controller.ts";
 import { computeUsableSpace } from "../src/topology.ts";
-import type { HashProvider, StorageProvider } from "../src/types.ts";
+import type { KeyProvider, StorageProvider } from "../src/types.ts";
 
-const createHashProvider = (): HashProvider => ({
-  hash: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
+const createKeyProvider = (): KeyProvider => ({
+  computeKey: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
 });
 
 type MemoryStorage = StorageProvider & {
@@ -55,7 +55,7 @@ describe("Controller", () => {
     storage = createMemoryStorage();
     ctx = {
       storage,
-      hash: createHashProvider(),
+      key: createKeyProvider(),
     };
   });
 
@@ -91,7 +91,7 @@ describe("Controller", () => {
     it("should split file larger than node limit", async () => {
       const smallCtx: CasContext = {
         storage,
-        hash: createHashProvider(),
+        key: createKeyProvider(),
         nodeLimit: 1024, // 1KB limit
       };
 
@@ -111,7 +111,7 @@ describe("Controller", () => {
     it("should create multi-level tree for very large files", async () => {
       const tinyCtx: CasContext = {
         storage,
-        hash: createHashProvider(),
+        key: createKeyProvider(),
         nodeLimit: 128, // Very small limit
       };
 
@@ -142,7 +142,7 @@ describe("Controller", () => {
     it("should read back large file correctly", async () => {
       const smallCtx: CasContext = {
         storage,
-        hash: createHashProvider(),
+        key: createKeyProvider(),
         nodeLimit: 256,
       };
 
@@ -318,7 +318,7 @@ describe("Controller", () => {
     it("should stream large multi-node file", async () => {
       const smallCtx: CasContext = {
         storage,
-        hash: createHashProvider(),
+        key: createKeyProvider(),
         nodeLimit: 256,
       };
 

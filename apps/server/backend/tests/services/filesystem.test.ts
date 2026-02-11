@@ -11,7 +11,7 @@ import {
   encodeCB32,
   encodeDictNode,
   encodeFileNode,
-  type HashProvider,
+  type KeyProvider,
 } from "@casfa/core";
 import { hashToNodeKey, nodeKeyToStorageKey } from "@casfa/protocol";
 import type { StorageProvider } from "@casfa/storage-core";
@@ -21,7 +21,7 @@ import type { RefCountDb } from "../../src/db/refcount.ts";
 import type { ScopeSetNodesDb } from "../../src/db/scope-set-nodes.ts";
 import type { UsageDb } from "../../src/db/usage.ts";
 import { createFsService, type FsError, type FsServiceDeps } from "../../src/services/fs/index.ts";
-import { createNodeHashProvider } from "../../src/util/hash-provider.ts";
+import { createNodeKeyProvider } from "../../src/util/hash-provider.ts";
 
 // ============================================================================
 // Helpers
@@ -31,7 +31,7 @@ const REALM = "test-realm";
 const TOKEN_ID = "test-token";
 
 /** Hash utility */
-const hashProvider: HashProvider = createNodeHashProvider();
+const keyProvider: KeyProvider = createNodeKeyProvider();
 
 /** Convert Uint8Array hash → CB32 storage key */
 const hashToStorageKey = (hash: Uint8Array): string => encodeCB32(hash);
@@ -199,7 +199,7 @@ async function buildTreeNode(
       const data = new TextEncoder().encode(value);
       const encoded = await encodeFileNode(
         { data, contentType: "text/plain", fileSize: data.length },
-        hashProvider
+        keyProvider
       );
       const key = hashToStorageKey(encoded.hash);
       await storage.put(key, encoded.bytes);
@@ -217,7 +217,7 @@ async function buildTreeNode(
   }
 
   // Encode dict node
-  const encoded = await encodeDictNode({ children: hashes, childNames: names }, hashProvider);
+  const encoded = await encodeDictNode({ children: hashes, childNames: names }, keyProvider);
   const key = hashToStorageKey(encoded.hash);
   await storage.put(key, encoded.bytes);
   return key;
@@ -237,7 +237,7 @@ function createTestService() {
 
   const deps: FsServiceDeps = {
     storage,
-    hashProvider,
+    keyProvider,
     ownershipV2Db,
     refCountDb,
     usageDb,
@@ -1075,7 +1075,7 @@ describe("Filesystem Service", () => {
       const depotsDb = createMockDepotsDb(depots);
       const _service2 = createFsService({
         storage: ctx.storage,
-        hashProvider,
+        keyProvider,
         ownershipV2Db: ctx.ownershipV2Db,
         refCountDb: ctx.refCountDb,
         usageDb: ctx.usageDb,
@@ -1087,7 +1087,7 @@ describe("Filesystem Service", () => {
       // Reuse our beforeEach storage
       const service3 = createFsService({
         storage,
-        hashProvider,
+        keyProvider,
         ownershipV2Db: ctx.ownershipV2Db,
         refCountDb: ctx.refCountDb,
         usageDb: ctx.usageDb,

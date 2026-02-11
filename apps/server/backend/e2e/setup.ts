@@ -24,7 +24,7 @@ import type { StorageProvider } from "@casfa/storage-core";
 import { createFsStorage } from "@casfa/storage-fs";
 import { createMemoryStorage } from "@casfa/storage-memory";
 import type { Server } from "bun";
-import { createApp, createNodeHashProvider, type DbInstances } from "../src/app.ts";
+import { createApp, createNodeKeyProvider, type DbInstances } from "../src/app.ts";
 import { createMockJwt } from "../src/auth/index.ts";
 import { createMockJwtVerifier } from "../src/auth/jwt-verifier.ts";
 import { type AppConfig, loadConfig } from "../src/config.ts";
@@ -307,15 +307,15 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
   // Create JWT verifier
   const jwtVerifier = createMockJwtVerifier(mockJwtSecret);
 
-  // Create hash provider
-  const hashProvider = createNodeHashProvider();
+  // Create key provider
+  const keyProvider = createNodeKeyProvider();
 
   // Create app
   const app = createApp({
     config,
     db,
     storage,
-    hashProvider,
+    keyProvider,
     jwtVerifier,
   });
 
