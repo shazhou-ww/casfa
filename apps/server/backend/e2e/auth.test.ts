@@ -39,7 +39,7 @@ describe("Authentication", () => {
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${realm}/usage`
       );
@@ -56,7 +56,7 @@ describe("Authentication", () => {
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${otherRealm}/usage`
       );
@@ -73,7 +73,7 @@ describe("Authentication", () => {
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${realm}/usage`
       );
@@ -163,7 +163,7 @@ describe("Authentication", () => {
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${realm}`
       );
@@ -182,7 +182,7 @@ describe("Authentication", () => {
       });
 
       const response = await ctx.helpers.accessRequest(
-        childDelegate.tokenBase64,
+        childDelegate.accessToken,
         "POST",
         `/api/realm/${realm}/delegates`,
         {
@@ -239,7 +239,7 @@ describe("Authentication", () => {
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "POST",
         "/api/tokens/root",
         { realm }

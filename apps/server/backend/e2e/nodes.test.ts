@@ -43,7 +43,7 @@ describe("Node Operations", () => {
       const testKeys = [testNodeKey(1), testNodeKey(2)];
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "POST",
         `/api/realm/${realm}/nodes/check`,
         { keys: testKeys }
@@ -63,7 +63,7 @@ describe("Node Operations", () => {
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "POST",
         `/api/realm/${realm}/nodes/check`,
         { keys: [] }
@@ -87,7 +87,7 @@ describe("Node Operations", () => {
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "POST",
         `/api/realm/${realm}/nodes/check`,
         { keys: ["invalid-key-format"] }
@@ -105,7 +105,7 @@ describe("Node Operations", () => {
       const tooManyKeys = Array.from({ length: 1001 }, (_, i) => testNodeKey(i));
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "POST",
         `/api/realm/${realm}/nodes/check`,
         { keys: tooManyKeys }
@@ -125,7 +125,7 @@ describe("Node Operations", () => {
       });
 
       const response = await ctx.helpers.accessRequest(
-        childToken.tokenBase64,
+        childToken.accessToken,
         "POST",
         `/api/realm/${realm}/nodes/check`,
         { keys: [testNodeKey(1)] }
@@ -166,7 +166,7 @@ describe("Node Operations", () => {
       const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/${nodeKey}`, {
         method: "PUT",
         headers: {
-          Authorization: `Bearer ${accessToken.tokenBase64}`,
+          Authorization: `Bearer ${accessToken.accessToken}`,
           "Content-Type": "application/octet-stream",
         },
         body: nodeData,
@@ -191,7 +191,7 @@ describe("Node Operations", () => {
       const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/${nodeKey}`, {
         method: "PUT",
         headers: {
-          Authorization: `Bearer ${accessToken.tokenBase64}`,
+          Authorization: `Bearer ${accessToken.accessToken}`,
           "Content-Type": "application/octet-stream",
         },
         body: nodeData,
@@ -228,7 +228,7 @@ describe("Node Operations", () => {
       const nodeKey = testNodeKey(99);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${realm}/nodes/${nodeKey}/metadata`
       );
@@ -250,7 +250,7 @@ describe("Node Operations", () => {
 
       // No X-CAS-Proof header — child delegate has no proof
       const response = await ctx.helpers.accessRequest(
-        childToken.tokenBase64,
+        childToken.accessToken,
         "GET",
         `/api/realm/${realm}/nodes/${nodeKey}/metadata`
       );
@@ -281,7 +281,7 @@ describe("Node Operations", () => {
       const nodeKey = testNodeKey(99);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${realm}/nodes/${nodeKey}`
       );
@@ -303,7 +303,7 @@ describe("Node Operations", () => {
 
       // No X-CAS-Proof header — child delegate has no proof
       const response = await ctx.helpers.accessRequest(
-        childToken.tokenBase64,
+        childToken.accessToken,
         "GET",
         `/api/realm/${realm}/nodes/${nodeKey}`
       );
@@ -336,7 +336,7 @@ describe("Node Operations", () => {
       const nodeKey = testNodeKey(1);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${otherRealm}/nodes/${nodeKey}`
       );
@@ -356,7 +356,7 @@ describe("Node Operations", () => {
       const nodeKey = testNodeKey(1);
 
       const response = await ctx.helpers.accessRequest(
-        childToken.tokenBase64,
+        childToken.accessToken,
         "GET",
         `/api/realm/${realm}/nodes/${nodeKey}`,
         undefined,

@@ -137,26 +137,25 @@ const errorHtml = (error: string, description?: string) => `<!DOCTYPE html>
 </html>`;
 
 /**
- * Find an available port starting from the given port.
+ * Ensure the given port is available for the OAuth callback server.
+ * The port must be fixed (not auto-incremented) because it must exactly match
+ * the callback URL registered in the OAuth provider (e.g. Cognito).
  */
 export async function findAvailablePort(startPort: number): Promise<number> {
-  let port = startPort;
-  const maxAttempts = 10;
-
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const server = Bun.serve({
-        port,
-        fetch: () => new Response(""),
-      });
-      server.stop();
-      return port;
-    } catch {
-      port++;
-    }
+  try {
+    const server = Bun.serve({
+      port: startPort,
+      fetch: () => new Response(""),
+    });
+    server.stop();
+    return startPort;
+  } catch {
+    throw new Error(
+      `Port ${startPort} is already in use. ` +
+        `The OAuth callback requires this exact port. ` +
+        `Please free port ${startPort} and try again.`
+    );
   }
-
-  throw new Error(`Could not find an available port after ${maxAttempts} attempts`);
 }
 
 /**

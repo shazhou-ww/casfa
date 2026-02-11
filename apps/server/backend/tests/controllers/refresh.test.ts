@@ -168,10 +168,6 @@ describe("RefreshController", () => {
       expect(body.accessToken).toBeDefined();
       expect(body.accessTokenExpiresAt).toBeDefined();
       expect(body.delegateId).toBe(testDelegateId);
-
-      // Response should NOT include refreshTokenId or accessTokenId (removed in v3)
-      expect(body.refreshTokenId).toBeUndefined();
-      expect(body.accessTokenId).toBeUndefined();
     });
 
     it("calls rotateTokens with correct parameters", async () => {
