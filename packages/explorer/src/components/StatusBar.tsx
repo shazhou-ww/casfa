@@ -1,5 +1,5 @@
 /**
- * <StatusBar /> - Bottom status bar showing item count and depot info.
+ * <StatusBar /> - Bottom status bar showing item count, selection, and depot info.
  */
 
 import { Box, Typography } from "@mui/material";
@@ -9,6 +9,7 @@ export function StatusBar() {
   const t = useExplorerT();
   const totalItems = useExplorerStore((s) => s.totalItems);
   const depotId = useExplorerStore((s) => s.depotId);
+  const selectedItems = useExplorerStore((s) => s.selectedItems);
 
   return (
     <Box
@@ -23,9 +24,16 @@ export function StatusBar() {
         minHeight: 28,
       }}
     >
-      <Typography variant="caption" color="text.secondary">
-        {t("status.items", { count: totalItems })}
-      </Typography>
+      <Box sx={{ display: "flex", gap: 2 }}>
+        <Typography variant="caption" color="text.secondary">
+          {t("status.items", { count: totalItems })}
+        </Typography>
+        {selectedItems.length > 0 && (
+          <Typography variant="caption" color="text.secondary">
+            {t("status.selected", { count: selectedItems.length })}
+          </Typography>
+        )}
+      </Box>
       {depotId && (
         <Typography variant="caption" color="text.secondary" noWrap sx={{ ml: 2 }}>
           {depotId}

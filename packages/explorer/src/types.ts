@@ -85,6 +85,47 @@ export type PreviewRenderProps = {
 };
 
 // ============================================================================
+// Upload Types
+// ============================================================================
+
+export type UploadStatus = "pending" | "uploading" | "done" | "error";
+
+/** A single item in the upload queue */
+export type UploadQueueItem = {
+  /** Unique id */
+  id: string;
+  /** The file to upload */
+  file: File;
+  /** Target path in the depot */
+  targetPath: string;
+  /** Current status */
+  status: UploadStatus;
+  /** Error message when status is "error" */
+  error?: string;
+};
+
+// ============================================================================
+// Context Menu Types
+// ============================================================================
+
+/** Context passed to context menu item handlers */
+export type MenuContext = {
+  selectedItems: ExplorerItem[];
+  currentPath: string;
+  depotId: string;
+};
+
+// ============================================================================
+// Permissions Types
+// ============================================================================
+
+/** Permissions derived from the current delegate */
+export type ExplorerPermissions = {
+  canUpload: boolean;
+  canManageDepot: boolean;
+};
+
+// ============================================================================
 // Error Types
 // ============================================================================
 
@@ -174,6 +215,13 @@ export type ExplorerTextKey =
   | "depot.empty"
   | "depot.search"
   | "depot.select"
+  | "depot.create"
+  | "depot.createTitle"
+  | "depot.createLabel"
+  | "depot.delete"
+  | "depot.deleteConfirm"
+  | "depot.deleteSuccess"
+  | "depot.untitled"
   // Toolbar
   | "toolbar.refresh"
   | "toolbar.upload"
@@ -211,6 +259,15 @@ export type ExplorerTextKey =
   // Status bar
   | "status.items"
   | "status.selected"
+  // Upload progress
+  | "upload.dropHere"
+  | "upload.uploading"
+  | "upload.progress"
+  | "upload.done"
+  | "upload.error"
+  | "upload.cancel"
+  | "upload.retry"
+  | "upload.fileTooLarge"
   // Errors
   | "error.network"
   | "error.authExpired"
@@ -218,4 +275,13 @@ export type ExplorerTextKey =
   | "error.notFound"
   | "error.fileTooLarge"
   | "error.nameConflict"
-  | "error.unknown";
+  | "error.unknown"
+  // Permission
+  | "permission.denied"
+  // Delete results
+  | "delete.success"
+  | "delete.partial"
+  // Validation
+  | "validation.nameEmpty"
+  | "validation.nameInvalid"
+  | "validation.nameExists";

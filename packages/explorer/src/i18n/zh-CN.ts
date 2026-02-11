@@ -10,6 +10,13 @@ const messages: Record<ExplorerTextKey, string> = {
   "depot.empty": "暂无可用 Depot",
   "depot.search": "搜索 Depot…",
   "depot.select": "选择",
+  "depot.create": "新建 Depot",
+  "depot.createTitle": "创建 Depot",
+  "depot.createLabel": "Depot 标题（可选）",
+  "depot.delete": "删除 Depot",
+  "depot.deleteConfirm": "确定要删除 Depot「{name}」吗？此操作不可撤销。",
+  "depot.deleteSuccess": "Depot 已删除",
+  "depot.untitled": "未命名 Depot",
   // 工具栏
   "toolbar.refresh": "刷新",
   "toolbar.upload": "上传",
@@ -47,6 +54,15 @@ const messages: Record<ExplorerTextKey, string> = {
   // 状态栏
   "status.items": "{count} 个项目",
   "status.selected": "已选择 {count} 项",
+  // 上传进度
+  "upload.dropHere": "拖放文件到此处上传",
+  "upload.uploading": "正在上传 {current}/{total}",
+  "upload.progress": "上传中…",
+  "upload.done": "上传完成",
+  "upload.error": "上传失败",
+  "upload.cancel": "取消",
+  "upload.retry": "重试",
+  "upload.fileTooLarge": "「{name}」文件过大（最大 4 MB），已跳过",
   // 错误
   "error.network": "网络错误，请检查连接。",
   "error.authExpired": "会话已过期，请重新登录。",
@@ -55,6 +71,15 @@ const messages: Record<ExplorerTextKey, string> = {
   "error.fileTooLarge": "文件过大（最大 4 MB）。",
   "error.nameConflict": "已存在同名文件或文件夹。",
   "error.unknown": "发生未知错误。",
+  // 权限
+  "permission.denied": "权限不足",
+  // 删除结果
+  "delete.success": "删除成功",
+  "delete.partial": "成功 {success} 项，失败 {failed} 项",
+  // 校验
+  "validation.nameEmpty": "名称不能为空",
+  "validation.nameInvalid": "名称包含非法字符",
+  "validation.nameExists": "已存在同名文件或文件夹",
 };
 
 /**
