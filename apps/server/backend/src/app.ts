@@ -5,7 +5,7 @@
  * All dependencies must be injected - no fallback logic.
  */
 
-import { decodeNode } from "@casfa/core";
+import { decodeNode, isWellKnownNode } from "@casfa/core";
 import type { PopContext } from "@casfa/proof";
 import type { StorageProvider } from "@casfa/storage-core";
 import { blake3 } from "@noble/hashes/blake3";
@@ -119,7 +119,8 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   const adminAccessMiddleware = createAdminAccessMiddleware();
   const authorizedUserMiddleware = createAuthorizedUserMiddleware();
   const proofValidationMiddleware = createProofValidationMiddleware({
-    hasOwnership: (nodeHash, delegateId) => ownershipV2Db.hasOwnership(nodeHash, delegateId),
+    hasOwnership: (nodeHash, delegateId) =>
+      isWellKnownNode(nodeHash) ? Promise.resolve(true) : ownershipV2Db.hasOwnership(nodeHash, delegateId),
     isRootDelegate: async (delegateId) => {
       // Root delegate = depth 0, parentId null.
       // The delegateId comes from the auth context, and we can look it

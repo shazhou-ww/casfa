@@ -10,6 +10,7 @@
  * This adapter captures those in closures when building per-call FsContext.
  */
 
+import { isWellKnownNode } from "@casfa/core";
 import {
   type AuthorizeLinkFn,
   createFsService as createCoreFsService,
@@ -190,6 +191,11 @@ export const createFsService = (deps: FsServiceDeps): FsService => {
     auth?: AccessTokenAuthContext,
   ): AuthorizeLinkFn => {
     return async (linkStorageKey: string, proof?: string) => {
+      // Well-known nodes are universally owned
+      if (isWellKnownNode(linkStorageKey)) {
+        return true;
+      }
+
       // Step 1: ownership verification using delegate chain
       if (issuerChain && issuerChain.length > 0) {
         for (const id of issuerChain) {

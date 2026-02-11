@@ -5,7 +5,7 @@
  * Requires Access Token with canManageDepot permission for create/update/delete.
  */
 
-import { EMPTY_DICT_KEY } from "@casfa/core";
+import { EMPTY_DICT_KEY, isWellKnownNode } from "@casfa/core";
 import {
   CreateDepotSchema,
   DepotCommitSchema,
@@ -177,12 +177,15 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
       }
 
       // Ownership verification: root must be owned by current delegate's chain
+      // Well-known nodes (e.g. empty dict) are universally owned — skip check
       const delegateChain = auth.issuerChain;
-      let rootAuthorized = false;
-      for (const id of delegateChain) {
-        if (await ownershipV2Db.hasOwnership(storageKey, id)) {
-          rootAuthorized = true;
-          break;
+      let rootAuthorized = isWellKnownNode(storageKey);
+      if (!rootAuthorized) {
+        for (const id of delegateChain) {
+          if (await ownershipV2Db.hasOwnership(storageKey, id)) {
+            rootAuthorized = true;
+            break;
+          }
         }
       }
       if (!rootAuthorized) {
