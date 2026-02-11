@@ -26,31 +26,13 @@ export type HashProvider = {
 };
 
 /**
- * Storage provider - injected by platform-specific implementations
- * Server uses S3, Client uses HTTP, tests use in-memory
+ * Re-export StorageProvider from @casfa/storage-core.
+ *
+ * The canonical definition lives in storage-core (zero-dep interface package).
+ * Core re-exports it so that higher-level consumers (fs, explorer, etc.)
+ * don't need to add a separate dependency on storage-core.
  */
-export type StorageProvider = {
-  /**
-   * Store data by key
-   * @param key - CAS key (e.g., "blake3s:...")
-   * @param data - Raw bytes to store
-   */
-  put: (key: string, data: Uint8Array) => Promise<void>;
-
-  /**
-   * Retrieve data by key
-   * @param key - CAS key
-   * @returns Raw bytes or null if not found
-   */
-  get: (key: string) => Promise<Uint8Array | null>;
-
-  /**
-   * Check if key exists
-   * @param key - CAS key
-   * @returns true if key exists
-   */
-  has: (key: string) => Promise<boolean>;
-};
+export type { StorageProvider } from "@casfa/storage-core";
 
 /**
  * Parsed CAS node header (16 bytes base + optional extensions)

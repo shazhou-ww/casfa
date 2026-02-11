@@ -22,7 +22,8 @@
   },
   "dependencies": {
     "@casfa/storage-core": "workspace:*",
-    "@aws-sdk/client-s3": "^3.975.0"
+    "@aws-sdk/client-s3": "^3.975.0",
+    "quick-lru": "^7.0.0"
   },
   "devDependencies": {
     "typescript": "^5.7.2"

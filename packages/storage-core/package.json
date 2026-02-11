@@ -20,9 +20,6 @@
     "lint:fix": "biome check --write .",
     "prepublishOnly": "bun run build"
   },
-  "dependencies": {
-    "quick-lru": "^7.0.0"
-  },
   "devDependencies": {
     "typescript": "^5.7.2"
   },

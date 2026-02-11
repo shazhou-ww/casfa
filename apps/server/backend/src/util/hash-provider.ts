@@ -5,14 +5,15 @@
  */
 
 import { createHash } from "node:crypto";
-import type { HashProvider as CasHashProvider } from "@casfa/core";
-import type { HashProvider as StorageHashProvider } from "@casfa/storage-core";
+import type { HashProvider } from "@casfa/core";
 import { blake3 } from "@noble/hashes/blake3";
 
 /**
- * Combined hash provider that satisfies both cas-core and cas-storage-core interfaces
+ * Extended hash provider — includes BLAKE3s-128 (CAS nodes) and SHA-256 (legacy).
  */
-export type CombinedHashProvider = CasHashProvider & StorageHashProvider;
+export type CombinedHashProvider = HashProvider & {
+  sha256: (data: Uint8Array) => Promise<Uint8Array>;
+};
 
 /**
  * Create a Node.js-based hash provider using crypto module and @noble/hashes

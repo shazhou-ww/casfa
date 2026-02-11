@@ -9,12 +9,8 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import {
-  createLRUCache,
-  DEFAULT_CACHE_SIZE,
-  type StorageProvider,
-  toStoragePath,
-} from "@casfa/storage-core";
+import type { StorageProvider } from "@casfa/storage-core";
+import { createLRUCache, DEFAULT_CACHE_SIZE, toStoragePath } from "./storage-utils.ts";
 
 /**
  * File System Storage configuration

@@ -22,32 +22,3 @@ export type StorageProvider = {
    */
   put: (key: string, value: Uint8Array) => Promise<void>;
 };
-
-/**
- * Hash Provider interface
- *
- * Provides cryptographic hash operations.
- */
-export type HashProvider = {
-  /**
-   * Compute SHA-256 hash of data (used for content verification)
-   */
-  sha256: (data: Uint8Array) => Promise<Uint8Array>;
-};
-
-/**
- * Storage Provider configuration
- */
-export type StorageConfig = {
-  /**
-   * Key prefix in storage
-   * Default: "cas/blake3s/"
-   */
-  prefix?: string;
-
-  /**
-   * LRU cache size for key existence checks
-   * Default: 10000
-   */
-  cacheSize?: number;
-};

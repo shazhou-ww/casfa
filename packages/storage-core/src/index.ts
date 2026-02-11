@@ -1,17 +1,8 @@
 /**
- * CAS Storage Core
+ * @casfa/storage-core
  *
- * Core types and utilities for CAS storage providers.
+ * Pure interface definitions for CAS storage providers.
+ * This package has zero runtime dependencies.
  */
 
-// Key utilities
-export {
-  bytesToHex,
-  hexToBytes,
-  isValidKey,
-  toStoragePath,
-} from "./key.ts";
-// LRU Cache
-export { createLRUCache, DEFAULT_CACHE_SIZE, type LRUCache } from "./lru-cache.ts";
-// Types
-export type { HashProvider, StorageConfig, StorageProvider } from "./types.ts";
+export type { StorageProvider } from "./types.ts";

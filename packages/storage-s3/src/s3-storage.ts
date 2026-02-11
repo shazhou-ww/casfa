@@ -12,12 +12,8 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import {
-  createLRUCache,
-  DEFAULT_CACHE_SIZE,
-  type StorageProvider,
-  toStoragePath,
-} from "@casfa/storage-core";
+import type { StorageProvider } from "@casfa/storage-core";
+import { createLRUCache, DEFAULT_CACHE_SIZE, toStoragePath } from "./storage-utils.ts";
 
 /**
  * S3 Storage configuration
