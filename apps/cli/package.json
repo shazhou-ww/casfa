@@ -18,7 +18,7 @@
     }
   },
   "scripts": {
-    "build": "tsup",
+    "build": "bun ../../scripts/build-pkg.ts",
     "dev": "bun src/cli.ts",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
@@ -58,6 +58,11 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "buildConfig": {
+    "entry": [
+      "./src/cli.ts"
+    ]
   },
   "license": "MIT"
 }

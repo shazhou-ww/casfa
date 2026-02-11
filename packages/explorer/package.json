@@ -16,10 +16,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "bun run build:js && bun run build:dts",
-    "build:js": "bun build src/index.ts --outdir dist --format esm --sourcemap=external --packages=external --external '@casfa/*' --external '@mui/*' --external react --external react-dom --external 'react/jsx-runtime' --external zod --external zustand --external 'zustand/*' --target=browser --production",
-    "build:dts": "tsup --dts-only",
-    "dev": "tsup --watch",
+    "build": "bun ../../scripts/build-pkg.ts",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
@@ -41,5 +38,25 @@
     "@mui/icons-material": "^6.0.0",
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "buildConfig": {
+    "bunFlags": [
+      "--external",
+      "@mui/*",
+      "--external",
+      "react",
+      "--external",
+      "react-dom",
+      "--external",
+      "react/jsx-runtime",
+      "--external",
+      "zod",
+      "--external",
+      "zustand",
+      "--external",
+      "zustand/*",
+      "--target=browser",
+      "--production"
+    ]
   }
 }
