@@ -29,7 +29,7 @@ import {
 } from "./constants.ts";
 import { decodeHeader, getNodeType } from "./header.ts";
 import type { KeyProvider, NodeKind } from "./types.ts";
-import { hashToKey } from "./utils.ts";
+import { computeSizeFlagByte, hashToKey, keyToHash } from "./utils.ts";
 
 /**
  * Validation result
@@ -390,7 +390,18 @@ export async function validateNode(
     }
   }
 
-  // 11. Verify hash
+  // 11. Verify size flag byte consistency (cheap check before expensive hash)
+  const expectedHash = keyToHash(expectedKey);
+  const expectedFlag = expectedHash[0];
+  const actualFlag = computeSizeFlagByte(bytes.length);
+  if (expectedFlag !== actualFlag) {
+    return {
+      valid: false,
+      error: `Size flag mismatch: key has 0x${expectedFlag.toString(16).padStart(2, "0")}, data size ${bytes.length} requires 0x${actualFlag.toString(16).padStart(2, "0")}`,
+    };
+  }
+
+  // 12. Verify hash
   const actualHash = await keyProvider.computeKey(bytes);
   const actualKey = hashToKey(actualHash);
   if (actualKey !== expectedKey) {

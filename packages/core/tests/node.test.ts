@@ -13,6 +13,7 @@ import {
   isValidNode,
 } from "../src/node.ts";
 import type { KeyProvider } from "../src/types.ts";
+import { computeSizeFlagByte } from "../src/utils.ts";
 
 // Mock key provider for testing
 const mockKeyProvider: KeyProvider = {
@@ -20,6 +21,7 @@ const mockKeyProvider: KeyProvider = {
     // Simple mock: just return first 16 bytes or pad with zeros
     const hash = new Uint8Array(HASH_SIZE);
     hash.set(data.slice(0, Math.min(data.length, HASH_SIZE)));
+    hash[0] = computeSizeFlagByte(data.length);
     return hash;
   },
 };
@@ -28,7 +30,9 @@ const mockKeyProvider: KeyProvider = {
 const realKeyProvider: KeyProvider = {
   async computeKey(data: Uint8Array): Promise<Uint8Array> {
     const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    return new Uint8Array(hashBuffer).slice(0, 16);
+    const hash = new Uint8Array(hashBuffer).slice(0, 16);
+    hash[0] = computeSizeFlagByte(data.length);
+    return hash;
   },
 };
 

@@ -47,13 +47,14 @@ describe("Well-known Keys", () => {
       expect(EMPTY_DICT_KEY).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
     });
 
-    it("should match the BLAKE3-128 hash of EMPTY_DICT_BYTES", async () => {
+    it("should match the size-flagged BLAKE3-128 hash of EMPTY_DICT_BYTES", async () => {
       // Import BLAKE3 dynamically for test
       const { blake3 } = await import("@noble/hashes/blake3");
-      const fullHash = blake3(EMPTY_DICT_BYTES);
-      const truncatedHash = fullHash.slice(0, 16);
+      const truncatedHash = blake3(EMPTY_DICT_BYTES, { dkLen: 16 });
+      // Apply size flag byte
+      const { computeSizeFlagByte, encodeCB32 } = await import("../src/utils.ts");
+      truncatedHash[0] = computeSizeFlagByte(EMPTY_DICT_BYTES.length);
       // Encode to CB32 and compare
-      const { encodeCB32 } = await import("../src/utils.ts");
       expect(EMPTY_DICT_KEY).toBe(encodeCB32(truncatedHash));
     });
   });

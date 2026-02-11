@@ -6,6 +6,7 @@
 
 import { createHash } from "node:crypto";
 import type { KeyProvider } from "@casfa/core";
+import { computeSizeFlagByte } from "@casfa/core";
 import { blake3 } from "@noble/hashes/blake3";
 
 /**
@@ -26,9 +27,11 @@ export type CombinedHashProvider = CombinedKeyProvider;
  * - sha256: SHA-256 for cas-storage-core (content addressing)
  */
 export const createNodeKeyProvider = (): CombinedKeyProvider => ({
-  // Blake3s-128 for cas-core (CAS node key computation)
+  // Blake3s-128 with size-flag byte (byte 0)
   computeKey: async (data) => {
-    return blake3(data, { dkLen: 16 });
+    const raw = blake3(data, { dkLen: 16 });
+    raw[0] = computeSizeFlagByte(data.length);
+    return raw;
   },
   // SHA-256 for cas-storage-core (content addressing)
   sha256: async (data) => {

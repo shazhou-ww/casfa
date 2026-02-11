@@ -16,9 +16,14 @@ import {
 } from "../src/controller.ts";
 import { computeUsableSpace } from "../src/topology.ts";
 import type { KeyProvider, StorageProvider } from "../src/types.ts";
+import { computeSizeFlagByte } from "../src/utils.ts";
 
 const createKeyProvider = (): KeyProvider => ({
-  computeKey: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
+  computeKey: async (data: Uint8Array) => {
+    const raw = blake3(data, { dkLen: 16 });
+    raw[0] = computeSizeFlagByte(data.length);
+    return raw;
+  },
 });
 
 type MemoryStorage = StorageProvider & {

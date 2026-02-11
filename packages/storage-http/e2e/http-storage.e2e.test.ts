@@ -12,7 +12,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { type CasfaClient, createClient, type StoredRootDelegate } from "@casfa/client";
-import { encodeFileNode, type KeyProvider } from "@casfa/core";
+import { computeSizeFlagByte, encodeFileNode, type KeyProvider } from "@casfa/core";
 import type { PopContext } from "@casfa/proof";
 import { hashToNodeKey, nodeKeyToStorageKey } from "@casfa/protocol";
 import { blake3 } from "@noble/hashes/blake3";
@@ -28,7 +28,11 @@ import { createHttpStorage, type HttpStorageConfig } from "../src/http-storage.t
 // ============================================================================
 
 const keyProvider: KeyProvider = {
-  computeKey: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
+  computeKey: async (data: Uint8Array) => {
+    const raw = blake3(data, { dkLen: 16 });
+    raw[0] = computeSizeFlagByte(data.length);
+    return raw;
+  },
 };
 
 const popContext: PopContext = {

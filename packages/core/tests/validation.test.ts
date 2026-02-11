@@ -7,11 +7,15 @@ import { blake3 } from "@noble/hashes/blake3";
 import { FILEINFO_SIZE, HEADER_SIZE } from "../src/constants.ts";
 import { encodeDictNode, encodeFileNode, encodeSuccessorNode } from "../src/node.ts";
 import type { KeyProvider, StorageProvider } from "../src/types.ts";
-import { hashToKey } from "../src/utils.ts";
+import { computeSizeFlagByte, hashToKey } from "../src/utils.ts";
 import { validateNode, validateNodeStructure } from "../src/validation.ts";
 
 const keyProvider: KeyProvider = {
-  computeKey: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
+  computeKey: async (data: Uint8Array) => {
+    const raw = blake3(data, { dkLen: 16 });
+    raw[0] = computeSizeFlagByte(data.length);
+    return raw;
+  },
 };
 
 const createMemoryStorage = (): StorageProvider & { size: () => number } => {
@@ -290,14 +294,29 @@ describe("Validation", () => {
       expect(result.kind).toBe("file");
     });
 
+    it("should reject size flag mismatch", async () => {
+      const encoded = await encodeFileNode(
+        { data: new Uint8Array([1, 2, 3]), fileSize: 3 },
+        keyProvider
+      );
+
+      // Use wrong key with wrong size flag (0x00 doesn't match actual data size)
+      const wrongKey = "00000000000000000000000000";
+      const result = await validateNode(encoded.bytes, wrongKey, keyProvider);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("Size flag mismatch");
+    });
+
     it("should reject hash mismatch", async () => {
       const encoded = await encodeFileNode(
         { data: new Uint8Array([1, 2, 3]), fileSize: 3 },
         keyProvider
       );
 
-      // Use wrong key (128-bit = 26 CB32 chars)
-      const wrongKey = "00000000000000000000000000";
+      // Use wrong key with correct size flag but wrong hash bits
+      const correctKey = hashToKey(encoded.hash);
+      // Flip some hash bits but keep the first 2 chars (size flag) the same
+      const wrongKey = correctKey.slice(0, 2) + "0000000000000000000000" + correctKey.slice(24);
       const result = await validateNode(encoded.bytes, wrongKey, keyProvider);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("Hash mismatch");

@@ -88,7 +88,7 @@ Parameters:
   CasStoragePrefix:
     Type: String
     Description: S3 key prefix for CAS blob storage
-    Default: "cas/blake3s/"
+    Default: "cas/v1/"
 
   # ── Server Config ──
   CasNodeLimit:

@@ -15,7 +15,7 @@
  *
  * Environment variables (loaded from root .env):
  *   CAS_BUCKET          - S3 bucket name
- *   CAS_PREFIX           - S3 key prefix (default: dev/cas/blake3s/)
+ *   CAS_PREFIX           - S3 key prefix (default: dev/cas/v1/)
  *   CAS_REGION           - AWS region for S3
  *   AWS_PROFILE          - AWS SSO profile
  *   TOKENS_TABLE         - DynamoDB tokens table (default: cas-tokens)
@@ -58,7 +58,7 @@ import { Command } from "commander";
 // ============================================================================
 
 const bucket = process.env.CAS_BUCKET ?? "cas-bucket";
-const prefix = process.env.CAS_PREFIX ?? "dev/cas/blake3s/";
+const prefix = process.env.CAS_PREFIX ?? "dev/cas/v1/";
 const s3Region = process.env.CAS_REGION || "us-west-2";
 const dbRegion = process.env.AWS_REGION ?? process.env.COGNITO_REGION ?? "us-east-1";
 

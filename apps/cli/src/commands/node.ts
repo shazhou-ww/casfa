@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { decodeNode, encodeFileNode } from "@casfa/core";
+import { computeSizeFlagByte, decodeNode, encodeFileNode } from "@casfa/core";
 import { hashToNodeKey } from "@casfa/protocol";
 import { blake3 } from "@noble/hashes/blake3.js";
 import type { Command } from "commander";
@@ -116,11 +116,13 @@ export function registerNodeCommands(program: Command): void {
         const resolved = await createClient(opts);
         requireRealmAuth(resolved);
 
-        // Key provider for CAS node encoding (uses BLAKE3-128)
+        // Key provider for CAS node encoding (BLAKE3-128 + size flag)
         const keyProvider = {
           computeKey: async (nodeData: Uint8Array): Promise<Uint8Array> => {
             const fullHash = blake3(nodeData);
-            return fullHash.slice(0, 16); // 128-bit truncation
+            const key = fullHash.slice(0, 16); // 128-bit truncation
+            key[0] = computeSizeFlagByte(nodeData.length);
+            return key;
           },
         };
 
