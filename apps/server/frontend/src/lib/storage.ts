@@ -18,10 +18,11 @@
  */
 
 import type { KeyProvider } from "@casfa/core";
-import { computeSizeFlagByte } from "@casfa/core";
-import type { CachedStorageProvider } from "@casfa/storage-cached";
+import { computeSizeFlagByte, encodeCB32, validateNodeStructure } from "@casfa/core";
+import { createCachedStorage, type CachedStorageProvider } from "@casfa/storage-cached";
 import { createHttpStorage } from "@casfa/storage-http";
-import { createCachedStorage, createIndexedDBStorage } from "@casfa/storage-indexeddb";
+import type { PopContext } from "@casfa/proof";
+import { createIndexedDBStorage } from "@casfa/storage-indexeddb";
 import { blake3 } from "@noble/hashes/blake3";
 import { getClient } from "./client.ts";
 
@@ -160,11 +161,20 @@ export function getStorage(): Promise<CachedStorageProvider> {
     storagePromise = (async () => {
       const client = await getClient();
 
+      // PoP context for claiming unowned nodes
+      const popContext: PopContext = {
+        blake3_256: (data) => blake3(data),
+        blake3_128_keyed: (data, key) => blake3(data, { dkLen: 16, key }),
+        crockfordBase32Encode: (bytes) => encodeCB32(bytes),
+      };
+
+      // Cached token bytes — refreshed lazily before each sync
+      let cachedTokenBytes: Uint8Array | null = null;
+
       const httpStorage = createHttpStorage({
         client,
-        // getTokenBytes is only needed for smart put (PoP claims).
-        // Read-only caching never calls put on the HTTP layer.
-        getTokenBytes: () => null,
+        getTokenBytes: () => cachedTokenBytes,
+        popContext,
       });
 
       const indexedDBStorage = createIndexedDBStorage();
@@ -174,14 +184,21 @@ export function getStorage(): Promise<CachedStorageProvider> {
         remote: httpStorage,
         writeBack: {
           debounceMs: 2000,
-          onSyncStart: () => {
+          onSyncStart: async () => {
             if (!flushInProgress) clearSyncLogInternal();
+            // Refresh token bytes before each sync cycle
+            const at = await client.getAccessToken();
+            cachedTokenBytes = at?.tokenBytes ?? null;
             setSyncing(true);
           },
           onSyncEnd: () => {
             if (!flushInProgress) setSyncing(false);
           },
           onKeySync: handleKeySync,
+          getChildKeys: (bytes: Uint8Array) => {
+            const result = validateNodeStructure(bytes);
+            return result.valid ? (result.childKeys ?? []) : [];
+          },
         },
       });
     })();

@@ -43,24 +43,24 @@ export type HttpStorageConfig = {
   popContext?: PopContext;
 };
 
-/**
- * Result of a batch put operation.
- */
-export type PutManyResult = {
-  /** Keys that were actually uploaded or claimed */
-  synced: string[];
-  /** Keys already present and owned (no upload needed) */
-  skipped: string[];
-  /** Keys that failed to upload or claim */
-  failed: Array<{ key: string; error: unknown }>;
+/** Three-way check result keyed by storage key */
+export type CheckManyResult = {
+  missing: string[];
+  unowned: string[];
+  owned: string[];
 };
 
 /**
- * Extended StorageProvider with batch put support.
+ * Extended StorageProvider with batch check and claim support.
+ *
+ * - `checkMany(keys)` — single batch check, returns three-way status
+ * - `claim(key, value)` — claim an unowned node via PoP (no bytes uploaded)
  */
 export type HttpStorageProvider = StorageProvider & {
-  /** Batch put with single check call. Uploads in provided order (supports topo sort). */
-  putMany: (entries: Array<{ key: string; value: Uint8Array }>) => Promise<PutManyResult>;
+  /** Batch check returning three-way status for each key. */
+  checkMany: (keys: string[]) => Promise<CheckManyResult>;
+  /** Claim an unowned node via Proof of Possession. The value is only used locally for PoP computation — NOT uploaded. */
+  claim: (key: string, value: Uint8Array) => Promise<void>;
 };
 
 // ============================================================================
@@ -152,78 +152,54 @@ export const createHttpStorage = (config: HttpStorageConfig): HttpStorageProvide
       // else: owned — nothing to do
     },
 
-    async putMany(
-      entries: Array<{ key: string; value: Uint8Array }>
-    ): Promise<PutManyResult> {
-      if (entries.length === 0) return { synced: [], skipped: [], failed: [] };
+    async checkMany(keys: string[]): Promise<CheckManyResult> {
+      const missing: string[] = [];
+      const unowned: string[] = [];
+      const owned: string[] = [];
 
-      const nodeKeyEntries = entries.map((e) => ({
-        ...e,
-        nodeKey: storageKeyToNodeKey(e.key),
-      }));
-      const allNodeKeys = nodeKeyEntries.map((e) => e.nodeKey);
+      // Build storage→node key mapping
+      const storageToNode = new Map(keys.map((k) => [k, storageKeyToNodeKey(k)]));
+      const nodeToStorage = new Map(keys.map((k) => [storageKeyToNodeKey(k), k]));
+      const nodeKeys = keys.map(storageKeyToNodeKey);
 
-      // Single batch check (max 1000 per call)
-      const statusMap = new Map<string, NodeStatus>();
-      for (let i = 0; i < allNodeKeys.length; i += 1000) {
-        const batch = allNodeKeys.slice(i, i + 1000);
+      for (let i = 0; i < nodeKeys.length; i += 1000) {
+        const batch = nodeKeys.slice(i, i + 1000);
         const result = await client.nodes.check({ keys: batch });
         if (!result.ok) {
           throw new Error(`Batch check failed: ${result.error.message}`);
         }
-        for (const k of result.data.owned) statusMap.set(k, "owned");
-        for (const k of result.data.unowned) statusMap.set(k, "unowned");
-        for (const k of result.data.missing) statusMap.set(k, "missing");
-      }
-
-      // Populate per-instance check cache
-      for (const [k, s] of statusMap) checkCache.set(k, s);
-
-      const synced: string[] = [];
-      const skipped: string[] = [];
-      const failed: Array<{ key: string; error: unknown }> = [];
-
-      // Process entries in provided order (preserves topo sort from caller)
-      for (const entry of nodeKeyEntries) {
-        const status = statusMap.get(entry.nodeKey) ?? "missing";
-
-        if (status === "owned") {
-          skipped.push(entry.key);
-          continue;
+        for (const nk of result.data.missing) {
+          checkCache.set(nk, "missing");
+          const sk = nodeToStorage.get(nk);
+          if (sk) missing.push(sk);
         }
-
-        try {
-          if (status === "missing") {
-            const putResult = await client.nodes.put(entry.nodeKey, entry.value);
-            if (!putResult.ok) {
-              throw new Error(
-                `Failed to upload node ${entry.nodeKey}: ${putResult.error.message}`
-              );
-            }
-          } else {
-            // unowned — claim via PoP
-            const tokenBytes = getTokenBytes();
-            if (!tokenBytes || !popContext) {
-              throw new Error(
-                `Cannot claim unowned node ${entry.nodeKey}: missing tokenBytes or popContext`
-              );
-            }
-            const pop = computePoP(tokenBytes, entry.value, popContext);
-            const claimResult = await client.nodes.claim(entry.nodeKey, pop);
-            if (!claimResult.ok) {
-              throw new Error(
-                `Failed to claim node ${entry.nodeKey}: ${claimResult.error.message}`
-              );
-            }
-          }
-          checkCache.set(entry.nodeKey, "owned");
-          synced.push(entry.key);
-        } catch (err) {
-          failed.push({ key: entry.key, error: err });
+        for (const nk of result.data.unowned) {
+          checkCache.set(nk, "unowned");
+          const sk = nodeToStorage.get(nk);
+          if (sk) unowned.push(sk);
+        }
+        for (const nk of result.data.owned) {
+          checkCache.set(nk, "owned");
+          const sk = nodeToStorage.get(nk);
+          if (sk) owned.push(sk);
         }
       }
 
-      return { synced, skipped, failed };
+      return { missing, unowned, owned };
+    },
+
+    async claim(key: string, value: Uint8Array): Promise<void> {
+      const nodeKey = storageKeyToNodeKey(key);
+      const tokenBytes = getTokenBytes();
+      if (!tokenBytes || !popContext) {
+        throw new Error(`Cannot claim unowned node ${nodeKey}: missing tokenBytes or popContext`);
+      }
+      const pop = computePoP(tokenBytes, value, popContext);
+      const claimResult = await client.nodes.claim(nodeKey, pop);
+      if (!claimResult.ok) {
+        throw new Error(`Failed to claim node ${nodeKey}: ${claimResult.error.message}`);
+      }
+      checkCache.set(nodeKey, "owned");
     },
   };
 };

@@ -6,9 +6,9 @@
 
 export {
   batchPut,
+  type CheckManyResult,
   createHttpStorage,
   type HttpStorageConfig,
   type HttpStorageProvider,
   type NodeStatus,
-  type PutManyResult,
 } from "./http-storage.ts";
