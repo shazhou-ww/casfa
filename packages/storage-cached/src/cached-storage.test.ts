@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from "bun:test";
 import type { StorageProvider } from "@casfa/storage-core";
+import type { SyncResult } from "./cached-storage.ts";
 import { createCachedStorage } from "./cached-storage.ts";
 
 // ============================================================================
@@ -244,6 +245,395 @@ describe("createCachedStorage", () => {
 
       expect(await storage.get(KEY)).toEqual(DATA);
       expect(await storage.get(key2)).toEqual(data2);
+    });
+  });
+});
+
+// ============================================================================
+// Tests — write-back mode
+// ============================================================================
+
+describe("createCachedStorage (write-back)", () => {
+  const DEBOUNCE = 20;
+
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  describe("put", () => {
+    it("should write to cache immediately but not to remote", async () => {
+      const cache = createSpyStorage();
+      const remote = createSpyStorage();
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { debounceMs: DEBOUNCE },
+      });
+
+      await storage.put(KEY, DATA);
+
+      // Data is in cache
+      expect(cache.store.get(KEY)).toEqual(DATA);
+      // Not yet in remote
+      expect(remote.store.has(KEY)).toBe(false);
+      expect(remote.calls.filter((c) => c.method === "put")).toHaveLength(0);
+
+      storage.dispose();
+    });
+
+    it("should return immediately without waiting for remote", async () => {
+      const cache = createSpyStorage();
+      // Remote put that takes a long time
+      const remote: StorageProvider = {
+        get: async () => null,
+        has: async () => false,
+        put: async () => {
+          await wait(500);
+        },
+      };
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { debounceMs: DEBOUNCE },
+      });
+
+      const start = Date.now();
+      await storage.put(KEY, DATA);
+      const elapsed = Date.now() - start;
+
+      // Should return nearly instantly (≪ 500ms)
+      expect(elapsed).toBeLessThan(50);
+
+      storage.dispose();
+    });
+  });
+
+  describe("debounced sync", () => {
+    it("should sync to remote after debounce interval", async () => {
+      const cache = createSpyStorage();
+      const remote = createSpyStorage();
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { debounceMs: DEBOUNCE },
+      });
+
+      await storage.put(KEY, DATA);
+
+      // Not synced yet
+      expect(remote.store.has(KEY)).toBe(false);
+
+      // Wait for debounce + some buffer
+      await wait(DEBOUNCE + 50);
+
+      // Now it should be synced
+      expect(remote.store.get(KEY)).toEqual(DATA);
+
+      storage.dispose();
+    });
+
+    it("should batch multiple puts into one sync cycle", async () => {
+      const cache = createSpyStorage();
+      const remote = createSpyStorage();
+      const syncEvents: string[] = [];
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: {
+          debounceMs: DEBOUNCE,
+          onSyncStart: () => syncEvents.push("start"),
+          onSyncEnd: () => syncEvents.push("end"),
+        },
+      });
+
+      const key2 = "ZYXWVUTSRQPONMLKJIHGFEDCB0";
+      const data2 = new Uint8Array([5, 6, 7, 8]);
+
+      await storage.put(KEY, DATA);
+      await storage.put(key2, data2);
+
+      await wait(DEBOUNCE + 50);
+
+      // Both should be synced
+      expect(remote.store.get(KEY)).toEqual(DATA);
+      expect(remote.store.get(key2)).toEqual(data2);
+
+      // Only one sync cycle
+      expect(syncEvents).toEqual(["start", "end"]);
+
+      storage.dispose();
+    });
+
+    it("should skip keys already on remote", async () => {
+      const cache = createSpyStorage();
+      const remote = createSpyStorage(new Map([[KEY, DATA]]));
+      let lastResult: SyncResult | null = null;
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: {
+          debounceMs: DEBOUNCE,
+          onSyncEnd: (result) => {
+            lastResult = result;
+          },
+        },
+      });
+
+      // Put a key that remote already has
+      await storage.put(KEY, DATA);
+      await wait(DEBOUNCE + 50);
+
+      // Should be skipped, not uploaded
+      expect(lastResult).not.toBeNull();
+      expect(lastResult!.skipped).toEqual([KEY]);
+      expect(lastResult!.synced).toHaveLength(0);
+
+      // remote.put should NOT have been called
+      expect(remote.calls.filter((c) => c.method === "put")).toHaveLength(0);
+
+      storage.dispose();
+    });
+  });
+
+  describe("sync callbacks", () => {
+    it("should call onSyncStart and onSyncEnd", async () => {
+      const cache = createSpyStorage();
+      const remote = createSpyStorage();
+      const events: string[] = [];
+      let capturedResult: SyncResult | null = null;
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: {
+          debounceMs: DEBOUNCE,
+          onSyncStart: () => events.push("start"),
+          onSyncEnd: (result) => {
+            events.push("end");
+            capturedResult = result;
+          },
+        },
+      });
+
+      await storage.put(KEY, DATA);
+      await wait(DEBOUNCE + 50);
+
+      expect(events).toEqual(["start", "end"]);
+      expect(capturedResult!.synced).toEqual([KEY]);
+      expect(capturedResult!.skipped).toHaveLength(0);
+      expect(capturedResult!.failed).toHaveLength(0);
+
+      storage.dispose();
+    });
+
+    it("should report failed uploads in SyncResult", async () => {
+      const cache = createSpyStorage();
+      const failKey = "FAILFAILFAILFAILFAILFAILFA";
+      const remote: StorageProvider & { calls: Call[] } = {
+        calls: [],
+        get: async () => null,
+        has: async (key) => {
+          remote.calls.push({ method: "has", args: [key] });
+          return false;
+        },
+        put: async (key) => {
+          remote.calls.push({ method: "put", args: [key] });
+          if (key === failKey) throw new Error("upload failed");
+        },
+      };
+      const results: SyncResult[] = [];
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: {
+          debounceMs: DEBOUNCE,
+          onSyncEnd: (result) => {
+            results.push(result);
+          },
+        },
+      });
+
+      await storage.put(KEY, DATA);
+      await storage.put(failKey, new Uint8Array([9, 9]));
+      // Use flush for deterministic single-cycle sync
+      await storage.flush();
+
+      // First sync result: KEY succeeded, failKey failed
+      expect(results.length).toBeGreaterThanOrEqual(1);
+      const firstResult = results[0]!;
+      expect(firstResult.synced).toEqual([KEY]);
+      expect(firstResult.failed).toHaveLength(1);
+      expect(firstResult.failed[0]!.key).toBe(failKey);
+
+      storage.dispose();
+    });
+  });
+
+  describe("flush", () => {
+    it("should force immediate sync without waiting for debounce", async () => {
+      const cache = createSpyStorage();
+      const remote = createSpyStorage();
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { debounceMs: 5000 }, // very long debounce
+      });
+
+      await storage.put(KEY, DATA);
+
+      // Not synced yet (debounce is 5s)
+      expect(remote.store.has(KEY)).toBe(false);
+
+      // Flush forces immediate sync
+      await storage.flush();
+
+      expect(remote.store.get(KEY)).toEqual(DATA);
+
+      storage.dispose();
+    });
+
+    it("should be a no-op when nothing is pending", async () => {
+      const cache = createSpyStorage();
+      const remote = createSpyStorage();
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { debounceMs: DEBOUNCE },
+      });
+
+      // Flush with nothing pending should not throw
+      await storage.flush();
+
+      expect(remote.calls).toHaveLength(0);
+
+      storage.dispose();
+    });
+
+    it("should wait for in-progress sync to complete", async () => {
+      const cache = createSpyStorage();
+      const syncOrder: string[] = [];
+      const gate: { resolve: (() => void) | null } = { resolve: null };
+      let firstPutBlocked = false;
+
+      const remote: StorageProvider = {
+        get: async () => null,
+        has: async () => false,
+        put: async (key, _value) => {
+          if (!firstPutBlocked) {
+            // Block the first put
+            firstPutBlocked = true;
+            syncOrder.push(`put:${key}:start`);
+            await new Promise<void>((resolve) => {
+              gate.resolve = resolve;
+            });
+            syncOrder.push(`put:${key}:end`);
+          } else {
+            syncOrder.push(`put:${key}`);
+          }
+        },
+      };
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { debounceMs: 5 },
+      });
+
+      await storage.put(KEY, DATA);
+
+      // Wait for debounce to trigger sync (put will block)
+      await wait(15);
+
+      // Sync is in progress (blocked on first put)
+      expect(syncOrder).toEqual([`put:${KEY}:start`]);
+
+      // Unblock the first put
+      gate.resolve?.();
+      await wait(5);
+
+      expect(syncOrder).toContain(`put:${KEY}:end`);
+
+      storage.dispose();
+    });
+  });
+
+  describe("dispose", () => {
+    it("should cancel pending debounced sync", async () => {
+      const cache = createSpyStorage();
+      const remote = createSpyStorage();
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { debounceMs: DEBOUNCE },
+      });
+
+      await storage.put(KEY, DATA);
+      storage.dispose();
+
+      // Wait past the debounce
+      await wait(DEBOUNCE + 50);
+
+      // Remote should NOT have the data (timer was cancelled)
+      expect(remote.store.has(KEY)).toBe(false);
+    });
+  });
+
+  describe("integration", () => {
+    it("should serve put data from cache before sync completes", async () => {
+      const cache = createSpyStorage();
+      const remote = createSpyStorage();
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { debounceMs: 5000 },
+      });
+
+      await storage.put(KEY, DATA);
+
+      // Get returns cached data even though remote sync hasn't happened
+      const result = await storage.get(KEY);
+      expect(result).toEqual(DATA);
+
+      storage.dispose();
+    });
+
+    it("should report has=true for pending keys via cache", async () => {
+      const cache = createSpyStorage();
+      const remote = createSpyStorage();
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { debounceMs: 5000 },
+      });
+
+      await storage.put(KEY, DATA);
+
+      // has returns true from cache even before remote sync
+      expect(await storage.has(KEY)).toBe(true);
+
+      storage.dispose();
+    });
+
+    it("should flush in write-through mode as no-op", async () => {
+      const cache = createSpyStorage();
+      const remote = createSpyStorage();
+
+      const storage = createCachedStorage({ cache, remote });
+
+      await storage.put(KEY, DATA);
+      await storage.flush(); // no-op
+      storage.dispose(); // no-op
+
+      expect(remote.store.get(KEY)).toEqual(DATA);
     });
   });
 });
