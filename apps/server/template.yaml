@@ -499,6 +499,28 @@ Resources:
   # CloudFront Distribution (HTTP/2 + HTTP/3, dual origin)
   # ===========================================================================
 
+  # CloudFront Function for SPA fallback (rewrites non-asset paths to /index.html)
+  # This replaces the global CustomErrorResponses which incorrectly intercepted
+  # API 403/404 responses and returned the frontend HTML instead.
+  SpaRewriteFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "casfa-spa-rewrite-${StageName}"
+      AutoPublish: true
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+          // If URI has no file extension, rewrite to /index.html for SPA routing
+          if (uri !== '/' && !uri.includes('.')) {
+            request.uri = '/index.html';
+          }
+          return request;
+        }
+      FunctionConfig:
+        Comment: !Sub "CASFA ${StageName} SPA rewrite - non-asset paths to /index.html"
+        Runtime: cloudfront-js-2.0
+
   CloudFrontOAC:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
@@ -563,6 +585,9 @@ Resources:
           CachedMethods:
             - GET
             - HEAD
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt SpaRewriteFunction.FunctionARN
 
         CacheBehaviors:
           # /api/* → API Gateway (no cache, forward all)
@@ -580,16 +605,9 @@ Resources:
               - PATCH
               - DELETE
 
-        # SPA fallback: 403/404 from S3 → /index.html (200)
-        CustomErrorResponses:
-          - ErrorCode: 403
-            ResponseCode: 200
-            ResponsePagePath: /index.html
-            ErrorCachingMinTTL: 0
-          - ErrorCode: 404
-            ResponseCode: 200
-            ResponsePagePath: /index.html
-            ErrorCachingMinTTL: 0
+        # SPA fallback is handled by SpaRewriteFunction on the default behavior.
+        # Do NOT use CustomErrorResponses - they are distribution-wide and would
+        # intercept API 403/404 responses, returning frontend HTML instead of JSON.
 
   # ===========================================================================
   # WAF WebACL (per-IP rate limiting)
