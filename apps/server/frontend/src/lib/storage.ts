@@ -12,12 +12,9 @@
  */
 
 import type { HashProvider, StorageProvider } from "@casfa/core";
-import { blake3 } from "@noble/hashes/blake3";
 import { createHttpStorage } from "@casfa/storage-http";
-import {
-  createCachedStorage,
-  createIndexedDBStorage,
-} from "@casfa/storage-indexeddb";
+import { createCachedStorage, createIndexedDBStorage } from "@casfa/storage-indexeddb";
+import { blake3 } from "@noble/hashes/blake3";
 import { getClient } from "./client.ts";
 
 // ============================================================================

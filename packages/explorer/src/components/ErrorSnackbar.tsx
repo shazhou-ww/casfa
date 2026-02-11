@@ -5,8 +5,8 @@
  * Auto-dismisses after 5 seconds.
  */
 
-import { useCallback, useEffect, useState } from "react";
 import { Alert, Snackbar } from "@mui/material";
+import { useCallback, useEffect, useState } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import type { ExplorerError, ExplorerErrorType } from "../types.ts";
 
@@ -47,7 +47,7 @@ export function ErrorSnackbar({ onError }: ErrorSnackbarProps) {
       setOpen(false);
       setError(null);
     },
-    [setError],
+    [setError]
   );
 
   const getErrorMessage = useCallback(
@@ -64,7 +64,7 @@ export function ErrorSnackbar({ onError }: ErrorSnackbarProps) {
       };
       return keyMap[error.type] || error.message;
     },
-    [t],
+    [t]
   );
 
   if (!displayError) return null;

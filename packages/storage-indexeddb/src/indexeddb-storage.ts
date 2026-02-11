@@ -62,7 +62,7 @@ const DEFAULT_EVICTION_BATCH = 1000;
  * CAS blocks are immutable — once stored, they never change.
  */
 export const createIndexedDBStorage = (
-  config: IndexedDBStorageConfig = {},
+  config: IndexedDBStorageConfig = {}
 ): StorageProvider & { clear: () => Promise<void> } => {
   const dbName = config.dbName ?? DEFAULT_DB_NAME;
   const storeName = config.storeName ?? DEFAULT_STORE_NAME;

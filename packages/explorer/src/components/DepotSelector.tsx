@@ -3,7 +3,8 @@
  * with create and delete depot management features.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import AddIcon from "@mui/icons-material/Add";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import {
   Box,
   Button,
@@ -20,8 +21,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import AddIcon from "@mui/icons-material/Add";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import { useCallback, useEffect, useState } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 
 type DepotSelectorProps = {
@@ -45,7 +45,10 @@ export function DepotSelector({ onSelect }: DepotSelectorProps) {
   const [creating, setCreating] = useState(false);
 
   // ── Delete depot dialog ──
-  const [deleteTarget, setDeleteTarget] = useState<{ depotId: string; title: string | null } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    depotId: string;
+    title: string | null;
+  } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -56,7 +59,7 @@ export function DepotSelector({ onSelect }: DepotSelectorProps) {
     ? depots.filter(
         (d) =>
           d.depotId.toLowerCase().includes(search.toLowerCase()) ||
-          (d.title && d.title.toLowerCase().includes(search.toLowerCase())),
+          (d.title && d.title.toLowerCase().includes(search.toLowerCase()))
       )
     : depots;
 
@@ -89,7 +92,7 @@ export function DepotSelector({ onSelect }: DepotSelectorProps) {
         handleCreateSubmit();
       }
     },
-    [handleCreateSubmit],
+    [handleCreateSubmit]
   );
 
   // ── Delete handlers ──
@@ -98,7 +101,7 @@ export function DepotSelector({ onSelect }: DepotSelectorProps) {
       e.stopPropagation();
       setDeleteTarget({ depotId, title });
     },
-    [],
+    []
   );
 
   const handleDeleteClose = useCallback(() => {
@@ -117,9 +120,7 @@ export function DepotSelector({ onSelect }: DepotSelectorProps) {
     <Box sx={{ p: 2, height: "100%", overflow: "auto" }}>
       {/* Header row: title + create button */}
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
-        <Typography variant="h6">
-          {t("depot.title")}
-        </Typography>
+        <Typography variant="h6">{t("depot.title")}</Typography>
         {permissions.canManageDepot && (
           <Button
             size="small"

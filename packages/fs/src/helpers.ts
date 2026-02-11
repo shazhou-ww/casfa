@@ -6,7 +6,7 @@
  */
 
 import type { CasNode } from "@casfa/core";
-import { encodeCrockfordBase32, decodeCrockfordBase32, FS_MAX_NAME_BYTES } from "@casfa/protocol";
+import { decodeCrockfordBase32, encodeCrockfordBase32, FS_MAX_NAME_BYTES } from "@casfa/protocol";
 import { type FsError, fsError } from "./types.ts";
 
 const textEncoder = new TextEncoder();
@@ -50,7 +50,7 @@ export const parsePath = (path: string): string[] | FsError => {
       return fsError(
         "NAME_TOO_LONG",
         400,
-        `Name too long: '${seg}' (${bytes.length} bytes, max ${FS_MAX_NAME_BYTES})`,
+        `Name too long: '${seg}' (${bytes.length} bytes, max ${FS_MAX_NAME_BYTES})`
       );
     }
   }
@@ -74,7 +74,7 @@ export const parseIndexPath = (indexPath: string): number[] | FsError => {
 /** Find a child in a d-node by name; returns hash + index or null */
 export const findChildByName = (
   node: CasNode,
-  name: string,
+  name: string
 ): { hash: Uint8Array; index: number } | null => {
   if (node.kind !== "dict" || !node.childNames || !node.children) return null;
   const idx = node.childNames.indexOf(name);
@@ -85,7 +85,7 @@ export const findChildByName = (
 /** Find a child in a d-node by index; returns hash + name or null */
 export const findChildByIndex = (
   node: CasNode,
-  index: number,
+  index: number
 ): { hash: Uint8Array; name: string } | null => {
   if (node.kind !== "dict" || !node.childNames || !node.children) return null;
   if (index < 0 || index >= node.children.length) return null;

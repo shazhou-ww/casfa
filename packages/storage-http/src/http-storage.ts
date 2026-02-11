@@ -54,7 +54,7 @@ export type HttpStorageConfig = {
 const checkOne = async (
   client: CasfaClient,
   nodeKey: string,
-  cache: Map<string, NodeStatus>,
+  cache: Map<string, NodeStatus>
 ): Promise<NodeStatus> => {
   const cached = cache.get(nodeKey);
   if (cached !== undefined) return cached;
@@ -119,9 +119,7 @@ export const createHttpStorage = (config: HttpStorageConfig): StorageProvider =>
         // Node exists but not owned by us — claim via PoP
         const tokenBytes = getTokenBytes();
         if (!tokenBytes || !popContext) {
-          throw new Error(
-            `Cannot claim unowned node ${nodeKey}: missing tokenBytes or popContext`,
-          );
+          throw new Error(`Cannot claim unowned node ${nodeKey}: missing tokenBytes or popContext`);
         }
         const pop = computePoP(tokenBytes, value, popContext);
         const claimResult = await client.nodes.claim(nodeKey, pop);
@@ -148,7 +146,7 @@ export const createHttpStorage = (config: HttpStorageConfig): StorageProvider =>
  */
 export const batchPut = async (
   config: HttpStorageConfig,
-  entries: Array<{ key: string; value: Uint8Array }>,
+  entries: Array<{ key: string; value: Uint8Array }>
 ): Promise<string[]> => {
   if (entries.length === 0) return [];
 
@@ -184,7 +182,9 @@ export const batchPut = async (
       if (!entry) continue;
       const tokenBytes = getTokenBytes();
       if (!tokenBytes || !popContext) {
-        throw new Error(`Cannot claim unowned node ${unownedKey}: missing tokenBytes or popContext`);
+        throw new Error(
+          `Cannot claim unowned node ${unownedKey}: missing tokenBytes or popContext`
+        );
       }
       const pop = computePoP(tokenBytes, entry.value, popContext);
       const claimResult = await client.nodes.claim(unownedKey, pop);

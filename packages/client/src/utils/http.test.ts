@@ -95,7 +95,7 @@ describe("createErrorFromResponse", () => {
     expect(error.message).toBe("Error from error field");
   });
 
-  it("should prefer error field over message when both present", async () => {
+  it("should prefer message field over error when both present", async () => {
     const response = new Response(
       JSON.stringify({ message: "Message field", error: "Error field" }),
       {
@@ -106,8 +106,8 @@ describe("createErrorFromResponse", () => {
 
     const error = await createErrorFromResponse(response);
 
-    // error field is checked after message, so it overwrites
-    expect(error.message).toBe("Error field");
+    // message is preferred as it's more descriptive; error is often a code
+    expect(error.message).toBe("Message field");
   });
 
   it("should use statusText when body is not JSON", async () => {

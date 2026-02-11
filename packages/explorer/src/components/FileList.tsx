@@ -4,7 +4,8 @@
  * Iter 2: Added multi-select support and right-click context menu trigger.
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import FolderIcon from "@mui/icons-material/Folder";
+import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import {
   Box,
   Checkbox,
@@ -18,8 +19,7 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
-import FolderIcon from "@mui/icons-material/Folder";
-import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
+import { useCallback, useEffect, useRef } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import type { ExplorerItem } from "../types.ts";
 
@@ -75,7 +75,7 @@ export function FileList({
           loadMore();
         }
       },
-      { threshold: 0.1 },
+      { threshold: 0.1 }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
@@ -96,7 +96,7 @@ export function FileList({
       // Normal click → single select, then navigate/open
       setSelectedItems([item]);
     },
-    [selectedItems, selectedPaths, setSelectedItems],
+    [selectedItems, selectedPaths, setSelectedItems]
   );
 
   const handleRowDoubleClick = useCallback(
@@ -108,7 +108,7 @@ export function FileList({
         onFileOpen?.(item);
       }
     },
-    [navigate, onNavigate, onFileOpen],
+    [navigate, onNavigate, onFileOpen]
   );
 
   const handleRowContextMenu = useCallback(
@@ -120,7 +120,7 @@ export function FileList({
       }
       onContextMenu?.(e, item);
     },
-    [selectedPaths, setSelectedItems, onContextMenu],
+    [selectedPaths, setSelectedItems, onContextMenu]
   );
 
   const handleBlankContextMenu = useCallback(
@@ -131,7 +131,7 @@ export function FileList({
       setSelectedItems([]);
       onContextMenu?.(e, null);
     },
-    [setSelectedItems, onContextMenu],
+    [setSelectedItems, onContextMenu]
   );
 
   const handleSelectAll = useCallback(
@@ -142,7 +142,7 @@ export function FileList({
         setSelectedItems([]);
       }
     },
-    [items, setSelectedItems],
+    [items, setSelectedItems]
   );
 
   const sorted = [...items].sort((a, b) => {
@@ -240,7 +240,9 @@ export function FileList({
                 </TableCell>
                 <TableCell align="right">
                   <Typography variant="body2" color="text.secondary">
-                    {item.isDirectory ? `${item.childCount ?? "\u2014"}` : formatFileSize(item.size)}
+                    {item.isDirectory
+                      ? `${item.childCount ?? "\u2014"}`
+                      : formatFileSize(item.size)}
                   </Typography>
                 </TableCell>
                 <TableCell>

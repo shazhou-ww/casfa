@@ -5,9 +5,9 @@
  * over the explorer area. Uses a ref counter to handle nested dragenter events.
  */
 
-import { useCallback, useRef, useState } from "react";
-import { Box, Typography } from "@mui/material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import { Box, Typography } from "@mui/material";
+import { useCallback, useRef, useState } from "react";
 import { useExplorerT } from "../hooks/use-explorer-context.ts";
 
 type UploadOverlayProps = {
@@ -33,7 +33,7 @@ export function UploadOverlay({ onDrop, canUpload, children }: UploadOverlayProp
         setIsDragOver(true);
       }
     },
-    [canUpload],
+    [canUpload]
   );
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
@@ -64,12 +64,18 @@ export function UploadOverlay({ onDrop, canUpload, children }: UploadOverlayProp
         onDrop(files);
       }
     },
-    [canUpload, onDrop],
+    [canUpload, onDrop]
   );
 
   return (
     <Box
-      sx={{ position: "relative", flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}
+      sx={{
+        position: "relative",
+        flex: 1,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      }}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}

@@ -4,7 +4,7 @@
 
 import { createContext, useContext } from "react";
 import { useStore } from "zustand";
-import type { ExplorerStoreApi, ExplorerStore } from "../core/explorer-store.ts";
+import type { ExplorerStore, ExplorerStoreApi } from "../core/explorer-store.ts";
 import type { ExplorerT } from "../types.ts";
 
 // ============================================================================

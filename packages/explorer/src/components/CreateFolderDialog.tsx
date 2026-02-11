@@ -4,7 +4,6 @@
  * Validates folder name: non-empty, no `/` or `\0`, not a duplicate.
  */
 
-import { useCallback, useMemo, useState } from "react";
 import {
   Button,
   Dialog,
@@ -13,6 +12,7 @@ import {
   DialogTitle,
   TextField,
 } from "@mui/material";
+import { useCallback, useMemo, useState } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 
 type CreateFolderDialogProps = {
@@ -34,7 +34,7 @@ export function CreateFolderDialog({ open, onClose }: CreateFolderDialogProps) {
 
   const existingNames = useMemo(
     () => new Set(items.map((item) => item.name.toLowerCase())),
-    [items],
+    [items]
   );
 
   const validationError = useMemo(() => {
@@ -67,7 +67,7 @@ export function CreateFolderDialog({ open, onClose }: CreateFolderDialogProps) {
         handleSubmit();
       }
     },
-    [handleSubmit],
+    [handleSubmit]
   );
 
   const isLoading = operationLoading.createFolder ?? false;

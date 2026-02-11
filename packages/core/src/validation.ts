@@ -182,20 +182,17 @@ function _validatePascalStringsNoExtract(
  * 3. Hash matches expectedKey
  * 4. Pascal strings are valid (names, contentType)
  * 5. All children exist (if existsChecker provided)
- * 6. For dicts: size equals sum of children sizes
  *
  * @param bytes - Raw node bytes
  * @param expectedKey - Expected hash key (blake3s:...)
  * @param hashProvider - Hash provider for verification
  * @param existsChecker - Optional function to check child existence
- * @param getSize - Optional function to get child size for dict validation
  */
 export async function validateNode(
   bytes: Uint8Array,
   expectedKey: string,
   hashProvider: HashProvider,
-  existsChecker?: ExistsChecker,
-  getSize?: (key: string) => Promise<number | null>
+  existsChecker?: ExistsChecker
 ): Promise<ValidationResult> {
   // 1. Check minimum size
   if (bytes.length < HEADER_SIZE) {
@@ -423,32 +420,9 @@ export async function validateNode(
     }
   }
 
-  // 13. Validate dict node size (sum of children sizes)
-  if (isDict && getSize && childKeys.length > 0) {
-    let expectedSize = 0;
-    for (const key of childKeys) {
-      const childSize = await getSize(key);
-      if (childSize === null) {
-        return {
-          valid: false,
-          error: `Cannot get size for child: ${key}`,
-          kind,
-          size: header.size,
-          childKeys,
-        };
-      }
-      expectedSize += childSize;
-    }
-    if (header.size !== expectedSize) {
-      return {
-        valid: false,
-        error: `Dict size mismatch: header=${header.size}, computed=${expectedSize}`,
-        kind,
-        size: header.size,
-        childKeys,
-      };
-    }
-  }
+  // 13. (Removed) Dict size validation was incorrect — header.size is the names
+  // payload byte count, NOT the recursive sum of children sizes. Those are
+  // unrelated quantities. The payload length is already validated in step 5.
 
   return {
     valid: true,

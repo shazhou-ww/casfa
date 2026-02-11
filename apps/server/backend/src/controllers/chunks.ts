@@ -126,25 +126,9 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
         return c.json({ error: "Invalid node structure", details: structureResult.error }, 400);
       }
 
-      // Get child size helper
-      const getChildSize = async (childKey: string): Promise<number | null> => {
-        const childData = await storage.get(childKey);
-        if (!childData) return null;
-        try {
-          const node = decodeNode(childData);
-          return node.size;
-        } catch {
-          return null;
-        }
-      };
-
       // Full validation (use storageKey which is hex format)
-      const validationResult = await validateNode(
-        bytes,
-        storageKey,
-        hashProvider,
-        (childKey) => storage.has(childKey),
-        structureResult.kind === "dict" ? getChildSize : undefined
+      const validationResult = await validateNode(bytes, storageKey, hashProvider, (childKey) =>
+        storage.has(childKey)
       );
 
       if (!validationResult.valid) {

@@ -2,9 +2,9 @@
  * <Breadcrumb /> - Path navigation breadcrumb.
  */
 
-import { useCallback, useMemo } from "react";
-import { Breadcrumbs, Link, Typography } from "@mui/material";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
+import { Breadcrumbs, Link, Typography } from "@mui/material";
+import { useCallback, useMemo } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import type { PathSegment } from "../types.ts";
 
@@ -35,7 +35,7 @@ export function Breadcrumb({ renderBreadcrumb }: BreadcrumbProps) {
       e.preventDefault();
       navigate(path);
     },
-    [navigate],
+    [navigate]
   );
 
   if (renderBreadcrumb) {

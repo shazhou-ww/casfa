@@ -6,8 +6,8 @@
  * dialogs, and error snackbar.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
 import { Box } from "@mui/material";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useExplorerStore } from "../hooks/use-explorer-context.ts";
 import { useUpload } from "../hooks/use-upload.ts";
 import type {
@@ -96,14 +96,14 @@ export function ExplorerShell(props: ExplorerShellProps) {
         props.onFileOpen?.(item);
       }
     },
-    [navigate, props.onNavigate, props.onFileOpen],
+    [navigate, props.onNavigate, props.onFileOpen]
   );
 
   const handleContextMenuRename = useCallback(
     (item: ExplorerItem) => {
       openDialog("rename", item);
     },
-    [openDialog],
+    [openDialog]
   );
 
   const handleContextMenuDelete = useCallback(
@@ -115,7 +115,7 @@ export function ExplorerShell(props: ExplorerShellProps) {
         openDialog("delete", items[0]);
       }
     },
-    [openDialog],
+    [openDialog]
   );
 
   const handleContextMenuNewFolder = useCallback(() => {
@@ -133,7 +133,11 @@ export function ExplorerShell(props: ExplorerShellProps) {
   // ── Delete confirmation handler ──
   const handleDeleteConfirm = useCallback(async () => {
     const itemsToDelete =
-      selectedItems.length > 1 ? selectedItems : dialogState.targetItem ? [dialogState.targetItem] : [];
+      selectedItems.length > 1
+        ? selectedItems
+        : dialogState.targetItem
+          ? [dialogState.targetItem]
+          : [];
 
     if (itemsToDelete.length === 0) {
       closeDialog();
@@ -160,7 +164,7 @@ export function ExplorerShell(props: ExplorerShellProps) {
       }
       e.target.value = "";
     },
-    [uploadFiles],
+    [uploadFiles]
   );
 
   // ── Keyboard shortcuts ──
@@ -182,7 +186,7 @@ export function ExplorerShell(props: ExplorerShellProps) {
         openDialog("rename", selectedItems[0]);
       }
     },
-    [selectedItems, permissions.canUpload, handleContextMenuDelete, openDialog],
+    [selectedItems, permissions.canUpload, handleContextMenuDelete, openDialog]
   );
 
   if (!depotId) {
@@ -202,15 +206,17 @@ export function ExplorerShell(props: ExplorerShellProps) {
 
   // Determine delete message
   const deleteItemCount =
-    selectedItems.length > 1
-      ? selectedItems.length
-      : dialogState.targetItem
-        ? 1
-        : 0;
+    selectedItems.length > 1 ? selectedItems.length : dialogState.targetItem ? 1 : 0;
 
   return (
     <Box
-      sx={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden", position: "relative" }}
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        overflow: "hidden",
+        position: "relative",
+      }}
       tabIndex={0}
       onKeyDown={handleKeyDown}
     >
@@ -262,10 +268,7 @@ export function ExplorerShell(props: ExplorerShellProps) {
       />
 
       {/* Create folder dialog */}
-      <CreateFolderDialog
-        open={dialogState.type === "createFolder"}
-        onClose={closeDialog}
-      />
+      <CreateFolderDialog open={dialogState.type === "createFolder"} onClose={closeDialog} />
 
       {/* Rename dialog */}
       <RenameDialog

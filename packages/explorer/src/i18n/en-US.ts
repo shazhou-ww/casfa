@@ -62,7 +62,7 @@ const messages: Record<ExplorerTextKey, string> = {
   "upload.error": "Upload failed",
   "upload.cancel": "Cancel",
   "upload.retry": "Retry",
-  "upload.fileTooLarge": "\"{name}\" is too large (max 4 MB), skipped",
+  "upload.fileTooLarge": '"{name}" is too large (max 4 MB), skipped',
   // Errors
   "error.network": "Network error. Please check your connection.",
   "error.authExpired": "Session expired. Please log in again.",

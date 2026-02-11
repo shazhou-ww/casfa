@@ -45,7 +45,7 @@ export const fsStat = async (
   realm: string,
   accessTokenBase64: string,
   rootKey: string,
-  path?: string,
+  path?: string
 ): Promise<FetchResult<FsStatResponse>> => {
   const params = new URLSearchParams();
   if (path) params.set("path", path);
@@ -64,7 +64,7 @@ export const fsLs = async (
   accessTokenBase64: string,
   rootKey: string,
   path?: string,
-  opts?: { limit?: number; cursor?: string },
+  opts?: { limit?: number; cursor?: string }
 ): Promise<FetchResult<FsLsResponse>> => {
   const params = new URLSearchParams();
   if (path) params.set("path", path);
@@ -84,7 +84,7 @@ export const fsRead = async (
   realm: string,
   accessTokenBase64: string,
   rootKey: string,
-  path: string,
+  path: string
 ): Promise<FetchResult<Blob>> => {
   const params = new URLSearchParams({ path });
   const url = `${buildFsUrl(baseUrl, realm, rootKey, "read")}?${params}`;
@@ -137,14 +137,13 @@ export const fsWrite = async (
   rootKey: string,
   path: string,
   data: Blob | ArrayBuffer | Uint8Array,
-  contentType = "application/octet-stream",
+  contentType = "application/octet-stream"
 ): Promise<FetchResult<FsWriteResponse>> => {
   const params = new URLSearchParams({ path });
   const url = `${buildFsUrl(baseUrl, realm, rootKey, "write")}?${params}`;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Blob accepts Uint8Array at runtime
-  const body: Blob =
-    data instanceof Blob ? data : new Blob([data as any], { type: contentType });
+  const body: Blob = data instanceof Blob ? data : new Blob([data as any], { type: contentType });
 
   try {
     const response = await fetch(url, {
@@ -192,7 +191,7 @@ export const fsMkdir = async (
   realm: string,
   accessTokenBase64: string,
   rootKey: string,
-  path: string,
+  path: string
 ): Promise<FetchResult<FsMkdirResponse>> => {
   const url = buildFsUrl(baseUrl, realm, rootKey, "mkdir");
 
@@ -210,7 +209,7 @@ export const fsRm = async (
   realm: string,
   accessTokenBase64: string,
   rootKey: string,
-  path: string,
+  path: string
 ): Promise<FetchResult<FsRmResponse>> => {
   const url = buildFsUrl(baseUrl, realm, rootKey, "rm");
 
@@ -229,7 +228,7 @@ export const fsMv = async (
   accessTokenBase64: string,
   rootKey: string,
   from: string,
-  to: string,
+  to: string
 ): Promise<FetchResult<FsMvResponse>> => {
   const url = buildFsUrl(baseUrl, realm, rootKey, "mv");
 
@@ -248,7 +247,7 @@ export const fsCp = async (
   accessTokenBase64: string,
   rootKey: string,
   from: string,
-  to: string,
+  to: string
 ): Promise<FetchResult<FsCpResponse>> => {
   const url = buildFsUrl(baseUrl, realm, rootKey, "cp");
 
@@ -267,7 +266,7 @@ export const fsRewrite = async (
   accessTokenBase64: string,
   rootKey: string,
   entries?: Record<string, FsRewriteEntry>,
-  deletes?: string[],
+  deletes?: string[]
 ): Promise<FetchResult<FsRewriteResponse>> => {
   const url = buildFsUrl(baseUrl, realm, rootKey, "rewrite");
 

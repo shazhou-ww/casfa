@@ -51,9 +51,7 @@ function createMockClient(opts: {
     nodes: {
       get: async (nodeKey: string) => {
         calls.push({ method: "nodes.get", args: [nodeKey] });
-        return (
-          opts.getResult ?? { ok: true, data: BYTES_A, status: 200 }
-        );
+        return opts.getResult ?? { ok: true, data: BYTES_A, status: 200 };
       },
       check: async (params: { keys: string[] }) => {
         calls.push({ method: "nodes.check", args: [params] });
@@ -101,7 +99,7 @@ const mockPopContext: PopContext = {
 
 function makeConfig(
   client: CasfaClient,
-  overrides: Partial<HttpStorageConfig> = {},
+  overrides: Partial<HttpStorageConfig> = {}
 ): HttpStorageConfig {
   return {
     client,

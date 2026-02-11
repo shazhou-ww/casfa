@@ -2,7 +2,7 @@
  * Token store tests.
  */
 
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, mock, spyOn } from "bun:test";
 import type { TokenStorageProvider } from "../types/client.ts";
 import type { StoredRootDelegate, StoredUserToken, TokenState } from "../types/tokens.ts";
 import { emptyTokenState } from "../types/tokens.ts";
@@ -250,6 +250,7 @@ describe("createTokenStore", () => {
     });
 
     it("should handle storage load error gracefully", async () => {
+      const spy = spyOn(console, "error").mockImplementation(() => {});
       const storage = {
         load: mock(async () => {
           throw new Error("Storage error");
@@ -263,6 +264,7 @@ describe("createTokenStore", () => {
       // Should not throw
       await expect(store.initialize()).resolves.toBeUndefined();
       expect(store.getState()).toEqual(emptyTokenState());
+      spy.mockRestore();
     });
 
     it("should not trigger onTokenChange on initial load", async () => {
@@ -297,6 +299,7 @@ describe("createTokenStore", () => {
 
   describe("storage error handling", () => {
     it("should handle save error gracefully", async () => {
+      const spy = spyOn(console, "error").mockImplementation(() => {});
       const storage = {
         load: mock(async () => null),
         save: mock(async () => {
@@ -309,9 +312,13 @@ describe("createTokenStore", () => {
 
       // Should not throw
       expect(() => store.setUser(createUserToken())).not.toThrow();
+      // Wait for async error to be caught
+      await new Promise((r) => setTimeout(r, 10));
+      spy.mockRestore();
     });
 
     it("should handle clear error gracefully", async () => {
+      const spy = spyOn(console, "error").mockImplementation(() => {});
       const storage = {
         load: mock(async () => null),
         save: mock(async () => {}),
@@ -324,6 +331,9 @@ describe("createTokenStore", () => {
 
       // Should not throw
       expect(() => store.clear()).not.toThrow();
+      // Wait for async error to be caught
+      await new Promise((r) => setTimeout(r, 10));
+      spy.mockRestore();
     });
   });
 });
