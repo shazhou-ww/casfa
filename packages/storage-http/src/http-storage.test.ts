@@ -27,7 +27,6 @@ const NOD_A = storageKeyToNodeKey(KEY_A);
 const NOD_B = storageKeyToNodeKey(KEY_B);
 
 const BYTES_A = new Uint8Array([1, 2, 3]);
-const BYTES_B = new Uint8Array([4, 5, 6]);
 
 type Call = { method: string; args: unknown[] };
 

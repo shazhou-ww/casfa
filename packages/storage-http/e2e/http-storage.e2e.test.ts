@@ -13,7 +13,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { type CasfaClient, createClient, type StoredRootDelegate } from "@casfa/client";
 import { encodeFileNode, type HashProvider } from "@casfa/core";
-import { computePoP, type PopContext } from "@casfa/proof";
+import type { PopContext } from "@casfa/proof";
 import { hashToNodeKey, nodeKeyToStorageKey } from "@casfa/protocol";
 import { blake3 } from "@noble/hashes/blake3";
 import {
@@ -105,35 +105,6 @@ async function encodeTestFile(content: string) {
   const nodeKey = hashToNodeKey(encoded.hash);
   const storageKey = nodeKeyToStorageKey(nodeKey);
   return { nodeKey, storageKey, nodeBytes: encoded.bytes, nodeHash: encoded.hash };
-}
-
-function makeHttpStorage(client: CasfaClient): {
-  storage: ReturnType<typeof createHttpStorage>;
-  config: HttpStorageConfig;
-} {
-  let cachedTokenBytes: Uint8Array | null = null;
-
-  const config: HttpStorageConfig = {
-    client,
-    getTokenBytes: () => cachedTokenBytes,
-    popContext,
-  };
-
-  // Pre-load token bytes (we'll call this before returning)
-  const storage = createHttpStorage(config);
-
-  // Expose a helper to load token bytes
-  const init = async () => {
-    const at = await client.getAccessToken();
-    if (at) cachedTokenBytes = at.tokenBytes;
-  };
-
-  return {
-    storage,
-    config,
-    // @ts-expect-error init is a one-time async setup helper
-    init,
-  };
 }
 
 async function createStorageWithClient(ctx: E2EContext) {

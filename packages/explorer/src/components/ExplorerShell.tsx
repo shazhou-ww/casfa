@@ -68,7 +68,7 @@ export function ExplorerShell(props: ExplorerShellProps) {
   // ── Selection callback ──
   useEffect(() => {
     props.onSelect?.(selectedItems);
-  }, [selectedItems, props.onSelect]);
+  }, [selectedItems, props]);
 
   useEffect(() => {
     if (depotId && !depotRoot) {
@@ -96,7 +96,7 @@ export function ExplorerShell(props: ExplorerShellProps) {
         props.onFileOpen?.(item);
       }
     },
-    [navigate, props.onNavigate, props.onFileOpen]
+    [navigate, props]
   );
 
   const handleContextMenuRename = useCallback(

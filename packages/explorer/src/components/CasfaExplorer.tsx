@@ -9,7 +9,6 @@ import { ExplorerI18nContext, ExplorerStoreContext } from "../hooks/use-explorer
 import { createEnUsT } from "../i18n/en-US.ts";
 import { createZhCnT } from "../i18n/zh-CN.ts";
 import type { CasfaExplorerProps, ExplorerT } from "../types.ts";
-import { DepotSelector } from "./DepotSelector.tsx";
 import { ExplorerShell } from "./ExplorerShell.tsx";
 
 const localeFactories: Record<string, () => ExplorerT> = {
@@ -36,7 +35,7 @@ export function CasfaExplorer(props: CasfaExplorerProps) {
     const factory = localeFactories[locale] ?? createEnUsT;
     const builtinT = factory();
     return props.i18n ? props.i18n(builtinT) : builtinT;
-  }, [props.locale, props.i18n]);
+  }, [props]);
 
   return (
     <ExplorerStoreContext.Provider value={store.current}>
