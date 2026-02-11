@@ -68,10 +68,82 @@ export function onSyncStatusChange(listener: SyncStatusListener): () => void {
 }
 
 // ============================================================================
+// Sync log — per-key operation log, observable by UI
+// ============================================================================
+
+export type SyncLogEntry = {
+  id: number;
+  label: string;
+  status: "active" | "done" | "error";
+};
+
+let syncLogId = 0;
+const syncLog: SyncLogEntry[] = [];
+const keyToLogId = new Map<string, number>();
+const syncLogListeners = new Set<() => void>();
+
+function notifySyncLog() {
+  for (const fn of syncLogListeners) fn();
+}
+
+function clearSyncLogInternal() {
+  syncLog.length = 0;
+  keyToLogId.clear();
+  notifySyncLog();
+}
+
+function handleKeySync(key: string, status: "uploading" | "done" | "error") {
+  const short = key.length > 12 ? `${key.slice(0, 12)}…` : key;
+  if (status === "uploading") {
+    const id = ++syncLogId;
+    keyToLogId.set(key, id);
+    syncLog.push({ id, label: `put ${short}`, status: "active" });
+  } else {
+    const logId = keyToLogId.get(key);
+    if (logId != null) {
+      const entry = syncLog.find((e) => e.id === logId);
+      if (entry) entry.status = status === "done" ? "done" : "error";
+      keyToLogId.delete(key);
+    }
+  }
+  notifySyncLog();
+}
+
+/**
+ * Subscribe to sync log changes. Fires whenever entries are added/updated/cleared.
+ */
+export function onSyncLogChange(listener: () => void): () => void {
+  syncLogListeners.add(listener);
+  return () => syncLogListeners.delete(listener);
+}
+
+/** Get a snapshot of the current sync log. */
+export function getSyncLog(): readonly SyncLogEntry[] {
+  return syncLog;
+}
+
+/** Clear all sync log entries. */
+export function clearSyncLog(): void {
+  clearSyncLogInternal();
+}
+
+/** Push a custom entry to the sync log (e.g., "commit"). */
+export function pushSyncLog(
+  label: string,
+  status: SyncLogEntry["status"] = "done",
+): number {
+  const id = ++syncLogId;
+  syncLog.push({ id, label, status });
+  notifySyncLog();
+  return id;
+}
+
+// ============================================================================
 // StorageProvider — CachedStorage (IndexedDB + HTTP, write-back)
 // ============================================================================
 
 let storagePromise: Promise<CachedStorageProvider> | null = null;
+let flushInProgress = false;
 
 /**
  * Get or initialize the cached CAS StorageProvider singleton.
@@ -100,8 +172,14 @@ export function getStorage(): Promise<CachedStorageProvider> {
         remote: httpStorage,
         writeBack: {
           debounceMs: 2000,
-          onSyncStart: () => setSyncing(true),
-          onSyncEnd: () => setSyncing(false),
+          onSyncStart: () => {
+            if (!flushInProgress) clearSyncLogInternal();
+            setSyncing(true);
+          },
+          onSyncEnd: () => {
+            if (!flushInProgress) setSyncing(false);
+          },
+          onKeySync: handleKeySync,
         },
       });
     })();
@@ -116,7 +194,14 @@ export function getStorage(): Promise<CachedStorageProvider> {
 export async function flushStorage(): Promise<void> {
   if (!storagePromise) return;
   const storage = await storagePromise;
-  await storage.flush();
+  flushInProgress = true;
+  setSyncing(true);
+  try {
+    await storage.flush();
+  } finally {
+    flushInProgress = false;
+    setSyncing(false);
+  }
 }
 
 /**

@@ -27,7 +27,6 @@ import { FileList } from "./FileList.tsx";
 import { RenameDialog } from "./RenameDialog.tsx";
 import { StatusBar } from "./StatusBar.tsx";
 import { UploadOverlay } from "./UploadOverlay.tsx";
-import { UploadProgress } from "./UploadProgress.tsx";
 
 type ExplorerShellProps = {
   onNavigate?: (path: string) => void;
@@ -240,9 +239,6 @@ export function ExplorerShell(props: ExplorerShellProps) {
       </UploadOverlay>
 
       <StatusBar />
-
-      {/* Upload progress panel */}
-      <UploadProgress onCancel={cancelUpload} onRetry={retryUpload} />
 
       {/* Context menu */}
       <ContextMenu

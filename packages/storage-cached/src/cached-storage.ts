@@ -52,6 +52,8 @@ export type WriteBackConfig = {
   onSyncStart?: () => void;
   /** Called when a sync cycle completes */
   onSyncEnd?: (result: SyncResult) => void;
+  /** Called for each key during sync: uploading → done / error */
+  onKeySync?: (key: string, status: "uploading" | "done" | "error", error?: unknown) => void;
 };
 
 export type CachedStorageConfig = {
@@ -147,7 +149,7 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
   // Write-back mode
   // --------------------------------------------------------------------------
 
-  const { debounceMs = DEFAULT_DEBOUNCE_MS, onSyncStart, onSyncEnd } = writeBack;
+  const { debounceMs = DEFAULT_DEBOUNCE_MS, onSyncStart, onSyncEnd, onKeySync } = writeBack;
 
   const pendingKeys = new Set<string>();
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
@@ -179,9 +181,17 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
         keys.map(async (key) => {
           const data = await cache.get(key);
           if (!data) {
+            onKeySync?.(key, "error", new Error("missing from cache"));
             throw new Error(`Pending key missing from cache: ${key}`);
           }
-          await remote.put(key, data);
+          onKeySync?.(key, "uploading");
+          try {
+            await remote.put(key, data);
+            onKeySync?.(key, "done");
+          } catch (err) {
+            onKeySync?.(key, "error", err);
+            throw err;
+          }
           return key;
         })
       );

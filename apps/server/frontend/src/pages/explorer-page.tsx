@@ -4,18 +4,45 @@
  * - When depotId is in the URL, opens that depot directly.
  * - When no depotId, shows the built-in depot selector.
  * - Syncs URL on depot change via onDepotChange callback.
- * - Shows a sync indicator when CAS nodes are being uploaded to the remote.
+ * - Shows a clickable sync indicator — expand to see per-key progress.
  */
 
 import type { CasfaClient } from "@casfa/client";
 import type { StorageProvider } from "@casfa/core";
 import { CasfaExplorer } from "@casfa/explorer";
-import { CloudDone, CloudSync } from "@mui/icons-material";
-import { Box, CircularProgress, Fade, Tooltip, Typography } from "@mui/material";
+import {
+  CheckCircle,
+  CloudDone,
+  CloudSync,
+  Error as ErrorIcon,
+  ExpandLess,
+  ExpandMore,
+} from "@mui/icons-material";
+import {
+  Box,
+  CircularProgress,
+  Collapse,
+  Fade,
+  IconButton,
+  List,
+  ListItem,
+  Paper,
+  Typography,
+} from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getClient } from "../lib/client.ts";
-import { flushStorage, getHashProvider, getStorage, onSyncStatusChange } from "../lib/storage.ts";
+import {
+  type SyncLogEntry,
+  clearSyncLog,
+  flushStorage,
+  getHashProvider,
+  getSyncLog,
+  getStorage,
+  onSyncLogChange,
+  onSyncStatusChange,
+  pushSyncLog,
+} from "../lib/storage.ts";
 
 export function ExplorerPage() {
   const { depotId } = useParams<{ depotId: string }>();
@@ -29,7 +56,13 @@ export function ExplorerPage() {
     getStorage().then(setStorage);
   }, []);
 
-  const beforeCommit = useCallback(() => flushStorage(), []);
+  const beforeCommit = useCallback(async () => {
+    await flushStorage();
+    // Add commit entry if any nodes were actually synced
+    if (getSyncLog().length > 0) {
+      pushSyncLog("commit");
+    }
+  }, []);
 
   if (!client || !storage) {
     return (
@@ -57,74 +90,130 @@ export function ExplorerPage() {
 }
 
 // ============================================================================
-// Sync status indicator
+// Sync status indicator — expandable per-key log
 // ============================================================================
 
 /**
- * Shows "Syncing…" while nodes are uploading, then briefly flashes "Synced".
- * Uses a single always-mounted DOM node so MUI Fade never gets a null ref.
+ * Bottom-right pill: "Syncing…" / "Synced".
+ * Click to expand and see individual put / commit operations.
  */
 function SyncIndicator() {
-  const [syncing, setSyncing] = useState(false);
+  const [syncing, setSyncingState] = useState(false);
   const [showSynced, setShowSynced] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [log, setLog] = useState<readonly SyncLogEntry[]>([]);
   const wasSyncing = useRef(false);
 
   useEffect(() => {
     return onSyncStatusChange((isSyncing) => {
-      setSyncing(isSyncing);
+      setSyncingState(isSyncing);
       if (isSyncing) {
         wasSyncing.current = true;
         setShowSynced(false);
       } else if (wasSyncing.current) {
-        // Sync just finished — flash "Synced" briefly
         setShowSynced(true);
-        const timer = setTimeout(() => setShowSynced(false), 2000);
+        const timer = setTimeout(() => setShowSynced(false), 3000);
         return () => clearTimeout(timer);
       }
     });
   }, []);
 
+  useEffect(() => {
+    return onSyncLogChange(() => setLog([...getSyncLog()]));
+  }, []);
+
   const visible = syncing || showSynced;
+
+  // Collapse & clear when hidden
+  useEffect(() => {
+    if (!visible) {
+      setExpanded(false);
+      clearSyncLog();
+    }
+  }, [visible]);
 
   return (
     <Fade in={visible} timeout={{ enter: 200, exit: 600 }}>
-      <Tooltip title={syncing ? "Syncing to server…" : "All changes synced"} placement="left">
+      <Paper
+        elevation={3}
+        sx={{
+          position: "fixed",
+          bottom: 16,
+          right: 16,
+          minWidth: 200,
+          maxWidth: 340,
+          zIndex: 1300,
+          overflow: "hidden",
+        }}
+      >
+        {/* Header — click to expand */}
         <Box
+          onClick={() => log.length > 0 && setExpanded((v) => !v)}
           sx={{
-            position: "fixed",
-            bottom: 16,
-            right: 16,
             display: "flex",
             alignItems: "center",
             gap: 0.75,
-            bgcolor: "background.paper",
-            border: 1,
-            borderColor: syncing ? "divider" : "success.main",
-            borderRadius: 2,
             px: 1.5,
             py: 0.75,
-            boxShadow: 2,
-            zIndex: 1300,
-            transition: "border-color 0.3s",
+            cursor: log.length > 0 ? "pointer" : "default",
+            userSelect: "none",
+            borderBottom: expanded ? 1 : 0,
+            borderColor: "divider",
           }}
         >
           {syncing ? (
-            <>
-              <CloudSync fontSize="small" color="primary" />
-              <Typography variant="caption" color="text.secondary">
-                Syncing…
-              </Typography>
-            </>
+            <CloudSync fontSize="small" color="primary" />
           ) : (
-            <>
-              <CloudDone fontSize="small" color="success" />
-              <Typography variant="caption" color="success.main">
-                Synced
-              </Typography>
-            </>
+            <CloudDone fontSize="small" color="success" />
+          )}
+          <Typography
+            variant="caption"
+            color={syncing ? "text.secondary" : "success.main"}
+            sx={{ flex: 1, fontWeight: 500 }}
+          >
+            {syncing ? "Syncing…" : "Synced"}
+          </Typography>
+          {log.length > 0 && (
+            <IconButton size="small" sx={{ p: 0 }}>
+              {expanded ? (
+                <ExpandLess fontSize="small" />
+              ) : (
+                <ExpandMore fontSize="small" />
+              )}
+            </IconButton>
           )}
         </Box>
-      </Tooltip>
+
+        {/* Per-key log */}
+        <Collapse in={expanded}>
+          <List dense disablePadding sx={{ maxHeight: 240, overflow: "auto" }}>
+            {log.map((entry) => (
+              <ListItem key={entry.id} sx={{ py: 0.125, px: 1.5, minHeight: 26 }}>
+                <LogEntryIcon status={entry.status} />
+                <Typography
+                  variant="caption"
+                  noWrap
+                  sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
+                >
+                  {entry.label}
+                </Typography>
+              </ListItem>
+            ))}
+          </List>
+        </Collapse>
+      </Paper>
     </Fade>
   );
+}
+
+function LogEntryIcon({ status }: { status: SyncLogEntry["status"] }) {
+  if (status === "active") {
+    return <CircularProgress size={12} sx={{ mr: 1, flexShrink: 0 }} />;
+  }
+  if (status === "done") {
+    return (
+      <CheckCircle sx={{ fontSize: 14, mr: 1, flexShrink: 0, color: "success.main" }} />
+    );
+  }
+  return <ErrorIcon sx={{ fontSize: 14, mr: 1, flexShrink: 0, color: "error.main" }} />;
 }
