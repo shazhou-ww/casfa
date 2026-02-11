@@ -133,11 +133,14 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
 
       if (!validationResult.valid) {
         if (validationResult.error?.includes("Missing children")) {
-          return c.json({
-            success: false,
-            error: "missing_nodes",
-            missing: validationResult.childKeys ?? [],
-          });
+          return c.json(
+            {
+              success: false,
+              error: "missing_nodes",
+              missing: validationResult.childKeys ?? [],
+            },
+            409
+          );
         }
         return c.json({ error: "Node validation failed", details: validationResult.error }, 400);
       }

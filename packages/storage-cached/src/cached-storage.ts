@@ -54,13 +54,34 @@ export type WriteBackConfig = {
   onSyncEnd?: (result: SyncResult) => void;
   /** Called for each key during sync: uploading → done / error */
   onKeySync?: (key: string, status: "uploading" | "done" | "error", error?: unknown) => void;
+  /**
+   * Extract child storage keys from raw node bytes.
+   * When provided, sync uploads nodes in topological order (children first)
+   * to prevent server-side "missing_nodes" rejections.
+   */
+  getChildKeys?: (value: Uint8Array) => string[];
+};
+
+/**
+ * Result of a batch put operation.
+ */
+export type PutManyResult = {
+  synced: string[];
+  skipped: string[];
+  failed: Array<{ key: string; error: unknown }>;
 };
 
 export type CachedStorageConfig = {
   /** Local cache layer (e.g., IndexedDB, FS, memory) */
   cache: StorageProvider;
-  /** Remote / slower backend (e.g., HTTP, S3, FS) */
-  remote: StorageProvider;
+  /**
+   * Remote / slower backend (e.g., HTTP, S3, FS).
+   * If the remote has a `putMany` method, batch sync will use it
+   * for a single check call instead of per-key checks.
+   */
+  remote: StorageProvider & {
+    putMany?: (entries: Array<{ key: string; value: Uint8Array }>) => Promise<PutManyResult>;
+  };
   /**
    * Enable write-back mode.
    * When set, `put` writes only to cache and returns immediately.
@@ -91,6 +112,87 @@ export type CachedStorageProvider = StorageProvider & {
 // ============================================================================
 
 const DEFAULT_DEBOUNCE_MS = 100;
+
+// ============================================================================
+// Topological Sort
+// ============================================================================
+
+/**
+ * Topologically sort entries so children come before parents.
+ * Returns an array of levels — each level contains entries whose
+ * children (within the batch) have all been placed in earlier levels.
+ *
+ * Nodes at the same level have no dependency on each other and can
+ * be uploaded in parallel.
+ *
+ * Uses Kahn's algorithm. For valid CAS data, cycles are impossible
+ * since a node's hash depends on its children's hashes.
+ */
+const topoSortLevels = (
+  entries: Array<{ key: string; value: Uint8Array }>,
+  getChildKeys: (value: Uint8Array) => string[]
+): Array<Array<{ key: string; value: Uint8Array }>> => {
+  if (entries.length <= 1) return [entries];
+
+  const entryMap = new Map(entries.map((e) => [e.key, e]));
+
+  // For each entry, in-degree = number of children in this batch
+  const inDegree = new Map<string, number>();
+  // Reverse map: child → parents that depend on it
+  const dependents = new Map<string, string[]>();
+
+  for (const entry of entries) {
+    const children = getChildKeys(entry.value);
+    let degree = 0;
+    for (const child of children) {
+      if (entryMap.has(child)) {
+        degree++;
+        let parents = dependents.get(child);
+        if (!parents) {
+          parents = [];
+          dependents.set(child, parents);
+        }
+        parents.push(entry.key);
+      }
+    }
+    inDegree.set(entry.key, degree);
+  }
+
+  const levels: Array<Array<{ key: string; value: Uint8Array }>> = [];
+  const processed = new Set<string>();
+
+  // Seed: all entries with in-degree 0 (leaves — no pending children)
+  let current = entries.filter((e) => (inDegree.get(e.key) ?? 0) === 0);
+
+  while (current.length > 0) {
+    levels.push(current);
+    const next: Array<{ key: string; value: Uint8Array }> = [];
+
+    for (const entry of current) {
+      processed.add(entry.key);
+      const parents = dependents.get(entry.key);
+      if (parents) {
+        for (const parentKey of parents) {
+          const newDegree = (inDegree.get(parentKey) ?? 1) - 1;
+          inDegree.set(parentKey, newDegree);
+          if (newDegree === 0 && !processed.has(parentKey)) {
+            next.push(entryMap.get(parentKey)!);
+          }
+        }
+      }
+    }
+
+    current = next;
+  }
+
+  // Safety: add any remaining entries (shouldn't happen for valid CAS data)
+  const remaining = entries.filter((e) => !processed.has(e.key));
+  if (remaining.length > 0) {
+    levels.push(remaining);
+  }
+
+  return levels;
+};
 
 // ============================================================================
 // Factory
@@ -149,18 +251,19 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
   // Write-back mode
   // --------------------------------------------------------------------------
 
-  const { debounceMs = DEFAULT_DEBOUNCE_MS, onSyncStart, onSyncEnd, onKeySync } = writeBack;
+  const { debounceMs = DEFAULT_DEBOUNCE_MS, onSyncStart, onSyncEnd, onKeySync, getChildKeys } =
+    writeBack;
 
   const pendingKeys = new Set<string>();
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
   let activeSyncPromise: Promise<void> | null = null;
 
   /**
-   * Run a single sync cycle: read from cache, put to remote in parallel.
+   * Run a single sync cycle: read from cache, topologically sort,
+   * then upload to remote (children before parents).
    *
-   * remote.put() already handles check+upload internally (via httpStorage),
-   * so we skip a separate has-check to avoid double-checking and potential
-   * cache staleness issues.
+   * When the remote supports `putMany`, a single batch-check is used
+   * instead of per-key checks, significantly reducing network round-trips.
    */
   const runSync = async (): Promise<void> => {
     if (pendingKeys.size === 0) return;
@@ -175,41 +278,85 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
 
     onSyncStart?.();
 
-    try {
-      // Parallel put — remote.put() handles check+upload internally
-      const results = await Promise.allSettled(
-        keys.map(async (key) => {
-          const data = await cache.get(key);
-          if (!data) {
-            onKeySync?.(key, "error", new Error("missing from cache"));
-            throw new Error(`Pending key missing from cache: ${key}`);
-          }
-          onKeySync?.(key, "uploading");
-          try {
-            await remote.put(key, data);
-            onKeySync?.(key, "done");
-          } catch (err) {
-            onKeySync?.(key, "error", err);
-            throw err;
-          }
-          return key;
-        })
-      );
+    // 1. Read all pending data from cache
+    const entries: Array<{ key: string; value: Uint8Array }> = [];
+    for (const key of keys) {
+      const data = await cache.get(key);
+      if (!data) {
+        const err = new Error(`Pending key missing from cache: ${key}`);
+        onKeySync?.(key, "error", err);
+        failed.push({ key, error: err });
+        continue;
+      }
+      entries.push({ key, value: data });
+    }
 
-      for (const [i, result] of results.entries()) {
-        if (result.status === "fulfilled") {
-          synced.push(result.value);
-        } else {
-          const key = keys[i]!;
-          failed.push({ key, error: result.reason });
-          pendingKeys.add(key); // re-queue for retry
+    // 2. Topological sort (children first) if getChildKeys is provided
+    const levels = getChildKeys
+      ? topoSortLevels(entries, getChildKeys)
+      : [entries]; // no dependency info → single level (all parallel)
+
+    // 3. Upload level by level
+    //    If remote supports putMany → single batch check + sequential uploads
+    //    Otherwise → individual put() calls per level (parallel within level)
+    if (remote.putMany) {
+      // Flatten levels into topo-sorted array for batch put
+      const sorted = levels.flat();
+      for (const entry of sorted) {
+        onKeySync?.(entry.key, "uploading");
+      }
+      try {
+        const result = await remote.putMany(sorted);
+        const syncedSet = new Set(result.synced);
+        const skippedSet = new Set(result.skipped);
+        for (const entry of sorted) {
+          if (syncedSet.has(entry.key)) {
+            synced.push(entry.key);
+            onKeySync?.(entry.key, "done");
+          } else if (skippedSet.has(entry.key)) {
+            skipped.push(entry.key);
+          } else {
+            const f = result.failed.find((x) => x.key === entry.key);
+            if (f) {
+              failed.push(f);
+              pendingKeys.add(entry.key);
+              onKeySync?.(entry.key, "error", f.error);
+            }
+          }
+        }
+      } catch (err) {
+        for (const entry of sorted) {
+          failed.push({ key: entry.key, error: err });
+          pendingKeys.add(entry.key);
+          onKeySync?.(entry.key, "error", err);
         }
       }
-    } catch (error) {
-      // Catastrophic failure — re-queue all
-      for (const key of keys) {
-        pendingKeys.add(key);
-        failed.push({ key, error });
+    } else {
+      // No batch support — upload level by level, parallel within each level
+      for (const level of levels) {
+        const results = await Promise.allSettled(
+          level.map(async (entry) => {
+            onKeySync?.(entry.key, "uploading");
+            try {
+              await remote.put(entry.key, entry.value);
+              onKeySync?.(entry.key, "done");
+            } catch (err) {
+              onKeySync?.(entry.key, "error", err);
+              throw err;
+            }
+            return entry.key;
+          })
+        );
+
+        for (const [i, result] of results.entries()) {
+          if (result.status === "fulfilled") {
+            synced.push(result.value);
+          } else {
+            const key = level[i]!.key;
+            failed.push({ key, error: result.reason });
+            pendingKeys.add(key);
+          }
+        }
       }
     }
 
