@@ -187,6 +187,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   });
   const oauth = createOAuthController({
     cognitoConfig: config.cognito,
+    delegatesDb,
   });
   const admin = createAdminController({
     userRolesDb,

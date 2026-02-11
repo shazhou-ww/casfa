@@ -158,7 +158,7 @@ export const createHttpStorage = (config: HttpStorageConfig): HttpStorageProvide
       const owned: string[] = [];
 
       // Build storage→node key mapping
-      const storageToNode = new Map(keys.map((k) => [k, storageKeyToNodeKey(k)]));
+      const _storageToNode = new Map(keys.map((k) => [k, storageKeyToNodeKey(k)]));
       const nodeToStorage = new Map(keys.map((k) => [storageKeyToNodeKey(k), k]));
       const nodeKeys = keys.map(storageKeyToNodeKey);
 

@@ -15,11 +15,7 @@ import {
 } from "@casfa/protocol";
 import type { StorageProvider } from "@casfa/storage-core";
 import type { Context } from "hono";
-import {
-  DEFAULT_MAX_HISTORY,
-  type DepotsDb,
-  SYSTEM_MAX_HISTORY,
-} from "../db/depots.ts";
+import { DEFAULT_MAX_HISTORY, type DepotsDb, SYSTEM_MAX_HISTORY } from "../db/depots.ts";
 import type { OwnershipV2Db } from "../db/ownership-v2.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
 

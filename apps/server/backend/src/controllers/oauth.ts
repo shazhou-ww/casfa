@@ -5,6 +5,7 @@
 import { LoginSchema, RefreshSchema, TokenExchangeSchema } from "@casfa/protocol";
 import type { Context } from "hono";
 import type { CognitoConfig } from "../config.ts";
+import type { DelegatesDb } from "../db/delegates.ts";
 import type { Env, JwtAuthContext } from "../types.ts";
 
 export type OAuthController = {
@@ -12,15 +13,16 @@ export type OAuthController = {
   login: (c: Context) => Promise<Response>;
   refresh: (c: Context) => Promise<Response>;
   exchangeToken: (c: Context) => Promise<Response>;
-  me: (c: Context<Env>) => Response;
+  me: (c: Context<Env>) => Promise<Response>;
 };
 
 type OAuthControllerDeps = {
   cognitoConfig: CognitoConfig;
+  delegatesDb: DelegatesDb;
 };
 
 export const createOAuthController = (deps: OAuthControllerDeps): OAuthController => {
-  const { cognitoConfig } = deps;
+  const { cognitoConfig, delegatesDb } = deps;
 
   return {
     getConfig: (c) => {
@@ -180,15 +182,21 @@ export const createOAuthController = (deps: OAuthControllerDeps): OAuthControlle
       }
     },
 
-    me: (c) => {
+    me: async (c) => {
       // This endpoint requires JWT auth, so we can safely cast
       const auth = c.get("auth") as JwtAuthContext;
+      const realm = auth.userId;
+
+      // Look up the user's root delegate
+      const rootDelegate = await delegatesDb.getRootByRealm(realm);
+
       return c.json({
         userId: auth.userId,
         email: auth.email,
         name: auth.name,
         realm: auth.realm,
         role: auth.role ?? "unauthorized",
+        rootDelegateId: rootDelegate?.delegateId ?? null,
       });
     },
   };
