@@ -103,7 +103,8 @@ if (userIdInput) {
 }
 
 // Configure DynamoDB client
-const tableName = process.env.TOKENS_TABLE ?? "cas-tokens";
+// When --aws is used, default to the production table name with stage suffix
+const tableName = process.env.TOKENS_TABLE ?? (useAws ? "cas-tokens-prod" : "cas-tokens");
 const endpoint = useAws ? undefined : process.env.DYNAMODB_ENDPOINT;
 
 console.log("=".repeat(60));
