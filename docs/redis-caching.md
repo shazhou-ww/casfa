@@ -2,51 +2,105 @@
 
 ## Overview
 
-We use Redis to cache **immutable data only** (ownership records) to reduce DynamoDB read pressure. Since cached data never changes after creation, there is **no cache invalidation logic** — reads fill the cache on miss, and the system falls through to DynamoDB when Redis is unavailable.
+We use Redis to cache **immutable data only** to reduce DynamoDB and S3 read pressure. Two categories of data are cached:
+
+1. **Ownership existence** — boolean checks (`hasOwnership`, `hasAnyOwnership`) that reduce DynamoDB reads
+2. **CAS node metadata** — decoded node structure (`kind`, `size`, `children`, `contentType`) that eliminates S3 GetObject + decode overhead
+
+Since all cached data is content-addressed and immutable, there is **no cache invalidation logic** — reads fill the cache on miss, and the system falls through to the backing store when Redis is unavailable.
 
 ## Architecture
 
 ```
-Request → API Handler → ownershipDb.hasOwnership()
+                     ┌─────────────────────────────────┐
+                     │         Redis Cache              │
+                     │  own:*   → DynamoDB bypass       │
+                     │  node:*  → S3 bypass             │
+                     └─────────────────────────────────┘
+                              ▲           │
+                         miss │           │ hit
+                              │           ▼
+Request → API Handler → cache lookup → return cached
                               │
-                              ▼
-                         Redis lookup
-                          ┌─────┐
-                     hit? │ yes │ → return cached result
-                          └──┬──┘
-                             │ no (miss or Redis unavailable)
-                             ▼
-                        DynamoDB query
+                         miss ▼
+                    backing store query
+                    (DynamoDB or S3)
                               │
-                              ▼
-                   positive result? → write to Redis (cache-aside fill)
+                   positive? → write to Redis
                               │
-                              ▼
                         return result
 ```
 
-- **Positive results** (record exists) are cached permanently (no TTL).
-- **Negative results** (record does not exist) are **never cached** — the record may be created later.
-- **Redis failures** are silently swallowed — all operations fall through to DynamoDB. Redis is a pure optimization layer; the system is fully functional without it.
+- **Positive results** are cached permanently (no TTL).
+- **Negative results** (record/node does not exist) are **never cached** — they may be created later.
+- **Redis failures** are silently swallowed — all operations fall through to the backing store. Redis is a pure optimization layer; the system is fully functional without it.
 
 ## Cached Methods
 
-All cached methods live in `ownership-v2.ts`. No other DB modules use Redis.
+### 1. Ownership Existence (DynamoDB → Redis)
+
+Cached in `ownership-v2.ts`.
 
 | Method | Cache Key | Cached Value | Cache Fill | Notes |
 |---|---|---|---|---|
 | `hasOwnership(nodeHash, delegateId)` | `own:{nodeHash}:{delegateId}` | `"1"` | Read-path cache-aside + write-path pre-warm | Only `true` is cached |
 | `hasAnyOwnership(nodeHash)` | `own:any:{nodeHash}` | `"1"` | Read-path cache-aside + write-path pre-warm | Only `true` is cached |
-| `getOwnership(nodeHash, delegateId)` | `own:rec:{nodeHash}:{delegateId}` | JSON string | **Read-path cache-aside only** | Only non-null results cached |
+| `getOwnership(nodeHash, delegateId)` | — | — | — | **Not cached** — `addOwnership` uses unconditional `BatchWriteItem`; concurrent uploads can overwrite metadata (`uploadedBy`, `size`, `createdAt`), making cached JSON stale |
 | `listOwners(nodeHash)` | — | — | — | **Not cached** (list grows with new uploads) |
 
-### Write-Path Pre-Warming (`addOwnership`)
+### 2. CAS Node Metadata (S3 → Redis)
 
-After successful DynamoDB `BatchWriteItem`, the following keys are pre-warmed:
-- `own:{nodeHash}:{delegateId}` → `"1"` for each chain member (boolean — safe to pre-warm)
-- `own:any:{nodeHash}` → `"1"` (boolean — safe to pre-warm)
+Cached in a new `node-cache.ts` module. CAS nodes are content-addressed: the storage key **is** the hash of the content. The same key always yields the same bytes, making decoded metadata **absolutely immutable** — stronger than ownership.
 
-> **`getOwnership` is NOT pre-warmed on write.** `addOwnership` uses `BatchWriteItem` which is an unconditional overwrite. If two concurrent uploads write the same `(nodeHash, delegateId)` with different metadata (`uploadedBy`, `size`, etc.), the cached JSON may not match the final DynamoDB state. Boolean keys (`hasOwnership`, `hasAnyOwnership`) are unaffected since any write confirms existence.
+| Cache Key | Cached Value | Cache Fill | Notes |
+|---|---|---|---|
+| `node:meta:{storageKey}` | JSON string (see below) | Read-path cache-aside + write-path pre-warm on `chunks.put` | No TTL needed |
+
+**Cached JSON shape by node kind:**
+
+```typescript
+// dict node
+{ kind: "dict", size: number, children: string[], childNames: string[] }
+
+// file node
+{ kind: "file", size: number, contentType: string, successor?: string }
+
+// successor node
+{ kind: "successor", size: number, successor?: string }
+```
+
+**Size guard:** If the serialized JSON exceeds **8 KB**, it is **not cached** (large dict nodes with hundreds of children). This bounds Redis memory usage per key.
+
+**Hot paths that benefit:**
+
+| Call site | What it avoids | Frequency |
+|---|---|---|
+| `scope-proof.ts` — tree traversal | S3 GetObject + `decodeNode` per tree depth level | N per proof validation |
+| `app.ts` — `resolveNode` | S3 GetObject + `decodeNode` for scope resolution | Per delegate creation |
+| `chunks.ts` — `getMetadata` endpoint | S3 GetObject + `decodeNode` to return JSON | Per metadata request |
+| `chunks.ts` — `put` child size validation | S3 GetObject + `decodeNode` per child of dict node | Per dict upload |
+
+### Write-Path Pre-Warming
+
+**`addOwnership` (ownership keys):** After successful DynamoDB `BatchWriteItem`:
+- `own:{nodeHash}:{delegateId}` → `"1"` for each chain member
+- `own:any:{nodeHash}` → `"1"`
+
+> **Only boolean existence keys are cached.** `getOwnership` returns structured metadata (`uploadedBy`, `size`, `createdAt`) that can be overwritten by concurrent uploads via `BatchWriteItem` (unconditional overwrite). Caching it would violate the immutable-only principle. Boolean keys (`hasOwnership`, `hasAnyOwnership`) are unaffected — any write confirms existence, regardless of metadata.
+
+**`chunks.put` (node metadata):** After successful storage write + validation, the fully decoded node metadata is written to Redis:
+
+```typescript
+// In chunks.put, after storage.put(storageKey, bytes) succeeds:
+const decoded = decodeNode(bytes);
+const meta = buildNodeMeta(decoded); // extract kind, size, children, etc.
+const json = JSON.stringify(meta);
+if (json.length <= 8192) { // 8 KB size guard
+  await cacheSet(redis, `node:meta:${storageKey}`, json);
+}
+```
+
+This is safe because the bytes were just validated and written — the cached metadata exactly matches what S3 now stores.
 
 ### Batch Lookup Optimization (`MGET`)
 
@@ -141,6 +195,7 @@ docker exec -it casfa-redis redis-cli MONITOR
 
 # Check cached keys
 docker exec -it casfa-redis redis-cli KEYS "own:*"
+docker exec -it casfa-redis redis-cli KEYS "node:meta:*"
 ```
 
 ## Production (AWS)
@@ -213,24 +268,26 @@ Key settings rationale:
 backend/src/db/
 ├── redis-client.ts    # Redis connection singleton, graceful degradation
 ├── cache.ts           # Cache utilities: cacheGet, cacheSet, cacheMGet
-├── ownership-v2.ts    # Updated with Redis caching (only DB module using Redis)
+├── node-cache.ts      # Node metadata cache: getNodeMeta, setNodeMeta, buildNodeMeta
+├── ownership-v2.ts    # Updated with Redis caching
 ├── client.ts          # DynamoDB client (unchanged)
 └── ...
 
 backend/src/
 ├── config.ts          # Extended with RedisConfig
-├── bootstrap.ts       # Creates Redis client, injects into ownershipV2Db
-└── app.ts             # Unchanged
+├── bootstrap.ts       # Creates Redis client, injects into ownershipV2Db & controllers
+└── app.ts             # Updated: resolveNode uses node-cache
 ```
 
 ### Key Design Decisions
 
-1. **Immutable-only caching** — No cache invalidation needed, no consistency bugs possible.
-2. **No negative caching** — Avoids the need to invalidate when new records are created. Trade-off: repeated misses hit DynamoDB, acceptable for current load.
+1. **Immutable-only caching** — Two types: ownership boolean existence (`own:*`) and CAS node decoded metadata (`node:meta:*`). Both are content-addressed and immutable. No cache invalidation needed, no consistency bugs possible.
+2. **No negative caching** — Avoids the need to invalidate when new records/nodes are created. Trade-off: repeated misses hit DynamoDB/S3, acceptable for current load.
 3. **Graceful degradation** — Every Redis call is wrapped in try-catch. If Redis is down, unavailable, or disabled, the system behaves identically to pre-cache behavior.
-4. **No TTL** — Ownership records are content-addressed and immutable. Once cached, they are valid forever. Redis memory is bounded by the number of unique ownership records queried.
-5. **Read-path cache-aside only for `getOwnership`** — `addOwnership` uses unconditional `BatchWriteItem`, so concurrent writes may cause metadata mismatch. Boolean existence keys are safe to pre-warm; structured records are not.
+4. **No TTL** — Ownership records and CAS nodes are content-addressed. Once cached, they are valid forever. Redis memory is bounded by the number of unique records/nodes queried. (See GC considerations below.)
+5. **`getOwnership` excluded** — Metadata fields (`uploadedBy`, `size`, `createdAt`) can be overwritten by concurrent `BatchWriteItem` calls. Only boolean existence is truly immutable.
 6. **Batch `MGET` for chain lookups** — `hasOwnershipBatch` sends one `MGET` for all chain members, reducing N serial round-trips to 1.
+7. **Node metadata size guard (8 KB)** — Large dict nodes with hundreds of children are not cached, bounding per-key memory. The S3 read for these is amortized by their rarity.
 
 ## Observability
 
@@ -238,7 +295,7 @@ backend/src/
 
 `cache.ts` tracks hit/miss counters per method. Exposed as:
 
-- **Structured log** (always): `{ event: "cache", method: "hasOwnership", result: "hit"|"miss"|"error", latencyMs: number }`
+- **Structured log** (always): `{ event: "cache", method: "hasOwnership"|"getNodeMeta"|..., result: "hit"|"miss"|"error", latencyMs: number }`
 - **Debug log** (`REDIS_LOG_LEVEL=debug`): Prints every cache key accessed (local dev only).
 - **CloudWatch Custom Metric** (production): `CasfaCache/HitRate`, `CasfaCache/MissRate`, `CasfaCache/ErrorRate` — emitted via [EMF](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format.html) (Embedded Metric Format) in Lambda logs. No extra SDK/agent needed.
 
@@ -248,7 +305,8 @@ backend/src/
 |---|---|---|
 | Cache error rate | > 10% over 5 min | SNS notification — investigate Redis connectivity |
 | ElastiCache `BytesUsedForCache` | > 80% of max memory | SNS notification — may need larger instance |
-| Cache hit rate | < 20% over 1 hour | Informational — caching may not be effective for current workload |
+| Ownership cache hit rate | < 20% over 1 hour | Informational — ownership caching may not be effective |
+| Node meta cache hit rate | < 20% over 1 hour | Informational — node metadata caching may not be effective |
 
 ## Testing Strategy
 
@@ -262,7 +320,32 @@ The `e2e:redis` preset uses the `redis-test` container (in-memory, no persistenc
 
 ## Future Considerations
 
+### GC and Cache Invalidation
+
+Currently ownership records are never deleted, so `hasOwnership = true` is permanently valid. When GC is implemented (deleting nodes whose refcount reaches 0), cached existence keys become stale.
+
+**Strategy: GC pipeline cleans up Redis keys.** GC is a controlled, low-frequency background job that knows exactly which `(nodeHash, delegateId)` pairs it deletes. Add cache cleanup as a step in the GC pipeline:
+
+```typescript
+// In GC job, after deleting ownership records from DynamoDB:
+await redis.del(`own:${nodeHash}:${delegateId}`);
+
+// For own:any:{nodeHash}, only delete if ALL owners of this node are GC'd:
+const remainingOwners = await ownershipDb.listOwners(nodeHash);
+if (remainingOwners.length === 0) {
+  await redis.del(`own:any:${nodeHash}`);
+}
+```
+
+This is preferred over preemptive TTL because:
+- GC has full context — it knows precisely which keys to invalidate
+- No TTL means higher hit rate for the 99.9% of records that are never GC'd
+- Adding a few `DEL` calls to the GC pipeline is trivial (~5 lines of code)
+- If Redis `DEL` fails, the worst case is a stale `true` — the request will fail at the storage layer (blob already deleted by GC), which is a safe failure mode
+
+### Other
+
 - **Negative caching**: If DynamoDB read pressure from repeated misses becomes significant, we can add short-TTL (30s) negative caching. This would require invalidating negative keys in `addOwnership`.
-- **Additional immutable data**: `scope-set-nodes` children fields are also immutable candidates for caching if read pressure increases.
+- **Scope set-node caching**: `scope-set-nodes` children fields are also immutable candidates for caching if read pressure increases.
 - **ElastiCache Serverless migration**: Start with `cache.t4g.micro` for dev/staging, migrate to Serverless when traffic justifies the minimum baseline cost.
 - **Redis memory monitoring**: CloudWatch alarms on `BytesUsedForCache` / `DatabaseMemoryUsagePercentage` to catch unbounded growth.

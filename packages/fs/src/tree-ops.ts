@@ -1,16 +1,15 @@
 /**
- * Filesystem Service — Tree Operations
+ * @casfa/fs — Tree Operations
  *
  * Low-level CAS tree operations: node resolution, path traversal,
  * Merkle path rebuild, child insertion / removal, and parent-dir creation.
+ *
+ * All operations depend only on FsContext (StorageProvider + HashProvider)
+ * plus optional hooks. No database or server dependencies.
  */
 
 import { type CasNode, decodeNode, encodeDictNode, getWellKnownNodeData } from "@casfa/core";
-import {
-  FS_MAX_COLLECTION_CHILDREN,
-  FS_MAX_NAME_BYTES,
-  nodeKeyToStorageKey,
-} from "@casfa/protocol";
+import { FS_MAX_COLLECTION_CHILDREN, FS_MAX_NAME_BYTES, nodeKeyToStorageKey } from "@casfa/protocol";
 
 import {
   findChildByIndex,
@@ -19,7 +18,7 @@ import {
   parseIndexPath,
   parsePath,
 } from "./helpers.ts";
-import { type FsError, type FsServiceDeps, fsError, type ResolvedNode } from "./types.ts";
+import { type FsContext, type FsError, type ResolvedNode, fsError } from "./types.ts";
 
 const textEncoder = new TextEncoder();
 
@@ -29,8 +28,8 @@ const textEncoder = new TextEncoder();
 
 export type TreeOps = ReturnType<typeof createTreeOps>;
 
-export const createTreeOps = (deps: FsServiceDeps) => {
-  const { storage, hashProvider, ownershipV2Db, refCountDb, usageDb, depotsDb } = deps;
+export const createTreeOps = (ctx: FsContext) => {
+  const { storage, hash: hashProvider, onNodeStored } = ctx;
 
   // --------------------------------------------------------------------------
   // Node I/O
@@ -56,49 +55,24 @@ export const createTreeOps = (deps: FsServiceDeps) => {
   };
 
   /**
-   * Store a new node, update ownership / refcount / usage.
-   * Returns the hex key of the stored node.
-   *
-   * @param ownerId - The delegate ID for ownership tracking
+   * Store a new node in storage and invoke the onNodeStored hook.
+   * Returns the CB32 storage key of the stored node.
    */
   const storeNode = async (
-    realm: string,
-    ownerId: string,
     bytes: Uint8Array,
-    hash: Uint8Array,
+    nodeHash: Uint8Array,
     kind: "dict" | "file",
-    logicalSize: number
+    logicalSize: number,
   ): Promise<string> => {
-    const storageKey = hashToStorageKey(hash);
+    const storageKey = hashToStorageKey(nodeHash);
 
     const exists = await storage.has(storageKey);
     if (!exists) {
       await storage.put(storageKey, bytes);
-      // Write ownership for the current delegate (single-record).
-      // Full-chain writes for user content happen in chunks.ts PUT handler.
-      await ownershipV2Db.addOwnership(
-        storageKey,
-        [ownerId],
-        ownerId,
-        "application/octet-stream",
-        logicalSize,
-        kind
-      );
-      const { isNewToRealm } = await refCountDb.incrementRef(
-        realm,
-        storageKey,
-        bytes.length,
-        logicalSize
-      );
-      if (isNewToRealm) {
-        await usageDb.updateUsage(realm, {
-          physicalBytes: bytes.length,
-          logicalBytes: logicalSize,
-          nodeCount: 1,
-        });
-      }
-    } else {
-      await refCountDb.incrementRef(realm, storageKey, bytes.length, logicalSize);
+    }
+
+    if (onNodeStored) {
+      await onNodeStored({ storageKey, bytes, hash: nodeHash, kind, logicalSize, isNew: !exists });
     }
 
     return storageKey;
@@ -109,19 +83,18 @@ export const createTreeOps = (deps: FsServiceDeps) => {
   // --------------------------------------------------------------------------
 
   /**
-   * Resolve a user-facing nodeKey (nod_xxx / dpt_xxx) to a hex storage key.
+   * Resolve a user-facing nodeKey (nod_xxx / dpt_xxx) to a CB32 storage key.
    */
-  const resolveNodeKey = async (realm: string, nodeKey: string): Promise<string | FsError> => {
+  const resolveNodeKey = async (nodeKey: string): Promise<string | FsError> => {
     if (nodeKey.startsWith("nod_")) {
       return nodeKeyToStorageKey(nodeKey);
     }
-    if (nodeKey.startsWith("dpt_")) {
-      const depot = await depotsDb.get(realm, nodeKey);
-      if (!depot) {
-        return fsError("INVALID_ROOT", 400, `Depot not found: ${nodeKey}`);
-      }
-      return nodeKeyToStorageKey(depot.root);
+
+    // Custom resolver (server can handle dpt_ keys etc.)
+    if (ctx.resolveNodeKey) {
+      return ctx.resolveNodeKey(nodeKey);
     }
+
     return fsError("INVALID_ROOT", 400, `Invalid nodeKey format: ${nodeKey}`);
   };
 
@@ -133,17 +106,17 @@ export const createTreeOps = (deps: FsServiceDeps) => {
    * Resolve path + indexPath to a target node, collecting the parent chain.
    */
   const resolvePath = async (
-    rootHex: string,
+    rootStorageKey: string,
     pathStr?: string,
-    indexPathStr?: string
+    indexPathStr?: string,
   ): Promise<ResolvedNode | FsError> => {
-    const rootNode = await getAndDecodeNode(rootHex);
+    const rootNode = await getAndDecodeNode(rootStorageKey);
     if (!rootNode) {
       return fsError("INVALID_ROOT", 400, "Root node not found or invalid");
     }
 
     if (!pathStr && !indexPathStr) {
-      return { hash: rootHex, node: rootNode, name: "", parentPath: [] };
+      return { hash: rootStorageKey, node: rootNode, name: "", parentPath: [] };
     }
 
     // Parse segments
@@ -161,7 +134,7 @@ export const createTreeOps = (deps: FsServiceDeps) => {
       indexIndices = parsed;
     }
 
-    let currentHash = rootHex;
+    let currentHash = rootStorageKey;
     let currentNode = rootNode;
     let currentName = "";
     const parentPath: ResolvedNode["parentPath"] = [];
@@ -229,13 +202,11 @@ export const createTreeOps = (deps: FsServiceDeps) => {
   /**
    * Rebuild the Merkle path from a changed child up to the root.
    * `parentPath` must NOT include the node whose hash changed (only its ancestors).
-   * Returns the new root hex key.
+   * Returns the new root CB32 storage key.
    */
   const rebuildMerklePath = async (
-    realm: string,
-    ownerId: string,
     parentPath: ResolvedNode["parentPath"],
-    newChildHash: Uint8Array
+    newChildHash: Uint8Array,
   ): Promise<string> => {
     let currentChildHash = newChildHash;
 
@@ -246,10 +217,10 @@ export const createTreeOps = (deps: FsServiceDeps) => {
 
       const encoded = await encodeDictNode(
         { children: newChildren, childNames: parent.node.childNames ?? [] },
-        hashProvider
+        hashProvider,
       );
 
-      await storeNode(realm, ownerId, encoded.bytes, encoded.hash, "dict", 0);
+      await storeNode(encoded.bytes, encoded.hash, "dict", 0);
       currentChildHash = encoded.hash;
     }
 
@@ -261,17 +232,14 @@ export const createTreeOps = (deps: FsServiceDeps) => {
   // --------------------------------------------------------------------------
 
   /**
-   * Insert a new child into a d-node, rebuild Merkle path, return new root hex.
-   * `parentPath` must NOT include the parent node being modified.
+   * Insert a new child into a d-node, rebuild Merkle path, return new root CB32 key.
    */
   const insertChild = async (
-    realm: string,
-    ownerId: string,
     parentPath: ResolvedNode["parentPath"],
     _parentHash: string,
     parentNode: CasNode,
     childName: string,
-    childHash: Uint8Array
+    childHash: Uint8Array,
   ): Promise<string | FsError> => {
     const existingNames = parentNode.childNames ?? [];
     const existingChildren = parentNode.children ?? [];
@@ -290,23 +258,20 @@ export const createTreeOps = (deps: FsServiceDeps) => {
 
     const encoded = await encodeDictNode(
       { children: newChildren, childNames: newNames },
-      hashProvider
+      hashProvider,
     );
 
-    await storeNode(realm, ownerId, encoded.bytes, encoded.hash, "dict", 0);
-    return rebuildMerklePath(realm, ownerId, parentPath, encoded.hash);
+    await storeNode(encoded.bytes, encoded.hash, "dict", 0);
+    return rebuildMerklePath(parentPath, encoded.hash);
   };
 
   /**
-   * Remove a child from a d-node by index, rebuild Merkle path, return new root hex.
-   * `parentPath` must NOT include the parent node being modified.
+   * Remove a child from a d-node by index, rebuild Merkle path, return new root CB32 key.
    */
   const removeChild = async (
-    realm: string,
-    ownerId: string,
     parentPath: ResolvedNode["parentPath"],
     parentNode: CasNode,
-    childIndex: number
+    childIndex: number,
   ): Promise<string> => {
     const existingNames = [...(parentNode.childNames ?? [])];
     const existingChildren = [...(parentNode.children ?? [])];
@@ -316,11 +281,11 @@ export const createTreeOps = (deps: FsServiceDeps) => {
 
     const encoded = await encodeDictNode(
       { children: existingChildren, childNames: existingNames },
-      hashProvider
+      hashProvider,
     );
 
-    await storeNode(realm, ownerId, encoded.bytes, encoded.hash, "dict", 0);
-    return rebuildMerklePath(realm, ownerId, parentPath, encoded.hash);
+    await storeNode(encoded.bytes, encoded.hash, "dict", 0);
+    return rebuildMerklePath(parentPath, encoded.hash);
   };
 
   // --------------------------------------------------------------------------
@@ -329,19 +294,16 @@ export const createTreeOps = (deps: FsServiceDeps) => {
 
   /**
    * Ensure all intermediate directories exist along `segments` (excluding the
-   * last segment, which is the target).  Returns the parent node info and the
-   * parentPath from root → parent.
+   * last segment, which is the target). Returns the parent node info.
    */
   const ensureParentDirs = async (
-    realm: string,
-    ownerId: string,
-    rootHex: string,
-    segments: string[]
+    rootStorageKey: string,
+    segments: string[],
   ): Promise<
     { parentHash: string; parentNode: CasNode; parentPath: ResolvedNode["parentPath"] } | FsError
   > => {
-    let currentHash = rootHex;
-    let currentNode = await getAndDecodeNode(rootHex);
+    let currentHash = rootStorageKey;
+    let currentNode = await getAndDecodeNode(rootStorageKey);
     if (!currentNode) {
       return fsError("INVALID_ROOT", 400, "Root node not found");
     }
@@ -378,15 +340,15 @@ export const createTreeOps = (deps: FsServiceDeps) => {
               children: newDirHash ? [newDirHash] : [],
               childNames: newDirHash ? [segments[j + 1]!] : [],
             },
-            hashProvider
+            hashProvider,
           );
-          await storeNode(realm, ownerId, emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
+          await storeNode(emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
           newDirHash = emptyEncoded.hash;
         }
 
         if (!newDirHash) {
           const emptyEncoded = await encodeDictNode({ children: [], childNames: [] }, hashProvider);
-          await storeNode(realm, ownerId, emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
+          await storeNode(emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
           newDirHash = emptyEncoded.hash;
         }
 
@@ -394,18 +356,13 @@ export const createTreeOps = (deps: FsServiceDeps) => {
         const newChildren = [...(currentNode.children ?? []), newDirHash];
         const parentEncoded = await encodeDictNode(
           { children: newChildren, childNames: newNames },
-          hashProvider
+          hashProvider,
         );
-        await storeNode(realm, ownerId, parentEncoded.bytes, parentEncoded.hash, "dict", 0);
+        await storeNode(parentEncoded.bytes, parentEncoded.hash, "dict", 0);
 
-        const newRootHex = await rebuildMerklePath(
-          realm,
-          ownerId,
-          builtParentPath,
-          parentEncoded.hash
-        );
+        const newRootKey = await rebuildMerklePath(builtParentPath, parentEncoded.hash);
         // Re-resolve from the new root
-        return ensureParentDirs(realm, ownerId, newRootHex, segments);
+        return ensureParentDirs(newRootKey, segments);
       }
     }
 
@@ -413,6 +370,7 @@ export const createTreeOps = (deps: FsServiceDeps) => {
   };
 
   return {
+    getNodeData,
     getAndDecodeNode,
     storeNode,
     resolveNodeKey,

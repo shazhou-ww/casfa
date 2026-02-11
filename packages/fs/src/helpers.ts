@@ -1,17 +1,12 @@
 /**
- * Filesystem Service — Helpers
+ * @casfa/fs — Helpers
  *
  * Pure utility functions: hash conversions, path parsing, child navigation.
  * No storage or I/O — all functions are synchronous.
  */
 
 import type { CasNode } from "@casfa/core";
-import {
-  decodeCrockfordBase32,
-  encodeCrockfordBase32,
-  FS_MAX_NAME_BYTES,
-  storageKeyToNodeKey,
-} from "@casfa/protocol";
+import { encodeCrockfordBase32, decodeCrockfordBase32, FS_MAX_NAME_BYTES } from "@casfa/protocol";
 import { type FsError, fsError } from "./types.ts";
 
 const textEncoder = new TextEncoder();
@@ -29,9 +24,6 @@ export const hashToStorageKey = (hash: Uint8Array): string => {
 export const storageKeyToHash = (key: string): Uint8Array => {
   return decodeCrockfordBase32(key);
 };
-
-/** Convert CB32 storage key → "nod_{cb32}" node key */
-export const storageKeyToNodeKey_ = storageKeyToNodeKey;
 
 // ============================================================================
 // Path Parsing
@@ -58,7 +50,7 @@ export const parsePath = (path: string): string[] | FsError => {
       return fsError(
         "NAME_TOO_LONG",
         400,
-        `Name too long: '${seg}' (${bytes.length} bytes, max ${FS_MAX_NAME_BYTES})`
+        `Name too long: '${seg}' (${bytes.length} bytes, max ${FS_MAX_NAME_BYTES})`,
       );
     }
   }
@@ -82,7 +74,7 @@ export const parseIndexPath = (indexPath: string): number[] | FsError => {
 /** Find a child in a d-node by name; returns hash + index or null */
 export const findChildByName = (
   node: CasNode,
-  name: string
+  name: string,
 ): { hash: Uint8Array; index: number } | null => {
   if (node.kind !== "dict" || !node.childNames || !node.children) return null;
   const idx = node.childNames.indexOf(name);
@@ -93,7 +85,7 @@ export const findChildByName = (
 /** Find a child in a d-node by index; returns hash + name or null */
 export const findChildByIndex = (
   node: CasNode,
-  index: number
+  index: number,
 ): { hash: Uint8Array; name: string } | null => {
   if (node.kind !== "dict" || !node.childNames || !node.children) return null;
   if (index < 0 || index >= node.children.length) return null;
