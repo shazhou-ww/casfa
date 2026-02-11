@@ -133,10 +133,7 @@ export function clearSyncLog(): void {
 }
 
 /** Push a custom entry to the sync log (e.g., "commit"). */
-export function pushSyncLog(
-  label: string,
-  status: SyncLogEntry["status"] = "done",
-): number {
+export function pushSyncLog(label: string, status: SyncLogEntry["status"] = "done"): number {
   const id = ++syncLogId;
   syncLog.push({ id, label, status });
   notifySyncLog();
