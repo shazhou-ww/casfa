@@ -93,7 +93,7 @@ import {
 
 // Encode a small file
 const data = new Uint8Array([1, 2, 3, 4]);
-const file = await encodeFileNode({ data, contentType: "application/octet-stream" }, hashProvider);
+const file = await encodeFileNode({ data, contentType: "application/octet-stream" }, keyProvider);
 
 // Decode any node
 const node = decodeNode(file.bytes);

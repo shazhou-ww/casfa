@@ -1,7 +1,7 @@
 {
   "name": "@casfa/fs",
   "version": "0.1.0",
-  "description": "CAS filesystem operations on top of StorageProvider + HashProvider",
+  "description": "CAS filesystem operations on top of StorageProvider + KeyProvider",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
