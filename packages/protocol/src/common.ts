@@ -157,7 +157,7 @@ export function nodeKeyToStorageKey(nodeKey: string): string {
  * Well-known empty dict node key (API format)
  * Corresponds to cas-core's EMPTY_DICT_KEY (CB32 format)
  */
-export const EMPTY_DICT_NODE_KEY = storageKeyToNodeKey("000B5PHBGEC2A705WTKKMVRS30");
+export const EMPTY_DICT_NODE_KEY = storageKeyToNodeKey("240B5PHBGEC2A705WTKKMVRS30");
 
 // ============================================================================
 // ID Format Patterns — unified prefix_[CB32]{26}

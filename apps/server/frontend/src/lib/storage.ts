@@ -18,6 +18,7 @@
  */
 
 import type { KeyProvider } from "@casfa/core";
+import { computeSizeFlagByte } from "@casfa/core";
 import type { CachedStorageProvider } from "@casfa/storage-cached";
 import { createHttpStorage } from "@casfa/storage-http";
 import { createCachedStorage, createIndexedDBStorage } from "@casfa/storage-indexeddb";
@@ -25,11 +26,15 @@ import { blake3 } from "@noble/hashes/blake3";
 import { getClient } from "./client.ts";
 
 // ============================================================================
-// KeyProvider — BLAKE3s-128 (browser-compatible)
+// KeyProvider — BLAKE3s-128 with size-flag byte (browser-compatible)
 // ============================================================================
 
 const keyProvider: KeyProvider = {
-  computeKey: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
+  computeKey: async (data: Uint8Array) => {
+    const raw = blake3(data, { dkLen: 16 });
+    raw[0] = computeSizeFlagByte(data.length);
+    return raw;
+  },
 };
 
 /**

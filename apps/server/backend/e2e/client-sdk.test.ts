@@ -14,7 +14,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { type CasfaClient, createClient, type StoredRootDelegate } from "@casfa/client";
-import { encodeFileNode, type KeyProvider } from "@casfa/core";
+import { computeSizeFlagByte, encodeFileNode, type KeyProvider } from "@casfa/core";
 import { computePoP, type PopContext } from "@casfa/proof";
 import { hashToNodeKey } from "@casfa/protocol";
 import { blake3 } from "@noble/hashes/blake3";
@@ -26,7 +26,11 @@ import { createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
 
 /** Real KeyProvider using blake3 (same as server) */
 const keyProvider: KeyProvider = {
-  computeKey: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
+  computeKey: async (data: Uint8Array) => {
+    const raw = blake3(data, { dkLen: 16 });
+    raw[0] = computeSizeFlagByte(data.length);
+    return raw;
+  },
 };
 
 /** Real PopContext using blake3 (same as server) */

@@ -30,12 +30,13 @@ export const EMPTY_DICT_BYTES = new Uint8Array(HEADER_SIZE);
 })();
 
 /**
- * BLAKE3s-128 hash of EMPTY_DICT_BYTES (CB32 format for storage)
+ * Size-flagged BLAKE3s-128 key of EMPTY_DICT_BYTES (CB32 format for storage)
  *
  * Computed from: blake3(16-byte header with d-node flags, count=0, size=0)
- * truncated to 128 bits (16 bytes), then Crockford Base32 encoded.
+ * truncated to 128 bits (16 bytes), first byte replaced with
+ * computeSizeFlagByte(16) = 0x11, then Crockford Base32 encoded.
  */
-export const EMPTY_DICT_KEY = "000B5PHBGEC2A705WTKKMVRS30";
+export const EMPTY_DICT_KEY = "240B5PHBGEC2A705WTKKMVRS30";
 
 /**
  * Well-known keys for system-level CAS nodes

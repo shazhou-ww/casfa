@@ -27,7 +27,7 @@ export type S3StorageConfig = {
   client?: S3Client;
   /** LRU cache size for key existence (default: 10000) */
   cacheSize?: number;
-  /** Key prefix in S3 (default: "cas/blake3s/") */
+  /** Key prefix in S3 (default: "cas/v1/") */
   prefix?: string;
 };
 
@@ -37,7 +37,7 @@ export type S3StorageConfig = {
 export const createS3Storage = (config: S3StorageConfig): StorageProvider => {
   const client = config.client ?? new S3Client(config.region ? { region: config.region } : {});
   const bucket = config.bucket;
-  const prefix = config.prefix ?? "cas/blake3s/";
+  const prefix = config.prefix ?? "cas/v1/";
   const existsCache = createLRUCache<string, boolean>(config.cacheSize ?? DEFAULT_CACHE_SIZE);
 
   const toS3Key = (casKey: string): string => toStoragePath(casKey, prefix);
@@ -128,7 +128,7 @@ export const createS3Storage = (config: S3StorageConfig): StorageProvider => {
 export const createS3StorageWithCache = (config: S3StorageConfig) => {
   const client = config.client ?? new S3Client(config.region ? { region: config.region } : {});
   const _bucket = config.bucket;
-  const prefix = config.prefix ?? "cas/blake3s/";
+  const prefix = config.prefix ?? "cas/v1/";
   const existsCache = createLRUCache<string, boolean>(config.cacheSize ?? DEFAULT_CACHE_SIZE);
 
   const _toS3Key = (casKey: string): string => toStoragePath(casKey, prefix);

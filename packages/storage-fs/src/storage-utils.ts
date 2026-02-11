@@ -43,9 +43,9 @@ export const createLRUCache = <K, V>(maxSize: number): LRUCache<K, V> => {
  * Create storage path from a CB32 storage key.
  * Uses first 2 chars as subdirectory for better distribution.
  *
- * Example: 000B5PHBGEC2A705WTKKMVRS30 -> cas/blake3s/00/000B5PHBGEC2A705WTKKMVRS30
+ * Example: 240B5PHBGEC2A705WTKKMVRS30 -> cas/v1/24/240B5PHBGEC2A705WTKKMVRS30
  */
-export const toStoragePath = (key: string, prefix = "cas/blake3s/"): string => {
+export const toStoragePath = (key: string, prefix = "cas/v1/"): string => {
   const subdir = key.slice(0, 2);
   return `${prefix}${subdir}/${key}`;
 };
