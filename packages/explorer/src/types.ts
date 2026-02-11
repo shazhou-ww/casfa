@@ -86,6 +86,34 @@ export type PreviewRenderProps = {
 };
 
 // ============================================================================
+// Tree Types (Iter 3)
+// ============================================================================
+
+/** A node in the directory tree sidebar */
+export type TreeNode = {
+  /** Full path relative to depot root */
+  path: string;
+  /** Display name */
+  name: string;
+  /** Child nodes — null means not yet loaded */
+  children: TreeNode[] | null;
+  /** Whether the node is currently expanded in the UI */
+  isExpanded: boolean;
+  /** Whether children are currently being loaded */
+  isLoading: boolean;
+};
+
+// ============================================================================
+// Sort Types (Iter 3)
+// ============================================================================
+
+/** Sortable column fields */
+export type SortField = "name" | "size" | "type";
+
+/** Sort direction */
+export type SortDirection = "asc" | "desc";
+
+// ============================================================================
 // Upload Types
 // ============================================================================
 
@@ -313,4 +341,17 @@ export type ExplorerTextKey =
   // Validation
   | "validation.nameEmpty"
   | "validation.nameInvalid"
-  | "validation.nameExists";
+  | "validation.nameExists"
+  // Navigation (Iter 3)
+  | "nav.back"
+  | "nav.forward"
+  | "nav.up"
+  // Search (Iter 3)
+  | "search.placeholder"
+  | "search.noResults"
+  // Path input (Iter 3)
+  | "pathInput.placeholder"
+  | "pathInput.invalid"
+  // Tree sidebar (Iter 3)
+  | "sidebar.collapse"
+  | "sidebar.expand";

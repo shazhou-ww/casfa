@@ -1,21 +1,27 @@
 /**
  * <Breadcrumb /> - Path navigation breadcrumb.
+ *
+ * Iter 3: Double-click or click edit icon to switch to PathInput mode.
  */
 
+import EditIcon from "@mui/icons-material/Edit";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
-import { Breadcrumbs, Link, Typography } from "@mui/material";
-import { useCallback, useMemo } from "react";
+import { Box, Breadcrumbs, IconButton, Link, Typography } from "@mui/material";
+import { useCallback, useMemo, useState } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import type { PathSegment } from "../types.ts";
+import { PathInput } from "./PathInput.tsx";
 
 type BreadcrumbProps = {
   renderBreadcrumb?: (segments: PathSegment[]) => React.ReactNode;
+  onNavigate?: (path: string) => void;
 };
 
-export function Breadcrumb({ renderBreadcrumb }: BreadcrumbProps) {
+export function Breadcrumb({ renderBreadcrumb, onNavigate }: BreadcrumbProps) {
   const t = useExplorerT();
   const currentPath = useExplorerStore((s) => s.currentPath);
   const navigate = useExplorerStore((s) => s.navigate);
+  const [isEditing, setIsEditing] = useState(false);
 
   const segments = useMemo<PathSegment[]>(() => {
     const result: PathSegment[] = [{ name: t("breadcrumb.root"), path: "" }];
@@ -34,48 +40,63 @@ export function Breadcrumb({ renderBreadcrumb }: BreadcrumbProps) {
     (path: string) => (e: React.MouseEvent) => {
       e.preventDefault();
       navigate(path);
+      onNavigate?.(path);
     },
-    [navigate]
+    [navigate, onNavigate]
   );
+
+  if (isEditing) {
+    return <PathInput onCancel={() => setIsEditing(false)} onNavigate={onNavigate} />;
+  }
 
   if (renderBreadcrumb) {
     return <>{renderBreadcrumb(segments)}</>;
   }
 
   return (
-    <Breadcrumbs
-      separator={<NavigateNextIcon fontSize="small" />}
-      sx={{ "& .MuiBreadcrumbs-ol": { flexWrap: "nowrap" } }}
-    >
-      {segments.map((seg, i) => {
-        const isLast = i === segments.length - 1;
-        if (isLast) {
+    <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+      <Breadcrumbs
+        separator={<NavigateNextIcon fontSize="small" />}
+        sx={{ "& .MuiBreadcrumbs-ol": { flexWrap: "nowrap" }, flex: 1 }}
+        onDoubleClick={() => setIsEditing(true)}
+      >
+        {segments.map((seg, i) => {
+          const isLast = i === segments.length - 1;
+          if (isLast) {
+            return (
+              <Typography
+                key={seg.path || "__root"}
+                variant="body2"
+                color="text.primary"
+                fontWeight={500}
+                noWrap
+              >
+                {seg.name}
+              </Typography>
+            );
+          }
           return (
-            <Typography
+            <Link
               key={seg.path || "__root"}
+              href="#"
+              underline="hover"
               variant="body2"
-              color="text.primary"
-              fontWeight={500}
+              color="text.secondary"
+              onClick={handleClick(seg.path)}
               noWrap
             >
               {seg.name}
-            </Typography>
+            </Link>
           );
-        }
-        return (
-          <Link
-            key={seg.path || "__root"}
-            href="#"
-            underline="hover"
-            variant="body2"
-            color="text.secondary"
-            onClick={handleClick(seg.path)}
-            noWrap
-          >
-            {seg.name}
-          </Link>
-        );
-      })}
-    </Breadcrumbs>
+        })}
+      </Breadcrumbs>
+      <IconButton
+        size="small"
+        onClick={() => setIsEditing(true)}
+        sx={{ opacity: 0.5, "&:hover": { opacity: 1 } }}
+      >
+        <EditIcon sx={{ fontSize: 14 }} />
+      </IconButton>
+    </Box>
   );
 }

@@ -14,8 +14,12 @@ import type {
   ExplorerError,
   ExplorerItem,
   ExplorerPermissions,
+  SortDirection,
+  SortField,
+  TreeNode,
   UploadQueueItem,
 } from "../types.ts";
+import { nextSortState, sortItems } from "../utils/sort.ts";
 
 // ============================================================================
 // Types
@@ -45,6 +49,22 @@ export type ExplorerState = {
 
   // ── Layout ──
   layout: "list" | "grid";
+
+  // ── Navigation history (Iter 3) ──
+  pathHistory: string[];
+  historyIndex: number;
+
+  // ── Tree sidebar (Iter 3) ──
+  treeNodes: Map<string, TreeNode>;
+  sidebarWidth: number;
+  sidebarCollapsed: boolean;
+
+  // ── Search (Iter 3) ──
+  searchTerm: string;
+
+  // ── Sort (Iter 3) ──
+  sortField: SortField | null;
+  sortDirection: SortDirection;
 
   // ── Selection (Iter 2) ──
   selectedItems: ExplorerItem[];
@@ -83,6 +103,30 @@ export type ExplorerActions = {
 
   // ── Layout ──
   setLayout: (layout: "list" | "grid") => void;
+
+  // ── Navigation history (Iter 3) ──
+  goBack: () => Promise<void>;
+  goForward: () => Promise<void>;
+  goUp: () => Promise<void>;
+
+  // ── Tree sidebar (Iter 3) ──
+  expandTreeNode: (path: string) => Promise<void>;
+  collapseTreeNode: (path: string) => void;
+  setSidebarWidth: (width: number) => void;
+  toggleSidebar: () => void;
+
+  // ── Search (Iter 3) ──
+  setSearchTerm: (term: string) => void;
+
+  // ── Sort (Iter 3) ──
+  setSort: (field: SortField) => void;
+
+  // ── Computed helpers (Iter 3) ──
+  canGoBack: () => boolean;
+  canGoForward: () => boolean;
+  canGoUp: () => boolean;
+  getFilteredItems: () => ExplorerItem[];
+  getSortedItems: () => ExplorerItem[];
 
   // ── Selection (Iter 2) ──
   setSelectedItems: (items: ExplorerItem[]) => void;
@@ -189,6 +233,16 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     totalItems: 0,
     layout: opts.initialLayout ?? "list",
 
+    // ── Iter 3 initial state ──
+    pathHistory: [opts.initialPath ?? ""],
+    historyIndex: 0,
+    treeNodes: new Map<string, TreeNode>(),
+    sidebarWidth: 240,
+    sidebarCollapsed: false,
+    searchTerm: "",
+    sortField: null,
+    sortDirection: "asc" as SortDirection,
+
     // ── Iter 2 initial state ──
     selectedItems: [],
     uploadQueue: [],
@@ -285,9 +339,11 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
     // ── Navigation ──
     navigate: async (path: string) => {
-      const { localFs, depotRoot } = get();
+      const { localFs, depotRoot, pathHistory, historyIndex } = get();
       if (!depotRoot) return;
 
+      // Push to history stack (truncate forward history)
+      const newHistory = [...pathHistory.slice(0, historyIndex + 1), path];
       set({
         currentPath: path,
         items: [],
@@ -296,6 +352,9 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
         hasMore: false,
         totalItems: 0,
         selectedItems: [],
+        searchTerm: "",
+        pathHistory: newHistory,
+        historyIndex: newHistory.length - 1,
       });
 
       try {
@@ -319,8 +378,46 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     },
 
     refresh: async () => {
-      const { currentPath } = get();
-      await get().navigate(currentPath);
+      const { localFs, depotRoot, currentPath } = get();
+      if (!depotRoot) return;
+      // Refresh without pushing to history
+      set({
+        items: [],
+        isLoading: true,
+        cursor: null,
+        hasMore: false,
+        totalItems: 0,
+      });
+      try {
+        const result = await localFs.ls(
+          depotRoot,
+          currentPath || undefined,
+          undefined,
+          LS_PAGE_SIZE
+        );
+        if (isFsError(result)) {
+          handleFsError(get, result);
+          set({ isLoading: false });
+          return;
+        }
+        const items = result.children.map((c) => toExplorerItem(c, currentPath));
+        set({
+          items,
+          cursor: result.nextCursor,
+          hasMore: result.nextCursor !== null,
+          totalItems: result.total,
+          isLoading: false,
+        });
+        // Also refresh tree node cache for current path
+        const treeNodes = new Map(get().treeNodes);
+        const node = treeNodes.get(currentPath);
+        if (node?.isExpanded) {
+          // Re-expand to refresh children
+          await get().expandTreeNode(currentPath);
+        }
+      } catch {
+        set({ isLoading: false });
+      }
     },
 
     loadMore: async () => {
@@ -356,6 +453,179 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
     // ── Layout ──
     setLayout: (layout) => set({ layout }),
+
+    // ── Navigation history (Iter 3) ──
+    goBack: async () => {
+      const { historyIndex, pathHistory, localFs, depotRoot } = get();
+      if (historyIndex <= 0 || !depotRoot) return;
+      const newIndex = historyIndex - 1;
+      const path = pathHistory[newIndex]!;
+      set({
+        historyIndex: newIndex,
+        currentPath: path,
+        items: [],
+        isLoading: true,
+        cursor: null,
+        hasMore: false,
+        totalItems: 0,
+        selectedItems: [],
+        searchTerm: "",
+      });
+      try {
+        const result = await localFs.ls(depotRoot, path || undefined, undefined, LS_PAGE_SIZE);
+        if (isFsError(result)) {
+          handleFsError(get, result);
+          set({ isLoading: false });
+          return;
+        }
+        const items = result.children.map((c) => toExplorerItem(c, path));
+        set({
+          items,
+          cursor: result.nextCursor,
+          hasMore: result.nextCursor !== null,
+          totalItems: result.total,
+          isLoading: false,
+        });
+      } catch {
+        set({ isLoading: false });
+      }
+    },
+
+    goForward: async () => {
+      const { historyIndex, pathHistory, localFs, depotRoot } = get();
+      if (historyIndex >= pathHistory.length - 1 || !depotRoot) return;
+      const newIndex = historyIndex + 1;
+      const path = pathHistory[newIndex]!;
+      set({
+        historyIndex: newIndex,
+        currentPath: path,
+        items: [],
+        isLoading: true,
+        cursor: null,
+        hasMore: false,
+        totalItems: 0,
+        selectedItems: [],
+        searchTerm: "",
+      });
+      try {
+        const result = await localFs.ls(depotRoot, path || undefined, undefined, LS_PAGE_SIZE);
+        if (isFsError(result)) {
+          handleFsError(get, result);
+          set({ isLoading: false });
+          return;
+        }
+        const items = result.children.map((c) => toExplorerItem(c, path));
+        set({
+          items,
+          cursor: result.nextCursor,
+          hasMore: result.nextCursor !== null,
+          totalItems: result.total,
+          isLoading: false,
+        });
+      } catch {
+        set({ isLoading: false });
+      }
+    },
+
+    goUp: async () => {
+      const { currentPath } = get();
+      if (!currentPath) return;
+      const parentPath = currentPath.includes("/")
+        ? currentPath.substring(0, currentPath.lastIndexOf("/"))
+        : "";
+      await get().navigate(parentPath);
+    },
+
+    // ── Computed navigation helpers (Iter 3) ──
+    canGoBack: () => get().historyIndex > 0,
+    canGoForward: () => get().historyIndex < get().pathHistory.length - 1,
+    canGoUp: () => get().currentPath !== "",
+
+    // ── Tree sidebar (Iter 3) ──
+    expandTreeNode: async (path: string) => {
+      const { localFs, depotRoot, treeNodes } = get();
+      if (!depotRoot) return;
+
+      const newMap = new Map(treeNodes);
+      const existing = newMap.get(path);
+      if (existing) {
+        newMap.set(path, { ...existing, isExpanded: true, isLoading: true });
+      } else {
+        const name = path ? path.split("/").pop()! : "root";
+        newMap.set(path, { path, name, children: null, isExpanded: true, isLoading: true });
+      }
+      set({ treeNodes: newMap });
+
+      try {
+        const result = await localFs.ls(depotRoot, path || undefined, undefined, LS_PAGE_SIZE);
+        if (isFsError(result)) {
+          const errMap = new Map(get().treeNodes);
+          const node = errMap.get(path);
+          if (node) errMap.set(path, { ...node, isLoading: false });
+          set({ treeNodes: errMap });
+          return;
+        }
+        const children: TreeNode[] = result.children
+          .filter((c) => c.type === "dir")
+          .map((c) => {
+            const childPath = path ? `${path}/${c.name}` : c.name;
+            // Preserve existing expanded state if previously loaded
+            const prev = get().treeNodes.get(childPath);
+            return (
+              prev ?? {
+                path: childPath,
+                name: c.name,
+                children: null,
+                isExpanded: false,
+                isLoading: false,
+              }
+            );
+          });
+        const doneMap = new Map(get().treeNodes);
+        const node = doneMap.get(path);
+        if (node) doneMap.set(path, { ...node, children, isLoading: false });
+        set({ treeNodes: doneMap });
+      } catch {
+        const errMap = new Map(get().treeNodes);
+        const node = errMap.get(path);
+        if (node) errMap.set(path, { ...node, isLoading: false });
+        set({ treeNodes: errMap });
+      }
+    },
+
+    collapseTreeNode: (path: string) => {
+      const newMap = new Map(get().treeNodes);
+      const node = newMap.get(path);
+      if (node) newMap.set(path, { ...node, isExpanded: false });
+      set({ treeNodes: newMap });
+    },
+
+    setSidebarWidth: (width: number) => set({ sidebarWidth: width }),
+    toggleSidebar: () => set({ sidebarCollapsed: !get().sidebarCollapsed }),
+
+    // ── Search (Iter 3) ──
+    setSearchTerm: (term: string) => set({ searchTerm: term }),
+
+    // ── Sort (Iter 3) ──
+    setSort: (field: SortField) => {
+      const { sortField, sortDirection } = get();
+      const next = nextSortState(sortField, sortDirection, field);
+      set({ sortField: next.field, sortDirection: next.direction });
+    },
+
+    // ── Computed helpers (Iter 3) ──
+    getFilteredItems: () => {
+      const { items, searchTerm } = get();
+      if (!searchTerm) return items;
+      const lower = searchTerm.toLowerCase();
+      return items.filter((item) => item.name.toLowerCase().includes(lower));
+    },
+
+    getSortedItems: () => {
+      const { sortField, sortDirection } = get();
+      const filtered = get().getFilteredItems();
+      return sortItems(filtered, sortField, sortDirection);
+    },
 
     // ── Selection ──
     setSelectedItems: (items) => set({ selectedItems: items }),

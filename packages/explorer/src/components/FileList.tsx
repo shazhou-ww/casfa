@@ -2,6 +2,8 @@
  * <FileList /> - List view for directory contents.
  *
  * Iter 2: Added multi-select support and right-click context menu trigger.
+ * Iter 3: Added column sorting with TableSortLabel, search highlight,
+ *         uses store's getSortedItems() for filtered + sorted data.
  */
 
 import FolderIcon from "@mui/icons-material/Folder";
@@ -17,11 +19,13 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
-import type { ExplorerItem } from "../types.ts";
+import { useHighlightMatch } from "../hooks/use-search.ts";
+import type { ExplorerItem, SortField } from "../types.ts";
 
 function formatFileSize(bytes: number | undefined): string {
   if (bytes === undefined || bytes === null) return "\u2014";
@@ -46,6 +50,34 @@ type FileListProps = {
   renderNodeIcon?: (item: ExplorerItem) => React.ReactNode;
 };
 
+/** Inline name with search term highlighting */
+function HighlightedName({ name, searchTerm }: { name: string; searchTerm: string }) {
+  const segments = useHighlightMatch(name, searchTerm);
+  return (
+    <Typography variant="body2" noWrap component="span">
+      {segments.map((seg, i) =>
+        seg.highlight ? (
+          <Box
+            component="span"
+            // biome-ignore lint/suspicious/noArrayIndexKey: segments derived from search positions
+            key={i}
+            sx={{ backgroundColor: "warning.light", borderRadius: 0.5 }}
+          >
+            {seg.text}
+          </Box>
+        ) : (
+          <span
+            // biome-ignore lint/suspicious/noArrayIndexKey: segments derived from search positions
+            key={i}
+          >
+            {seg.text}
+          </span>
+        )
+      )}
+    </Typography>
+  );
+}
+
 export function FileList({
   onNavigate,
   onFileOpen,
@@ -61,9 +93,15 @@ export function FileList({
   const navigate = useExplorerStore((s) => s.navigate);
   const selectedItems = useExplorerStore((s) => s.selectedItems);
   const setSelectedItems = useExplorerStore((s) => s.setSelectedItems);
+  const getSortedItems = useExplorerStore((s) => s.getSortedItems);
+  const sortField = useExplorerStore((s) => s.sortField);
+  const sortDirection = useExplorerStore((s) => s.sortDirection);
+  const setSort = useExplorerStore((s) => s.setSort);
+  const searchTerm = useExplorerStore((s) => s.searchTerm);
 
+  const sorted = getSortedItems();
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const selectedPaths = new Set(selectedItems.map((i) => i.path));
+  const selectedPaths = useMemo(() => new Set(selectedItems.map((i) => i.path)), [selectedItems]);
 
   useEffect(() => {
     if (!hasMore) return;
@@ -145,11 +183,6 @@ export function FileList({
     [items, setSelectedItems]
   );
 
-  const sorted = [...items].sort((a, b) => {
-    if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
-
   if (isLoading && items.length === 0) {
     return (
       <Box sx={{ p: 2 }}>
@@ -170,13 +203,21 @@ export function FileList({
         sx={{ display: "flex", justifyContent: "center", alignItems: "center", py: 8, flex: 1 }}
         onContextMenu={handleBlankContextMenu}
       >
-        <Typography color="text.secondary">{t("fileList.empty")}</Typography>
+        <Typography color="text.secondary">
+          {searchTerm ? t("search.noResults") : t("fileList.empty")}
+        </Typography>
       </Box>
     );
   }
 
   const allSelected = items.length > 0 && selectedItems.length === items.length;
   const someSelected = selectedItems.length > 0 && !allSelected;
+
+  const sortColumns: Array<{ field: SortField; label: string; width: string; align?: "right" }> = [
+    { field: "name", label: t("fileList.name"), width: "50%" },
+    { field: "size", label: t("fileList.size"), width: "20%", align: "right" },
+    { field: "type", label: t("fileList.type"), width: "25%" },
+  ];
 
   return (
     <TableContainer onContextMenu={handleBlankContextMenu}>
@@ -191,11 +232,21 @@ export function FileList({
                 onChange={(_, checked) => handleSelectAll(checked)}
               />
             </TableCell>
-            <TableCell sx={{ fontWeight: 600, width: "50%" }}>{t("fileList.name")}</TableCell>
-            <TableCell sx={{ fontWeight: 600, width: "20%" }} align="right">
-              {t("fileList.size")}
-            </TableCell>
-            <TableCell sx={{ fontWeight: 600, width: "25%" }}>{t("fileList.type")}</TableCell>
+            {sortColumns.map((col) => (
+              <TableCell
+                key={col.field}
+                sx={{ fontWeight: 600, width: col.width }}
+                align={col.align as "right" | undefined}
+              >
+                <TableSortLabel
+                  active={sortField === col.field}
+                  direction={sortField === col.field ? sortDirection : "asc"}
+                  onClick={() => setSort(col.field)}
+                >
+                  {col.label}
+                </TableSortLabel>
+              </TableCell>
+            ))}
           </TableRow>
         </TableHead>
         <TableBody>
@@ -234,9 +285,7 @@ export function FileList({
                     ) : (
                       <InsertDriveFileIcon fontSize="small" color="action" />
                     )}
-                    <Typography variant="body2" noWrap>
-                      {item.name}
-                    </Typography>
+                    <HighlightedName name={item.name} searchTerm={searchTerm} />
                   </Box>
                 </TableCell>
                 <TableCell align="right">
