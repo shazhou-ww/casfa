@@ -51,6 +51,7 @@
     "@casfa/proof": "workspace:*",
     "@casfa/protocol": "workspace:*",
     "@casfa/storage-core": "workspace:*",
+    "@casfa/storage-cached": "workspace:*",
     "@casfa/storage-fs": "workspace:*",
     "@casfa/storage-http": "workspace:*",
     "@casfa/storage-indexeddb": "workspace:*",

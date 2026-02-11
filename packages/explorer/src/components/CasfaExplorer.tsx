@@ -27,6 +27,7 @@ export function CasfaExplorer(props: CasfaExplorerProps) {
       depotId: props.depotId,
       initialPath: props.initialPath,
       initialLayout: props.initialLayout,
+      beforeCommit: props.beforeCommit,
     });
   }
 

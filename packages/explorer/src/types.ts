@@ -199,6 +199,15 @@ export type CasfaExplorerProps = {
   /** Content-type based file preview providers */
   previewProviders?: PreviewProvider[];
 
+  // ── Lifecycle hooks ──
+  /**
+   * Called before committing a new root to the server.
+   * Use this to flush pending CAS node uploads (write-back mode)
+   * so all referenced nodes exist on the remote before the root
+   * pointer is updated.
+   */
+  beforeCommit?: () => Promise<void>;
+
   // ── Event callbacks ──
   onNavigate?: (path: string) => void;
   onSelect?: (items: ExplorerItem[]) => void;
