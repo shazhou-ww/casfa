@@ -1,7 +1,7 @@
 {
-  "name": "@casfa/core",
-  "version": "0.2.0",
-  "description": "CAS binary format encoding/decoding - self-similar B-Tree node structure",
+  "name": "@casfa/storage-cached",
+  "version": "0.1.0",
+  "description": "Cached StorageProvider — layers a local cache over a remote CAS backend",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,14 +16,18 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "bun run test:unit",
-    "test:unit": "bun test",
+    "test:unit": "bun test src/",
     "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "prepublishOnly": "bun run build"
   },
+  "dependencies": {
+    "@casfa/storage-core": "workspace:*"
+  },
   "devDependencies": {
-    "@noble/hashes": "^1.7.1",
     "@types/bun": "latest",
-    "typescript": "^5.0.0"
+    "typescript": "^5.7.2"
   },
   "files": [
     "dist",

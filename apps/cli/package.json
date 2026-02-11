@@ -24,6 +24,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "check": "tsc --noEmit && biome check .",
+    "test": "bun run test:e2e",
     "test:e2e": "bun run scripts/e2e-test.ts",
     "test:e2e:debug": "bun run scripts/e2e-test.ts --no-cleanup --keep-container",
     "prepublishOnly": "bun run build"

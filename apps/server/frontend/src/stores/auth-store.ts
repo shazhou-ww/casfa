@@ -7,6 +7,7 @@
 
 import { create } from "zustand";
 import { getClient, resetClient } from "../lib/client.ts";
+import { resetStorage } from "../lib/storage.ts";
 
 // ============================================================================
 // Types
@@ -102,6 +103,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         // ignore
       }
       resetClient();
+      resetStorage();
       set({
         initialized: false,
         isLoggedIn: false,

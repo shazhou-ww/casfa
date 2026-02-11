@@ -13,6 +13,7 @@ import {
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getClient, resetClient } from "../lib/client.ts";
+import { resetStorage } from "../lib/storage.ts";
 
 type UserInfo = {
   userId: string;
@@ -69,6 +70,7 @@ export function SuccessPage() {
       // ignore
     }
     resetClient();
+    resetStorage();
     navigate("/login", { replace: true });
   };
 

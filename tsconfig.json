@@ -33,7 +33,8 @@
       "@casfa/explorer": ["./packages/explorer/src/index.ts"],
       "@casfa/fs": ["./packages/fs/src/index.ts"],
       "@casfa/storage-http": ["./packages/storage-http/src/index.ts"],
-      "@casfa/storage-indexeddb": ["./packages/storage-indexeddb/src/index.ts"]
+      "@casfa/storage-indexeddb": ["./packages/storage-indexeddb/src/index.ts"],
+      "@casfa/storage-cached": ["./packages/storage-cached/src/index.ts"]
     },
 
     // Best practices

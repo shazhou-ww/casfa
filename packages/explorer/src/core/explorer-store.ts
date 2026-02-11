@@ -6,6 +6,8 @@
  */
 
 import type { CasfaClient } from "@casfa/client";
+import type { HashProvider, StorageProvider } from "@casfa/core";
+import { createFsService, isFsError, type FsService } from "@casfa/fs";
 import type { DepotListItem, FsLsChild } from "@casfa/protocol";
 import { createStore } from "zustand/vanilla";
 import type {
@@ -22,6 +24,8 @@ import type {
 export type ExplorerState = {
   // ── Connection ──
   client: CasfaClient;
+  /** Local @casfa/fs service — all tree operations (read & write) run locally */
+  localFs: FsService;
   depotId: string | null;
   depotRoot: string | null; // current root node key
 
@@ -137,6 +141,10 @@ function toExplorerItem(child: FsLsChild, parentPath: string): ExplorerItem {
 
 export type CreateExplorerStoreOpts = {
   client: CasfaClient;
+  /** CAS StorageProvider (CachedStorage: IndexedDB + HTTP) for local tree operations */
+  storage: StorageProvider;
+  /** BLAKE3s-128 hash provider for CAS node encoding */
+  hash: HashProvider;
   depotId?: string;
   initialPath?: string;
   initialLayout?: "list" | "grid";
@@ -150,9 +158,20 @@ function nextUploadId(): string {
 }
 
 export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
+  // Build local @casfa/fs service — all tree operations (read & write) run locally.
+  // Nodes are fetched/stored via CachedStorage (IndexedDB + HTTP).
+  // After write operations, the new root is committed to the server via depot API.
+  const localFs: FsService = createFsService({
+    ctx: {
+      storage: opts.storage,
+      hash: opts.hash,
+    },
+  });
+
   return createStore<ExplorerStore>()((set, get) => ({
     // ── Initial state ──
     client: opts.client,
+    localFs,
     depotId: opts.depotId ?? null,
     depotRoot: null,
     depots: [],
@@ -261,7 +280,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
     // ── Navigation ──
     navigate: async (path: string) => {
-      const { client, depotRoot } = get();
+      const { localFs, depotRoot } = get();
       if (!depotRoot) return;
 
       set({
@@ -275,19 +294,20 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
       });
 
       try {
-        const result = await client.fs.ls(depotRoot, path || undefined, { limit: LS_PAGE_SIZE });
-        if (result.ok) {
-          const items = result.data.children.map((c) => toExplorerItem(c, path));
-          set({
-            items,
-            cursor: result.data.nextCursor,
-            hasMore: result.data.nextCursor !== null,
-            totalItems: result.data.total,
-            isLoading: false,
-          });
-        } else {
+        const result = await localFs.ls(depotRoot, path || undefined, undefined, LS_PAGE_SIZE);
+        if (isFsError(result)) {
+          handleFsError(get, result);
           set({ isLoading: false });
+          return;
         }
+        const items = result.children.map((c) => toExplorerItem(c, path));
+        set({
+          items,
+          cursor: result.nextCursor,
+          hasMore: result.nextCursor !== null,
+          totalItems: result.total,
+          isLoading: false,
+        });
       } catch {
         set({ isLoading: false });
       }
@@ -299,27 +319,31 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     },
 
     loadMore: async () => {
-      const { client, depotRoot, currentPath, cursor, items } = get();
+      const { localFs, depotRoot, currentPath, cursor, items } = get();
       if (!depotRoot || !cursor) return;
 
       set({ isLoading: true });
 
       try {
-        const result = await client.fs.ls(depotRoot, currentPath || undefined, {
-          limit: LS_PAGE_SIZE,
+        const result = await localFs.ls(
+          depotRoot,
+          currentPath || undefined,
+          undefined,
+          LS_PAGE_SIZE,
           cursor,
-        });
-        if (result.ok) {
-          const newItems = result.data.children.map((c) => toExplorerItem(c, currentPath));
-          set({
-            items: [...items, ...newItems],
-            cursor: result.data.nextCursor,
-            hasMore: result.data.nextCursor !== null,
-            isLoading: false,
-          });
-        } else {
+        );
+        if (isFsError(result)) {
+          handleFsError(get, result);
           set({ isLoading: false });
+          return;
         }
+        const newItems = result.children.map((c) => toExplorerItem(c, currentPath));
+        set({
+          items: [...items, ...newItems],
+          cursor: result.nextCursor,
+          hasMore: result.nextCursor !== null,
+          isLoading: false,
+        });
       } catch {
         set({ isLoading: false });
       }
@@ -368,25 +392,27 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
     // ── File operations ──
     createFolder: async (name: string) => {
-      const { client, depotRoot, currentPath } = get();
-      if (!depotRoot) return false;
+      const { client, depotId, depotRoot, currentPath } = get();
+      if (!depotRoot || !depotId) return false;
 
       set({ operationLoading: { ...get().operationLoading, createFolder: true } });
       const targetPath = currentPath ? `${currentPath}/${name}` : name;
 
       try {
         const result = await client.fs.mkdir(depotRoot, targetPath);
-        if (result.ok) {
-          set({
-            depotRoot: result.data.newRoot,
-            operationLoading: { ...get().operationLoading, createFolder: false },
-          });
-          await get().refresh();
-          return true;
+        if (!result.ok) {
+          handleApiError(get, result.error);
+          set({ operationLoading: { ...get().operationLoading, createFolder: false } });
+          return false;
         }
-        handleApiError(get, result.error);
-        set({ operationLoading: { ...get().operationLoading, createFolder: false } });
-        return false;
+        // Commit new root to depot (persists across refresh)
+        await client.depots.commit(depotId, { root: result.data.newRoot });
+        set({
+          depotRoot: result.data.newRoot,
+          operationLoading: { ...get().operationLoading, createFolder: false },
+        });
+        await get().refresh();
+        return true;
       } catch {
         set({
           operationLoading: { ...get().operationLoading, createFolder: false },
@@ -397,8 +423,8 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     },
 
     deleteItems: async (items: ExplorerItem[]) => {
-      const { client, depotRoot } = get();
-      if (!depotRoot) return { success: 0, failed: items.length };
+      const { client, depotId, depotRoot } = get();
+      if (!depotRoot || !depotId) return { success: 0, failed: items.length };
 
       set({ operationLoading: { ...get().operationLoading, delete: true } });
       let success = 0;
@@ -420,6 +446,11 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
         }
       }
 
+      // Commit final root to depot (single commit for all deletions)
+      if (currentRoot !== depotRoot) {
+        await client.depots.commit(depotId, { root: currentRoot }).catch(() => {});
+      }
+
       set({
         depotRoot: currentRoot,
         operationLoading: { ...get().operationLoading, delete: false },
@@ -430,8 +461,8 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     },
 
     renameItem: async (item: ExplorerItem, newName: string) => {
-      const { client, depotRoot } = get();
-      if (!depotRoot) return false;
+      const { client, depotId, depotRoot } = get();
+      if (!depotRoot || !depotId) return false;
 
       set({ operationLoading: { ...get().operationLoading, rename: true } });
 
@@ -442,17 +473,19 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
       try {
         const result = await client.fs.mv(depotRoot, item.path, newPath);
-        if (result.ok) {
-          set({
-            depotRoot: result.data.newRoot,
-            operationLoading: { ...get().operationLoading, rename: false },
-          });
-          await get().refresh();
-          return true;
+        if (!result.ok) {
+          handleApiError(get, result.error);
+          set({ operationLoading: { ...get().operationLoading, rename: false } });
+          return false;
         }
-        handleApiError(get, result.error);
-        set({ operationLoading: { ...get().operationLoading, rename: false } });
-        return false;
+        // Commit new root to depot
+        await client.depots.commit(depotId, { root: result.data.newRoot });
+        set({
+          depotRoot: result.data.newRoot,
+          operationLoading: { ...get().operationLoading, rename: false },
+        });
+        await get().refresh();
+        return true;
       } catch {
         set({
           operationLoading: { ...get().operationLoading, rename: false },
@@ -479,10 +512,10 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
   }));
 };
 
-/** Map API errors to ExplorerError */
-function handleApiError(
+/** Map FsError (from @casfa/fs) to ExplorerError */
+function handleFsError(
   get: () => ExplorerStore,
-  error: { code: string; message: string; status?: number },
+  error: { code: string; status: number; message: string },
 ) {
   const { setError, setPermissions } = get();
   if (error.status === 403) {
@@ -496,6 +529,22 @@ function handleApiError(
     setError({ type: "file_too_large", message: error.message });
   } else if (error.code === "TARGET_EXISTS") {
     setError({ type: "name_conflict", message: error.message });
+  } else {
+    setError({ type: "unknown", message: error.message });
+  }
+}
+
+/** Map HTTP API errors to ExplorerError */
+function handleApiError(
+  get: () => ExplorerStore,
+  error: { code: string; message: string; status?: number },
+) {
+  const { setError, setPermissions } = get();
+  if (error.status === 403) {
+    setPermissions({ canUpload: false });
+    setError({ type: "permission_denied", message: error.message });
+  } else if (error.status === 401) {
+    setError({ type: "auth_expired", message: error.message });
   } else {
     setError({ type: "unknown", message: error.message });
   }
