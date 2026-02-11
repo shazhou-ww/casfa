@@ -18,7 +18,6 @@ import type { Context } from "hono";
 import {
   DEFAULT_MAX_HISTORY,
   type DepotsDb,
-  MAIN_DEPOT_TITLE,
   SYSTEM_MAX_HISTORY,
 } from "../db/depots.ts";
 import type { OwnershipV2Db } from "../db/ownership-v2.ts";
@@ -212,14 +211,9 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
       const realm = getRealm(c);
       const depotId = decodeURIComponent(c.req.param("depotId"));
 
-      // Get depot first to check if it's main
       const depot = await depotsDb.get(realm, depotId);
       if (!depot) {
         return c.json({ error: "Depot not found" }, 404);
-      }
-
-      if (depot.title === MAIN_DEPOT_TITLE) {
-        return c.json({ error: "Cannot delete the main depot" }, 403);
       }
 
       await depotsDb.delete(realm, depotId);
