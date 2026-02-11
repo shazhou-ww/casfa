@@ -154,7 +154,11 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
   let activeSyncPromise: Promise<void> | null = null;
 
   /**
-   * Run a single sync cycle: batch has-check + parallel upload for missing.
+   * Run a single sync cycle: read from cache, put to remote in parallel.
+   *
+   * remote.put() already handles check+upload internally (via httpStorage),
+   * so we skip a separate has-check to avoid double-checking and potential
+   * cache staleness issues.
    */
   const runSync = async (): Promise<void> => {
     if (pendingKeys.size === 0) return;
@@ -170,26 +174,9 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
     onSyncStart?.();
 
     try {
-      // Batch has-check against remote
-      const checks = await Promise.all(
-        keys.map(async (key) => ({
-          key,
-          exists: await remote.has(key),
-        }))
-      );
-
-      const toUpload: string[] = [];
-      for (const { key, exists } of checks) {
-        if (exists) {
-          skipped.push(key);
-        } else {
-          toUpload.push(key);
-        }
-      }
-
-      // Parallel upload
+      // Parallel put — remote.put() handles check+upload internally
       const results = await Promise.allSettled(
-        toUpload.map(async (key) => {
+        keys.map(async (key) => {
           const data = await cache.get(key);
           if (!data) {
             throw new Error(`Pending key missing from cache: ${key}`);
@@ -203,13 +190,13 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
         if (result.status === "fulfilled") {
           synced.push(result.value);
         } else {
-          const key = toUpload[i]!;
+          const key = keys[i]!;
           failed.push({ key, error: result.reason });
           pendingKeys.add(key); // re-queue for retry
         }
       }
     } catch (error) {
-      // Catastrophic failure (e.g., all has-checks failed) — re-queue all
+      // Catastrophic failure — re-queue all
       for (const key of keys) {
         pendingKeys.add(key);
         failed.push({ key, error });
@@ -269,6 +256,15 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
       let maxRetries = 3;
       while (pendingKeys.size > 0 && maxRetries-- > 0) {
         await runSync();
+      }
+
+      // If keys still remain after retries, throw so callers don't
+      // proceed assuming data is on the remote
+      if (pendingKeys.size > 0) {
+        const remaining = [...pendingKeys];
+        throw new Error(
+          `Failed to sync ${remaining.length} keys after retries: ${remaining.slice(0, 5).join(", ")}`,
+        );
       }
     },
 

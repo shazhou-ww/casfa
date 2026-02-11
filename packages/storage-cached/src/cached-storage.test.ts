@@ -366,7 +366,7 @@ describe("createCachedStorage (write-back)", () => {
       storage.dispose();
     });
 
-    it("should skip keys already on remote", async () => {
+    it("should sync keys already on remote (remote.put handles dedup)", async () => {
       const cache = createSpyStorage();
       const remote = createSpyStorage(new Map([[KEY, DATA]]));
       let lastResult: SyncResult | null = null;
@@ -382,17 +382,17 @@ describe("createCachedStorage (write-back)", () => {
         },
       });
 
-      // Put a key that remote already has
+      // Put a key that remote already has — remote.put() is still called
+      // (the remote itself handles dedup via its internal check)
       await storage.put(KEY, DATA);
       await wait(DEBOUNCE + 50);
 
-      // Should be skipped, not uploaded
       expect(lastResult).not.toBeNull();
-      expect(lastResult!.skipped).toEqual([KEY]);
-      expect(lastResult!.synced).toHaveLength(0);
+      expect(lastResult!.synced).toEqual([KEY]);
+      expect(lastResult!.failed).toHaveLength(0);
 
-      // remote.put should NOT have been called
-      expect(remote.calls.filter((c) => c.method === "put")).toHaveLength(0);
+      // remote.put IS called (no separate has-check in runSync)
+      expect(remote.calls.filter((c) => c.method === "put")).toHaveLength(1);
 
       storage.dispose();
     });
@@ -459,8 +459,8 @@ describe("createCachedStorage (write-back)", () => {
 
       await storage.put(KEY, DATA);
       await storage.put(failKey, new Uint8Array([9, 9]));
-      // Use flush for deterministic single-cycle sync
-      await storage.flush();
+      // flush retries then throws because failKey keeps failing
+      await expect(storage.flush()).rejects.toThrow(/Failed to sync 1 keys/);
 
       // First sync result: KEY succeeded, failKey failed
       expect(results.length).toBeGreaterThanOrEqual(1);
