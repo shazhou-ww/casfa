@@ -13,8 +13,7 @@
     }
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "bun ../../scripts/build-pkg.ts",
     "test": "bun run test:unit",
     "test:unit": "bun test",
     "typecheck": "tsc --noEmit",
