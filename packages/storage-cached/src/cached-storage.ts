@@ -273,7 +273,7 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
       if (pendingKeys.size > 0) {
         const remaining = [...pendingKeys];
         throw new Error(
-          `Failed to sync ${remaining.length} keys after retries: ${remaining.slice(0, 5).join(", ")}`,
+          `Failed to sync ${remaining.length} keys after retries: ${remaining.slice(0, 5).join(", ")}`
         );
       }
     },

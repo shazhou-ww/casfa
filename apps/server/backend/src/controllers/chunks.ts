@@ -8,8 +8,8 @@
 import {
   decodeNode,
   getWellKnownNodeData,
-  type KeyProvider,
   isWellKnownNode,
+  type KeyProvider,
   validateNode,
   validateNodeStructure,
 } from "@casfa/core";

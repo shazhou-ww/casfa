@@ -231,7 +231,24 @@ describe("Utils", () => {
 
   describe("size flag byte: roundtrip & properties", () => {
     it("encode → decode should produce a bound >= original size", () => {
-      const testSizes = [0, 1, 15, 16, 17, 100, 240, 241, 255, 256, 1000, 3840, 3841, 4096, 65536, 1024 * 1024];
+      const testSizes = [
+        0,
+        1,
+        15,
+        16,
+        17,
+        100,
+        240,
+        241,
+        255,
+        256,
+        1000,
+        3840,
+        3841,
+        4096,
+        65536,
+        1024 * 1024,
+      ];
       for (const size of testSizes) {
         const flag = computeSizeFlagByte(size);
         const bound = decodeSizeFlagByte(flag);
@@ -241,7 +258,24 @@ describe("Utils", () => {
 
     it("monotonicity: larger size → larger or equal flag byte", () => {
       let prevFlag = 0;
-      const sizes = [0, 1, 2, 10, 15, 16, 100, 240, 241, 256, 1000, 3840, 3841, 65536, 1024 * 1024, 16 * 1024 * 1024];
+      const sizes = [
+        0,
+        1,
+        2,
+        10,
+        15,
+        16,
+        100,
+        240,
+        241,
+        256,
+        1000,
+        3840,
+        3841,
+        65536,
+        1024 * 1024,
+        16 * 1024 * 1024,
+      ];
       for (const size of sizes) {
         const flag = computeSizeFlagByte(size);
         expect(flag).toBeGreaterThanOrEqual(prevFlag);

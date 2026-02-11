@@ -316,7 +316,7 @@ describe("Validation", () => {
       // Use wrong key with correct size flag but wrong hash bits
       const correctKey = hashToKey(encoded.hash);
       // Flip some hash bits but keep the first 2 chars (size flag) the same
-      const wrongKey = correctKey.slice(0, 2) + "0000000000000000000000" + correctKey.slice(24);
+      const wrongKey = `${correctKey.slice(0, 2)}0000000000000000000000${correctKey.slice(24)}`;
       const result = await validateNode(encoded.bytes, wrongKey, keyProvider);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("Hash mismatch");

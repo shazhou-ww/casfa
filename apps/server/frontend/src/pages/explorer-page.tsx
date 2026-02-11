@@ -33,15 +33,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getClient } from "../lib/client.ts";
 import {
-  type SyncLogEntry,
   clearSyncLog,
   flushStorage,
   getKeyProvider,
-  getSyncLog,
   getStorage,
+  getSyncLog,
   onSyncLogChange,
   onSyncStatusChange,
   pushSyncLog,
+  type SyncLogEntry,
 } from "../lib/storage.ts";
 
 export function ExplorerPage() {
@@ -175,11 +175,7 @@ function SyncIndicator() {
           </Typography>
           {log.length > 0 && (
             <IconButton size="small" sx={{ p: 0 }}>
-              {expanded ? (
-                <ExpandLess fontSize="small" />
-              ) : (
-                <ExpandMore fontSize="small" />
-              )}
+              {expanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
             </IconButton>
           )}
         </Box>
@@ -211,9 +207,7 @@ function LogEntryIcon({ status }: { status: SyncLogEntry["status"] }) {
     return <CircularProgress size={12} sx={{ mr: 1, flexShrink: 0 }} />;
   }
   if (status === "done") {
-    return (
-      <CheckCircle sx={{ fontSize: 14, mr: 1, flexShrink: 0, color: "success.main" }} />
-    );
+    return <CheckCircle sx={{ fontSize: 14, mr: 1, flexShrink: 0, color: "success.main" }} />;
   }
   return <ErrorIcon sx={{ fontSize: 14, mr: 1, flexShrink: 0, color: "error.main" }} />;
 }
