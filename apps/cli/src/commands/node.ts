@@ -116,9 +116,9 @@ export function registerNodeCommands(program: Command): void {
         const resolved = await createClient(opts);
         requireRealmAuth(resolved);
 
-        // Hash provider for CAS node encoding (uses BLAKE3-128)
-        const hashProvider = {
-          hash: async (nodeData: Uint8Array): Promise<Uint8Array> => {
+        // Key provider for CAS node encoding (uses BLAKE3-128)
+        const keyProvider = {
+          computeKey: async (nodeData: Uint8Array): Promise<Uint8Array> => {
             const fullHash = blake3(nodeData);
             return fullHash.slice(0, 16); // 128-bit truncation
           },
@@ -131,7 +131,7 @@ export function registerNodeCommands(program: Command): void {
             contentType: contentType || "application/octet-stream",
             fileSize: data.length,
           },
-          hashProvider
+          keyProvider
         );
 
         // Convert hash to node key format

@@ -3,7 +3,7 @@
  */
 
 import type { CasfaClient } from "@casfa/client";
-import type { HashProvider, StorageProvider } from "@casfa/core";
+import type { KeyProvider, StorageProvider } from "@casfa/core";
 import type { SxProps, Theme } from "@mui/material";
 import type React from "react";
 
@@ -196,10 +196,10 @@ export type CasfaExplorerProps = {
   storage: StorageProvider;
 
   /**
-   * BLAKE3s-128 hash provider for CAS node encoding.
+   * Key provider for CAS node encoding.
    * Required for write operations (mkdir, write, rm, mv).
    */
-  hash: HashProvider;
+  keyProvider: KeyProvider;
 
   // ── Depot ──
   /** Specify depot. Omit to show built-in depot selector */

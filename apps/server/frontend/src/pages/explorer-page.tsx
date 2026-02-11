@@ -36,7 +36,7 @@ import {
   type SyncLogEntry,
   clearSyncLog,
   flushStorage,
-  getHashProvider,
+  getKeyProvider,
   getSyncLog,
   getStorage,
   onSyncLogChange,
@@ -49,7 +49,7 @@ export function ExplorerPage() {
   const navigate = useNavigate();
   const [client, setClient] = useState<CasfaClient | null>(null);
   const [storage, setStorage] = useState<StorageProvider | null>(null);
-  const hash = getHashProvider();
+  const keyProv = getKeyProvider();
 
   useEffect(() => {
     getClient().then(setClient);
@@ -78,7 +78,7 @@ export function ExplorerPage() {
         key={depotId ?? "__no_depot__"}
         client={client}
         storage={storage}
-        hash={hash}
+        keyProvider={keyProv}
         depotId={depotId}
         height="100%"
         onDepotChange={(id) => navigate(`/depot/${encodeURIComponent(id)}`)}

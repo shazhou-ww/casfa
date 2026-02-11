@@ -2,7 +2,7 @@
  * CAS Controller - Functional API
  *
  * High-level functions for CAS operations, matching CASFA API granularity.
- * Uses injected StorageProvider and HashProvider for platform abstraction.
+ * Uses injected StorageProvider and KeyProvider for platform abstraction.
  */
 
 import { DEFAULT_NODE_LIMIT, HASH_SIZE } from "./constants.ts";
@@ -11,7 +11,7 @@ import { computeLayout } from "./topology.ts";
 import type {
   CasNode,
   DictNodeInput,
-  HashProvider,
+  KeyProvider,
   LayoutNode,
   NodeKind,
   StorageProvider,
@@ -28,8 +28,8 @@ import { concatBytes, hashToKey, keyToHash } from "./utils.ts";
 export type CasContext = {
   /** Storage provider for reading/writing nodes */
   storage: StorageProvider;
-  /** Hash provider for SHA-256 computation */
-  hash: HashProvider;
+  /** Key provider for content-addressed key computation */
+  key: KeyProvider;
   /** Maximum node size in bytes (default: 1MB) */
   nodeLimit?: number;
 };
@@ -122,7 +122,7 @@ const uploadFileNode = async (
   totalFileSize: number,
   isRoot: boolean = true
 ): Promise<Uint8Array> => {
-  const { storage, hash } = ctx;
+  const { storage, key } = ctx;
   const nodeData = data.slice(offset, offset + layout.dataSize);
 
   if (layout.children.length === 0) {
@@ -130,12 +130,12 @@ const uploadFileNode = async (
     if (isRoot) {
       const encoded = await encodeFileNode(
         { data: nodeData, contentType, fileSize: totalFileSize },
-        hash
+        key
       );
       await storage.put(hashToKey(encoded.hash), encoded.bytes);
       return encoded.hash;
     } else {
-      const encoded = await encodeSuccessorNode({ data: nodeData }, hash);
+      const encoded = await encodeSuccessorNode({ data: nodeData }, key);
       await storage.put(hashToKey(encoded.hash), encoded.bytes);
       return encoded.hash;
     }
@@ -162,12 +162,12 @@ const uploadFileNode = async (
   if (isRoot) {
     const encoded = await encodeFileNode(
       { data: nodeData, contentType, fileSize: totalFileSize, children: childHashes },
-      hash
+      key
     );
     await storage.put(hashToKey(encoded.hash), encoded.bytes);
     return encoded.hash;
   } else {
-    const encoded = await encodeSuccessorNode({ data: nodeData, children: childHashes }, hash);
+    const encoded = await encodeSuccessorNode({ data: nodeData, children: childHashes }, key);
     await storage.put(hashToKey(encoded.hash), encoded.bytes);
     return encoded.hash;
   }
@@ -251,7 +251,7 @@ export const putFileNode = async (
   data: Uint8Array,
   contentType?: string
 ): Promise<string> => {
-  const encoded = await encodeFileNode({ data, contentType, fileSize: data.length }, ctx.hash);
+  const encoded = await encodeFileNode({ data, contentType, fileSize: data.length }, ctx.key);
   await ctx.storage.put(hashToKey(encoded.hash), encoded.bytes);
   return hashToKey(encoded.hash);
 };
@@ -278,7 +278,7 @@ export const makeDict = async (ctx: CasContext, entries: DictEntry[]): Promise<s
     childNames,
   };
 
-  const encoded = await encodeDictNode(input, ctx.hash);
+  const encoded = await encodeDictNode(input, ctx.key);
   await ctx.storage.put(hashToKey(encoded.hash), encoded.bytes);
 
   return hashToKey(encoded.hash);

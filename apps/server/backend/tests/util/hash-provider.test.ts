@@ -1,50 +1,50 @@
 /**
- * Unit tests for Hash Provider utilities
+ * Unit tests for Key Provider utilities
  */
 
 import { beforeEach, describe, expect, it } from "bun:test";
-import { type CombinedHashProvider, createNodeHashProvider } from "../../src/util/hash-provider.ts";
+import { type CombinedKeyProvider, createNodeKeyProvider } from "../../src/util/hash-provider.ts";
 
-describe("Hash Provider Utilities", () => {
-  describe("createNodeHashProvider", () => {
-    it("should create a provider with both hash and sha256 methods", () => {
-      const provider = createNodeHashProvider();
-      expect(typeof provider.hash).toBe("function");
+describe("Key Provider Utilities", () => {
+  describe("createNodeKeyProvider", () => {
+    it("should create a provider with both computeKey and sha256 methods", () => {
+      const provider = createNodeKeyProvider();
+      expect(typeof provider.computeKey).toBe("function");
       expect(typeof provider.sha256).toBe("function");
     });
   });
 
-  describe("hash (Blake3s-128)", () => {
-    let provider: CombinedHashProvider;
+  describe("computeKey (Blake3s-128)", () => {
+    let provider: CombinedKeyProvider;
 
     beforeEach(() => {
-      provider = createNodeHashProvider();
+      provider = createNodeKeyProvider();
     });
 
     it("should return 16-byte hash", async () => {
       const data = new TextEncoder().encode("test data");
-      const hash = await provider.hash(data);
+      const hash = await provider.computeKey(data);
       expect(hash.length).toBe(16);
     });
 
     it("should be deterministic", async () => {
       const data = new TextEncoder().encode("consistent input");
-      const hash1 = await provider.hash(data);
-      const hash2 = await provider.hash(data);
+      const hash1 = await provider.computeKey(data);
+      const hash2 = await provider.computeKey(data);
       expect(hash1).toEqual(hash2);
     });
 
     it("should produce different hashes for different inputs", async () => {
       const data1 = new TextEncoder().encode("input 1");
       const data2 = new TextEncoder().encode("input 2");
-      const hash1 = await provider.hash(data1);
-      const hash2 = await provider.hash(data2);
+      const hash1 = await provider.computeKey(data1);
+      const hash2 = await provider.computeKey(data2);
       expect(hash1).not.toEqual(hash2);
     });
 
     it("should handle empty input", async () => {
       const data = new Uint8Array(0);
-      const hash = await provider.hash(data);
+      const hash = await provider.computeKey(data);
       expect(hash.length).toBe(16);
     });
 
@@ -53,16 +53,16 @@ describe("Hash Provider Utilities", () => {
       for (let i = 0; i < data.length; i++) {
         data[i] = i % 256;
       }
-      const hash = await provider.hash(data);
+      const hash = await provider.computeKey(data);
       expect(hash.length).toBe(16);
     });
   });
 
   describe("sha256", () => {
-    let provider: CombinedHashProvider;
+    let provider: CombinedKeyProvider;
 
     beforeEach(() => {
-      provider = createNodeHashProvider();
+      provider = createNodeKeyProvider();
     });
 
     it("should return 32-byte hash", async () => {
@@ -108,8 +108,8 @@ describe("Hash Provider Utilities", () => {
   });
 
   describe("type compatibility", () => {
-    it("should satisfy CombinedHashProvider interface", () => {
-      const provider: CombinedHashProvider = createNodeHashProvider();
+    it("should satisfy CombinedKeyProvider interface", () => {
+      const provider: CombinedKeyProvider = createNodeKeyProvider();
       // If this compiles, the type is compatible
       expect(provider).toBeDefined();
     });

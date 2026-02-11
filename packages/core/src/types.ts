@@ -14,16 +14,27 @@
 export type NodeKind = "set" | "dict" | "file" | "successor";
 
 /**
- * Hash provider - injected by platform-specific implementations
+ * Key provider — computes a 128-bit content-addressed key for a node.
+ *
+ * The key is a pure function of the input bytes.  The provider may use
+ * any combination of hashing, size-flagging, or other deterministic
+ * transforms, as long as the output is 16 bytes.
+ *
+ * Current implementation: BLAKE3s-128 (will become size-flagged in Phase 2).
  */
-export type HashProvider = {
+export type KeyProvider = {
   /**
-   * Compute hash of data (BLAKE3s-128 for CAS\01)
-   * @param data - Input bytes
-   * @returns 16-byte hash as Uint8Array
+   * Compute 128-bit content-addressed key.
+   * @param data - Serialized node bytes
+   * @returns 16-byte key as Uint8Array
    */
-  hash: (data: Uint8Array) => Promise<Uint8Array>;
+  computeKey: (data: Uint8Array) => Promise<Uint8Array>;
 };
+
+/**
+ * @deprecated Use {@link KeyProvider} instead.
+ */
+export type HashProvider = KeyProvider;
 
 /**
  * Re-export StorageProvider from @casfa/storage-core.

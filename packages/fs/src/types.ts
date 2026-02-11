@@ -5,7 +5,7 @@
  * All types are storage-agnostic — they depend only on CasContext.
  */
 
-import type { CasNode, HashProvider, StorageProvider } from "@casfa/core";
+import type { CasNode, KeyProvider, StorageProvider } from "@casfa/core";
 
 // ============================================================================
 // Context — extends CasContext with fs-specific hooks
@@ -21,8 +21,8 @@ import type { CasNode, HashProvider, StorageProvider } from "@casfa/core";
 export type FsContext = {
   /** CAS blob store (CB32 keys) */
   storage: StorageProvider;
-  /** BLAKE3s-128 hash provider */
-  hash: HashProvider;
+  /** Key provider for content-addressed key computation */
+  key: KeyProvider;
 
   /**
    * Called after a new node is stored via `storage.put`.

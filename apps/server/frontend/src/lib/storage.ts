@@ -1,5 +1,5 @@
 /**
- * CAS StorageProvider + HashProvider for the frontend.
+ * CAS StorageProvider + KeyProvider for the frontend.
  *
  * - StorageProvider: IndexedDB (local cache) + HTTP (remote backend) via CachedStorage.
  *   CAS nodes are immutable — once cached in IndexedDB, they never need
@@ -12,12 +12,12 @@
  *   Before committing a new root pointer, call flushStorage() to ensure
  *   all referenced nodes are on the remote.
  *
- * - HashProvider: BLAKE3s-128 via @noble/hashes (pure JS, browser-compatible).
+ * - KeyProvider: BLAKE3s-128 via @noble/hashes (pure JS, browser-compatible).
  *   Required for write operations (mkdir, write, rm, mv) which encode new
  *   CAS nodes locally before pushing them to the server.
  */
 
-import type { HashProvider } from "@casfa/core";
+import type { KeyProvider } from "@casfa/core";
 import type { CachedStorageProvider } from "@casfa/storage-cached";
 import { createHttpStorage } from "@casfa/storage-http";
 import { createCachedStorage, createIndexedDBStorage } from "@casfa/storage-indexeddb";
@@ -25,19 +25,22 @@ import { blake3 } from "@noble/hashes/blake3";
 import { getClient } from "./client.ts";
 
 // ============================================================================
-// HashProvider — BLAKE3s-128 (browser-compatible)
+// KeyProvider — BLAKE3s-128 (browser-compatible)
 // ============================================================================
 
-const hashProvider: HashProvider = {
-  hash: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
+const keyProvider: KeyProvider = {
+  computeKey: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
 };
 
 /**
- * Get the BLAKE3s-128 hash provider (singleton, synchronous).
+ * Get the BLAKE3s-128 key provider (singleton, synchronous).
  */
-export function getHashProvider(): HashProvider {
-  return hashProvider;
+export function getKeyProvider(): KeyProvider {
+  return keyProvider;
 }
+
+/** @deprecated Use getKeyProvider */
+export const getHashProvider = getKeyProvider;
 
 // ============================================================================
 // Sync status — observable by UI

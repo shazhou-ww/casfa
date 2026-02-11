@@ -4,7 +4,7 @@
  * Low-level CAS tree operations: node resolution, path traversal,
  * Merkle path rebuild, child insertion / removal, and parent-dir creation.
  *
- * All operations depend only on FsContext (StorageProvider + HashProvider)
+ * All operations depend only on FsContext (StorageProvider + KeyProvider)
  * plus optional hooks. No database or server dependencies.
  */
 
@@ -33,7 +33,7 @@ const textEncoder = new TextEncoder();
 export type TreeOps = ReturnType<typeof createTreeOps>;
 
 export const createTreeOps = (ctx: FsContext) => {
-  const { storage, hash: hashProvider, onNodeStored } = ctx;
+  const { storage, key: keyProvider, onNodeStored } = ctx;
 
   // --------------------------------------------------------------------------
   // Node I/O
@@ -222,7 +222,7 @@ export const createTreeOps = (ctx: FsContext) => {
 
       const encoded = await encodeDictNode(
         { children: newChildren, childNames: parent.node.childNames ?? [] },
-        hashProvider
+        keyProvider
       );
 
       await storeNode(encoded.bytes, encoded.hash, "dict", 0);
@@ -263,7 +263,7 @@ export const createTreeOps = (ctx: FsContext) => {
 
     const encoded = await encodeDictNode(
       { children: newChildren, childNames: newNames },
-      hashProvider
+      keyProvider
     );
 
     await storeNode(encoded.bytes, encoded.hash, "dict", 0);
@@ -286,7 +286,7 @@ export const createTreeOps = (ctx: FsContext) => {
 
     const encoded = await encodeDictNode(
       { children: existingChildren, childNames: existingNames },
-      hashProvider
+      keyProvider
     );
 
     await storeNode(encoded.bytes, encoded.hash, "dict", 0);
@@ -345,14 +345,14 @@ export const createTreeOps = (ctx: FsContext) => {
               children: newDirHash ? [newDirHash] : [],
               childNames: newDirHash ? [segments[j + 1]!] : [],
             },
-            hashProvider
+            keyProvider
           );
           await storeNode(emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
           newDirHash = emptyEncoded.hash;
         }
 
         if (!newDirHash) {
-          const emptyEncoded = await encodeDictNode({ children: [], childNames: [] }, hashProvider);
+          const emptyEncoded = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
           await storeNode(emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
           newDirHash = emptyEncoded.hash;
         }
@@ -361,7 +361,7 @@ export const createTreeOps = (ctx: FsContext) => {
         const newChildren = [...(currentNode.children ?? []), newDirHash];
         const parentEncoded = await encodeDictNode(
           { children: newChildren, childNames: newNames },
-          hashProvider
+          keyProvider
         );
         await storeNode(parentEncoded.bytes, parentEncoded.hash, "dict", 0);
 

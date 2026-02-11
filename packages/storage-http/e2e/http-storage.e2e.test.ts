@@ -12,7 +12,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { type CasfaClient, createClient, type StoredRootDelegate } from "@casfa/client";
-import { encodeFileNode, type HashProvider } from "@casfa/core";
+import { encodeFileNode, type KeyProvider } from "@casfa/core";
 import type { PopContext } from "@casfa/proof";
 import { hashToNodeKey, nodeKeyToStorageKey } from "@casfa/protocol";
 import { blake3 } from "@noble/hashes/blake3";
@@ -27,8 +27,8 @@ import { createHttpStorage, type HttpStorageConfig } from "../src/http-storage.t
 // Crypto helpers (real blake3, same as server)
 // ============================================================================
 
-const hashProvider: HashProvider = {
-  hash: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
+const keyProvider: KeyProvider = {
+  computeKey: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
 };
 
 const popContext: PopContext = {
@@ -100,7 +100,7 @@ async function encodeTestFile(content: string) {
   const data = new TextEncoder().encode(content);
   const encoded = await encodeFileNode(
     { data, contentType: "text/plain", fileSize: data.length },
-    hashProvider
+    keyProvider
   );
   const nodeKey = hashToNodeKey(encoded.hash);
   const storageKey = nodeKeyToStorageKey(nodeKey);

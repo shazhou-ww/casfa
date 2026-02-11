@@ -121,7 +121,7 @@ type FsError = import("./types.ts").FsError;
 // ============================================================================
 
 export const createFsService = (deps: FsServiceDeps): FsService => {
-  const { storage, hashProvider, ownershipV2Db, refCountDb, usageDb, depotsDb, scopeSetNodesDb } =
+  const { storage, keyProvider, ownershipV2Db, refCountDb, usageDb, depotsDb, scopeSetNodesDb } =
     deps;
 
   // --------------------------------------------------------------------------
@@ -133,7 +133,7 @@ export const createFsService = (deps: FsServiceDeps): FsService => {
    */
   const makeFsContext = (realm: string, ownerId: string): FsContext => ({
     storage,
-    hash: hashProvider,
+    key: keyProvider,
 
     onNodeStored: async (info) => {
       // Always ensure ownership (idempotent)

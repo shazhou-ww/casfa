@@ -14,7 +14,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { type CasfaClient, createClient, type StoredRootDelegate } from "@casfa/client";
-import { encodeFileNode, type HashProvider } from "@casfa/core";
+import { encodeFileNode, type KeyProvider } from "@casfa/core";
 import { computePoP, type PopContext } from "@casfa/proof";
 import { hashToNodeKey } from "@casfa/protocol";
 import { blake3 } from "@noble/hashes/blake3";
@@ -24,9 +24,9 @@ import { createE2EContext, type E2EContext, uniqueId } from "./setup.ts";
 // Test Crypto Context
 // ============================================================================
 
-/** Real HashProvider using blake3 (same as server) */
-const hashProvider: HashProvider = {
-  hash: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
+/** Real KeyProvider using blake3 (same as server) */
+const keyProvider: KeyProvider = {
+  computeKey: async (data: Uint8Array) => blake3(data, { dkLen: 16 }),
 };
 
 /** Real PopContext using blake3 (same as server) */
@@ -124,7 +124,7 @@ describe("Client SDK Integration", () => {
     const data = new TextEncoder().encode(content);
     const encoded = await encodeFileNode(
       { data, contentType: "text/plain", fileSize: data.length },
-      hashProvider
+      keyProvider
     );
     const nodeKey = hashToNodeKey(encoded.hash);
     return { nodeKey, nodeBytes: encoded.bytes, nodeHash: encoded.hash };
