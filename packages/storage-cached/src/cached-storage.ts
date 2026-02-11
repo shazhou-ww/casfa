@@ -48,8 +48,8 @@ export type SyncResult = {
 export type WriteBackConfig = {
   /** Debounce interval in milliseconds before triggering a sync (default: 100) */
   debounceMs?: number;
-  /** Called when a sync cycle begins */
-  onSyncStart?: () => void;
+  /** Called when a sync cycle begins (may be async — awaited before syncing) */
+  onSyncStart?: () => void | Promise<void>;
   /** Called when a sync cycle completes */
   onSyncEnd?: (result: SyncResult) => void;
   /** Called for each key during sync: uploading → done / error */
@@ -62,13 +62,11 @@ export type WriteBackConfig = {
   getChildKeys?: (value: Uint8Array) => string[];
 };
 
-/**
- * Result of a batch put operation.
- */
-export type PutManyResult = {
-  synced: string[];
-  skipped: string[];
-  failed: Array<{ key: string; error: unknown }>;
+/** Three-way check result */
+export type CheckManyResult = {
+  missing: string[];
+  unowned: string[];
+  owned: string[];
 };
 
 export type CachedStorageConfig = {
@@ -76,11 +74,21 @@ export type CachedStorageConfig = {
   cache: StorageProvider;
   /**
    * Remote / slower backend (e.g., HTTP, S3, FS).
-   * If the remote has a `putMany` method, batch sync will use it
-   * for a single check call instead of per-key checks.
+   *
+   * When the remote supports `checkMany` + `claim`, sync will:
+   *   1. Batch-check all pending keys in a single call
+   *   2. `put` missing nodes (upload bytes)
+   *   3. `claim` unowned nodes (PoP only, no bytes uploaded)
+   *   4. Skip already-owned nodes
+   *
+   * Without these methods, sync falls back to individual `put()` calls,
+   * relying on the remote's put implementation to handle claim internally.
    */
   remote: StorageProvider & {
-    putMany?: (entries: Array<{ key: string; value: Uint8Array }>) => Promise<PutManyResult>;
+    /** Batch check returning three-way status for each key. */
+    checkMany?: (keys: string[]) => Promise<CheckManyResult>;
+    /** Claim an unowned node via PoP. The value is used locally for PoP computation, NOT uploaded. */
+    claim?: (key: string, value: Uint8Array) => Promise<void>;
   };
   /**
    * Enable write-back mode.
@@ -260,10 +268,16 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
 
   /**
    * Run a single sync cycle: read from cache, topologically sort,
-   * then upload to remote (children before parents).
+   * then sync to remote (children before parents).
    *
-   * When the remote supports `putMany`, a single batch-check is used
-   * instead of per-key checks, significantly reducing network round-trips.
+   * When the remote supports `checkMany` + `claim`:
+   *   1. Single batch check for all pending keys
+   *   2. `put` for missing nodes (upload bytes)
+   *   3. `claim` for unowned nodes (PoP only, no bytes re-uploaded)
+   *   4. Skip owned nodes
+   *
+   * Without these methods, falls back to individual `put()` calls
+   * that rely on the remote implementation to handle claim internally.
    */
   const runSync = async (): Promise<void> => {
     if (pendingKeys.size === 0) return;
@@ -276,7 +290,7 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
     const skipped: string[] = [];
     const failed: Array<{ key: string; error: unknown }> = [];
 
-    onSyncStart?.();
+    await onSyncStart?.();
 
     // 1. Read all pending data from cache
     const entries: Array<{ key: string; value: Uint8Array }> = [];
@@ -296,43 +310,129 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
       ? topoSortLevels(entries, getChildKeys)
       : [entries]; // no dependency info → single level (all parallel)
 
-    // 3. Upload level by level
-    //    If remote supports putMany → single batch check + sequential uploads
-    //    Otherwise → individual put() calls per level (parallel within level)
-    if (remote.putMany) {
-      // Flatten levels into topo-sorted array for batch put
-      const sorted = levels.flat();
-      for (const entry of sorted) {
-        onKeySync?.(entry.key, "uploading");
-      }
-      try {
-        const result = await remote.putMany(sorted);
-        const syncedSet = new Set(result.synced);
-        const skippedSet = new Set(result.skipped);
-        for (const entry of sorted) {
-          if (syncedSet.has(entry.key)) {
-            synced.push(entry.key);
-            onKeySync?.(entry.key, "done");
-          } else if (skippedSet.has(entry.key)) {
-            skipped.push(entry.key);
-          } else {
-            const f = result.failed.find((x) => x.key === entry.key);
-            if (f) {
-              failed.push(f);
-              pendingKeys.add(entry.key);
-              onKeySync?.(entry.key, "error", f.error);
+    // 3. Sync — level by level, children before parents
+    if (remote.checkMany) {
+      // ---- Batch check + explicit put / claim / skip ----
+      const allKeys = entries.map((e) => e.key);
+
+      // 3a. Discover external children — referenced by entries but NOT in pending set.
+      //     These may be unowned on the remote and need claiming before parents can be PUT.
+      const entryKeySet = new Set(allKeys);
+      const externalChildKeys: string[] = [];
+      if (getChildKeys) {
+        for (const entry of entries) {
+          for (const childKey of getChildKeys(entry.value)) {
+            if (!entryKeySet.has(childKey) && !externalChildKeys.includes(childKey)) {
+              externalChildKeys.push(childKey);
             }
           }
         }
-      } catch (err) {
-        for (const entry of sorted) {
-          failed.push({ key: entry.key, error: err });
-          pendingKeys.add(entry.key);
-          onKeySync?.(entry.key, "error", err);
+      }
+
+      // 3b. Batch check: all pending keys + external children in a single call
+      const checkKeys = [...allKeys, ...externalChildKeys];
+      const status = await remote.checkMany(checkKeys);
+      const missingSet = new Set(status.missing);
+      const unownedSet = new Set(status.unowned);
+
+      // Owned keys → skip immediately (only for pending entries, not external children)
+      for (const key of status.owned) {
+        if (entryKeySet.has(key)) {
+          skipped.push(key);
+        }
+      }
+
+      // 3c. Claim all unowned external children first (they must be owned before
+      //     any parent node referencing them can be PUT)
+      if (externalChildKeys.length > 0 && remote.claim) {
+        const unownedExternal = externalChildKeys.filter((k) => unownedSet.has(k));
+        for (const childKey of unownedExternal) {
+          try {
+            // Read child bytes from cache (needed for PoP computation)
+            const childData = await cache.get(childKey);
+            if (!childData) {
+              // Not in cache — fetch from remote, then claim
+              const fetched = await remote.get(childKey);
+              if (fetched) {
+                await remote.claim(childKey, fetched);
+              }
+            } else {
+              await remote.claim(childKey, childData);
+            }
+          } catch (err) {
+            // External child claim failure is not fatal for the sync result
+            // — the parent put will fail with CHILD_NOT_AUTHORIZED and be retried
+          }
+        }
+      }
+
+      // 3d. Process each level: claim unowned entries first, then put missing entries.
+      //     Two-phase within each level prevents race conditions where a parent's
+      //     PUT arrives at the server before its child's CLAIM completes.
+      for (const level of levels) {
+        const unownedEntries = level.filter((e) => unownedSet.has(e.key));
+        const missingEntries = level.filter((e) => missingSet.has(e.key));
+
+        // Phase 1: claim all unowned entries in this level
+        if (unownedEntries.length > 0) {
+          const claimResults = await Promise.allSettled(
+            unownedEntries.map(async (entry) => {
+              onKeySync?.(entry.key, "uploading");
+              try {
+                if (remote.claim) {
+                  await remote.claim(entry.key, entry.value);
+                } else {
+                  await remote.put(entry.key, entry.value);
+                }
+                onKeySync?.(entry.key, "done");
+                return entry.key;
+              } catch (err) {
+                onKeySync?.(entry.key, "error", err);
+                throw err;
+              }
+            })
+          );
+
+          for (const [i, result] of claimResults.entries()) {
+            if (result.status === "fulfilled") {
+              synced.push(result.value);
+            } else {
+              const key = unownedEntries[i]!.key;
+              failed.push({ key, error: result.reason });
+              pendingKeys.add(key);
+            }
+          }
+        }
+
+        // Phase 2: put all missing entries (children are now owned)
+        if (missingEntries.length > 0) {
+          const putResults = await Promise.allSettled(
+            missingEntries.map(async (entry) => {
+              onKeySync?.(entry.key, "uploading");
+              try {
+                await remote.put(entry.key, entry.value);
+                onKeySync?.(entry.key, "done");
+                return entry.key;
+              } catch (err) {
+                onKeySync?.(entry.key, "error", err);
+                throw err;
+              }
+            })
+          );
+
+          for (const [i, result] of putResults.entries()) {
+            if (result.status === "fulfilled") {
+              synced.push(result.value);
+            } else {
+              const key = missingEntries[i]!.key;
+              failed.push({ key, error: result.reason });
+              pendingKeys.add(key);
+            }
+          }
         }
       }
     } else {
-      // No batch support — upload level by level, parallel within each level
+      // ---- Fallback: individual put() calls (remote handles claim internally) ----
       for (const level of levels) {
         const results = await Promise.allSettled(
           level.map(async (entry) => {
