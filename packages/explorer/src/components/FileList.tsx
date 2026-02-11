@@ -1,10 +1,13 @@
 /**
  * <FileList /> - List view for directory contents.
+ *
+ * Iter 2: Added multi-select support and right-click context menu trigger.
  */
 
 import { useCallback, useEffect, useRef } from "react";
 import {
   Box,
+  Checkbox,
   CircularProgress,
   Skeleton,
   Table,
@@ -38,6 +41,7 @@ function getDisplayType(item: ExplorerItem): string {
 type FileListProps = {
   onNavigate?: (path: string) => void;
   onFileOpen?: (item: ExplorerItem) => void;
+  onContextMenu?: (e: React.MouseEvent, item: ExplorerItem | null) => void;
   renderEmptyState?: () => React.ReactNode;
   renderNodeIcon?: (item: ExplorerItem) => React.ReactNode;
 };
@@ -45,6 +49,7 @@ type FileListProps = {
 export function FileList({
   onNavigate,
   onFileOpen,
+  onContextMenu,
   renderEmptyState,
   renderNodeIcon,
 }: FileListProps) {
@@ -54,8 +59,11 @@ export function FileList({
   const hasMore = useExplorerStore((s) => s.hasMore);
   const loadMore = useExplorerStore((s) => s.loadMore);
   const navigate = useExplorerStore((s) => s.navigate);
+  const selectedItems = useExplorerStore((s) => s.selectedItems);
+  const setSelectedItems = useExplorerStore((s) => s.setSelectedItems);
 
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const selectedPaths = new Set(selectedItems.map((i) => i.path));
 
   useEffect(() => {
     if (!hasMore) return;
@@ -74,6 +82,24 @@ export function FileList({
   }, [hasMore, loadMore]);
 
   const handleRowClick = useCallback(
+    (item: ExplorerItem, e: React.MouseEvent) => {
+      // Ctrl/Cmd+click for multi-select
+      if (e.metaKey || e.ctrlKey) {
+        if (selectedPaths.has(item.path)) {
+          setSelectedItems(selectedItems.filter((i) => i.path !== item.path));
+        } else {
+          setSelectedItems([...selectedItems, item]);
+        }
+        return;
+      }
+
+      // Normal click → single select, then navigate/open
+      setSelectedItems([item]);
+    },
+    [selectedItems, selectedPaths, setSelectedItems],
+  );
+
+  const handleRowDoubleClick = useCallback(
     (item: ExplorerItem) => {
       if (item.isDirectory) {
         navigate(item.path);
@@ -83,6 +109,40 @@ export function FileList({
       }
     },
     [navigate, onNavigate, onFileOpen],
+  );
+
+  const handleRowContextMenu = useCallback(
+    (item: ExplorerItem, e: React.MouseEvent) => {
+      e.preventDefault();
+      // If right-clicked item is not selected, select only it
+      if (!selectedPaths.has(item.path)) {
+        setSelectedItems([item]);
+      }
+      onContextMenu?.(e, item);
+    },
+    [selectedPaths, setSelectedItems, onContextMenu],
+  );
+
+  const handleBlankContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      // Only if clicking the container (not a row)
+      if ((e.target as HTMLElement).closest("tr")) return;
+      e.preventDefault();
+      setSelectedItems([]);
+      onContextMenu?.(e, null);
+    },
+    [setSelectedItems, onContextMenu],
+  );
+
+  const handleSelectAll = useCallback(
+    (checked: boolean) => {
+      if (checked) {
+        setSelectedItems([...items]);
+      } else {
+        setSelectedItems([]);
+      }
+    },
+    [items, setSelectedItems],
   );
 
   const sorted = [...items].sort((a, b) => {
@@ -105,18 +165,32 @@ export function FileList({
       return <>{renderEmptyState()}</>;
     }
     return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", py: 8 }}>
+      <Box
+        sx={{ display: "flex", justifyContent: "center", alignItems: "center", py: 8, flex: 1 }}
+        onContextMenu={handleBlankContextMenu}
+      >
         <Typography color="text.secondary">{t("fileList.empty")}</Typography>
       </Box>
     );
   }
 
+  const allSelected = items.length > 0 && selectedItems.length === items.length;
+  const someSelected = selectedItems.length > 0 && !allSelected;
+
   return (
-    <TableContainer>
+    <TableContainer onContextMenu={handleBlankContextMenu}>
       <Table size="small" stickyHeader>
         <TableHead>
           <TableRow>
-            <TableCell sx={{ fontWeight: 600, width: "55%" }}>{t("fileList.name")}</TableCell>
+            <TableCell padding="checkbox" sx={{ width: 42 }}>
+              <Checkbox
+                size="small"
+                checked={allSelected}
+                indeterminate={someSelected}
+                onChange={(_, checked) => handleSelectAll(checked)}
+              />
+            </TableCell>
+            <TableCell sx={{ fontWeight: 600, width: "50%" }}>{t("fileList.name")}</TableCell>
             <TableCell sx={{ fontWeight: 600, width: "20%" }} align="right">
               {t("fileList.size")}
             </TableCell>
@@ -124,39 +198,59 @@ export function FileList({
           </TableRow>
         </TableHead>
         <TableBody>
-          {sorted.map((item) => (
-            <TableRow
-              key={item.path}
-              hover
-              onClick={() => handleRowClick(item)}
-              sx={{ cursor: "pointer", "&:last-child td": { borderBottom: 0 } }}
-            >
-              <TableCell>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                  {renderNodeIcon ? (
-                    renderNodeIcon(item)
-                  ) : item.isDirectory ? (
-                    <FolderIcon fontSize="small" color="primary" />
-                  ) : (
-                    <InsertDriveFileIcon fontSize="small" color="action" />
-                  )}
-                  <Typography variant="body2" noWrap>
-                    {item.name}
+          {sorted.map((item) => {
+            const isSelected = selectedPaths.has(item.path);
+            return (
+              <TableRow
+                key={item.path}
+                hover
+                selected={isSelected}
+                onClick={(e) => handleRowClick(item, e)}
+                onDoubleClick={() => handleRowDoubleClick(item)}
+                onContextMenu={(e) => handleRowContextMenu(item, e)}
+                sx={{ cursor: "pointer", "&:last-child td": { borderBottom: 0 } }}
+              >
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    size="small"
+                    checked={isSelected}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(_, checked) => {
+                      if (checked) {
+                        setSelectedItems([...selectedItems, item]);
+                      } else {
+                        setSelectedItems(selectedItems.filter((i) => i.path !== item.path));
+                      }
+                    }}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    {renderNodeIcon ? (
+                      renderNodeIcon(item)
+                    ) : item.isDirectory ? (
+                      <FolderIcon fontSize="small" color="primary" />
+                    ) : (
+                      <InsertDriveFileIcon fontSize="small" color="action" />
+                    )}
+                    <Typography variant="body2" noWrap>
+                      {item.name}
+                    </Typography>
+                  </Box>
+                </TableCell>
+                <TableCell align="right">
+                  <Typography variant="body2" color="text.secondary">
+                    {item.isDirectory ? `${item.childCount ?? "\u2014"}` : formatFileSize(item.size)}
                   </Typography>
-                </Box>
-              </TableCell>
-              <TableCell align="right">
-                <Typography variant="body2" color="text.secondary">
-                  {item.isDirectory ? `${item.childCount ?? "\u2014"}` : formatFileSize(item.size)}
-                </Typography>
-              </TableCell>
-              <TableCell>
-                <Typography variant="body2" color="text.secondary" noWrap>
-                  {getDisplayType(item)}
-                </Typography>
-              </TableCell>
-            </TableRow>
-          ))}
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2" color="text.secondary" noWrap>
+                    {getDisplayType(item)}
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
       {hasMore && (

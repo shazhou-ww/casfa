@@ -10,6 +10,13 @@ const messages: Record<ExplorerTextKey, string> = {
   "depot.empty": "No depots available",
   "depot.search": "Search depots…",
   "depot.select": "Select",
+  "depot.create": "New Depot",
+  "depot.createTitle": "Create Depot",
+  "depot.createLabel": "Depot title (optional)",
+  "depot.delete": "Delete Depot",
+  "depot.deleteConfirm": 'Are you sure you want to delete depot "{name}"? This cannot be undone.',
+  "depot.deleteSuccess": "Depot deleted",
+  "depot.untitled": "Untitled Depot",
   // Toolbar
   "toolbar.refresh": "Refresh",
   "toolbar.upload": "Upload",
@@ -47,6 +54,15 @@ const messages: Record<ExplorerTextKey, string> = {
   // Status bar
   "status.items": "{count} items",
   "status.selected": "{count} selected",
+  // Upload progress
+  "upload.dropHere": "Drop files here to upload",
+  "upload.uploading": "Uploading {current}/{total}",
+  "upload.progress": "Uploading…",
+  "upload.done": "Upload complete",
+  "upload.error": "Upload failed",
+  "upload.cancel": "Cancel",
+  "upload.retry": "Retry",
+  "upload.fileTooLarge": "\"{name}\" is too large (max 4 MB), skipped",
   // Errors
   "error.network": "Network error. Please check your connection.",
   "error.authExpired": "Session expired. Please log in again.",
@@ -55,6 +71,15 @@ const messages: Record<ExplorerTextKey, string> = {
   "error.fileTooLarge": "File is too large (max 4 MB).",
   "error.nameConflict": "A file or folder with this name already exists.",
   "error.unknown": "An unexpected error occurred.",
+  // Permission
+  "permission.denied": "Insufficient permissions",
+  // Delete results
+  "delete.success": "Deleted successfully",
+  "delete.partial": "Succeeded {success}, failed {failed}",
+  // Validation
+  "validation.nameEmpty": "Name cannot be empty",
+  "validation.nameInvalid": "Name contains invalid characters",
+  "validation.nameExists": "A file or folder with this name already exists",
 };
 
 /**

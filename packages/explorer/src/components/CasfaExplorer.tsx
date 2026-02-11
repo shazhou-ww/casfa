@@ -67,6 +67,8 @@ export function CasfaExplorer(props: CasfaExplorerProps) {
             renderEmptyState={props.renderEmptyState}
             renderBreadcrumb={props.renderBreadcrumb}
             renderNodeIcon={props.renderNodeIcon}
+            extraContextMenuItems={props.extraContextMenuItems}
+            extraToolbarItems={props.extraToolbarItems}
           />
         </Box>
       </ExplorerI18nContext.Provider>
