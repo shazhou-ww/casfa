@@ -48,7 +48,6 @@ export {
   type DepotsDb,
   type ExtendedDepot,
   MAIN_DEPOT_NAME,
-  MAIN_DEPOT_TITLE,
   SYSTEM_MAX_HISTORY,
   type UpdateDepotOptions,
 } from "./depots.ts";

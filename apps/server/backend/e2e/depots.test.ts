@@ -11,7 +11,6 @@
  * Key Concepts:
  * - All operations require Access Token (not Delegate Token)
  * - Create/Update/Delete require canManageDepot permission
- * - MAIN depot cannot be deleted
  * - Visibility based on issuer chain
  */
 
@@ -368,24 +367,6 @@ describe("Depot Management", () => {
       );
 
       expect(getResponse.status).toBe(404);
-    });
-
-    it("should not allow deleting MAIN depot", async () => {
-      const userId = uniqueId();
-      const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userId, "authorized");
-
-      const accessToken = await ctx.helpers.createAccessToken(token, realm, {
-        canManageDepot: true,
-      });
-
-      // Use the actual mainDepotId (26-char base32), not the string "MAIN"
-      const response = await ctx.helpers.accessRequest(
-        accessToken.accessToken,
-        "DELETE",
-        `/api/realm/${realm}/depots/${mainDepotId}`
-      );
-
-      expect(response.status).toBe(403); // Cannot delete main depot
     });
 
     it("should reject delete without canManageDepot permission", async () => {

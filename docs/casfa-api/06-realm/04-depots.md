@@ -1,6 +1,6 @@
 # Depot 管理
 
-Depot 是 CAS 中的命名存储空间，用于组织和管理数据。每个用户有一个默认的 MAIN depot。
+Depot 是 CAS 中的命名存储空间，用于组织和管理数据。
 
 ## 认证
 
@@ -237,8 +237,6 @@ Content-Type: application/json
 
 删除 Depot。需要 `canManageDepot` 权限。
 
-> **注意**：MAIN depot 不能删除。
-
 ### 请求
 
 ```http
@@ -261,7 +259,6 @@ Authorization: Bearer {access_token}
 | `DEPOT_MANAGE_NOT_ALLOWED` | 403 | Token 没有 canManageDepot 权限 |
 | `DEPOT_ACCESS_DENIED` | 403 | 无权访问该 Depot |
 | `NOT_FOUND` | 404 | Depot 不存在 |
-| `FORBIDDEN` | 403 | 不能删除 MAIN depot |
 
 ---
 

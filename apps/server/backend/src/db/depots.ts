@@ -31,8 +31,6 @@ import { createDocClient } from "./client.ts";
 // ============================================================================
 
 export const MAIN_DEPOT_NAME = "main";
-/** @deprecated Use MAIN_DEPOT_NAME instead */
-export const MAIN_DEPOT_TITLE = MAIN_DEPOT_NAME;
 export const DEFAULT_MAX_HISTORY = 20;
 export const SYSTEM_MAX_HISTORY = 100;
 
