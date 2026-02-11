@@ -392,7 +392,7 @@ export async function validateNode(
 
   // 11. Verify size flag byte consistency (cheap check before expensive hash)
   const expectedHash = keyToHash(expectedKey);
-  const expectedFlag = expectedHash[0];
+  const expectedFlag = expectedHash[0]!;
   const actualFlag = computeSizeFlagByte(bytes.length);
   if (expectedFlag !== actualFlag) {
     return {
