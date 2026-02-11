@@ -20,7 +20,7 @@
     "sam:local": "sam local start-api --port 3560",
     "sam:deploy": "sam deploy",
     "deploy:frontend": "aws s3 sync backend/public/ s3://$(aws cloudformation describe-stacks --stack-name casfa-prod --query 'Stacks[0].Outputs[?OutputKey==`FrontendBucketName`].OutputValue' --output text) --delete && aws cloudfront create-invalidation --distribution-id $(aws cloudformation describe-stacks --stack-name casfa-prod --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDistributionId`].OutputValue' --output text) --paths '/*'",
-    "deploy:all": "bun run sam:build && sam deploy && bun run build:frontend && bun run deploy:frontend",
+    "deploy:all": "bun run sam:build && (sam deploy || true) && bun run deploy:frontend",
     "test": "bun run test:unit && bun run test:e2e",
     "test:unit": "bun test backend/tests",
     "test:e2e": "bun run backend/scripts/integration-test.ts",
