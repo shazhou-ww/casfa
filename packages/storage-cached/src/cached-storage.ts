@@ -9,8 +9,11 @@
  * Has path:
  *   cache.has → true? return : remote.has
  *
- * Write path (write-through):
- *   cache.put → remote.put
+ * Write path:
+ *   Write-through (default):
+ *     cache.put → remote.put
+ *   Write-back (when writeBack config is provided):
+ *     cache.put → return immediately → debounced batch sync to remote
  *
  * Typical pairings:
  *   - IndexedDB  + HTTP   (browser)
@@ -27,12 +30,65 @@ import type { StorageProvider } from "@casfa/storage-core";
 // Types
 // ============================================================================
 
+/**
+ * Result of a background sync cycle.
+ */
+export type SyncResult = {
+  /** Keys successfully uploaded to remote */
+  synced: string[];
+  /** Keys already present on remote (no upload needed) */
+  skipped: string[];
+  /** Keys that failed to sync (will be retried on next cycle) */
+  failed: Array<{ key: string; error: unknown }>;
+};
+
+/**
+ * Write-back configuration for deferred, batched remote sync.
+ */
+export type WriteBackConfig = {
+  /** Debounce interval in milliseconds before triggering a sync (default: 100) */
+  debounceMs?: number;
+  /** Called when a sync cycle begins */
+  onSyncStart?: () => void;
+  /** Called when a sync cycle completes */
+  onSyncEnd?: (result: SyncResult) => void;
+};
+
 export type CachedStorageConfig = {
   /** Local cache layer (e.g., IndexedDB, FS, memory) */
   cache: StorageProvider;
   /** Remote / slower backend (e.g., HTTP, S3, FS) */
   remote: StorageProvider;
+  /**
+   * Enable write-back mode.
+   * When set, `put` writes only to cache and returns immediately.
+   * Pending keys are synced to remote in debounced batches.
+   */
+  writeBack?: WriteBackConfig;
 };
+
+/**
+ * Extended StorageProvider with sync control methods.
+ */
+export type CachedStorageProvider = StorageProvider & {
+  /**
+   * Force-sync all pending writes to remote.
+   * Resolves when all pending keys have been synced (or failed).
+   * In write-through mode this is a no-op.
+   */
+  flush: () => Promise<void>;
+  /**
+   * Clean up internal timers. Does NOT flush pending writes.
+   * Call `flush()` first if you need to ensure all data is synced.
+   */
+  dispose: () => void;
+};
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const DEFAULT_DEBOUNCE_MS = 100;
 
 // ============================================================================
 // Factory
@@ -42,39 +98,185 @@ export type CachedStorageConfig = {
  * Create a cached StorageProvider that layers a local cache over a remote backend.
  *
  * Read path: cache → remote → write-back to cache.
- * Write path: write to both cache and remote (write-through).
+ * Write path: depends on config — write-through (default) or write-back.
  */
-export const createCachedStorage = (config: CachedStorageConfig): StorageProvider => {
-  const { cache, remote } = config;
+export const createCachedStorage = (config: CachedStorageConfig): CachedStorageProvider => {
+  const { cache, remote, writeBack } = config;
+
+  // --------------------------------------------------------------------------
+  // Shared read logic
+  // --------------------------------------------------------------------------
+
+  const get = async (key: string): Promise<Uint8Array | null> => {
+    const cached = await cache.get(key);
+    if (cached) return cached;
+
+    const data = await remote.get(key);
+    if (data) {
+      cache.put(key, data).catch(() => {
+        // Silently ignore cache write failures
+      });
+    }
+    return data;
+  };
+
+  const has = async (key: string): Promise<boolean> => {
+    const inCache = await cache.has(key);
+    if (inCache) return true;
+    return remote.has(key);
+  };
+
+  // --------------------------------------------------------------------------
+  // Write-through mode (no writeBack config)
+  // --------------------------------------------------------------------------
+
+  if (!writeBack) {
+    return {
+      get,
+      has,
+      async put(key: string, value: Uint8Array): Promise<void> {
+        await cache.put(key, value);
+        await remote.put(key, value);
+      },
+      flush: async () => {},
+      dispose: () => {},
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // Write-back mode
+  // --------------------------------------------------------------------------
+
+  const { debounceMs = DEFAULT_DEBOUNCE_MS, onSyncStart, onSyncEnd } = writeBack;
+
+  const pendingKeys = new Set<string>();
+  let syncTimer: ReturnType<typeof setTimeout> | null = null;
+  let activeSyncPromise: Promise<void> | null = null;
+
+  /**
+   * Run a single sync cycle: batch has-check + parallel upload for missing.
+   */
+  const runSync = async (): Promise<void> => {
+    if (pendingKeys.size === 0) return;
+
+    // Snapshot & clear — new puts during sync accumulate for next batch
+    const keys = [...pendingKeys];
+    pendingKeys.clear();
+
+    const synced: string[] = [];
+    const skipped: string[] = [];
+    const failed: Array<{ key: string; error: unknown }> = [];
+
+    onSyncStart?.();
+
+    try {
+      // Batch has-check against remote
+      const checks = await Promise.all(
+        keys.map(async (key) => ({
+          key,
+          exists: await remote.has(key),
+        }))
+      );
+
+      const toUpload: string[] = [];
+      for (const { key, exists } of checks) {
+        if (exists) {
+          skipped.push(key);
+        } else {
+          toUpload.push(key);
+        }
+      }
+
+      // Parallel upload
+      const results = await Promise.allSettled(
+        toUpload.map(async (key) => {
+          const data = await cache.get(key);
+          if (!data) {
+            throw new Error(`Pending key missing from cache: ${key}`);
+          }
+          await remote.put(key, data);
+          return key;
+        })
+      );
+
+      for (const [i, result] of results.entries()) {
+        if (result.status === "fulfilled") {
+          synced.push(result.value);
+        } else {
+          const key = toUpload[i]!;
+          failed.push({ key, error: result.reason });
+          pendingKeys.add(key); // re-queue for retry
+        }
+      }
+    } catch (error) {
+      // Catastrophic failure (e.g., all has-checks failed) — re-queue all
+      for (const key of keys) {
+        pendingKeys.add(key);
+        failed.push({ key, error });
+      }
+    }
+
+    onSyncEnd?.({ synced, skipped, failed });
+  };
+
+  /**
+   * Trigger a sync cycle, guarding against concurrent runs.
+   */
+  const triggerSync = (): void => {
+    if (activeSyncPromise || pendingKeys.size === 0) return;
+
+    activeSyncPromise = runSync().finally(() => {
+      activeSyncPromise = null;
+      // If more keys arrived during sync, schedule another cycle
+      if (pendingKeys.size > 0) {
+        scheduleSync();
+      }
+    });
+  };
+
+  /**
+   * Schedule a debounced sync.
+   */
+  const scheduleSync = (): void => {
+    if (syncTimer !== null) clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => {
+      syncTimer = null;
+      triggerSync();
+    }, debounceMs);
+  };
 
   return {
-    async get(key: string): Promise<Uint8Array | null> {
-      // Try cache first
-      const cached = await cache.get(key);
-      if (cached) return cached;
-
-      // Cache miss — fetch from remote
-      const data = await remote.get(key);
-      if (data) {
-        // Write back to cache (fire-and-forget to avoid blocking reads)
-        cache.put(key, data).catch(() => {
-          // Silently ignore cache write failures (e.g., quota exceeded)
-        });
-      }
-      return data;
-    },
-
-    async has(key: string): Promise<boolean> {
-      const inCache = await cache.has(key);
-      if (inCache) return true;
-      return remote.has(key);
-    },
+    get,
+    has,
 
     async put(key: string, value: Uint8Array): Promise<void> {
-      // Write to cache first (instant local availability)
       await cache.put(key, value);
-      // Then write to remote (upload / check+claim)
-      await remote.put(key, value);
+      pendingKeys.add(key);
+      scheduleSync();
+    },
+
+    async flush(): Promise<void> {
+      // Cancel scheduled timer
+      if (syncTimer !== null) {
+        clearTimeout(syncTimer);
+        syncTimer = null;
+      }
+
+      // Wait for any in-progress sync
+      if (activeSyncPromise) await activeSyncPromise;
+
+      // Sync remaining pending keys (loop in case failures re-queue)
+      let maxRetries = 3;
+      while (pendingKeys.size > 0 && maxRetries-- > 0) {
+        await runSync();
+      }
+    },
+
+    dispose(): void {
+      if (syncTimer !== null) {
+        clearTimeout(syncTimer);
+        syncTimer = null;
+      }
     },
   };
 };

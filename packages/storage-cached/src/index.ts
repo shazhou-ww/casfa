@@ -7,5 +7,8 @@
 
 export {
   type CachedStorageConfig,
+  type CachedStorageProvider,
   createCachedStorage,
+  type SyncResult,
+  type WriteBackConfig,
 } from "./cached-storage.ts";
