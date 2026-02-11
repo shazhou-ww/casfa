@@ -32,11 +32,6 @@ export type KeyProvider = {
 };
 
 /**
- * @deprecated Use {@link KeyProvider} instead.
- */
-export type HashProvider = KeyProvider;
-
-/**
  * Re-export StorageProvider from @casfa/storage-core.
  *
  * The canonical definition lives in storage-core (zero-dep interface package).

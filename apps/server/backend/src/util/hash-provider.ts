@@ -16,9 +16,6 @@ export type CombinedKeyProvider = KeyProvider & {
   sha256: (data: Uint8Array) => Promise<Uint8Array>;
 };
 
-/** @deprecated Use CombinedKeyProvider */
-export type CombinedHashProvider = CombinedKeyProvider;
-
 /**
  * Create a Node.js-based key provider using crypto module and @noble/hashes
  *
@@ -39,6 +36,3 @@ export const createNodeKeyProvider = (): CombinedKeyProvider => ({
     return new Uint8Array(hash);
   },
 });
-
-/** @deprecated Use createNodeKeyProvider */
-export const createNodeHashProvider = createNodeKeyProvider;

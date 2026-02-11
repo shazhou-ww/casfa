@@ -1,8 +1,8 @@
 # Content Addressed Storage (CAS) Binary Format Specification
 
-> 版本: 2.1  
+> 版本: 2.2  
 > 基于: `packages/cas-core` 实现  
-> 日期: 2026-02-03
+> 日期: 2026-02-12
 
 ---
 
@@ -24,7 +24,7 @@
 | 术语 | 定义 |
 |------|------|
 | **CAS** | Content Addressed Storage，内容寻址存储。数据的地址由其内容的哈希值决定 |
-| **CAS Key** | 数据的唯一标识符，格式为 `blake3s:<32位十六进制>`，例如 `blake3s:04821167d026fa3b24e160b8f9f0ff2a` |
+| **CAS Key** | 数据的唯一标识符，格式为 26 字符 Crockford Base32 字符串。首字节为 size flag byte（编码数据长度的数量级），其余字节为 BLAKE3s-128 哈希的后 120 位 |
 | **Node** | CAS 中的基本存储单元，一个二进制块，包含 Header 和 Body |
 | **d-node** | Dict Node（目录节点），存储有序的子节点名称和引用 |
 | **s-node** | Successor Node（续块节点），文件 B-Tree 的内部节点 |
@@ -36,7 +36,7 @@
 | **FileInfo** | f-node 的 Payload 头部，包含 fileSize (8 bytes) + contentType (56 bytes) = 64 bytes |
 | **Payload Size** | Header.size 字段的含义：Payload 部分的字节数（不含 Header 和 Children） |
 | **Node Limit** | 单个节点的最大字节数限制（默认 1 MB） |
-| **Hash Provider** | 提供 BLAKE3s-128 哈希计算的抽象接口 |
+| **Key Provider** | 提供 CAS Key 计算的抽象接口（BLAKE3s-128 + size flag byte） |
 | **Storage Provider** | 提供节点存取的抽象接口（S3、HTTP、内存等） |
 
 ---
@@ -55,10 +55,13 @@ Content Addressed Storage（内容寻址存储）是一种数据存储范式，�
 - 数据被篡改后，标识符不变，无法检测
 - 引用其他数据需要依赖外部系统维护一致性
 
-CAS 使用**加密哈希函数**（本规范使用 BLAKE3s-128）计算数据的唯一标识符：
+CAS 使用**加密哈希函数**（本规范使用 BLAKE3s-128）计算数据的唯一标识符，
+并在首字节嵌入 size flag byte（编码数据长度的数量级）：
 
 ```
-Key = "blake3s:" + hex(BLAKE3s-128(data))
+rawHash = BLAKE3s-128(data)           // 16 字节
+rawHash[0] = computeSizeFlagByte(len(data))  // 替换首字节
+Key = CrockfordBase32(rawHash)        // 26 字符
 ```
 
 这带来了关键特性：
@@ -191,10 +194,12 @@ d-node 表示一个目录，包含零个或多个命名子节点：
 
 ### 3.4 Merkle Tree 的安全性
 
-由于每个节点的 Key 是其内容的 BLAKE3s-128 哈希，形成了 Merkle Tree：
+由于每个节点的 Key 是其内容的 BLAKE3s-128 哈希（首字节替换为 size flag），形成了 Merkle Tree：
 
 ```
-Root Key = BLAKE3s-128(Header + Children + Data)
+rawHash = BLAKE3s-128(Header + Children + Data)
+rawHash[0] = computeSizeFlagByte(nodeByteLength)
+Root Key = CrockfordBase32(rawHash)
                              ↑
                         包含子节点的 Key（哈希值）
 ```
@@ -734,7 +739,7 @@ const fileSize = sizeLow + sizeHigh * 0x100000000;
 | **Magic 验证** | 前 4 字节必须为 `0x43, 0x41, 0x53, 0x01` |
 | **Flags 验证** | bits 16-31（保留位）必须全为 0 |
 | **长度一致性** | `buffer.length == 16 + count × 16 + size` |
-| **哈希验证** | `blake3s(buffer) == expectedKey` |
+| **哈希验证** | `keyProvider.computeKey(buffer) == expectedKey`（含 size flag） |
 
 ### 7.2 Payload 校验
 
@@ -789,7 +794,7 @@ const RESERVED_MASK = 0xffff0000;  // bits 16-31
 async function validateNode(
   buffer: Uint8Array,
   expectedKey: string,
-  hashProvider: HashProvider
+  keyProvider: KeyProvider
 ): Promise<ValidationResult> {
   // === Layer 1: Header 强校验 ===
   
@@ -812,11 +817,19 @@ async function validateNode(
     return { valid: false, error: `Length mismatch: ${buffer.length} != ${expectedLength}` };
   }
   
-  // 5. 验证哈希
-  const hash = await hashProvider.hash(buffer);
+  // 5. 验证 size flag byte 一致性（廉价检查，在昂贵的哈希计算之前）
+  const expectedHash = keyToHash(expectedKey);
+  const expectedFlag = expectedHash[0];
+  const actualFlag = computeSizeFlagByte(buffer.length);
+  if (expectedFlag !== actualFlag) {
+    return { valid: false, error: "Size flag mismatch" };
+  }
+  
+  // 6. 验证哈希
+  const hash = await keyProvider.computeKey(buffer);
   const actualKey = hashToKey(hash);
   if (actualKey !== expectedKey) {
-    return { valid: false, error: `Hash mismatch` };
+    return { valid: false, error: "Hash mismatch" };
   }
   
   // === Layer 2: Payload 校验 ===
@@ -861,13 +874,13 @@ Offset   Content
 **Key**：
 
 ```
-blake3s:0000b2da2b8398251c05e6a73a6f1918
+240B5PHBGEC2A705WTKKMVRS30
 ```
 
-或使用 node: 前缀的 Crockford Base32 格式：
+或使用 nod\_ 前缀的 API 格式：
 
 ```
-node:000B5PHBGEC2A705WTKKMVRS30
+nod_240B5PHBGEC2A705WTKKMVRS30
 ```
 
 **生成代码**：
@@ -880,8 +893,9 @@ view.setUint32(4, 0x01, true);        // flags = d-node (hash_algo=0 in bits 8-1
 view.setUint32(8, 0, true);           // size = 0 (no names payload)
 view.setUint32(12, 0, true);          // count = 0
 
-const hash = blake3s_128(EMPTY_DICT_BYTES);
-const key = "blake3s:" + bytesToHex(hash);
+const hash = blake3s_128(EMPTY_DICT_BYTES);  // 16 bytes
+hash[0] = computeSizeFlagByte(EMPTY_DICT_BYTES.length);  // 0x11 for 16 bytes
+const key = crockfordBase32(hash);  // "240B5PHBGEC2A705WTKKMVRS30"
 ```
 
 ### 8.2 使用场景

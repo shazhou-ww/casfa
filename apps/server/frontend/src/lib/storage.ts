@@ -44,9 +44,6 @@ export function getKeyProvider(): KeyProvider {
   return keyProvider;
 }
 
-/** @deprecated Use getKeyProvider */
-export const getHashProvider = getKeyProvider;
-
 // ============================================================================
 // Sync status — observable by UI
 // ============================================================================

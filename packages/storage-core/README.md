@@ -101,8 +101,8 @@ interface StorageConfig {
   // Base configuration for storage providers
 }
 
-interface HashProvider {
-  hash(data: Uint8Array): Uint8Array;
+interface KeyProvider {
+  computeKey(data: Uint8Array): Promise<Uint8Array>;
 }
 
 interface LRUCache<T> {

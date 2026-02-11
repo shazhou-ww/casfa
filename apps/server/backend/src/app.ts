@@ -54,7 +54,7 @@ import type { CombinedKeyProvider } from "./util/hash-provider.ts";
 export type { DbInstances } from "./bootstrap.ts";
 
 // Re-export hash provider from util
-export { type CombinedKeyProvider, type CombinedHashProvider, createNodeKeyProvider, createNodeHashProvider } from "./util/hash-provider.ts";
+export { type CombinedKeyProvider, createNodeKeyProvider } from "./util/hash-provider.ts";
 
 // ============================================================================
 // Types

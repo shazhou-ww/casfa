@@ -93,7 +93,6 @@ export type {
   EncodedNode,
   FileInfo,
   FileNodeInput,
-  HashProvider,
   KeyProvider,
   LayoutNode,
   NodeKind,

@@ -101,8 +101,8 @@ interface StorageConfig {
   // 存储提供者的基础配置
 }
 
-interface HashProvider {
-  hash(data: Uint8Array): Uint8Array;
+interface KeyProvider {
+  computeKey(data: Uint8Array): Promise<Uint8Array>;
 }
 
 interface LRUCache<T> {
