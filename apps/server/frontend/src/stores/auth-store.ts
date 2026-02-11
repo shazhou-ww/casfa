@@ -18,6 +18,7 @@ export type UserInfo = {
   email: string;
   name?: string;
   role: string;
+  rootDelegateId?: string | null;
 };
 
 type AuthState = {

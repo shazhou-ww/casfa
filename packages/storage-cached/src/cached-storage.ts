@@ -259,8 +259,13 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
   // Write-back mode
   // --------------------------------------------------------------------------
 
-  const { debounceMs = DEFAULT_DEBOUNCE_MS, onSyncStart, onSyncEnd, onKeySync, getChildKeys } =
-    writeBack;
+  const {
+    debounceMs = DEFAULT_DEBOUNCE_MS,
+    onSyncStart,
+    onSyncEnd,
+    onKeySync,
+    getChildKeys,
+  } = writeBack;
 
   const pendingKeys = new Set<string>();
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
@@ -306,9 +311,7 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
     }
 
     // 2. Topological sort (children first) if getChildKeys is provided
-    const levels = getChildKeys
-      ? topoSortLevels(entries, getChildKeys)
-      : [entries]; // no dependency info → single level (all parallel)
+    const levels = getChildKeys ? topoSortLevels(entries, getChildKeys) : [entries]; // no dependency info → single level (all parallel)
 
     // 3. Sync — level by level, children before parents
     if (remote.checkMany) {
@@ -359,7 +362,7 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
             } else {
               await remote.claim(childKey, childData);
             }
-          } catch (err) {
+          } catch (_err) {
             // External child claim failure is not fatal for the sync result
             // — the parent put will fail with CHILD_NOT_AUTHORIZED and be retried
           }

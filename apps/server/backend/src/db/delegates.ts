@@ -93,6 +93,12 @@ export type DelegatesDb = {
     delegateId: string,
     tokenHashes: { currentRtHash: string; currentAtHash: string; atExpiresAt: number }
   ) => Promise<{ delegate: Delegate; created: boolean }>;
+
+  /**
+   * Find the root delegate for a realm (if it exists).
+   * Uses GSI1 (realm-index) scoped to the correct realm.
+   */
+  getRootByRealm: (realm: string) => Promise<Delegate | null>;
 };
 
 type DelegatesDbConfig = {
@@ -306,33 +312,41 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
     }
   };
 
+  /**
+   * Find the root delegate for a realm using GSI1 (realm-index).
+   * Queries within the realm and filters for depth=0 (root).
+   */
+  const getRootByRealm = async (realm: string): Promise<Delegate | null> => {
+    const result = await client.send(
+      new QueryCommand({
+        TableName: tableName,
+        IndexName: "gsi1",
+        KeyConditionExpression: "gsi1pk = :pk",
+        ExpressionAttributeNames: {
+          "#depth": "depth",
+        },
+        ExpressionAttributeValues: {
+          ":pk": toRealmGsi1Pk(realm),
+          ":zero": 0,
+        },
+        FilterExpression: "#depth = :zero",
+      })
+    );
+    if (result.Items && result.Items.length > 0) {
+      return toDelegate(result.Items[0] as Record<string, unknown>);
+    }
+    return null;
+  };
+
   const getOrCreateRoot = async (
     realm: string,
     delegateId: string,
     tokenHashes: { currentRtHash: string; currentAtHash: string; atExpiresAt: number }
   ): Promise<{ delegate: Delegate; created: boolean }> => {
-    // Try to find existing root delegate by querying the realm + parent index
-    // Root delegates have gsi2pk = "PARENT#ROOT"
-    const queryResult = await client.send(
-      new QueryCommand({
-        TableName: tableName,
-        IndexName: "gsi2",
-        KeyConditionExpression: "gsi2pk = :pk",
-        ExpressionAttributeValues: {
-          ":pk": "PARENT#ROOT",
-          ":realm": realm,
-        },
-        // Filter by realm since parent-index doesn't include realm in the key
-        FilterExpression: "realm = :realm",
-        Limit: 1,
-      })
-    );
-
-    if (queryResult.Items && queryResult.Items.length > 0) {
-      return {
-        delegate: toDelegate(queryResult.Items[0] as Record<string, unknown>),
-        created: false,
-      };
+    // Try to find existing root delegate using realm-scoped index
+    const existing = await getRootByRealm(realm);
+    if (existing) {
+      return { delegate: existing, created: false };
     }
 
     // Create new root delegate with token hashes
@@ -358,24 +372,9 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
       const err = error as { name?: string };
       if (err.name === "ConditionalCheckFailedException") {
         // Race condition — another request created the root. Find it.
-        const retryResult = await client.send(
-          new QueryCommand({
-            TableName: tableName,
-            IndexName: "gsi2",
-            KeyConditionExpression: "gsi2pk = :pk",
-            ExpressionAttributeValues: {
-              ":pk": "PARENT#ROOT",
-              ":realm": realm,
-            },
-            FilterExpression: "realm = :realm",
-            Limit: 1,
-          })
-        );
-        if (retryResult.Items && retryResult.Items.length > 0) {
-          return {
-            delegate: toDelegate(retryResult.Items[0] as Record<string, unknown>),
-            created: false,
-          };
+        const retryRoot = await getRootByRealm(realm);
+        if (retryRoot) {
+          return { delegate: retryRoot, created: false };
         }
       }
       throw error;
@@ -384,5 +383,5 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
     return { delegate: rootDelegate, created: true };
   };
 
-  return { create, get, revoke, listChildren, rotateTokens, getOrCreateRoot };
+  return { create, get, revoke, listChildren, rotateTokens, getOrCreateRoot, getRootByRealm };
 };

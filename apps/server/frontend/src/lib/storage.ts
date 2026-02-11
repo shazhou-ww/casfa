@@ -19,9 +19,9 @@
 
 import type { KeyProvider } from "@casfa/core";
 import { computeSizeFlagByte, encodeCB32, validateNodeStructure } from "@casfa/core";
-import { createCachedStorage, type CachedStorageProvider } from "@casfa/storage-cached";
-import { createHttpStorage } from "@casfa/storage-http";
 import type { PopContext } from "@casfa/proof";
+import { type CachedStorageProvider, createCachedStorage } from "@casfa/storage-cached";
+import { createHttpStorage } from "@casfa/storage-http";
 import { createIndexedDBStorage } from "@casfa/storage-indexeddb";
 import { blake3 } from "@noble/hashes/blake3";
 import { getClient } from "./client.ts";

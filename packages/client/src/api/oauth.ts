@@ -29,6 +29,8 @@ export type UserInfo = {
   userId: string;
   email: string;
   role: string;
+  /** Root delegate ID for this user (null if none created yet) */
+  rootDelegateId: string | null;
 };
 
 // ============================================================================

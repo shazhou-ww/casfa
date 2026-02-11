@@ -64,6 +64,7 @@ function createMockDelegatesDb(overrides?: Partial<DelegatesDb>): DelegatesDb {
       })
     ),
     rotateTokens: mock(async () => true),
+    getRootByRealm: mock(async () => null),
     ...overrides,
   };
 }
