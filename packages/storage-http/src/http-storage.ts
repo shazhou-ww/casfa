@@ -43,6 +43,26 @@ export type HttpStorageConfig = {
   popContext?: PopContext;
 };
 
+/**
+ * Result of a batch put operation.
+ */
+export type PutManyResult = {
+  /** Keys that were actually uploaded or claimed */
+  synced: string[];
+  /** Keys already present and owned (no upload needed) */
+  skipped: string[];
+  /** Keys that failed to upload or claim */
+  failed: Array<{ key: string; error: unknown }>;
+};
+
+/**
+ * Extended StorageProvider with batch put support.
+ */
+export type HttpStorageProvider = StorageProvider & {
+  /** Batch put with single check call. Uploads in provided order (supports topo sort). */
+  putMany: (entries: Array<{ key: string; value: Uint8Array }>) => Promise<PutManyResult>;
+};
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -83,7 +103,7 @@ const checkOne = async (
  * - `has(key)` → calls check API, only **owned** counts as "has"
  * - `put(key, bytes)` → check → put (missing) / claim (unowned) / no-op (owned)
  */
-export const createHttpStorage = (config: HttpStorageConfig): StorageProvider => {
+export const createHttpStorage = (config: HttpStorageConfig): HttpStorageProvider => {
   const { client, getTokenBytes, popContext } = config;
 
   /** Per-key check-result cache (survives for the lifetime of the provider) */
@@ -130,6 +150,80 @@ export const createHttpStorage = (config: HttpStorageConfig): StorageProvider =>
         checkCache.set(nodeKey, "owned");
       }
       // else: owned — nothing to do
+    },
+
+    async putMany(
+      entries: Array<{ key: string; value: Uint8Array }>
+    ): Promise<PutManyResult> {
+      if (entries.length === 0) return { synced: [], skipped: [], failed: [] };
+
+      const nodeKeyEntries = entries.map((e) => ({
+        ...e,
+        nodeKey: storageKeyToNodeKey(e.key),
+      }));
+      const allNodeKeys = nodeKeyEntries.map((e) => e.nodeKey);
+
+      // Single batch check (max 1000 per call)
+      const statusMap = new Map<string, NodeStatus>();
+      for (let i = 0; i < allNodeKeys.length; i += 1000) {
+        const batch = allNodeKeys.slice(i, i + 1000);
+        const result = await client.nodes.check({ keys: batch });
+        if (!result.ok) {
+          throw new Error(`Batch check failed: ${result.error.message}`);
+        }
+        for (const k of result.data.owned) statusMap.set(k, "owned");
+        for (const k of result.data.unowned) statusMap.set(k, "unowned");
+        for (const k of result.data.missing) statusMap.set(k, "missing");
+      }
+
+      // Populate per-instance check cache
+      for (const [k, s] of statusMap) checkCache.set(k, s);
+
+      const synced: string[] = [];
+      const skipped: string[] = [];
+      const failed: Array<{ key: string; error: unknown }> = [];
+
+      // Process entries in provided order (preserves topo sort from caller)
+      for (const entry of nodeKeyEntries) {
+        const status = statusMap.get(entry.nodeKey) ?? "missing";
+
+        if (status === "owned") {
+          skipped.push(entry.key);
+          continue;
+        }
+
+        try {
+          if (status === "missing") {
+            const putResult = await client.nodes.put(entry.nodeKey, entry.value);
+            if (!putResult.ok) {
+              throw new Error(
+                `Failed to upload node ${entry.nodeKey}: ${putResult.error.message}`
+              );
+            }
+          } else {
+            // unowned — claim via PoP
+            const tokenBytes = getTokenBytes();
+            if (!tokenBytes || !popContext) {
+              throw new Error(
+                `Cannot claim unowned node ${entry.nodeKey}: missing tokenBytes or popContext`
+              );
+            }
+            const pop = computePoP(tokenBytes, entry.value, popContext);
+            const claimResult = await client.nodes.claim(entry.nodeKey, pop);
+            if (!claimResult.ok) {
+              throw new Error(
+                `Failed to claim node ${entry.nodeKey}: ${claimResult.error.message}`
+              );
+            }
+          }
+          checkCache.set(entry.nodeKey, "owned");
+          synced.push(entry.key);
+        } catch (err) {
+          failed.push({ key: entry.key, error: err });
+        }
+      }
+
+      return { synced, skipped, failed };
     },
   };
 };
