@@ -80,6 +80,19 @@ const messages: Record<ExplorerTextKey, string> = {
   "validation.nameEmpty": "Name cannot be empty",
   "validation.nameInvalid": "Name contains invalid characters",
   "validation.nameExists": "A file or folder with this name already exists",
+  // Navigation (Iter 3)
+  "nav.back": "Back",
+  "nav.forward": "Forward",
+  "nav.up": "Up one level",
+  // Search (Iter 3)
+  "search.placeholder": "Filter files…",
+  "search.noResults": "No matching items",
+  // Path input (Iter 3)
+  "pathInput.placeholder": "Enter path…",
+  "pathInput.invalid": "Invalid path",
+  // Tree sidebar (Iter 3)
+  "sidebar.collapse": "Collapse sidebar",
+  "sidebar.expand": "Expand sidebar",
 };
 
 /**

@@ -80,6 +80,19 @@ const messages: Record<ExplorerTextKey, string> = {
   "validation.nameEmpty": "名称不能为空",
   "validation.nameInvalid": "名称包含非法字符",
   "validation.nameExists": "已存在同名文件或文件夹",
+  // 导航 (Iter 3)
+  "nav.back": "后退",
+  "nav.forward": "前进",
+  "nav.up": "上一级",
+  // 搜索 (Iter 3)
+  "search.placeholder": "筛选文件…",
+  "search.noResults": "未找到匹配项",
+  // 路径输入 (Iter 3)
+  "pathInput.placeholder": "输入路径…",
+  "pathInput.invalid": "路径无效",
+  // 侧边栏 (Iter 3)
+  "sidebar.collapse": "折叠侧边栏",
+  "sidebar.expand": "展开侧边栏",
 };
 
 /**

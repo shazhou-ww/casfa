@@ -2,21 +2,26 @@
  * <ExplorerToolbar /> - Breadcrumb navigation + action buttons.
  *
  * Iter 2: Added upload, new folder buttons, and extraToolbarItems support.
+ * Iter 3: Added navigation buttons, search box, view toggle.
  */
 
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import { Box, IconButton, Tooltip } from "@mui/material";
+import { Box, Divider, IconButton, Tooltip } from "@mui/material";
 import { useCallback, useRef } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import type { ExplorerToolbarItem, PathSegment } from "../types.ts";
 import { Breadcrumb } from "./Breadcrumb.tsx";
+import { NavigationButtons } from "./NavigationButtons.tsx";
+import { SearchBox } from "./SearchBox.tsx";
+import { ViewToggle } from "./ViewToggle.tsx";
 
 type ExplorerToolbarProps = {
   renderBreadcrumb?: (segments: PathSegment[]) => React.ReactNode;
   onUpload?: (files: File[]) => void;
   onNewFolder?: () => void;
+  onNavigate?: (path: string) => void;
   extraToolbarItems?: ExplorerToolbarItem[];
 };
 
@@ -24,6 +29,7 @@ export function ExplorerToolbar({
   renderBreadcrumb,
   onUpload,
   onNewFolder,
+  onNavigate,
   extraToolbarItems,
 }: ExplorerToolbarProps) {
   const t = useExplorerT();
@@ -68,9 +74,25 @@ export function ExplorerToolbar({
         gap: 0.5,
       }}
     >
+      {/* Navigation buttons: back / forward / up */}
+      <NavigationButtons onNavigate={onNavigate} />
+
+      <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+      {/* Breadcrumb (with path input toggle) */}
       <Box sx={{ flex: 1, overflow: "hidden" }}>
-        <Breadcrumb renderBreadcrumb={renderBreadcrumb} />
+        <Breadcrumb renderBreadcrumb={renderBreadcrumb} onNavigate={onNavigate} />
       </Box>
+
+      {/* Search */}
+      <SearchBox />
+
+      <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+      {/* View toggle */}
+      <ViewToggle />
+
+      <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
 
       {/* Upload button — hidden when no upload permission */}
       {permissions.canUpload && (
