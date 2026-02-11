@@ -1,14 +1,15 @@
 /**
- * Filesystem Service — Read Operations
+ * @casfa/fs — Read Operations
  *
  * Read-only filesystem operations: stat, read, ls.
+ * Depends only on TreeOps (which depends only on FsContext).
  */
 
 import type { FsLsChild, FsLsResponse, FsStatResponse } from "@casfa/protocol";
-import { hashToStorageKey, storageKeyToNodeKey_ as storageKeyToNodeKey } from "./helpers.ts";
+import { storageKeyToNodeKey } from "@casfa/protocol";
+import { hashToStorageKey } from "./helpers.ts";
 import type { TreeOps } from "./tree-ops.ts";
-import type { FsError } from "./types.ts";
-import { fsError } from "./types.ts";
+import { type FsError, fsError } from "./types.ts";
 
 // ============================================================================
 // Read Operations Factory
@@ -21,15 +22,14 @@ export const createReadOps = (tree: TreeOps) => {
    * stat — Get file / directory metadata.
    */
   const stat = async (
-    realm: string,
     rootNodeKey: string,
     pathStr?: string,
-    indexPathStr?: string
+    indexPathStr?: string,
   ): Promise<FsStatResponse | FsError> => {
-    const rootHex = await tree.resolveNodeKey(realm, rootNodeKey);
-    if (typeof rootHex === "object") return rootHex;
+    const rootKey = await tree.resolveNodeKey(rootNodeKey);
+    if (typeof rootKey === "object") return rootKey;
 
-    const resolved = await tree.resolvePath(rootHex, pathStr, indexPathStr);
+    const resolved = await tree.resolvePath(rootKey, pathStr, indexPathStr);
     if ("code" in resolved) return resolved;
 
     const { hash, node, name } = resolved;
@@ -66,15 +66,14 @@ export const createReadOps = (tree: TreeOps) => {
    * read — Read single-block file content.
    */
   const read = async (
-    realm: string,
     rootNodeKey: string,
     pathStr?: string,
-    indexPathStr?: string
+    indexPathStr?: string,
   ): Promise<{ data: Uint8Array; contentType: string; size: number; key: string } | FsError> => {
-    const rootHex = await tree.resolveNodeKey(realm, rootNodeKey);
-    if (typeof rootHex === "object") return rootHex;
+    const rootKey = await tree.resolveNodeKey(rootNodeKey);
+    if (typeof rootKey === "object") return rootKey;
 
-    const resolved = await tree.resolvePath(rootHex, pathStr, indexPathStr);
+    const resolved = await tree.resolvePath(rootKey, pathStr, indexPathStr);
     if ("code" in resolved) return resolved;
 
     const { hash, node } = resolved;
@@ -89,7 +88,7 @@ export const createReadOps = (tree: TreeOps) => {
       return fsError(
         "FILE_TOO_LARGE",
         400,
-        "File has successor nodes (multi-block). Use the Node API to read."
+        "File has successor nodes (multi-block). Use the Node API to read.",
       );
     }
 
@@ -105,17 +104,16 @@ export const createReadOps = (tree: TreeOps) => {
    * ls — List directory contents with pagination.
    */
   const ls = async (
-    realm: string,
     rootNodeKey: string,
     pathStr?: string,
     indexPathStr?: string,
     limit = 100,
-    cursor?: string
+    cursor?: string,
   ): Promise<FsLsResponse | FsError> => {
-    const rootHex = await tree.resolveNodeKey(realm, rootNodeKey);
-    if (typeof rootHex === "object") return rootHex;
+    const rootKey = await tree.resolveNodeKey(rootNodeKey);
+    if (typeof rootKey === "object") return rootKey;
 
-    const resolved = await tree.resolvePath(rootHex, pathStr, indexPathStr);
+    const resolved = await tree.resolvePath(rootKey, pathStr, indexPathStr);
     if ("code" in resolved) return resolved;
 
     const { hash, node } = resolved;

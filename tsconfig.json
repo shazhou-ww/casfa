@@ -30,7 +30,10 @@
       "@casfa/storage-fs": ["./packages/storage-fs/src/index.ts"],
       "@casfa/storage-memory": ["./packages/storage-memory/src/index.ts"],
       "@casfa/storage-s3": ["./packages/storage-s3/src/index.ts"],
-      "@casfa/explorer": ["./packages/explorer/src/index.ts"]
+      "@casfa/explorer": ["./packages/explorer/src/index.ts"],
+      "@casfa/fs": ["./packages/fs/src/index.ts"],
+      "@casfa/storage-http": ["./packages/storage-http/src/index.ts"],
+      "@casfa/storage-indexeddb": ["./packages/storage-indexeddb/src/index.ts"]
     },
 
     // Best practices
