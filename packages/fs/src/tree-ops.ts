@@ -9,7 +9,11 @@
  */
 
 import { type CasNode, decodeNode, encodeDictNode, getWellKnownNodeData } from "@casfa/core";
-import { FS_MAX_COLLECTION_CHILDREN, FS_MAX_NAME_BYTES, nodeKeyToStorageKey } from "@casfa/protocol";
+import {
+  FS_MAX_COLLECTION_CHILDREN,
+  FS_MAX_NAME_BYTES,
+  nodeKeyToStorageKey,
+} from "@casfa/protocol";
 
 import {
   findChildByIndex,
@@ -18,7 +22,7 @@ import {
   parseIndexPath,
   parsePath,
 } from "./helpers.ts";
-import { type FsContext, type FsError, type ResolvedNode, fsError } from "./types.ts";
+import { type FsContext, type FsError, fsError, type ResolvedNode } from "./types.ts";
 
 const textEncoder = new TextEncoder();
 
@@ -55,24 +59,25 @@ export const createTreeOps = (ctx: FsContext) => {
   };
 
   /**
-   * Store a new node in storage and invoke the onNodeStored hook.
-   * Returns the CB32 storage key of the stored node.
+   * Store a node in storage and invoke the onNodeStored hook.
+   * Returns the CB32 storage key.
+   *
+   * Always calls storage.put() unconditionally — CAS put is idempotent and
+   * each storage implementation handles dedup internally (e.g. HttpStorage
+   * runs check → upload/claim/no-op).
    */
   const storeNode = async (
     bytes: Uint8Array,
     nodeHash: Uint8Array,
     kind: "dict" | "file",
-    logicalSize: number,
+    logicalSize: number
   ): Promise<string> => {
     const storageKey = hashToStorageKey(nodeHash);
 
-    const exists = await storage.has(storageKey);
-    if (!exists) {
-      await storage.put(storageKey, bytes);
-    }
+    await storage.put(storageKey, bytes);
 
     if (onNodeStored) {
-      await onNodeStored({ storageKey, bytes, hash: nodeHash, kind, logicalSize, isNew: !exists });
+      await onNodeStored({ storageKey, bytes, hash: nodeHash, kind, logicalSize });
     }
 
     return storageKey;
@@ -108,7 +113,7 @@ export const createTreeOps = (ctx: FsContext) => {
   const resolvePath = async (
     rootStorageKey: string,
     pathStr?: string,
-    indexPathStr?: string,
+    indexPathStr?: string
   ): Promise<ResolvedNode | FsError> => {
     const rootNode = await getAndDecodeNode(rootStorageKey);
     if (!rootNode) {
@@ -206,7 +211,7 @@ export const createTreeOps = (ctx: FsContext) => {
    */
   const rebuildMerklePath = async (
     parentPath: ResolvedNode["parentPath"],
-    newChildHash: Uint8Array,
+    newChildHash: Uint8Array
   ): Promise<string> => {
     let currentChildHash = newChildHash;
 
@@ -217,7 +222,7 @@ export const createTreeOps = (ctx: FsContext) => {
 
       const encoded = await encodeDictNode(
         { children: newChildren, childNames: parent.node.childNames ?? [] },
-        hashProvider,
+        hashProvider
       );
 
       await storeNode(encoded.bytes, encoded.hash, "dict", 0);
@@ -239,7 +244,7 @@ export const createTreeOps = (ctx: FsContext) => {
     _parentHash: string,
     parentNode: CasNode,
     childName: string,
-    childHash: Uint8Array,
+    childHash: Uint8Array
   ): Promise<string | FsError> => {
     const existingNames = parentNode.childNames ?? [];
     const existingChildren = parentNode.children ?? [];
@@ -258,7 +263,7 @@ export const createTreeOps = (ctx: FsContext) => {
 
     const encoded = await encodeDictNode(
       { children: newChildren, childNames: newNames },
-      hashProvider,
+      hashProvider
     );
 
     await storeNode(encoded.bytes, encoded.hash, "dict", 0);
@@ -271,7 +276,7 @@ export const createTreeOps = (ctx: FsContext) => {
   const removeChild = async (
     parentPath: ResolvedNode["parentPath"],
     parentNode: CasNode,
-    childIndex: number,
+    childIndex: number
   ): Promise<string> => {
     const existingNames = [...(parentNode.childNames ?? [])];
     const existingChildren = [...(parentNode.children ?? [])];
@@ -281,7 +286,7 @@ export const createTreeOps = (ctx: FsContext) => {
 
     const encoded = await encodeDictNode(
       { children: existingChildren, childNames: existingNames },
-      hashProvider,
+      hashProvider
     );
 
     await storeNode(encoded.bytes, encoded.hash, "dict", 0);
@@ -298,7 +303,7 @@ export const createTreeOps = (ctx: FsContext) => {
    */
   const ensureParentDirs = async (
     rootStorageKey: string,
-    segments: string[],
+    segments: string[]
   ): Promise<
     { parentHash: string; parentNode: CasNode; parentPath: ResolvedNode["parentPath"] } | FsError
   > => {
@@ -340,7 +345,7 @@ export const createTreeOps = (ctx: FsContext) => {
               children: newDirHash ? [newDirHash] : [],
               childNames: newDirHash ? [segments[j + 1]!] : [],
             },
-            hashProvider,
+            hashProvider
           );
           await storeNode(emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
           newDirHash = emptyEncoded.hash;
@@ -356,7 +361,7 @@ export const createTreeOps = (ctx: FsContext) => {
         const newChildren = [...(currentNode.children ?? []), newDirHash];
         const parentEncoded = await encodeDictNode(
           { children: newChildren, childNames: newNames },
-          hashProvider,
+          hashProvider
         );
         await storeNode(parentEncoded.bytes, parentEncoded.hash, "dict", 0);
 

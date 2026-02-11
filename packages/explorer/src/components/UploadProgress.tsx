@@ -5,7 +5,14 @@
  * cancel (for pending), and retry (for failed) actions.
  */
 
-import { useCallback, useState } from "react";
+import CancelIcon from "@mui/icons-material/Cancel";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CloseIcon from "@mui/icons-material/Close";
+import ErrorIcon from "@mui/icons-material/Error";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ReplayIcon from "@mui/icons-material/Replay";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
 import {
   Box,
   Chip,
@@ -19,14 +26,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import CancelIcon from "@mui/icons-material/Cancel";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import CloseIcon from "@mui/icons-material/Close";
-import ErrorIcon from "@mui/icons-material/Error";
-import ExpandLessIcon from "@mui/icons-material/ExpandLess";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import ReplayIcon from "@mui/icons-material/Replay";
-import UploadFileIcon from "@mui/icons-material/UploadFile";
+import { useCallback, useState } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 
 type UploadProgressProps = {
@@ -86,11 +86,23 @@ export function UploadProgress({ onCancel, onRetry }: UploadProgressProps) {
         {errors > 0 && (
           <Chip label={`${errors} failed`} size="small" color="error" variant="outlined" />
         )}
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}>
+        <IconButton
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded(!expanded);
+          }}
+        >
           {expanded ? <ExpandMoreIcon fontSize="small" /> : <ExpandLessIcon fontSize="small" />}
         </IconButton>
         <Tooltip title="Clear completed">
-          <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleClearAll(); }}>
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleClearAll();
+            }}
+          >
             <CloseIcon fontSize="small" />
           </IconButton>
         </Tooltip>

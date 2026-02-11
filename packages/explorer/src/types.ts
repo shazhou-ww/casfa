@@ -2,9 +2,9 @@
  * Public types for @casfa/explorer
  */
 
-import type { SxProps, Theme } from "@mui/material";
 import type { CasfaClient } from "@casfa/client";
 import type { HashProvider, StorageProvider } from "@casfa/core";
+import type { SxProps, Theme } from "@mui/material";
 import type React from "react";
 
 // ============================================================================

@@ -5,11 +5,10 @@
  */
 
 export {
+  type CachedStorageConfig,
+  createCachedStorage,
+} from "./cached-storage.ts";
+export {
   createIndexedDBStorage,
   type IndexedDBStorageConfig,
 } from "./indexeddb-storage.ts";
-
-export {
-  createCachedStorage,
-  type CachedStorageConfig,
-} from "./cached-storage.ts";

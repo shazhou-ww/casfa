@@ -48,8 +48,6 @@ export type NodeStoredInfo = {
   hash: Uint8Array;
   kind: "dict" | "file";
   logicalSize: number;
-  /** Whether this node was newly stored (did not exist before) */
-  isNew: boolean;
 };
 
 // ============================================================================
@@ -105,7 +103,7 @@ export function fsError(
   code: string,
   status: number,
   message: string,
-  details?: Record<string, unknown>,
+  details?: Record<string, unknown>
 ): FsError {
   return { code, status, message, details };
 }

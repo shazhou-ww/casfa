@@ -4,7 +4,6 @@
  * Pre-fills with the current name and validates the new name.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Button,
   Dialog,
@@ -13,6 +12,7 @@ import {
   DialogTitle,
   TextField,
 } from "@mui/material";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import type { ExplorerItem } from "../types.ts";
 
@@ -43,13 +43,8 @@ export function RenameDialog({ open, item, onClose }: RenameDialogProps) {
   }, [open, item]);
 
   const existingNames = useMemo(
-    () =>
-      new Set(
-        items
-          .filter((i) => i.name !== item?.name)
-          .map((i) => i.name.toLowerCase()),
-      ),
-    [items, item],
+    () => new Set(items.filter((i) => i.name !== item?.name).map((i) => i.name.toLowerCase())),
+    [items, item]
   );
 
   const validationError = useMemo(() => {
@@ -88,7 +83,7 @@ export function RenameDialog({ open, item, onClose }: RenameDialogProps) {
         handleSubmit();
       }
     },
-    [handleSubmit],
+    [handleSubmit]
   );
 
   const isLoading = operationLoading.rename ?? false;

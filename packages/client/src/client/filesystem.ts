@@ -32,7 +32,7 @@ export type FsMethods = {
   ls: (
     rootKey: string,
     path?: string,
-    opts?: { limit?: number; cursor?: string },
+    opts?: { limit?: number; cursor?: string }
   ) => Promise<FetchResult<FsLsResponse>>;
   /** Read file content as Blob */
   read: (rootKey: string, path: string) => Promise<FetchResult<Blob>>;
@@ -41,7 +41,7 @@ export type FsMethods = {
     rootKey: string,
     path: string,
     data: Blob | ArrayBuffer | Uint8Array,
-    contentType?: string,
+    contentType?: string
   ) => Promise<FetchResult<FsWriteResponse>>;
   /** Create a directory */
   mkdir: (rootKey: string, path: string) => Promise<FetchResult<FsMkdirResponse>>;
@@ -55,7 +55,7 @@ export type FsMethods = {
   rewrite: (
     rootKey: string,
     entries?: Record<string, FsRewriteEntry>,
-    deletes?: string[],
+    deletes?: string[]
   ) => Promise<FetchResult<FsRewriteResponse>>;
 };
 
@@ -84,7 +84,7 @@ export const createFsMethods = ({ baseUrl, realm, tokenSelector }: FsDeps): FsMe
 
     write: (rootKey, path, data, contentType?) =>
       requireAccess((t) =>
-        api.fsWrite(baseUrl, realm, t.tokenBase64, rootKey, path, data, contentType),
+        api.fsWrite(baseUrl, realm, t.tokenBase64, rootKey, path, data, contentType)
       ),
 
     mkdir: (rootKey, path) =>
@@ -100,8 +100,6 @@ export const createFsMethods = ({ baseUrl, realm, tokenSelector }: FsDeps): FsMe
       requireAccess((t) => api.fsCp(baseUrl, realm, t.tokenBase64, rootKey, from, to)),
 
     rewrite: (rootKey, entries?, deletes?) =>
-      requireAccess((t) =>
-        api.fsRewrite(baseUrl, realm, t.tokenBase64, rootKey, entries, deletes),
-      ),
+      requireAccess((t) => api.fsRewrite(baseUrl, realm, t.tokenBase64, rootKey, entries, deletes)),
   };
 };

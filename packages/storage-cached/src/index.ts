@@ -6,6 +6,6 @@
  */
 
 export {
-  createCachedStorage,
   type CachedStorageConfig,
+  createCachedStorage,
 } from "./cached-storage.ts";

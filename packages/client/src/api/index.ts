@@ -24,7 +24,17 @@ export {
   updateDepot,
 } from "./depots.ts";
 // Filesystem API
-export { fsCp, fsLs, fsMkdir, fsMv, fsRead, fsRewrite, fsRm, fsStat, fsWrite } from "./filesystem.ts";
+export {
+  fsCp,
+  fsLs,
+  fsMkdir,
+  fsMv,
+  fsRead,
+  fsRewrite,
+  fsRm,
+  fsStat,
+  fsWrite,
+} from "./filesystem.ts";
 // Info API
 export { fetchServiceInfo, healthCheck } from "./info.ts";
 // Node API

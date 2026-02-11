@@ -13,9 +13,9 @@
 import { isWellKnownNode } from "@casfa/core";
 import {
   type AuthorizeLinkFn,
+  type FsService as CoreFsService,
   createFsService as createCoreFsService,
   type FsContext,
-  type FsService as CoreFsService,
 } from "@casfa/fs";
 import type {
   FsCpResponse,
@@ -37,8 +37,8 @@ import type { FsServiceDeps } from "./types.ts";
 // Re-exports
 // ============================================================================
 
-export { type FsError, type FsServiceDeps, isFsError } from "./types.ts";
 export { fsError } from "@casfa/fs";
+export { type FsError, type FsServiceDeps, isFsError } from "./types.ts";
 
 // ============================================================================
 // Service Type
@@ -49,13 +49,13 @@ export type FsService = {
     realm: string,
     rootNodeKey: string,
     pathStr?: string,
-    indexPathStr?: string,
+    indexPathStr?: string
   ): Promise<FsStatResponse | FsError>;
   read(
     realm: string,
     rootNodeKey: string,
     pathStr?: string,
-    indexPathStr?: string,
+    indexPathStr?: string
   ): Promise<{ data: Uint8Array; contentType: string; size: number; key: string } | FsError>;
   ls(
     realm: string,
@@ -63,7 +63,7 @@ export type FsService = {
     pathStr?: string,
     indexPathStr?: string,
     limit?: number,
-    cursor?: string,
+    cursor?: string
   ): Promise<FsLsResponse | FsError>;
   write(
     realm: string,
@@ -72,34 +72,34 @@ export type FsService = {
     pathStr: string | undefined,
     indexPathStr: string | undefined,
     fileContent: Uint8Array,
-    contentType: string,
+    contentType: string
   ): Promise<FsWriteResponse | FsError>;
   mkdir(
     realm: string,
     ownerId: string,
     rootNodeKey: string,
-    pathStr: string,
+    pathStr: string
   ): Promise<FsMkdirResponse | FsError>;
   rm(
     realm: string,
     ownerId: string,
     rootNodeKey: string,
     pathStr?: string,
-    indexPathStr?: string,
+    indexPathStr?: string
   ): Promise<FsRmResponse | FsError>;
   mv(
     realm: string,
     ownerId: string,
     rootNodeKey: string,
     fromPath: string,
-    toPath: string,
+    toPath: string
   ): Promise<FsMvResponse | FsError>;
   cp(
     realm: string,
     ownerId: string,
     rootNodeKey: string,
     fromPath: string,
-    toPath: string,
+    toPath: string
   ): Promise<FsCpResponse | FsError>;
   rewrite(
     realm: string,
@@ -109,7 +109,7 @@ export type FsService = {
     deletes?: string[],
     issuerChain?: string[],
     issuerId?: string,
-    auth?: AccessTokenAuthContext,
+    auth?: AccessTokenAuthContext
   ): Promise<FsRewriteResponse | FsError>;
   resolveNodeKey(realm: string, nodeKey: string): Promise<string | FsError>;
 };
@@ -136,37 +136,29 @@ export const createFsService = (deps: FsServiceDeps): FsService => {
     hash: hashProvider,
 
     onNodeStored: async (info) => {
-      if (info.isNew) {
-        // New node — write ownership + increment refcount + update usage
-        await ownershipV2Db.addOwnership(
-          info.storageKey,
-          [ownerId],
-          ownerId,
-          "application/octet-stream",
-          info.logicalSize,
-          info.kind,
-        );
-        const { isNewToRealm } = await refCountDb.incrementRef(
-          realm,
-          info.storageKey,
-          info.bytes.length,
-          info.logicalSize,
-        );
-        if (isNewToRealm) {
-          await usageDb.updateUsage(realm, {
-            physicalBytes: info.bytes.length,
-            logicalBytes: info.logicalSize,
-            nodeCount: 1,
-          });
-        }
-      } else {
-        // Existing node — just increment refcount
-        await refCountDb.incrementRef(
-          realm,
-          info.storageKey,
-          info.bytes.length,
-          info.logicalSize,
-        );
+      // Always ensure ownership (idempotent)
+      await ownershipV2Db.addOwnership(
+        info.storageKey,
+        [ownerId],
+        ownerId,
+        "application/octet-stream",
+        info.logicalSize,
+        info.kind
+      );
+      // Increment refcount — returns whether this is the first ref in the realm
+      const { isNewToRealm } = await refCountDb.incrementRef(
+        realm,
+        info.storageKey,
+        info.bytes.length,
+        info.logicalSize
+      );
+      // Only update usage if this node is new to the realm
+      if (isNewToRealm) {
+        await usageDb.updateUsage(realm, {
+          physicalBytes: info.bytes.length,
+          logicalBytes: info.logicalSize,
+          nodeCount: 1,
+        });
       }
     },
 
@@ -188,7 +180,7 @@ export const createFsService = (deps: FsServiceDeps): FsService => {
   const makeAuthorizeLink = (
     issuerChain?: string[],
     _issuerId?: string,
-    auth?: AccessTokenAuthContext,
+    auth?: AccessTokenAuthContext
   ): AuthorizeLinkFn => {
     return async (linkStorageKey: string, proof?: string) => {
       // Well-known nodes are universally owned
@@ -232,7 +224,7 @@ export const createFsService = (deps: FsServiceDeps): FsService => {
     ownerId: string,
     issuerChain?: string[],
     issuerId?: string,
-    auth?: AccessTokenAuthContext,
+    auth?: AccessTokenAuthContext
   ): CoreFsService => {
     return createCoreFsService({
       ctx: makeFsContext(realm, ownerId),
@@ -263,7 +255,7 @@ export const createFsService = (deps: FsServiceDeps): FsService => {
         pathStr,
         indexPathStr,
         fileContent,
-        contentType,
+        contentType
       );
     },
 
@@ -287,7 +279,7 @@ export const createFsService = (deps: FsServiceDeps): FsService => {
       return getWriteService(realm, ownerId, issuerChain, issuerId, auth).rewrite(
         rootNodeKey,
         entries,
-        deletes,
+        deletes
       );
     },
 

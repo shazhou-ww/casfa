@@ -7,14 +7,7 @@
 
 import LogoutIcon from "@mui/icons-material/Logout";
 import StorageIcon from "@mui/icons-material/Storage";
-import {
-  AppBar,
-  Box,
-  IconButton,
-  Toolbar,
-  Tooltip,
-  Typography,
-} from "@mui/material";
+import { AppBar, Box, IconButton, Toolbar, Tooltip, Typography } from "@mui/material";
 import { Outlet } from "react-router-dom";
 import { useAuthStore } from "../stores/auth-store.ts";
 

@@ -108,7 +108,8 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
     }
 
     // Check ownership (well-known nodes are universally accessible)
-    const hasAccess = isWellKnownNode(parsed.data.key) || await ownershipV2Db.hasAnyOwnership(parsed.data.key);
+    const hasAccess =
+      isWellKnownNode(parsed.data.key) || (await ownershipV2Db.hasAnyOwnership(parsed.data.key));
     if (!hasAccess) {
       return mcpError(id, MCP_INVALID_PARAMS, "Node not found or not accessible");
     }

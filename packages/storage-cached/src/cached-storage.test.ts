@@ -19,7 +19,7 @@ import { createCachedStorage } from "./cached-storage.ts";
 type Call = { method: string; args: unknown[] };
 
 function createSpyStorage(
-  initial: Map<string, Uint8Array> = new Map(),
+  initial: Map<string, Uint8Array> = new Map()
 ): StorageProvider & { calls: Call[]; store: Map<string, Uint8Array> } {
   const store = new Map(initial);
   const calls: Call[] = [];

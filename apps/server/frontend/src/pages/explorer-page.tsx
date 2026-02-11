@@ -6,9 +6,9 @@
  * - Syncs URL on depot change via onDepotChange callback.
  */
 
-import { CasfaExplorer } from "@casfa/explorer";
 import type { CasfaClient } from "@casfa/client";
 import type { HashProvider, StorageProvider } from "@casfa/core";
+import { CasfaExplorer } from "@casfa/explorer";
 import { Box, CircularProgress } from "@mui/material";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";

@@ -4,11 +4,11 @@
  * Iter 2: Added upload, new folder buttons, and extraToolbarItems support.
  */
 
-import { useCallback, useRef } from "react";
-import { Box, IconButton, Tooltip } from "@mui/material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import { Box, IconButton, Tooltip } from "@mui/material";
+import { useCallback, useRef } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import type { ExplorerToolbarItem, PathSegment } from "../types.ts";
 import { Breadcrumb } from "./Breadcrumb.tsx";
@@ -48,7 +48,7 @@ export function ExplorerToolbar({
       // Reset input so the same file can be re-selected
       e.target.value = "";
     },
-    [onUpload],
+    [onUpload]
   );
 
   const handleNewFolder = useCallback(() => {
@@ -80,13 +80,7 @@ export function ExplorerToolbar({
               <CloudUploadIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            hidden
-            onChange={handleFileChange}
-          />
+          <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileChange} />
         </>
       )}
 
@@ -109,11 +103,7 @@ export function ExplorerToolbar({
       {extraToolbarItems?.map((item) => (
         <Tooltip key={item.key} title={item.tooltip}>
           <span>
-            <IconButton
-              size="small"
-              onClick={item.onClick}
-              disabled={item.disabled}
-            >
+            <IconButton size="small" onClick={item.onClick} disabled={item.disabled}>
               {item.icon}
             </IconButton>
           </span>

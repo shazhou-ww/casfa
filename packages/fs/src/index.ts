@@ -23,16 +23,6 @@ import { type AuthorizeLinkFn, createWriteOps } from "./write-ops.ts";
 // ============================================================================
 
 export {
-  type FsContext,
-  type FsError,
-  type NodeStoredInfo,
-  type ParentEntry,
-  type ResolvedNode,
-  fsError,
-  isFsError,
-} from "./types.ts";
-
-export {
   findChildByIndex,
   findChildByName,
   hashToStorageKey,
@@ -40,10 +30,19 @@ export {
   parsePath,
   storageKeyToHash,
 } from "./helpers.ts";
+export type { ReadOps } from "./read-ops.ts";
 
 export type { TreeOps } from "./tree-ops.ts";
-export type { ReadOps } from "./read-ops.ts";
-export type { WriteOps, AuthorizeLinkFn } from "./write-ops.ts";
+export {
+  type FsContext,
+  type FsError,
+  fsError,
+  isFsError,
+  type NodeStoredInfo,
+  type ParentEntry,
+  type ResolvedNode,
+} from "./types.ts";
+export type { AuthorizeLinkFn, WriteOps } from "./write-ops.ts";
 
 // ============================================================================
 // Service Factory

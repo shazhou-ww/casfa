@@ -7,7 +7,7 @@
 
 import type { CasfaClient } from "@casfa/client";
 import type { HashProvider, StorageProvider } from "@casfa/core";
-import { createFsService, isFsError, type FsService } from "@casfa/fs";
+import { createFsService, type FsService, isFsError } from "@casfa/fs";
 import type { DepotListItem, FsLsChild } from "@casfa/protocol";
 import { createStore } from "zustand/vanilla";
 import type {
@@ -330,7 +330,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           currentPath || undefined,
           undefined,
           LS_PAGE_SIZE,
-          cursor,
+          cursor
         );
         if (isFsError(result)) {
           handleFsError(get, result);
@@ -376,9 +376,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     updateUploadItem: (id: string, patch: Partial<UploadQueueItem>) => {
       const { uploadQueue } = get();
       set({
-        uploadQueue: uploadQueue.map((item) =>
-          item.id === id ? { ...item, ...patch } : item,
-        ),
+        uploadQueue: uploadQueue.map((item) => (item.id === id ? { ...item, ...patch } : item)),
       });
     },
 
@@ -399,16 +397,16 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
       const targetPath = currentPath ? `${currentPath}/${name}` : name;
 
       try {
-        const result = await client.fs.mkdir(depotRoot, targetPath);
-        if (!result.ok) {
-          handleApiError(get, result.error);
+        const result = await localFs.mkdir(depotRoot, targetPath);
+        if (isFsError(result)) {
+          handleFsError(get, result);
           set({ operationLoading: { ...get().operationLoading, createFolder: false } });
           return false;
         }
         // Commit new root to depot (persists across refresh)
-        await client.depots.commit(depotId, { root: result.data.newRoot });
+        await client.depots.commit(depotId, { root: result.newRoot });
         set({
-          depotRoot: result.data.newRoot,
+          depotRoot: result.newRoot,
           operationLoading: { ...get().operationLoading, createFolder: false },
         });
         await get().refresh();
@@ -433,12 +431,12 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
       for (const item of items) {
         try {
-          const result = await client.fs.rm(currentRoot, item.path);
-          if (result.ok) {
-            currentRoot = result.data.newRoot;
+          const result = await localFs.rm(currentRoot, item.path);
+          if (!isFsError(result)) {
+            currentRoot = result.newRoot;
             success++;
           } else {
-            handleApiError(get, result.error);
+            handleFsError(get, result);
             failed++;
           }
         } catch {
@@ -472,16 +470,16 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
       const newPath = parentPath ? `${parentPath}/${newName}` : newName;
 
       try {
-        const result = await client.fs.mv(depotRoot, item.path, newPath);
-        if (!result.ok) {
-          handleApiError(get, result.error);
+        const result = await localFs.mv(depotRoot, item.path, newPath);
+        if (isFsError(result)) {
+          handleFsError(get, result);
           set({ operationLoading: { ...get().operationLoading, rename: false } });
           return false;
         }
         // Commit new root to depot
-        await client.depots.commit(depotId, { root: result.data.newRoot });
+        await client.depots.commit(depotId, { root: result.newRoot });
         set({
-          depotRoot: result.data.newRoot,
+          depotRoot: result.newRoot,
           operationLoading: { ...get().operationLoading, rename: false },
         });
         await get().refresh();
@@ -500,8 +498,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
       set({ operationLoading: { ...get().operationLoading, [op]: loading } }),
 
     // ── Permissions ──
-    setPermissions: (perms) =>
-      set({ permissions: { ...get().permissions, ...perms } }),
+    setPermissions: (perms) => set({ permissions: { ...get().permissions, ...perms } }),
 
     // ── Error ──
     setError: (error) => set({ lastError: error }),
@@ -515,7 +512,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 /** Map FsError (from @casfa/fs) to ExplorerError */
 function handleFsError(
   get: () => ExplorerStore,
-  error: { code: string; status: number; message: string },
+  error: { code: string; status: number; message: string }
 ) {
   const { setError, setPermissions } = get();
   if (error.status === 403) {
@@ -537,7 +534,7 @@ function handleFsError(
 /** Map HTTP API errors to ExplorerError */
 function handleApiError(
   get: () => ExplorerStore,
-  error: { code: string; message: string; status?: number },
+  error: { code: string; message: string; status?: number }
 ) {
   const { setError, setPermissions } = get();
   if (error.status === 403) {

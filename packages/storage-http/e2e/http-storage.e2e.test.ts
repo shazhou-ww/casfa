@@ -11,11 +11,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import {
-  type CasfaClient,
-  createClient,
-  type StoredRootDelegate,
-} from "@casfa/client";
+import { type CasfaClient, createClient, type StoredRootDelegate } from "@casfa/client";
 import { encodeFileNode, type HashProvider } from "@casfa/core";
 import { computePoP, type PopContext } from "@casfa/proof";
 import { hashToNodeKey, nodeKeyToStorageKey } from "@casfa/protocol";
@@ -25,10 +21,7 @@ import {
   type E2EContext,
   uniqueId,
 } from "../../../apps/server/backend/e2e/setup.ts";
-import {
-  createHttpStorage,
-  type HttpStorageConfig,
-} from "../src/http-storage.ts";
+import { createHttpStorage, type HttpStorageConfig } from "../src/http-storage.ts";
 
 // ============================================================================
 // Crypto helpers (real blake3, same as server)
@@ -66,10 +59,13 @@ const popContext: PopContext = {
 // Test helpers
 // ============================================================================
 
-async function createTestClient(ctx: E2EContext, options: {
-  canUpload?: boolean;
-  canManageDepot?: boolean;
-} = {}): Promise<{
+async function createTestClient(
+  ctx: E2EContext,
+  options: {
+    canUpload?: boolean;
+    canManageDepot?: boolean;
+  } = {}
+): Promise<{
   client: CasfaClient;
   realm: string;
   rootDelegate: StoredRootDelegate;
@@ -104,7 +100,7 @@ async function encodeTestFile(content: string) {
   const data = new TextEncoder().encode(content);
   const encoded = await encodeFileNode(
     { data, contentType: "text/plain", fileSize: data.length },
-    hashProvider,
+    hashProvider
   );
   const nodeKey = hashToNodeKey(encoded.hash);
   const storageKey = nodeKeyToStorageKey(nodeKey);
@@ -194,9 +190,7 @@ describe("storage-http E2E", () => {
       const { storage, client } = await createStorageWithClient(ctx);
 
       // Upload directly via client
-      const { nodeKey, storageKey, nodeBytes } = await encodeTestFile(
-        `get-test-${Date.now()}`,
-      );
+      const { nodeKey, storageKey, nodeBytes } = await encodeTestFile(`get-test-${Date.now()}`);
       const putResult = await client.nodes.put(nodeKey, nodeBytes);
       expect(putResult.ok).toBe(true);
 
@@ -222,9 +216,7 @@ describe("storage-http E2E", () => {
     it("should return true for an owned node", async () => {
       const { storage, client } = await createStorageWithClient(ctx);
 
-      const { nodeKey, storageKey, nodeBytes } = await encodeTestFile(
-        `has-owned-${Date.now()}`,
-      );
+      const { nodeKey, storageKey, nodeBytes } = await encodeTestFile(`has-owned-${Date.now()}`);
 
       // Upload (auto-owned by the uploader)
       const putResult = await client.nodes.put(nodeKey, nodeBytes);
@@ -237,9 +229,7 @@ describe("storage-http E2E", () => {
     it("should return false for an unowned node", async () => {
       // Client1 uploads a node
       const { client: client1 } = await createTestClient(ctx);
-      const { nodeKey, storageKey, nodeBytes } = await encodeTestFile(
-        `has-unowned-${Date.now()}`,
-      );
+      const { nodeKey, storageKey, nodeBytes } = await encodeTestFile(`has-unowned-${Date.now()}`);
       const putResult = await client1.nodes.put(nodeKey, nodeBytes);
       expect(putResult.ok).toBe(true);
 
@@ -257,9 +247,7 @@ describe("storage-http E2E", () => {
     it("should upload a missing node", async () => {
       const { storage, client } = await createStorageWithClient(ctx);
 
-      const { nodeKey, storageKey, nodeBytes } = await encodeTestFile(
-        `put-missing-${Date.now()}`,
-      );
+      const { nodeKey, storageKey, nodeBytes } = await encodeTestFile(`put-missing-${Date.now()}`);
 
       // Verify it's missing
       const checkBefore = await client.nodes.check({ keys: [nodeKey] });
@@ -278,9 +266,7 @@ describe("storage-http E2E", () => {
     it("should claim an unowned node", async () => {
       // Client1 uploads a node
       const { client: client1 } = await createTestClient(ctx);
-      const { nodeKey, storageKey, nodeBytes } = await encodeTestFile(
-        `put-claim-${Date.now()}`,
-      );
+      const { nodeKey, storageKey, nodeBytes } = await encodeTestFile(`put-claim-${Date.now()}`);
       const putResult = await client1.nodes.put(nodeKey, nodeBytes);
       expect(putResult.ok).toBe(true);
 
@@ -298,9 +284,7 @@ describe("storage-http E2E", () => {
     it("should no-op for an already-owned node", async () => {
       const { storage, client } = await createStorageWithClient(ctx);
 
-      const { nodeKey, storageKey, nodeBytes } = await encodeTestFile(
-        `put-owned-${Date.now()}`,
-      );
+      const { nodeKey, storageKey, nodeBytes } = await encodeTestFile(`put-owned-${Date.now()}`);
 
       // Upload via client first
       const putResult = await client.nodes.put(nodeKey, nodeBytes);
@@ -324,9 +308,7 @@ describe("storage-http E2E", () => {
     it("should roundtrip put then get", async () => {
       const { storage } = await createStorageWithClient(ctx);
 
-      const { storageKey, nodeBytes } = await encodeTestFile(
-        `roundtrip-${Date.now()}`,
-      );
+      const { storageKey, nodeBytes } = await encodeTestFile(`roundtrip-${Date.now()}`);
 
       await storage.put(storageKey, nodeBytes);
 
@@ -344,9 +326,7 @@ describe("storage-http E2E", () => {
     it("should cache check result so has after put is true", async () => {
       const { storage } = await createStorageWithClient(ctx);
 
-      const { storageKey, nodeBytes } = await encodeTestFile(
-        `cache-test-${Date.now()}`,
-      );
+      const { storageKey, nodeBytes } = await encodeTestFile(`cache-test-${Date.now()}`);
 
       // put caches "owned" after upload
       await storage.put(storageKey, nodeBytes);
@@ -358,9 +338,7 @@ describe("storage-http E2E", () => {
     it("should cache has result so put reuses it", async () => {
       const { storage } = await createStorageWithClient(ctx);
 
-      const { storageKey, nodeBytes } = await encodeTestFile(
-        `cache-has-put-${Date.now()}`,
-      );
+      const { storageKey, nodeBytes } = await encodeTestFile(`cache-has-put-${Date.now()}`);
 
       // has → caches "missing"
       expect(await storage.has(storageKey)).toBe(false);

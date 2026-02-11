@@ -4,9 +4,10 @@
  * Validates file sizes, enqueues files, and processes them sequentially.
  */
 
+import { isFsError } from "@casfa/fs";
 import { useCallback, useEffect, useRef } from "react";
-import { useExplorerStore } from "./use-explorer-context.ts";
 import type { ExplorerError } from "../types.ts";
+import { useExplorerStore } from "./use-explorer-context.ts";
 
 /** Maximum single file size: 4 MB */
 const MAX_FILE_SIZE = 4 * 1024 * 1024;
@@ -17,6 +18,7 @@ type UseUploadOpts = {
 
 export function useUpload({ onError }: UseUploadOpts = {}) {
   const client = useExplorerStore((s) => s.client);
+  const localFs = useExplorerStore((s) => s.localFs);
   const depotId = useExplorerStore((s) => s.depotId);
   const depotRoot = useExplorerStore((s) => s.depotRoot);
   const addToUploadQueue = useExplorerStore((s) => s.addToUploadQueue);
@@ -60,7 +62,7 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
         addToUploadQueue(validFiles);
       }
     },
-    [addToUploadQueue, setError, onError, permissions.canUpload],
+    [addToUploadQueue, setError, onError, permissions.canUpload]
   );
 
   /**
@@ -77,26 +79,33 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
 
     const doUpload = async () => {
       try {
-        const result = await client.fs.write(
+        // Convert File to Uint8Array for local FS write
+        const buffer = await nextPending.file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        const contentType = nextPending.file.type || "application/octet-stream";
+
+        const result = await localFs.write(
           depotRoot,
           nextPending.targetPath,
-          nextPending.file,
+          undefined,
+          bytes,
+          contentType
         );
-        if (result.ok) {
+        if (!isFsError(result)) {
           // Commit new root to depot (persists across refresh)
           if (depotId) {
-            await client.depots.commit(depotId, { root: result.data.newRoot }).catch(() => {});
+            await client.depots.commit(depotId, { root: result.newRoot }).catch(() => {});
           }
-          updateDepotRoot(result.data.newRoot);
+          updateDepotRoot(result.newRoot);
           updateUploadItem(nextPending.id, { status: "done" });
         } else {
           updateUploadItem(nextPending.id, {
             status: "error",
-            error: result.error.message,
+            error: result.message,
           });
           const explorerErr: ExplorerError = {
-            type: result.error.status === 403 ? "permission_denied" : "unknown",
-            message: result.error.message,
+            type: result.status === 403 ? "permission_denied" : "unknown",
+            message: result.message,
           };
           onError?.(explorerErr);
         }
@@ -111,12 +120,23 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
     };
 
     doUpload();
-  }, [uploadQueue, depotRoot, depotId, client, updateUploadItem, updateDepotRoot, onError]);
+  }, [
+    uploadQueue,
+    depotRoot,
+    depotId,
+    client,
+    localFs,
+    updateUploadItem,
+    updateDepotRoot,
+    onError,
+  ]);
 
   // Refresh directory listing when all uploads finish
   const prevHadPending = useRef(false);
   useEffect(() => {
-    const hasPending = uploadQueue.some((item) => item.status === "pending" || item.status === "uploading");
+    const hasPending = uploadQueue.some(
+      (item) => item.status === "pending" || item.status === "uploading"
+    );
     if (prevHadPending.current && !hasPending && uploadQueue.length > 0) {
       refresh();
     }
@@ -128,7 +148,7 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
     (id: string) => {
       removeFromUploadQueue(id);
     },
-    [removeFromUploadQueue],
+    [removeFromUploadQueue]
   );
 
   /** Retry a failed upload by resetting status to "pending" */
@@ -136,7 +156,7 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
     (id: string) => {
       updateUploadItem(id, { status: "pending", error: undefined });
     },
-    [updateUploadItem],
+    [updateUploadItem]
   );
 
   return { uploadFiles, cancelUpload, retryUpload };

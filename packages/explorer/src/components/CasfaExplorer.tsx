@@ -2,16 +2,10 @@
  * <CasfaExplorer /> - Top-level file explorer component.
  */
 
-import { useMemo, useRef } from "react";
 import { Box } from "@mui/material";
-import {
-  createExplorerStore,
-  type ExplorerStoreApi,
-} from "../core/explorer-store.ts";
-import {
-  ExplorerStoreContext,
-  ExplorerI18nContext,
-} from "../hooks/use-explorer-context.ts";
+import { useMemo, useRef } from "react";
+import { createExplorerStore, type ExplorerStoreApi } from "../core/explorer-store.ts";
+import { ExplorerI18nContext, ExplorerStoreContext } from "../hooks/use-explorer-context.ts";
 import { createEnUsT } from "../i18n/en-US.ts";
 import { createZhCnT } from "../i18n/zh-CN.ts";
 import type { CasfaExplorerProps, ExplorerT } from "../types.ts";

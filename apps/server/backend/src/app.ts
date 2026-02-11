@@ -94,8 +94,17 @@ export type AppDependencies = {
  * This is a pure assembly function - all dependencies must be provided.
  */
 export const createApp = (deps: AppDependencies): Hono<Env> => {
-  const { config, db, storage, hashProvider, jwtVerifier, mockJwtSecret, runtimeInfo,
-    serveStaticMiddleware, serveStaticFallbackMiddleware } = deps;
+  const {
+    config,
+    db,
+    storage,
+    hashProvider,
+    jwtVerifier,
+    mockJwtSecret,
+    runtimeInfo,
+    serveStaticMiddleware,
+    serveStaticFallbackMiddleware,
+  } = deps;
   const {
     delegatesDb,
     scopeSetNodesDb,
@@ -120,7 +129,9 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   const authorizedUserMiddleware = createAuthorizedUserMiddleware();
   const proofValidationMiddleware = createProofValidationMiddleware({
     hasOwnership: (nodeHash, delegateId) =>
-      isWellKnownNode(nodeHash) ? Promise.resolve(true) : ownershipV2Db.hasOwnership(nodeHash, delegateId),
+      isWellKnownNode(nodeHash)
+        ? Promise.resolve(true)
+        : ownershipV2Db.hasOwnership(nodeHash, delegateId),
     isRootDelegate: async (delegateId) => {
       // Root delegate = depth 0, parentId null.
       // The delegateId comes from the auth context, and we can look it

@@ -6,8 +6,6 @@
  * Cut/Copy/Paste/Download/CAS URI are shown as disabled (Iter 4).
  */
 
-import { useCallback, useMemo } from "react";
-import { Divider, ListItemIcon, ListItemText, Menu, MenuItem, Typography } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import ContentCutIcon from "@mui/icons-material/ContentCut";
 import ContentPasteIcon from "@mui/icons-material/ContentPaste";
@@ -18,6 +16,8 @@ import DriveFileRenameOutlineIcon from "@mui/icons-material/DriveFileRenameOutli
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
+import { Divider, ListItemIcon, ListItemText, Menu, MenuItem, Typography } from "@mui/material";
+import { useCallback, useMemo } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import type { ExplorerItem, ExplorerMenuItem } from "../types.ts";
 
@@ -62,7 +62,7 @@ export function ContextMenu({
       action();
       onClose();
     },
-    [onClose],
+    [onClose]
   );
 
   const menuItems = useMemo(() => {
@@ -107,7 +107,7 @@ export function ContextMenu({
           onClick: () => onDelete?.(selectedItems),
           disabled: false,
           hidden: !canUpload,
-        },
+        }
       );
     } else if (targetItem) {
       if (targetItem.isDirectory) {
@@ -184,7 +184,7 @@ export function ContextMenu({
             onClick: () => onUpload?.(),
             disabled: false,
             hidden: !canUpload,
-          },
+          }
         );
       } else {
         // ── File menu ──
@@ -242,7 +242,7 @@ export function ContextMenu({
             onClick: () => onDelete?.([targetItem]),
             disabled: false,
             hidden: !canUpload,
-          },
+          }
         );
       }
     } else {
@@ -282,7 +282,7 @@ export function ContextMenu({
           onClick: () => onRefresh?.(),
           disabled: false,
           hidden: false,
-        },
+        }
       );
     }
 
@@ -312,11 +312,7 @@ export function ContextMenu({
       }}
     >
       {menuItems.map((item) => [
-        <MenuItem
-          key={item.key}
-          onClick={handleAction(item.onClick)}
-          disabled={item.disabled}
-        >
+        <MenuItem key={item.key} onClick={handleAction(item.onClick)} disabled={item.disabled}>
           <ListItemIcon>{item.icon}</ListItemIcon>
           <ListItemText>{item.label}</ListItemText>
           {item.shortcut && (
@@ -335,7 +331,11 @@ export function ContextMenu({
           {extraItems.map((extra) => (
             <MenuItem
               key={extra.key}
-              onClick={handleAction(() => extra.onClick(selectedItems.length > 0 ? selectedItems : targetItem ? [targetItem] : []))}
+              onClick={handleAction(() =>
+                extra.onClick(
+                  selectedItems.length > 0 ? selectedItems : targetItem ? [targetItem] : []
+                )
+              )}
               disabled={extra.disabled}
             >
               {extra.icon && <ListItemIcon>{extra.icon}</ListItemIcon>}

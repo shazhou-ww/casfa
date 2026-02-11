@@ -24,7 +24,7 @@ export const createReadOps = (tree: TreeOps) => {
   const stat = async (
     rootNodeKey: string,
     pathStr?: string,
-    indexPathStr?: string,
+    indexPathStr?: string
   ): Promise<FsStatResponse | FsError> => {
     const rootKey = await tree.resolveNodeKey(rootNodeKey);
     if (typeof rootKey === "object") return rootKey;
@@ -68,7 +68,7 @@ export const createReadOps = (tree: TreeOps) => {
   const read = async (
     rootNodeKey: string,
     pathStr?: string,
-    indexPathStr?: string,
+    indexPathStr?: string
   ): Promise<{ data: Uint8Array; contentType: string; size: number; key: string } | FsError> => {
     const rootKey = await tree.resolveNodeKey(rootNodeKey);
     if (typeof rootKey === "object") return rootKey;
@@ -88,7 +88,7 @@ export const createReadOps = (tree: TreeOps) => {
       return fsError(
         "FILE_TOO_LARGE",
         400,
-        "File has successor nodes (multi-block). Use the Node API to read.",
+        "File has successor nodes (multi-block). Use the Node API to read."
       );
     }
 
@@ -108,7 +108,7 @@ export const createReadOps = (tree: TreeOps) => {
     pathStr?: string,
     indexPathStr?: string,
     limit = 100,
-    cursor?: string,
+    cursor?: string
   ): Promise<FsLsResponse | FsError> => {
     const rootKey = await tree.resolveNodeKey(rootNodeKey);
     if (typeof rootKey === "object") return rootKey;
