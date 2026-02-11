@@ -59,7 +59,7 @@ export function DepotSelector({ onSelect }: DepotSelectorProps) {
     ? depots.filter(
         (d) =>
           d.depotId.toLowerCase().includes(search.toLowerCase()) ||
-          (d.title && d.title.toLowerCase().includes(search.toLowerCase()))
+          d.title?.toLowerCase().includes(search.toLowerCase())
       )
     : depots;
 

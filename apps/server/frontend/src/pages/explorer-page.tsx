@@ -7,7 +7,7 @@
  */
 
 import type { CasfaClient } from "@casfa/client";
-import type { HashProvider, StorageProvider } from "@casfa/core";
+import type { StorageProvider } from "@casfa/core";
 import { CasfaExplorer } from "@casfa/explorer";
 import { Box, CircularProgress } from "@mui/material";
 import { useEffect, useState } from "react";

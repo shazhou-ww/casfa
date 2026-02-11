@@ -154,6 +154,7 @@ export function FileList({
     return (
       <Box sx={{ p: 2 }}>
         {Array.from({ length: 8 }).map((_, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders never reorder
           <Skeleton key={i} height={40} sx={{ mb: 0.5 }} />
         ))}
       </Box>
