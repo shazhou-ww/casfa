@@ -20,6 +20,9 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run build"
   },
+  "dependencies": {
+    "@casfa/storage-core": "workspace:*"
+  },
   "devDependencies": {
     "@noble/hashes": "^1.7.1",
     "@types/bun": "latest",
