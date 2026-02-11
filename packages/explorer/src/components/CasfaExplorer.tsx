@@ -29,6 +29,8 @@ export function CasfaExplorer(props: CasfaExplorerProps) {
   if (!store.current) {
     store.current = createExplorerStore({
       client: props.client,
+      storage: props.storage,
+      hash: props.hash,
       depotId: props.depotId,
       initialPath: props.initialPath,
       initialLayout: props.initialLayout,

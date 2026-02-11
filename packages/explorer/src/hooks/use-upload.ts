@@ -17,6 +17,7 @@ type UseUploadOpts = {
 
 export function useUpload({ onError }: UseUploadOpts = {}) {
   const client = useExplorerStore((s) => s.client);
+  const depotId = useExplorerStore((s) => s.depotId);
   const depotRoot = useExplorerStore((s) => s.depotRoot);
   const addToUploadQueue = useExplorerStore((s) => s.addToUploadQueue);
   const updateUploadItem = useExplorerStore((s) => s.updateUploadItem);
@@ -82,6 +83,10 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
           nextPending.file,
         );
         if (result.ok) {
+          // Commit new root to depot (persists across refresh)
+          if (depotId) {
+            await client.depots.commit(depotId, { root: result.data.newRoot }).catch(() => {});
+          }
           updateDepotRoot(result.data.newRoot);
           updateUploadItem(nextPending.id, { status: "done" });
         } else {
@@ -106,7 +111,7 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
     };
 
     doUpload();
-  }, [uploadQueue, depotRoot, client, updateUploadItem, onError]);
+  }, [uploadQueue, depotRoot, depotId, client, updateUploadItem, updateDepotRoot, onError]);
 
   // Refresh directory listing when all uploads finish
   const prevHadPending = useRef(false);

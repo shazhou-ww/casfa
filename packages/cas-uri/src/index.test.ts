@@ -280,7 +280,7 @@ describe("rootUri", () => {
   it("should return root", () => {
     const uri = nodeUri(VALID_HASH, ["deep", "nested", "path"], "index");
     const root = rootUri(uri);
-    expect(root.root).toEqual({ type: "node", hash: VALID_HASH });
+    expect(root.root).toEqual({ type: "nod", hash: VALID_HASH });
     expect(root.path).toEqual([]);
     expect(root.indexPath).toBeNull();
   });

@@ -52,6 +52,8 @@
     "@casfa/protocol": "workspace:*",
     "@casfa/storage-core": "workspace:*",
     "@casfa/storage-fs": "workspace:*",
+    "@casfa/storage-http": "workspace:*",
+    "@casfa/storage-indexeddb": "workspace:*",
     "@casfa/storage-memory": "workspace:*",
     "@casfa/storage-s3": "workspace:*",
     "@casfa/explorer": "workspace:*",

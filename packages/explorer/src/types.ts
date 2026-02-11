@@ -4,6 +4,7 @@
 
 import type { SxProps, Theme } from "@mui/material";
 import type { CasfaClient } from "@casfa/client";
+import type { HashProvider, StorageProvider } from "@casfa/core";
 import type React from "react";
 
 // ============================================================================
@@ -149,9 +150,28 @@ export type ExplorerError = {
 // ============================================================================
 
 export type CasfaExplorerProps = {
-  // ── Connection (only required prop) ──
-  /** Initialized CasfaClient instance */
+  // ── Connection (required) ──
+  /** Initialized CasfaClient instance (depot API, node uploads, auth) */
   client: CasfaClient;
+
+  // ── CAS local operations ──
+  /**
+   * CAS StorageProvider for local tree operations.
+   *
+   * All filesystem operations (ls, mkdir, write, rm, mv) run locally
+   * via @casfa/fs, fetching/storing individual CAS nodes through this
+   * provider (typically CachedStorage backed by IndexedDB + HTTP).
+   *
+   * After write operations, the new root is committed to the server
+   * via `client.depots.commit()`.
+   */
+  storage: StorageProvider;
+
+  /**
+   * BLAKE3s-128 hash provider for CAS node encoding.
+   * Required for write operations (mkdir, write, rm, mv).
+   */
+  hash: HashProvider;
 
   // ── Depot ──
   /** Specify depot. Omit to show built-in depot selector */
