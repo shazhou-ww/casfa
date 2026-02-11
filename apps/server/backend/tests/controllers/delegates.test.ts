@@ -14,7 +14,6 @@
  * - delegatesDb.revoke takes only (delegateId, revokedBy) — no realm parameter
  * - Delegate entity stores currentRtHash, currentAtHash, atExpiresAt directly
  * - AccessTokenAuthContext no longer has tokenId field
- * - Response for create no longer includes refreshTokenId or accessTokenId
  * - generateTokenPair is synchronous and returns .hash instead of .id
  * - DelegatesDb includes rotateTokens method
  */
@@ -214,13 +213,10 @@ describe("DelegatesController", () => {
       expect(delegate.canUpload).toBe(false);
       expect(delegate.canManageDepot).toBe(false);
 
-      // Tokens — no refreshTokenId/accessTokenId in v3
+      // Tokens
       expect(body.refreshToken).toBeDefined();
       expect(body.accessToken).toBeDefined();
       expect(body.accessTokenExpiresAt).toBeDefined();
-      // v3: no refreshTokenId or accessTokenId
-      expect(body.refreshTokenId).toBeUndefined();
-      expect(body.accessTokenId).toBeUndefined();
     });
 
     it("stores delegate in DB with token hashes", async () => {

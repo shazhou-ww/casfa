@@ -29,8 +29,8 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@casfa/core": "workspace:*",
     "@casfa/client": "workspace:*",
+    "@casfa/core": "workspace:*",
     "@casfa/protocol": "workspace:*",
     "@noble/hashes": "^2.0.1",
     "chalk": "^5.3.0",
@@ -39,7 +39,8 @@
     "enquirer": "^2.4.1",
     "open": "^10.1.0",
     "ora": "^8.1.0",
-    "yaml": "^2.5.0"
+    "yaml": "^2.5.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@aws-sdk/client-dynamodb": "^3.975.0",

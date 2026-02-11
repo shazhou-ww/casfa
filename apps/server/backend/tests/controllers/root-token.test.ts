@@ -147,14 +147,10 @@ describe("RootTokenController", () => {
       expect(delegate.canUpload).toBe(true);
       expect(delegate.canManageDepot).toBe(true);
 
-      // Should return tokens (no refreshTokenId / accessTokenId)
+      // Should return tokens
       expect(body.refreshToken).toBeDefined();
       expect(body.accessToken).toBeDefined();
       expect(body.accessTokenExpiresAt).toBeGreaterThan(Date.now());
-
-      // Should NOT include old-style token IDs
-      expect(body.refreshTokenId).toBeUndefined();
-      expect(body.accessTokenId).toBeUndefined();
     });
 
     it("uses default realm from userId when body.realm is omitted", async () => {

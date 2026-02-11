@@ -31,7 +31,7 @@ describe("Realm API", () => {
 
       // Note: The actual route is /:realmId (not /:realmId/info)
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${realm}`
       );
@@ -64,7 +64,7 @@ describe("Realm API", () => {
 
       // Try to access user2's realm with user1's token
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${otherRealm}/info`
       );
@@ -82,7 +82,7 @@ describe("Realm API", () => {
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${realm}/usage`
       );
@@ -108,7 +108,7 @@ describe("Realm API", () => {
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${realm}/usage`
       );
@@ -139,7 +139,7 @@ describe("Realm API", () => {
 
       // Try to access user2's realm with user1's token
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${otherRealm}/usage`
       );
@@ -158,7 +158,7 @@ describe("Realm API", () => {
 
       // Note: The actual route is /:realmId (not /:realmId/info)
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${realm}`
       );
@@ -177,7 +177,7 @@ describe("Realm API", () => {
 
       // Child delegate access token should work for realm API (read operation)
       const response = await ctx.helpers.accessRequest(
-        childToken.tokenBase64,
+        childToken.accessToken,
         "GET",
         `/api/realm/${realm}`
       );

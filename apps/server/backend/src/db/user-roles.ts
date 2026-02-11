@@ -96,7 +96,7 @@ export const createUserRolesDb = (config: UserRolesDbConfig): UserRolesDb => {
     );
 
     return (result.Items ?? []).map((item) => ({
-      userId: item.userId,
+      userId: item.userId ?? (item.pk as string).replace(/^USER#/, ""),
       role: item.role as UserRole,
     }));
   };

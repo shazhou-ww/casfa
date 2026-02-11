@@ -42,7 +42,7 @@ describe("Depot Management", () => {
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${realm}/depots`
       );
@@ -63,7 +63,7 @@ describe("Depot Management", () => {
       // Create a few depots
       for (let i = 0; i < 3; i++) {
         await ctx.helpers.accessRequest(
-          accessToken.tokenBase64,
+          accessToken.accessToken,
           "POST",
           `/api/realm/${realm}/depots`,
           { title: `Depot ${i}` }
@@ -71,7 +71,7 @@ describe("Depot Management", () => {
       }
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${realm}/depots?limit=2`
       );
@@ -91,7 +91,7 @@ describe("Depot Management", () => {
       });
 
       const response = await ctx.helpers.accessRequest(
-        childToken.tokenBase64,
+        childToken.accessToken,
         "GET",
         `/api/realm/${realm}/depots`
       );
@@ -120,7 +120,7 @@ describe("Depot Management", () => {
       });
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "POST",
         `/api/realm/${realm}/depots`,
         {
@@ -145,7 +145,7 @@ describe("Depot Management", () => {
       });
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "POST",
         `/api/realm/${realm}/depots`,
         { title: "Default History Depot" }
@@ -166,7 +166,7 @@ describe("Depot Management", () => {
       });
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "POST",
         `/api/realm/${realm}/depots`,
         { title: "Unauthorized Depot" }
@@ -185,7 +185,7 @@ describe("Depot Management", () => {
 
       // Empty body is allowed - title will be auto-generated or empty
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "POST",
         `/api/realm/${realm}/depots`,
         {}
@@ -220,7 +220,7 @@ describe("Depot Management", () => {
 
       // Create a depot
       const createResponse = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "POST",
         `/api/realm/${realm}/depots`,
         { title: "Detail Test Depot" }
@@ -231,7 +231,7 @@ describe("Depot Management", () => {
 
       // Get details
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${realm}/depots/${created.depotId}`
       );
@@ -249,7 +249,7 @@ describe("Depot Management", () => {
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${realm}/depots/dpt_nonexistent123`
       );
@@ -273,7 +273,7 @@ describe("Depot Management", () => {
 
       // Create a depot
       const createResponse = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "POST",
         `/api/realm/${realm}/depots`,
         { title: "Original Title" }
@@ -283,7 +283,7 @@ describe("Depot Management", () => {
 
       // Update title
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "PATCH",
         `/api/realm/${realm}/depots/${created.depotId}`,
         { title: "Updated Title" }
@@ -304,7 +304,7 @@ describe("Depot Management", () => {
       });
 
       const createResponse = await ctx.helpers.accessRequest(
-        createToken.tokenBase64,
+        createToken.accessToken,
         "POST",
         `/api/realm/${realm}/depots`,
         { title: "Test Depot" }
@@ -318,7 +318,7 @@ describe("Depot Management", () => {
       });
 
       const response = await ctx.helpers.accessRequest(
-        readOnlyToken.tokenBase64,
+        readOnlyToken.accessToken,
         "PATCH",
         `/api/realm/${realm}/depots/${created.depotId}`,
         { title: "Unauthorized Update" }
@@ -343,7 +343,7 @@ describe("Depot Management", () => {
 
       // Create a depot
       const createResponse = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "POST",
         `/api/realm/${realm}/depots`,
         { title: "To Delete" }
@@ -353,7 +353,7 @@ describe("Depot Management", () => {
 
       // Delete
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "DELETE",
         `/api/realm/${realm}/depots/${created.depotId}`
       );
@@ -362,7 +362,7 @@ describe("Depot Management", () => {
 
       // Verify deleted
       const getResponse = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${realm}/depots/${created.depotId}`
       );
@@ -380,7 +380,7 @@ describe("Depot Management", () => {
 
       // Use the actual mainDepotId (26-char base32), not the string "MAIN"
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "DELETE",
         `/api/realm/${realm}/depots/${mainDepotId}`
       );
@@ -398,7 +398,7 @@ describe("Depot Management", () => {
       });
 
       const createResponse = await ctx.helpers.accessRequest(
-        createToken.tokenBase64,
+        createToken.accessToken,
         "POST",
         `/api/realm/${realm}/depots`,
         { title: "Protected Depot" }
@@ -412,7 +412,7 @@ describe("Depot Management", () => {
       });
 
       const response = await ctx.helpers.accessRequest(
-        readOnlyToken.tokenBase64,
+        readOnlyToken.accessToken,
         "DELETE",
         `/api/realm/${realm}/depots/${created.depotId}`
       );
@@ -435,7 +435,7 @@ describe("Depot Management", () => {
       const accessToken = await ctx.helpers.createAccessToken(token, realm);
 
       const response = await ctx.helpers.accessRequest(
-        accessToken.tokenBase64,
+        accessToken.accessToken,
         "GET",
         `/api/realm/${otherRealm}/depots`
       );
