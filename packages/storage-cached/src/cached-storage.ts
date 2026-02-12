@@ -316,16 +316,19 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
   // -- Load persisted pending keys on init --
   let initPromise: Promise<void> | null = null;
   if (pendingKeyStore) {
-    initPromise = pendingKeyStore.load().then((keys) => {
-      for (const key of keys) {
-        pendingKeys.add(key);
-      }
-      if (pendingKeys.size > 0) {
-        scheduleSync();
-      }
-    }).catch((err) => {
-      console.error("[CachedStorage] Failed to load persisted pending keys:", err);
-    });
+    initPromise = pendingKeyStore
+      .load()
+      .then((keys) => {
+        for (const key of keys) {
+          pendingKeys.add(key);
+        }
+        if (pendingKeys.size > 0) {
+          scheduleSync();
+        }
+      })
+      .catch((err) => {
+        console.error("[CachedStorage] Failed to load persisted pending keys:", err);
+      });
   }
 
   /**

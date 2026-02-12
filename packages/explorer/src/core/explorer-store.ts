@@ -34,7 +34,9 @@ export type ExplorerState = {
   /** @deprecated Use scheduleCommit for background sync instead. */
   beforeCommit: (() => Promise<void>) | null;
   /** When provided, write ops enqueue background commit instead of direct call. */
-  scheduleCommit: ((depotId: string, newRoot: string, lastKnownServerRoot: string | null) => void) | null;
+  scheduleCommit:
+    | ((depotId: string, newRoot: string, lastKnownServerRoot: string | null) => void)
+    | null;
   depotId: string | null;
   depotRoot: string | null; // current root node key
 
@@ -676,7 +678,8 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     },
 
     pasteItems: async (targetPath: string) => {
-      const { clipboard, localFs, depotRoot, depotId, client, beforeCommit, scheduleCommit } = get();
+      const { clipboard, localFs, depotRoot, depotId, client, beforeCommit, scheduleCommit } =
+        get();
       if (!clipboard || !depotRoot || !depotId) return;
 
       set({ operationLoading: { ...get().operationLoading, paste: true } });

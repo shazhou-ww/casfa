@@ -19,14 +19,13 @@
 
 import type { KeyProvider } from "@casfa/core";
 import { computeSizeFlagByte, encodeCB32, validateNodeStructure } from "@casfa/core";
+import type { SyncManager } from "@casfa/explorer";
 import type { PopContext } from "@casfa/proof";
 import { type CachedStorageProvider, createCachedStorage } from "@casfa/storage-cached";
 import { createHttpStorage } from "@casfa/storage-http";
 import { createIndexedDBStorage } from "@casfa/storage-indexeddb";
 import { blake3 } from "@noble/hashes/blake3";
 import { getClient } from "./client.ts";
-
-import type { SyncManager } from "@casfa/explorer";
 
 // ============================================================================
 // KeyProvider — BLAKE3s-128 with size-flag byte (browser-compatible)

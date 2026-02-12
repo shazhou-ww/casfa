@@ -12,10 +12,10 @@ import type { StorageProvider } from "@casfa/core";
 import {
   CasfaExplorer,
   type ConflictEvent,
+  createSyncManager,
   type FlushableStorage,
   type SyncManager,
   type SyncState,
-  createSyncManager,
 } from "@casfa/explorer";
 import {
   CheckCircle,
@@ -48,8 +48,8 @@ import {
   getSyncLog,
   onSyncLogChange,
   onSyncStatusChange,
-  setSyncManager,
   type SyncLogEntry,
+  setSyncManager,
 } from "../lib/storage.ts";
 import { createSyncQueueStore } from "../lib/sync-queue-store.ts";
 
@@ -247,11 +247,7 @@ function SyncIndicator({ syncManager }: { syncManager: SyncManager | null }) {
           }}
         >
           {icon}
-          <Typography
-            variant="caption"
-            color={labelColor}
-            sx={{ flex: 1, fontWeight: 500 }}
-          >
+          <Typography variant="caption" color={labelColor} sx={{ flex: 1, fontWeight: 500 }}>
             {label}
           </Typography>
           {log.length > 0 && (

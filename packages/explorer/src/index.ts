@@ -39,10 +39,11 @@ export {
 } from "./core/explorer-store.ts";
 // ── Sync Manager ──
 export {
-  createSyncManager,
   type ConflictEvent,
+  createSyncManager,
   type DepotSyncEntry,
   type FlushableStorage,
+  type SyncErrorEvent,
   type SyncManager,
   type SyncManagerConfig,
   type SyncQueueStore,

@@ -15,12 +15,13 @@
  * - onStateChange / onConflict: listener lifecycle
  */
 
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import type { CasfaClient } from "@casfa/client";
 import type {
   ConflictEvent,
   DepotSyncEntry,
   FlushableStorage,
+  SyncErrorEvent,
   SyncQueueStore,
   SyncState,
 } from "./sync-manager.ts";
@@ -291,7 +292,11 @@ describe("createSyncManager", () => {
         commitFn: async (depotId, params) => {
           commitCalls.push(params.root);
           depots.get(depotId)!.root = params.root;
-          return { ok: true, data: { depotId, root: params.root, updatedAt: Date.now() }, status: 200 };
+          return {
+            ok: true,
+            data: { depotId, root: params.root, updatedAt: Date.now() },
+            status: 200,
+          };
         },
       });
 
@@ -328,7 +333,11 @@ describe("createSyncManager", () => {
         commitFn: async (depotId, params) => {
           events.push("commit");
           depots.get(depotId)!.root = params.root;
-          return { ok: true, data: { depotId, root: params.root, updatedAt: Date.now() }, status: 200 };
+          return {
+            ok: true,
+            data: { depotId, root: params.root, updatedAt: Date.now() },
+            status: 200,
+          };
         },
       });
 
@@ -531,7 +540,11 @@ describe("createSyncManager", () => {
         depots,
         commitFn: async (_depotId, params) => {
           commitCalls.push(params.root);
-          return { ok: true, data: { depotId: "d1", root: params.root, updatedAt: Date.now() }, status: 200 };
+          return {
+            ok: true,
+            data: { depotId: "d1", root: params.root, updatedAt: Date.now() },
+            status: 200,
+          };
         },
       });
 
@@ -571,7 +584,11 @@ describe("createSyncManager", () => {
         depots,
         commitFn: async (_depotId, params) => {
           commitCalls.push(params.root);
-          return { ok: true, data: { depotId: "d1", root: params.root, updatedAt: Date.now() }, status: 200 };
+          return {
+            ok: true,
+            data: { depotId: "d1", root: params.root, updatedAt: Date.now() },
+            status: 200,
+          };
         },
       });
 
@@ -600,16 +617,25 @@ describe("createSyncManager", () => {
   // --------------------------------------------------------------------------
 
   describe("retry", () => {
-    it("should increment retryCount on commit failure", async () => {
+    it("should increment retryCount on network error (fetch throws)", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
       const client = createMockClient({
         commitFn: async () => {
-          throw new Error("server error");
+          throw new TypeError("Failed to fetch");
         },
         getFn: async (depotId) => ({
           ok: true,
-          data: { depotId, root: "rootA", title: null, maxHistory: 10, history: [], creatorIssuerId: "t", createdAt: 0, updatedAt: 0 },
+          data: {
+            depotId,
+            root: "rootA",
+            title: null,
+            maxHistory: 10,
+            history: [],
+            creatorIssuerId: "t",
+            createdAt: 0,
+            updatedAt: 0,
+          },
           status: 200,
         }),
       });
@@ -633,7 +659,74 @@ describe("createSyncManager", () => {
       expect(entry!.retryCount).toBeGreaterThanOrEqual(1);
     });
 
-    it("should give up after MAX_RETRY_COUNT (10)", async () => {
+    it("should retry on 5xx server error (retryable)", async () => {
+      const store = createMemoryQueueStore();
+      const storage = createMockStorage();
+      const client = createMockClient({
+        getFn: async (depotId) => ({
+          ok: true,
+          data: {
+            depotId,
+            root: "rootA",
+            title: null,
+            maxHistory: 10,
+            history: [],
+            creatorIssuerId: "t",
+            createdAt: 0,
+            updatedAt: 0,
+          },
+          status: 200,
+        }),
+        commitFn: async () => ({
+          ok: false,
+          error: { code: "internal_error", message: "Internal server error", status: 500 },
+        }),
+      });
+
+      const mgr = createSyncManager({
+        storage,
+        client,
+        queueStore: store,
+        debounceMs: DEBOUNCE,
+      });
+
+      mgr.enqueue("d1", "rootB", "rootA");
+      await wait(DEBOUNCE + 100);
+      mgr.dispose();
+
+      // Should retry — entry still in queue with incremented retryCount
+      const entry = store.entries.get("d1");
+      expect(entry).toBeDefined();
+      expect(entry!.retryCount).toBeGreaterThanOrEqual(1);
+    });
+
+    it("should retry on 429 rate-limit error (retryable)", async () => {
+      const store = createMemoryQueueStore();
+      const storage = createMockStorage();
+      const client = createMockClient({
+        getFn: async () => ({
+          ok: false,
+          error: { code: "rate_limited", message: "Too many requests", status: 429 },
+        }),
+      });
+
+      const mgr = createSyncManager({
+        storage,
+        client,
+        queueStore: store,
+        debounceMs: DEBOUNCE,
+      });
+
+      mgr.enqueue("d1", "rootB", "rootA");
+      await wait(DEBOUNCE + 100);
+      mgr.dispose();
+
+      const entry = store.entries.get("d1");
+      expect(entry).toBeDefined();
+      expect(entry!.retryCount).toBeGreaterThanOrEqual(1);
+    });
+
+    it("should give up after MAX_RETRY_COUNT (10) and remove entry", async () => {
       const store = createMemoryQueueStore();
       // Pre-populate with an entry at max retries
       store.entries.set("d1", {
@@ -650,15 +743,29 @@ describe("createSyncManager", () => {
       const client = createMockClient({
         getFn: async (depotId) => ({
           ok: true,
-          data: { depotId, root: "rootA", title: null, maxHistory: 10, history: [], creatorIssuerId: "t", createdAt: 0, updatedAt: 0 },
+          data: {
+            depotId,
+            root: "rootA",
+            title: null,
+            maxHistory: 10,
+            history: [],
+            creatorIssuerId: "t",
+            createdAt: 0,
+            updatedAt: 0,
+          },
           status: 200,
         }),
         commitFn: async (_depotId, params) => {
           commitCalls.push(params.root);
-          return { ok: true, data: { depotId: "d1", root: params.root, updatedAt: Date.now() }, status: 200 };
+          return {
+            ok: true,
+            data: { depotId: "d1", root: params.root, updatedAt: Date.now() },
+            status: 200,
+          };
         },
       });
 
+      const errors: SyncErrorEvent[] = [];
       const mgr = createSyncManager({
         storage,
         client,
@@ -666,12 +773,21 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
+      mgr.onError((e) => errors.push(e));
+
       // Recover loads the maxed-out entry
       await mgr.recover();
       await wait(DEBOUNCE + 100);
 
       // Should NOT attempt commit (exceeded max retries)
       expect(commitCalls).toHaveLength(0);
+      // Entry should be REMOVED from queue (not stuck forever)
+      expect(store.entries.size).toBe(0);
+      expect(mgr.getPendingCount()).toBe(0);
+      // Should emit permanent error
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.permanent).toBe(true);
+      expect(errors[0]!.error.code).toBe("max_retries");
 
       mgr.dispose();
     });
@@ -807,7 +923,11 @@ describe("createSyncManager", () => {
         commitFn: async (_depotId, params) => {
           commitCalls.push(params.root);
           depots.get("d1")!.root = params.root;
-          return { ok: true, data: { depotId: "d1", root: params.root, updatedAt: Date.now() }, status: 200 };
+          return {
+            ok: true,
+            data: { depotId: "d1", root: params.root, updatedAt: Date.now() },
+            status: 200,
+          };
         },
       });
 
@@ -885,18 +1005,28 @@ describe("createSyncManager", () => {
   // --------------------------------------------------------------------------
 
   describe("commit error handling", () => {
-    it("should increment retryCount when commit returns ok:false", async () => {
+    it("should NOT retry when commit returns ok:false with 4xx (permanent)", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
+      const errors: SyncErrorEvent[] = [];
       const client = createMockClient({
         getFn: async (depotId) => ({
           ok: true,
-          data: { depotId, root: "rootA", title: null, maxHistory: 10, history: [], creatorIssuerId: "t", createdAt: 0, updatedAt: 0 },
+          data: {
+            depotId,
+            root: "rootA",
+            title: null,
+            maxHistory: 10,
+            history: [],
+            creatorIssuerId: "t",
+            createdAt: 0,
+            updatedAt: 0,
+          },
           status: 200,
         }),
         commitFn: async () => ({
           ok: false,
-          error: { code: "server_error", message: "Internal server error" },
+          error: { code: "invalid_root", message: "Root hash not found", status: 400 },
         }),
       });
 
@@ -907,22 +1037,104 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
+      mgr.onError((e) => errors.push(e));
       mgr.enqueue("d1", "rootB", "rootA");
       await wait(DEBOUNCE + 100);
       mgr.dispose();
 
+      // Entry should be REMOVED (permanent failure, no retry)
+      expect(store.entries.has("d1")).toBe(false);
+      expect(mgr.getPendingCount()).toBe(0);
+      // Should emit permanent error event
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.permanent).toBe(true);
+      expect(errors[0]!.error.code).toBe("invalid_root");
+    });
+
+    it("should NOT retry when get depot returns ok:false with 4xx (permanent)", async () => {
+      const store = createMemoryQueueStore();
+      const storage = createMockStorage();
+      const errors: SyncErrorEvent[] = [];
+      const client = createMockClient({
+        getFn: async () => ({
+          ok: false,
+          error: { code: "not_found", message: "Depot not found", status: 404 },
+        }),
+      });
+
+      const mgr = createSyncManager({
+        storage,
+        client,
+        queueStore: store,
+        debounceMs: DEBOUNCE,
+      });
+
+      mgr.onError((e) => errors.push(e));
+      mgr.enqueue("d1", "rootB", "rootA");
+      await wait(DEBOUNCE + 100);
+      mgr.dispose();
+
+      // Entry should be REMOVED (permanent failure, no retry)
+      expect(store.entries.has("d1")).toBe(false);
+      expect(mgr.getPendingCount()).toBe(0);
+      // Should emit permanent error event
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.permanent).toBe(true);
+      expect(errors[0]!.error.code).toBe("not_found");
+    });
+
+    it("should retry when commit returns ok:false with 5xx (transient)", async () => {
+      const store = createMemoryQueueStore();
+      const storage = createMockStorage();
+      const errors: SyncErrorEvent[] = [];
+      const client = createMockClient({
+        getFn: async (depotId) => ({
+          ok: true,
+          data: {
+            depotId,
+            root: "rootA",
+            title: null,
+            maxHistory: 10,
+            history: [],
+            creatorIssuerId: "t",
+            createdAt: 0,
+            updatedAt: 0,
+          },
+          status: 200,
+        }),
+        commitFn: async () => ({
+          ok: false,
+          error: { code: "gateway_timeout", message: "Upstream timeout", status: 504 },
+        }),
+      });
+
+      const mgr = createSyncManager({
+        storage,
+        client,
+        queueStore: store,
+        debounceMs: DEBOUNCE,
+      });
+
+      mgr.onError((e) => errors.push(e));
+      mgr.enqueue("d1", "rootB", "rootA");
+      await wait(DEBOUNCE + 100);
+      mgr.dispose();
+
+      // Should still be in queue (retryable)
       const entry = store.entries.get("d1");
       expect(entry).toBeDefined();
       expect(entry!.retryCount).toBeGreaterThanOrEqual(1);
+      // No permanent error emitted
+      expect(errors).toHaveLength(0);
     });
 
-    it("should increment retryCount when get depot returns ok:false", async () => {
+    it("should retry when error has no status (unknown network-like failure)", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
       const client = createMockClient({
         getFn: async () => ({
           ok: false,
-          error: { code: "not_found", message: "Depot not found" },
+          error: { code: "unknown", message: "Something went wrong" },
         }),
       });
 
@@ -937,6 +1149,7 @@ describe("createSyncManager", () => {
       await wait(DEBOUNCE + 100);
       mgr.dispose();
 
+      // No status → treated as retryable
       const entry = store.entries.get("d1");
       expect(entry).toBeDefined();
       expect(entry!.retryCount).toBeGreaterThanOrEqual(1);
