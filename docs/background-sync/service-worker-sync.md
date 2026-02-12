@@ -71,8 +71,9 @@ type AppClient = CasfaClient & {
   /**
    * 推送 user JWT。创建/覆盖底层 CasfaClient，自治 refresh。
    * 重复调用覆盖旧 token（re-login）。
+   * userId 用作 realm；token 从 tokenStorage 恢复。
    */
-  setUserToken(token: StoredUserToken): Promise<void>;
+  setUserToken(userId: string): Promise<void>;
 
   // ── Sync ──
 
@@ -101,9 +102,13 @@ type AppClient = CasfaClient & {
 type AppClientConfig = {
   baseUrl: string;
   realm: string;
-  swUrl?: string | URL;            // 默认 "/sw.js"，仅 SW 模式
-  rpcTimeoutMs?: number;           // 默认 30_000，仅 SW 模式
-  syncDebounceMs?: number;         // 默认 2_000
+  tokenStorage?: TokenStorageProvider; // token 持久化（直连模式）
+  onAuthRequired?: () => void;         // token 全部失效回调
+  storage?: FlushableStorage;          // Layer 1 CAS flush（直连模式需要）
+  queueStore?: SyncQueueStore;         // depot commit 队列（直连模式需要）
+  swUrl?: string | URL;                // 默认 "/sw.js"，仅 SW 模式
+  rpcTimeoutMs?: number;               // 默认 30_000，仅 SW 模式
+  syncDebounceMs?: number;             // 默认 2_000
 };
 
 /** SW 模式 — CasfaClient API 通过 RPC 路由到 SW */
@@ -129,10 +134,17 @@ async function createAppClient(config: AppClientConfig): Promise<AppClient> {
 
 ```typescript
 // 初始化 — 调用方不关心底层走 SW 还是直连
-const client = await createAppClient({ baseUrl: "", realm });
+const client = await createAppClient({
+  baseUrl: "",
+  realm,
+  tokenStorage: localStorageProvider,
+  onAuthRequired: () => { window.location.href = "/login"; },
+  storage: cachedStorage,       // Layer 1 FlushableStorage
+  queueStore: syncQueueStore,   // IndexedDB depot queue
+});
 
 // OAuth 登录后
-await client.setUserToken(userJWT);
+await client.setUserToken(userId);
 
 // CasfaClient API — 直接调用，透明路由
 const depots = await client.depots.list();
