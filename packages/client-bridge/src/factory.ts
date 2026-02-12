@@ -26,14 +26,14 @@ export async function createDirectClient(
 export async function createAppClient(
   config: AppClientConfig,
 ): Promise<AppClient> {
-  // Phase 2: uncomment to enable SW mode
-  // if ("serviceWorker" in navigator) {
-  //   try {
-  //     const { createSWClient } = await import("./sw-client.ts");
-  //     return await createSWClient(config);
-  //   } catch {
-  //     console.warn("SW registration failed, falling back to direct mode");
-  //   }
-  // }
+  // Try SW mode if service workers are available
+  if ("serviceWorker" in navigator) {
+    try {
+      const { createSWClient } = await import("./sw-client.ts");
+      return await createSWClient(config);
+    } catch (e) {
+      console.warn("[casfa] SW mode unavailable, using direct mode:", e);
+    }
+  }
   return createDirectClient(config);
 }

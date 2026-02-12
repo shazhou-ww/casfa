@@ -141,6 +141,16 @@
         "@casfa/explorer",
       ],
     },
+    "packages/client-sw": {
+      "name": "@casfa/client-sw",
+      "version": "0.1.0",
+      "devDependencies": {
+        "typescript": "^5.8.0",
+      },
+      "peerDependencies": {
+        "@casfa/client": "workspace:*",
+      },
+    },
     "packages/core": {
       "name": "@casfa/core",
       "version": "0.2.0",
@@ -451,6 +461,8 @@
     "@casfa/client-auth-crypto": ["@casfa/client-auth-crypto@workspace:packages/client-auth-crypto"],
 
     "@casfa/client-bridge": ["@casfa/client-bridge@workspace:packages/client-bridge"],
+
+    "@casfa/client-sw": ["@casfa/client-sw@workspace:packages/client-sw"],
 
     "@casfa/core": ["@casfa/core@workspace:packages/core"],
 
