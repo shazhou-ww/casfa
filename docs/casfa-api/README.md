@@ -121,25 +121,9 @@ CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 | GET | `/api/admin/users` | 列出所有用户 | Admin |
 | PATCH | `/api/admin/users/:userId` | 修改用户角色 | Admin |
 
-### 文件系统操作 API
-
-[详细文档](./04-filesystem.md)
-
-| 方法 | 路径 | 描述 | 认证 |
-|------|------|------|------|
-| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/stat` | 获取文件/目录元信息 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/read` | 读取文件内容 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/ls` | 列出目录内容 | AT 或 JWT |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/write` | 创建或覆盖文件 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mkdir` | 创建目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rm` | 删除文件或目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mv` | 移动/重命名 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/cp` | 复制文件或目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rewrite` | 声明式树重写 | AT 或 JWT (canUpload) |
-
 ### Realm CAS 操作 API
 
-[详细文档](./05-realm/README.md)
+[详细文档](./04-realm/README.md)
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
@@ -150,6 +134,15 @@ CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 | PUT | `/api/realm/{realmId}/nodes/:key` | 上传节点 | AT 或 JWT (canUpload) |
 | POST | `/api/realm/{realmId}/nodes/check` | 批量检查节点状态 | AT 或 JWT |
 | POST | `/api/realm/{realmId}/nodes/:key/claim` | 认领节点所有权 (PoP) | AT 或 JWT (canUpload) |
+| GET | `…/nodes/:key/fs/stat` | 获取文件/目录元信息 | AT 或 JWT + Proof |
+| GET | `…/nodes/:key/fs/read` | 读取文件内容 | AT 或 JWT + Proof |
+| GET | `…/nodes/:key/fs/ls` | 列出目录内容 | AT 或 JWT + Proof |
+| POST | `…/nodes/:key/fs/write` | 创建或覆盖文件 | AT 或 JWT + Proof (canUpload) |
+| POST | `…/nodes/:key/fs/mkdir` | 创建目录 | AT 或 JWT + Proof (canUpload) |
+| POST | `…/nodes/:key/fs/rm` | 删除文件或目录 | AT 或 JWT + Proof (canUpload) |
+| POST | `…/nodes/:key/fs/mv` | 移动/重命名 | AT 或 JWT + Proof (canUpload) |
+| POST | `…/nodes/:key/fs/cp` | 复制文件或目录 | AT 或 JWT + Proof (canUpload) |
+| POST | `…/nodes/:key/fs/rewrite` | 声明式批量重写目录树 | AT 或 JWT + Proof (canUpload) |
 | POST | `/api/realm/{realmId}/delegates` | 创建子 Delegate | AT 或 JWT |
 | GET | `/api/realm/{realmId}/delegates` | 列出子 Delegate | AT 或 JWT |
 | GET | `/api/realm/{realmId}/delegates/:delegateId` | 获取 Delegate 详情 | AT 或 JWT |
@@ -231,5 +224,4 @@ CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 - [OAuth 认证 API](./01-oauth.md)
 - [Auth API](./02-auth.md)
 - [Admin 管理 API](./03-admin.md)
-- [文件系统操作 API](./04-filesystem.md)
-- [Realm CAS 操作 API](./05-realm/README.md)
+- [Realm CAS 操作 API](./04-realm/README.md)
