@@ -283,4 +283,95 @@ describe("Authentication", () => {
       expect(response.status).toBe(401);
     });
   });
+
+  // ==========================================================================
+  // JWT on Realm Endpoints (access-token-auth middleware)
+  // ==========================================================================
+
+  describe("JWT on Realm Endpoints", () => {
+    it("should reject JWT for unauthorized user on realm endpoint", async () => {
+      const userId = uniqueId();
+      const {
+        token,
+        userId: userIdBase32,
+        realm,
+      } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      // Create root delegate first so it exists
+      await ctx.helpers.createRootToken(token, realm);
+
+      // Then revoke authorization
+      await ctx.db.userRolesDb.setRole(userIdBase32, "unauthorized");
+
+      // Attempt to access realm endpoint with JWT
+      const response = await ctx.helpers.accessRequest(
+        token,
+        "GET",
+        `/api/realm/${realm}/usage`
+      );
+
+      expect(response.status).toBe(403);
+      const body = (await response.json()) as any;
+      expect(body.error).toBe("FORBIDDEN");
+    });
+
+    it("should reject JWT when root delegate does not exist", async () => {
+      const userId = uniqueId();
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      // Do NOT call createRootToken — root delegate doesn't exist
+      const response = await ctx.helpers.accessRequest(
+        token,
+        "GET",
+        `/api/realm/${realm}/usage`
+      );
+
+      expect(response.status).toBe(401);
+      const body = (await response.json()) as any;
+      expect(body.error).toBe("ROOT_DELEGATE_NOT_FOUND");
+    });
+
+    it("should reject JWT when root delegate is revoked", async () => {
+      const userId = uniqueId();
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
+
+      // Create root delegate then revoke it
+      const rootResult = await ctx.helpers.createRootToken(token, realm);
+      await ctx.db.delegatesDb.revoke(rootResult.delegate.delegateId, "test");
+
+      const response = await ctx.helpers.accessRequest(
+        token,
+        "GET",
+        `/api/realm/${realm}/usage`
+      );
+
+      expect(response.status).toBe(401);
+      const body = (await response.json()) as any;
+      expect(body.error).toBe("DELEGATE_REVOKED");
+    });
+
+    it("should reject invalid JWT on realm endpoint", async () => {
+      const response = await ctx.helpers.accessRequest(
+        "invalid.jwt.token",
+        "GET",
+        "/api/realm/usr_test/usage"
+      );
+
+      expect(response.status).toBe(401);
+    });
+
+    it("should accept valid JWT on realm endpoint when root delegate exists", async () => {
+      const userId = uniqueId();
+      const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
+      await ctx.helpers.createRootToken(token, realm);
+
+      const response = await ctx.helpers.accessRequest(
+        token,
+        "GET",
+        `/api/realm/${realm}/usage`
+      );
+
+      expect(response.status).toBe(200);
+    });
+  });
 });

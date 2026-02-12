@@ -353,6 +353,118 @@ describe("ClaimController", () => {
   });
 
   // ==========================================================================
+  // Root delegate (depth=0) — PoP skip
+  // ==========================================================================
+
+  describe("claim — root delegate PoP skip", () => {
+    it("succeeds with invalid PoP when depth=0 (PoP skipped)", async () => {
+      // Use a failing PoP context — shouldn't matter for root delegate
+      mockPopContext = createMockPopContext({ verifyResult: false });
+      controller = createClaimController({
+        ownershipDb: mockOwnershipDb,
+        getNodeContent: mockGetNodeContent,
+        popContext: mockPopContext,
+      });
+
+      const c = createMockContext({
+        auth: createAccessTokenAuth({
+          delegateId: TEST_ROOT_DELEGATE_ID,
+          tokenBytes: new Uint8Array(0), // JWT path: no token bytes
+          issuerChain: [TEST_ROOT_DELEGATE_ID],
+          delegate: {
+            delegateId: TEST_ROOT_DELEGATE_ID,
+            realm: TEST_REALM,
+            parentId: null,
+            chain: [TEST_ROOT_DELEGATE_ID],
+            depth: 0,
+            canUpload: true,
+            canManageDepot: true,
+            isRevoked: false,
+            createdAt: Date.now(),
+            currentRtHash: "",
+            currentAtHash: "",
+            atExpiresAt: 0,
+          } as never,
+        }),
+        body: { pop: "pop:TOTALLY_WRONG_POP" },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
+      });
+
+      const res = await controller.claim(c as any);
+      expect(res.status).toBe(200);
+
+      const body = c.responseData.body as Record<string, unknown>;
+      expect(body.alreadyOwned).toBe(false);
+      expect(body.delegateId).toBe(TEST_ROOT_DELEGATE_ID);
+    });
+
+    it("succeeds with valid PoP when depth=0", async () => {
+      const c = createMockContext({
+        auth: createAccessTokenAuth({
+          delegateId: TEST_ROOT_DELEGATE_ID,
+          tokenBytes: new Uint8Array(0),
+          issuerChain: [TEST_ROOT_DELEGATE_ID],
+          delegate: {
+            delegateId: TEST_ROOT_DELEGATE_ID,
+            realm: TEST_REALM,
+            parentId: null,
+            chain: [TEST_ROOT_DELEGATE_ID],
+            depth: 0,
+            canUpload: true,
+            canManageDepot: true,
+            isRevoked: false,
+            createdAt: Date.now(),
+            currentRtHash: "",
+            currentAtHash: "",
+            atExpiresAt: 0,
+          } as never,
+        }),
+        body: { pop: TEST_POP },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
+      });
+
+      const res = await controller.claim(c as any);
+      expect(res.status).toBe(200);
+
+      const body = c.responseData.body as Record<string, unknown>;
+      expect(body.alreadyOwned).toBe(false);
+    });
+
+    it("writes full-chain ownership for root delegate", async () => {
+      const c = createMockContext({
+        auth: createAccessTokenAuth({
+          delegateId: TEST_ROOT_DELEGATE_ID,
+          tokenBytes: new Uint8Array(0),
+          issuerChain: [TEST_ROOT_DELEGATE_ID],
+          delegate: {
+            delegateId: TEST_ROOT_DELEGATE_ID,
+            realm: TEST_REALM,
+            parentId: null,
+            chain: [TEST_ROOT_DELEGATE_ID],
+            depth: 0,
+            canUpload: true,
+            canManageDepot: true,
+            isRevoked: false,
+            createdAt: Date.now(),
+            currentRtHash: "",
+            currentAtHash: "",
+            atExpiresAt: 0,
+          } as never,
+        }),
+        body: { pop: "pop:ANYTHING" },
+        params: { realmId: TEST_REALM, key: TEST_NODE_KEY },
+      });
+
+      await controller.claim(c as any);
+
+      expect(mockOwnershipDb.addOwnership).toHaveBeenCalledTimes(1);
+      const call = (mockOwnershipDb.addOwnership as ReturnType<typeof mock>).mock.calls[0]!;
+      expect(call[1]).toEqual([TEST_ROOT_DELEGATE_ID]); // chain is just root
+      expect(call[2]).toBe(TEST_ROOT_DELEGATE_ID); // uploadedBy
+    });
+  });
+
+  // ==========================================================================
   // Edge cases
   // ==========================================================================
 
