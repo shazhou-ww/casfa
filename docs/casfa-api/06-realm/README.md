@@ -14,7 +14,7 @@ Authorization: Bearer {access_token_base64 或 jwt}
 - 包含 `.` 分隔符 → JWT（Root Delegate，depth=0）
 - 否则 → AT（子 Delegate，depth≥1）
 
-> **注**：Refresh Token (RT) 只能用于 `POST /api/tokens/refresh` 换取新 AT，不能直接访问数据。
+> **注**：Refresh Token (RT) 只能用于 `POST /api/auth/refresh` 换取新 AT，不能直接访问数据。
 
 ### Realm 验证
 
