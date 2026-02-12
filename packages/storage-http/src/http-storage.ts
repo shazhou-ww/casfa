@@ -41,6 +41,13 @@ export type HttpStorageConfig = {
    * Only needed if the server may contain nodes uploaded by other delegates.
    */
   popContext?: PopContext;
+  /**
+   * Extract direct child storage keys from raw node bytes.
+   * When provided, a successful `get()` will also mark the node's
+   * direct children as "owned" in the internal check cache,
+   * avoiding redundant check calls on subsequent uploads.
+   */
+  getChildKeys?: (value: Uint8Array) => string[];
 };
 
 /** Three-way check result keyed by storage key */
@@ -61,6 +68,12 @@ export type HttpStorageProvider = StorageProvider & {
   checkMany: (keys: string[]) => Promise<CheckManyResult>;
   /** Claim an unowned node via Proof of Possession. The value is only used locally for PoP computation — NOT uploaded. */
   claim: (key: string, value: Uint8Array) => Promise<void>;
+  /**
+   * Check if a key is already known to be "owned" from internal cache.
+   * Useful for callers to skip nodes that don't need re-checking.
+   * The key is a **storage key** (CB32, no prefix).
+   */
+  isKnownOwned: (key: string) => boolean;
 };
 
 // ============================================================================
@@ -104,7 +117,7 @@ const checkOne = async (
  * - `put(key, bytes)` → check → put (missing) / claim (unowned) / no-op (owned)
  */
 export const createHttpStorage = (config: HttpStorageConfig): HttpStorageProvider => {
-  const { client, getTokenBytes, popContext } = config;
+  const { client, getTokenBytes, popContext, getChildKeys } = config;
 
   /** Per-key check-result cache (survives for the lifetime of the provider) */
   const checkCache = new Map<string, NodeStatus>();
@@ -113,7 +126,30 @@ export const createHttpStorage = (config: HttpStorageConfig): HttpStorageProvide
     async get(key: string): Promise<Uint8Array | null> {
       const nodeKey = storageKeyToNodeKey(key);
       const result = await client.nodes.get(nodeKey);
-      if (result.ok) return result.data;
+      if (result.ok) {
+        // Successful GET means the node exists on the server.
+        // Mark it as "owned" if not already cached.
+        const wasCached = checkCache.has(nodeKey);
+        if (!wasCached) {
+          checkCache.set(nodeKey, "owned");
+        }
+        // Also mark direct children as owned (no recursive expansion).
+        // If we can read the parent, its children must also exist & be owned.
+        let childrenMarked = 0;
+        if (getChildKeys) {
+          for (const childKey of getChildKeys(result.data)) {
+            const childNodeKey = storageKeyToNodeKey(childKey);
+            if (!checkCache.has(childNodeKey)) {
+              checkCache.set(childNodeKey, "owned");
+              childrenMarked++;
+            }
+          }
+        }
+        console.log(
+          `[http-storage] get(${nodeKey}) → OK, cached=${wasCached}, children marked owned=${childrenMarked}, cache size=${checkCache.size}`
+        );
+        return result.data;
+      }
       return null;
     },
 
@@ -158,12 +194,35 @@ export const createHttpStorage = (config: HttpStorageConfig): HttpStorageProvide
       const owned: string[] = [];
 
       // Build storage→node key mapping
-      const _storageToNode = new Map(keys.map((k) => [k, storageKeyToNodeKey(k)]));
       const nodeToStorage = new Map(keys.map((k) => [storageKeyToNodeKey(k), k]));
       const nodeKeys = keys.map(storageKeyToNodeKey);
 
-      for (let i = 0; i < nodeKeys.length; i += 1000) {
-        const batch = nodeKeys.slice(i, i + 1000);
+      // ── Use cached statuses to skip redundant network calls ──
+      const uncachedNodeKeys: string[] = [];
+      for (const nk of nodeKeys) {
+        const cached = checkCache.get(nk);
+        if (cached !== undefined) {
+          const sk = nodeToStorage.get(nk);
+          if (sk) {
+            if (cached === "owned") owned.push(sk);
+            else if (cached === "unowned") unowned.push(sk);
+            else if (cached === "missing") missing.push(sk);
+          }
+        } else {
+          uncachedNodeKeys.push(nk);
+        }
+      }
+
+      console.log(
+        `[http-storage] checkMany: total=${keys.length}, fromCache=${keys.length - uncachedNodeKeys.length} (owned=${owned.length}, unowned=${unowned.length}, missing=${missing.length}), toNetwork=${uncachedNodeKeys.length}`,
+        uncachedNodeKeys.length > 0 ? `\n  uncached: ${uncachedNodeKeys.join(", ")}` : ""
+      );
+
+      // All keys resolved from cache — no network call needed
+      if (uncachedNodeKeys.length === 0) return { missing, unowned, owned };
+
+      for (let i = 0; i < uncachedNodeKeys.length; i += 1000) {
+        const batch = uncachedNodeKeys.slice(i, i + 1000);
         const result = await client.nodes.check({ keys: batch });
         if (!result.ok) {
           throw new Error(`Batch check failed: ${result.error.message}`);
@@ -200,6 +259,11 @@ export const createHttpStorage = (config: HttpStorageConfig): HttpStorageProvide
         throw new Error(`Failed to claim node ${nodeKey}: ${claimResult.error.message}`);
       }
       checkCache.set(nodeKey, "owned");
+    },
+
+    isKnownOwned(key: string): boolean {
+      const nodeKey = storageKeyToNodeKey(key);
+      return checkCache.get(nodeKey) === "owned";
     },
   };
 };

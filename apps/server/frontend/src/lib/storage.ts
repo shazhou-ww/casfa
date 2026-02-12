@@ -163,18 +163,25 @@ export function getStorage(): Promise<CachedStorageProvider> {
 
       // PoP context for claiming unowned nodes
       const popContext: PopContext = {
-        blake3_256: (data) => blake3(data),
-        blake3_128_keyed: (data, key) => blake3(data, { dkLen: 16, key }),
-        crockfordBase32Encode: (bytes) => encodeCB32(bytes),
+        blake3_256: (data: Uint8Array) => blake3(data),
+        blake3_128_keyed: (data: Uint8Array, key: Uint8Array) => blake3(data, { dkLen: 16, key }),
+        crockfordBase32Encode: (bytes: Uint8Array) => encodeCB32(bytes),
       };
 
       // Cached token bytes — refreshed lazily before each sync
       let cachedTokenBytes: Uint8Array | null = null;
 
+      /** Extract direct child storage keys from raw CAS node bytes. */
+      const getChildKeys = (bytes: Uint8Array): string[] => {
+        const result = validateNodeStructure(bytes);
+        return result.valid ? (result.childKeys ?? []) : [];
+      };
+
       const httpStorage = createHttpStorage({
         client,
         getTokenBytes: () => cachedTokenBytes,
         popContext,
+        getChildKeys,
       });
 
       const indexedDBStorage = createIndexedDBStorage();
@@ -195,10 +202,7 @@ export function getStorage(): Promise<CachedStorageProvider> {
             if (!flushInProgress) setSyncing(false);
           },
           onKeySync: handleKeySync,
-          getChildKeys: (bytes: Uint8Array) => {
-            const result = validateNodeStructure(bytes);
-            return result.valid ? (result.childKeys ?? []) : [];
-          },
+          getChildKeys,
         },
       });
     })();
