@@ -50,6 +50,13 @@ export {
   type SyncQueueStore,
   type SyncState,
 } from "./core/sync-manager.ts";
+// ── Sync Coordinator (SW) ──
+export {
+  createSyncCoordinator,
+  type SyncCoordinator,
+  type SyncCoordinatorConfig,
+  type SyncBroadcastMessage,
+} from "./core/sync-coordinator.ts";
 // ── Hooks ──
 export { useClipboard } from "./hooks/use-clipboard.ts";
 export { useDnd } from "./hooks/use-dnd.ts";
