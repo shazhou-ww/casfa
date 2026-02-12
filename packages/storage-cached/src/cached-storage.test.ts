@@ -637,3 +637,171 @@ describe("createCachedStorage (write-back)", () => {
     });
   });
 });
+
+// ============================================================================
+// Tests — PendingKeyStore integration
+// ============================================================================
+
+describe("createCachedStorage (write-back + PendingKeyStore)", () => {
+  const DEBOUNCE = 30;
+  const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+  // In-memory PendingKeyStore for testing
+  function createSpyPendingKeyStore() {
+    const keys = new Set<string>();
+    const addCalls: string[][] = [];
+    const removeCalls: string[][] = [];
+    return {
+      keys,
+      addCalls,
+      removeCalls,
+      async load() {
+        return [...keys];
+      },
+      async add(newKeys: string[]) {
+        addCalls.push(newKeys);
+        for (const k of newKeys) keys.add(k);
+      },
+      async remove(removeKeys: string[]) {
+        removeCalls.push(removeKeys);
+        for (const k of removeKeys) keys.delete(k);
+      },
+    };
+  }
+
+  describe("put persistence", () => {
+    it("should persist pending keys via pendingKeyStore.add()", async () => {
+      const cache = createSpyStorage();
+      const remote = createSpyStorage();
+      const pks = createSpyPendingKeyStore();
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { debounceMs: DEBOUNCE, pendingKeyStore: pks },
+      });
+
+      await storage.put(KEY, DATA);
+
+      // Micro-batch: wait for queueMicrotask to fire
+      await wait(5);
+
+      expect(pks.addCalls.length).toBeGreaterThanOrEqual(1);
+      // The key should have been persisted
+      expect(pks.keys.has(KEY)).toBe(true);
+
+      storage.dispose();
+    });
+
+    it("should batch multiple puts in same microtask", async () => {
+      const cache = createSpyStorage();
+      const remote = createSpyStorage();
+      const pks = createSpyPendingKeyStore();
+
+      const KEY2 = "ZYXWVUTSRQPONMLKJIHGFEDCB0";
+      const DATA2 = new Uint8Array([5, 6, 7, 8]);
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { debounceMs: DEBOUNCE, pendingKeyStore: pks },
+      });
+
+      // Two puts — may batch if within same microtask, or separate
+      await storage.put(KEY, DATA);
+      await storage.put(KEY2, DATA2);
+
+      await wait(5);
+
+      // Both keys should have been persisted (possibly in 1 or 2 calls)
+      expect(pks.keys.has(KEY)).toBe(true);
+      expect(pks.keys.has(KEY2)).toBe(true);
+      // Verify all persisted keys are accounted for
+      const allPersistedKeys = pks.addCalls.flat();
+      expect(allPersistedKeys).toContain(KEY);
+      expect(allPersistedKeys).toContain(KEY2);
+
+      storage.dispose();
+    });
+  });
+
+  describe("sync removal", () => {
+    it("should remove synced keys from pendingKeyStore after successful sync", async () => {
+      const cache = createSpyStorage();
+      const remote = createSpyStorage();
+      const pks = createSpyPendingKeyStore();
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { debounceMs: DEBOUNCE, pendingKeyStore: pks },
+      });
+
+      await storage.put(KEY, DATA);
+      await wait(5);
+
+      // Key is persisted
+      expect(pks.keys.has(KEY)).toBe(true);
+
+      // Flush triggers sync
+      await storage.flush();
+
+      // Key should be removed from store after sync
+      expect(pks.removeCalls.length).toBeGreaterThanOrEqual(1);
+      expect(pks.keys.has(KEY)).toBe(false);
+
+      storage.dispose();
+    });
+  });
+
+  describe("init load", () => {
+    it("should load persisted keys on init and trigger sync", async () => {
+      const cache = createSpyStorage(new Map([[KEY, DATA]]));
+      const remote = createSpyStorage();
+
+      // Pre-populate pending keys as if from previous session
+      const pks = createSpyPendingKeyStore();
+      pks.keys.add(KEY);
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { debounceMs: DEBOUNCE, pendingKeyStore: pks },
+      });
+
+      // Wait for init + debounce + sync
+      await wait(DEBOUNCE + 100);
+
+      // Key should have been synced to remote
+      expect(remote.store.get(KEY)).toEqual(DATA);
+      // And removed from pending store
+      expect(pks.keys.has(KEY)).toBe(false);
+
+      storage.dispose();
+    });
+  });
+
+  describe("flush awaits persistence", () => {
+    it("should await pendingKeyStore persistence before flushing", async () => {
+      const cache = createSpyStorage();
+      const remote = createSpyStorage();
+      const pks = createSpyPendingKeyStore();
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { debounceMs: 10_000, pendingKeyStore: pks },
+      });
+
+      await storage.put(KEY, DATA);
+      // Don't wait for microtask — call flush immediately
+      await storage.flush();
+
+      // Persistence should have completed before flush ran
+      expect(pks.keys.has(KEY)).toBe(false); // removed after sync
+      expect(remote.store.get(KEY)).toEqual(DATA);
+
+      storage.dispose();
+    });
+  });
+});

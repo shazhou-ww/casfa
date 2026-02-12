@@ -10,6 +10,7 @@
  */
 
 import type { StorageProvider } from "@casfa/storage-core";
+import type { PendingKeyStore } from "@casfa/storage-cached";
 
 // ============================================================================
 // Types
@@ -30,6 +31,11 @@ export type IndexedDBStorageConfig = {
    * Default: 1000
    */
   evictionBatchSize?: number;
+  /**
+   * Eviction filter: return true to allow eviction, false to skip.
+   * Used to protect pending-sync keys from being evicted.
+   */
+  evictionFilter?: (key: string) => boolean;
 };
 
 /** Internal record stored in IndexedDB */
@@ -48,8 +54,10 @@ type CacheRecord = {
 
 const DEFAULT_DB_NAME = "casfa-cas-cache";
 const DEFAULT_STORE_NAME = "blocks";
+const DEFAULT_PENDING_STORE_NAME = "pending-sync";
 const DEFAULT_MAX_ENTRIES = 50_000;
 const DEFAULT_EVICTION_BATCH = 1000;
+const DB_VERSION = 2; // v2: added pending-sync store
 
 // ============================================================================
 // Factory
@@ -68,6 +76,7 @@ export const createIndexedDBStorage = (
   const storeName = config.storeName ?? DEFAULT_STORE_NAME;
   const maxEntries = config.maxEntries ?? DEFAULT_MAX_ENTRIES;
   const evictionBatchSize = config.evictionBatchSize ?? DEFAULT_EVICTION_BATCH;
+  const evictionFilter = config.evictionFilter;
 
   let dbPromise: Promise<IDBDatabase> | null = null;
   let entryCount = -1; // lazy-loaded
@@ -75,12 +84,17 @@ export const createIndexedDBStorage = (
   const openDB = (): Promise<IDBDatabase> => {
     if (dbPromise) return dbPromise;
     dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(dbName, 1);
-      request.onupgradeneeded = () => {
+      const request = indexedDB.open(dbName, DB_VERSION);
+      request.onupgradeneeded = (event) => {
         const db = request.result;
+        // v1: blocks store
         if (!db.objectStoreNames.contains(storeName)) {
           const store = db.createObjectStore(storeName, { keyPath: "key" });
           store.createIndex("lastAccessed", "lastAccessed", { unique: false });
+        }
+        // v2: pending-sync store
+        if (!db.objectStoreNames.contains(DEFAULT_PENDING_STORE_NAME)) {
+          db.createObjectStore(DEFAULT_PENDING_STORE_NAME, { keyPath: "key" });
         }
       };
       request.onsuccess = () => resolve(request.result);
@@ -122,6 +136,12 @@ export const createIndexedDBStorage = (
         if (!cursor || evicted >= evictionBatchSize) {
           entryCount -= evicted;
           resolve();
+          return;
+        }
+        const key = (cursor.value as CacheRecord).key;
+        if (evictionFilter && !evictionFilter(key)) {
+          // Skip protected keys (e.g., pending-sync)
+          cursor.continue();
           return;
         }
         cursor.delete();
@@ -181,6 +201,89 @@ export const createIndexedDBStorage = (
       const store = await getStore("readwrite");
       await wrap(store.clear());
       entryCount = 0;
+    },
+  };
+};
+
+// ============================================================================
+// PendingKeyStore — IndexedDB-backed persistence for pending sync keys
+// ============================================================================
+
+/**
+ * Create a PendingKeyStore backed by the `pending-sync` object store.
+ *
+ * Shares the same IndexedDB database as the CAS block cache.
+ * Used by CachedStorage (Layer 1) to persist pending keys across page reloads.
+ */
+export const createPendingKeyStore = (
+  config: { dbName?: string } = {}
+): PendingKeyStore => {
+  const dbName = config.dbName ?? DEFAULT_DB_NAME;
+  const pendingStoreName = DEFAULT_PENDING_STORE_NAME;
+
+  let dbPromise: Promise<IDBDatabase> | null = null;
+
+  const openDB = (): Promise<IDBDatabase> => {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(dbName, DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(DEFAULT_STORE_NAME)) {
+          const store = db.createObjectStore(DEFAULT_STORE_NAME, { keyPath: "key" });
+          store.createIndex("lastAccessed", "lastAccessed", { unique: false });
+        }
+        if (!db.objectStoreNames.contains(pendingStoreName)) {
+          db.createObjectStore(pendingStoreName, { keyPath: "key" });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    return dbPromise;
+  };
+
+  const wrap = <T>(request: IDBRequest<T>): Promise<T> =>
+    new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+
+  const txComplete = (tx: IDBTransaction): Promise<void> =>
+    new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+
+  return {
+    async load(): Promise<string[]> {
+      const db = await openDB();
+      const tx = db.transaction(pendingStoreName, "readonly");
+      const store = tx.objectStore(pendingStoreName);
+      const records = await wrap(store.getAll());
+      return (records as Array<{ key: string }>).map((r) => r.key);
+    },
+
+    async add(keys: string[]): Promise<void> {
+      if (keys.length === 0) return;
+      const db = await openDB();
+      const tx = db.transaction(pendingStoreName, "readwrite");
+      const store = tx.objectStore(pendingStoreName);
+      for (const key of keys) {
+        store.put({ key });
+      }
+      await txComplete(tx);
+    },
+
+    async remove(keys: string[]): Promise<void> {
+      if (keys.length === 0) return;
+      const db = await openDB();
+      const tx = db.transaction(pendingStoreName, "readwrite");
+      const store = tx.objectStore(pendingStoreName);
+      for (const key of keys) {
+        store.delete(key);
+      }
+      await txComplete(tx);
     },
   };
 };

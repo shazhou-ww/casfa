@@ -31,8 +31,10 @@ export type ExplorerState = {
   client: CasfaClient;
   /** Local @casfa/fs service — all tree operations (read & write) run locally */
   localFs: FsService;
-  /** Called before committing a new root to the server (e.g., flush pending uploads) */
+  /** @deprecated Use scheduleCommit for background sync instead. */
   beforeCommit: (() => Promise<void>) | null;
+  /** When provided, write ops enqueue background commit instead of direct call. */
+  scheduleCommit: ((depotId: string, newRoot: string, lastKnownServerRoot: string | null) => void) | null;
   depotId: string | null;
   depotRoot: string | null; // current root node key
 
@@ -220,8 +222,13 @@ export type CreateExplorerStoreOpts = {
   depotId?: string;
   initialPath?: string;
   initialLayout?: "list" | "grid";
-  /** Called before committing a new root to the server (e.g., flush pending uploads) */
+  /** @deprecated Use `scheduleCommit` for background sync instead. */
   beforeCommit?: () => Promise<void>;
+  /**
+   * When provided, write operations enqueue a background commit instead
+   * of calling `client.depots.commit()` directly.
+   */
+  scheduleCommit?: (depotId: string, newRoot: string, lastKnownServerRoot: string | null) => void;
 };
 
 const LS_PAGE_SIZE = 200;
@@ -247,6 +254,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     client: opts.client,
     localFs,
     beforeCommit: opts.beforeCommit ?? null,
+    scheduleCommit: opts.scheduleCommit ?? null,
     depotId: opts.depotId ?? null,
     depotRoot: null,
     depots: [],
@@ -668,7 +676,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     },
 
     pasteItems: async (targetPath: string) => {
-      const { clipboard, localFs, depotRoot, depotId, client } = get();
+      const { clipboard, localFs, depotRoot, depotId, client, beforeCommit, scheduleCommit } = get();
       if (!clipboard || !depotRoot || !depotId) return;
 
       set({ operationLoading: { ...get().operationLoading, paste: true } });
@@ -688,8 +696,12 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
         }
 
         if (currentRoot !== depotRoot) {
-          await get().beforeCommit?.();
-          await client.depots.commit(depotId, { root: currentRoot });
+          if (scheduleCommit) {
+            scheduleCommit(depotId, currentRoot, depotRoot);
+          } else {
+            await beforeCommit?.();
+            await client.depots.commit(depotId, { root: currentRoot });
+          }
           set({ depotRoot: currentRoot });
         }
 
@@ -756,7 +768,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
     // ── File operations ──
     createFolder: async (name: string) => {
-      const { client, depotId, depotRoot, currentPath } = get();
+      const { client, depotId, depotRoot, currentPath, beforeCommit, scheduleCommit } = get();
       if (!depotRoot || !depotId) return false;
 
       set({ operationLoading: { ...get().operationLoading, createFolder: true } });
@@ -770,8 +782,12 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           return false;
         }
         // Commit new root to depot (persists across refresh)
-        await get().beforeCommit?.();
-        await client.depots.commit(depotId, { root: result.newRoot });
+        if (scheduleCommit) {
+          scheduleCommit(depotId, result.newRoot, depotRoot);
+        } else {
+          await beforeCommit?.();
+          await client.depots.commit(depotId, { root: result.newRoot });
+        }
         set({
           depotRoot: result.newRoot,
           operationLoading: { ...get().operationLoading, createFolder: false },
@@ -813,8 +829,13 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
       // Commit final root to depot (single commit for all deletions)
       if (currentRoot !== depotRoot) {
-        await get().beforeCommit?.();
-        await client.depots.commit(depotId, { root: currentRoot }).catch(() => {});
+        const { beforeCommit, scheduleCommit } = get();
+        if (scheduleCommit) {
+          scheduleCommit(depotId, currentRoot, depotRoot);
+        } else {
+          await beforeCommit?.();
+          await client.depots.commit(depotId, { root: currentRoot }).catch(() => {});
+        }
       }
 
       set({
@@ -827,7 +848,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     },
 
     renameItem: async (item: ExplorerItem, newName: string) => {
-      const { client, depotId, depotRoot } = get();
+      const { client, depotId, depotRoot, beforeCommit, scheduleCommit } = get();
       if (!depotRoot || !depotId) return false;
 
       set({ operationLoading: { ...get().operationLoading, rename: true } });
@@ -845,8 +866,12 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           return false;
         }
         // Commit new root to depot
-        await get().beforeCommit?.();
-        await client.depots.commit(depotId, { root: result.newRoot });
+        if (scheduleCommit) {
+          scheduleCommit(depotId, result.newRoot, depotRoot);
+        } else {
+          await beforeCommit?.();
+          await client.depots.commit(depotId, { root: result.newRoot });
+        }
         set({
           depotRoot: result.newRoot,
           operationLoading: { ...get().operationLoading, rename: false },

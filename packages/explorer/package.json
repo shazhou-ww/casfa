@@ -10,6 +10,11 @@
       "bun": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./core/sync-manager": {
+      "bun": "./src/core/sync-manager.ts",
+      "types": "./dist/core/sync-manager.d.ts",
+      "import": "./dist/core/sync-manager.js"
     }
   },
   "files": [
@@ -17,6 +22,8 @@
   ],
   "scripts": {
     "build": "bun ../../scripts/build-pkg.ts",
+    "test": "bun run test:unit",
+    "test:unit": "bun test src/core/",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

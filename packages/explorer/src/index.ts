@@ -29,7 +29,6 @@ export { ResizableSplitter } from "./components/ResizableSplitter.tsx";
 export { SearchBox } from "./components/SearchBox.tsx";
 export { StatusBar } from "./components/StatusBar.tsx";
 export { UploadOverlay } from "./components/UploadOverlay.tsx";
-export { UploadProgress } from "./components/UploadProgress.tsx";
 export { ViewToggle } from "./components/ViewToggle.tsx";
 // ── Store ──
 export {
@@ -38,6 +37,17 @@ export {
   type ExplorerStore,
   type ExplorerStoreApi,
 } from "./core/explorer-store.ts";
+// ── Sync Manager ──
+export {
+  createSyncManager,
+  type ConflictEvent,
+  type DepotSyncEntry,
+  type FlushableStorage,
+  type SyncManager,
+  type SyncManagerConfig,
+  type SyncQueueStore,
+  type SyncState,
+} from "./core/sync-manager.ts";
 // ── Hooks ──
 export { useClipboard } from "./hooks/use-clipboard.ts";
 export { useDnd } from "./hooks/use-dnd.ts";

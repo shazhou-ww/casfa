@@ -43,6 +43,21 @@ export type SyncResult = {
 };
 
 /**
+ * Pluggable persistence for pending sync keys.
+ *
+ * Layer 1 of the sync model: CAS Node Sync is fully idempotent.
+ * This store enables recovery of pending keys across page reloads.
+ */
+export type PendingKeyStore = {
+  /** Load all previously persisted pending keys */
+  load(): Promise<string[]>;
+  /** Persist newly added pending keys */
+  add(keys: string[]): Promise<void>;
+  /** Remove keys that have been successfully synced */
+  remove(keys: string[]): Promise<void>;
+};
+
+/**
  * Write-back configuration for deferred, batched remote sync.
  */
 export type WriteBackConfig = {
@@ -60,6 +75,11 @@ export type WriteBackConfig = {
    * to prevent server-side "missing_nodes" rejections.
    */
   getChildKeys?: (value: Uint8Array) => string[];
+  /**
+   * Optional: persist pending keys so they survive page close / refresh.
+   * On initialization, persisted keys are loaded and queued for sync.
+   */
+  pendingKeyStore?: PendingKeyStore;
 };
 
 /** Three-way check result */
@@ -265,11 +285,48 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
     onSyncEnd,
     onKeySync,
     getChildKeys,
+    pendingKeyStore,
   } = writeBack;
 
   const pendingKeys = new Set<string>();
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
   let activeSyncPromise: Promise<void> | null = null;
+
+  // -- PendingKeyStore micro-batch persistence --
+  let addBatch: string[] = [];
+  let addScheduled = false;
+  let persistPromise: Promise<void> = Promise.resolve();
+
+  function persistPendingKey(key: string): void {
+    if (!pendingKeyStore) return;
+    addBatch.push(key);
+    if (!addScheduled) {
+      addScheduled = true;
+      queueMicrotask(() => {
+        const batch = addBatch;
+        addBatch = [];
+        addScheduled = false;
+        persistPromise = pendingKeyStore.add(batch).catch((err) => {
+          console.error("[CachedStorage] Failed to persist pending keys:", err);
+        });
+      });
+    }
+  }
+
+  // -- Load persisted pending keys on init --
+  let initPromise: Promise<void> | null = null;
+  if (pendingKeyStore) {
+    initPromise = pendingKeyStore.load().then((keys) => {
+      for (const key of keys) {
+        pendingKeys.add(key);
+      }
+      if (pendingKeys.size > 0) {
+        scheduleSync();
+      }
+    }).catch((err) => {
+      console.error("[CachedStorage] Failed to load persisted pending keys:", err);
+    });
+  }
 
   /**
    * Run a single sync cycle: read from cache, topologically sort,
@@ -463,6 +520,16 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
       }
     }
 
+    // Persist removal of synced + skipped keys
+    if (pendingKeyStore) {
+      const keysToRemove = [...synced, ...skipped];
+      if (keysToRemove.length > 0) {
+        pendingKeyStore.remove(keysToRemove).catch((err) => {
+          console.error("[CachedStorage] Failed to remove persisted pending keys:", err);
+        });
+      }
+    }
+
     onSyncEnd?.({ synced, skipped, failed });
   };
 
@@ -499,10 +566,17 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
     async put(key: string, value: Uint8Array): Promise<void> {
       await cache.put(key, value);
       pendingKeys.add(key);
+      persistPendingKey(key);
       scheduleSync();
     },
 
     async flush(): Promise<void> {
+      // Wait for init (persisted key load) to complete
+      if (initPromise) await initPromise;
+
+      // Wait for any pending persist micro-batch to complete
+      await persistPromise;
+
       // Cancel scheduled timer
       if (syncTimer !== null) {
         clearTimeout(syncTimer);
