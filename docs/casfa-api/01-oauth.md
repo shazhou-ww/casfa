@@ -1,6 +1,6 @@
 # OAuth 认证 API
 
-用于用户身份认证的 API 端点。OAuth 认证后获取的 User JWT 用于 Token 管理操作。
+用于用户身份认证的 API 端点。OAuth 认证后获取的 User JWT 用于管理操作和 Root Delegate 的数据访问。
 
 ## 端点列表
 
@@ -9,7 +9,7 @@
 | GET | `/api/oauth/config` | 获取 Cognito 配置 | 无 |
 | POST | `/api/oauth/token` | 交换授权码获取 Token | 无 |
 | POST | `/api/oauth/login` | 用户登录（邮箱密码） | 无 |
-| POST | `/api/oauth/refresh` | 刷新 Token | 无 |
+| POST | `/api/oauth/refresh` | 刷新 JWT Token | 无 |
 | GET | `/api/oauth/me` | 获取当前用户信息 | User JWT |
 
 ---
@@ -49,18 +49,7 @@
    ```
 
 5. **交换授权码时提供 code_verifier**
-   - 前端调用 `POST /api/oauth/token`，携带 `code` 和 `code_verifier`
-   - CASFA 后端透传给 Cognito Token 端点
-   - **Cognito 验证** `SHA256(code_verifier) == code_challenge`
-   - 验证通过后返回 tokens
-
-### 安全说明
-
-| 客户端类型 | PKCE 要求 | 说明 |
-|------------|----------|------|
-| SPA (浏览器) | **必须** | 无法安全存储 client_secret |
-| 移动端 App | **必须** | 防止授权码被恶意 App 拦截 |
-| 服务端 | 可选 | 已有 client_secret 保护 |
+   - 调用 `POST /api/oauth/token`，携带 `code` 和 `code_verifier`
 
 ---
 
@@ -68,17 +57,14 @@
 
 获取 Cognito 配置信息，用于前端初始化 OAuth 流程。
 
-### 请求
-
-无需参数
-
 ### 响应
 
 ```json
 {
-  "cognitoUserPoolId": "us-east-1_xxxxxx",
-  "cognitoClientId": "xxxxxxxxxxxxxxxxxxxxxxxxxx",
-  "cognitoHostedUiUrl": "https://xxx.auth.us-east-1.amazoncognito.com"
+  "userPoolId": "us-east-1_xxxxxx",
+  "clientId": "xxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "domain": "xxx.auth.us-east-1.amazoncognito.com",
+  "region": "us-east-1"
 }
 ```
 
@@ -98,23 +84,20 @@
 }
 ```
 
-| 字段 | 类型 | 描述 |
-|------|------|------|
-| `code` | `string` | OAuth 授权码 |
-| `redirect_uri` | `string` | 回调 URL，必须与授权请求时一致 |
-| `code_verifier` | `string?` | PKCE verifier，提供时透传给 Cognito 验证 |
+| 字段 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| `code` | `string` | 是 | OAuth 授权码 |
+| `redirect_uri` | `string` | 是 | 回调 URL，必须与授权请求时一致 |
+| `code_verifier` | `string` | 否 | PKCE verifier，提供时透传给 Cognito 验证 |
 
 ### 响应
 
-成功时返回 Cognito Token 响应：
-
 ```json
 {
-  "access_token": "...",
-  "id_token": "...",
-  "refresh_token": "...",
-  "token_type": "Bearer",
-  "expires_in": 3600
+  "accessToken": "...",
+  "idToken": "...",
+  "refreshToken": "...",
+  "expiresIn": 3600
 }
 ```
 
@@ -123,15 +106,14 @@
 | 状态码 | 描述 |
 |--------|------|
 | 400 | 缺少 code 或 redirect_uri |
-| 400 | PKCE 验证失败（Cognito 返回 code_verifier 与 code_challenge 不匹配） |
-| 502 | Cognito Token 交换失败 |
+| 502 | Token 交换失败 |
 | 503 | OAuth 未配置 |
 
 ---
 
 ## POST /api/oauth/login
 
-使用邮箱和密码登录。
+使用邮箱和密码登录（Cognito USER_PASSWORD_AUTH 流程）。
 
 ### 请求
 
@@ -146,15 +128,10 @@
 
 ```json
 {
-  "userToken": "JWT Token",
-  "refreshToken": "刷新 Token",
-  "expiresAt": 1738584000000,
-  "user": {
-    "id": "usr_A6JCHNMFWRT90AXMYWHJ8HKS90",
-    "email": "user@example.com",
-    "name": "用户名"
-  },
-  "role": "authorized"
+  "accessToken": "...",
+  "idToken": "...",
+  "refreshToken": "...",
+  "expiresIn": 3600
 }
 ```
 
@@ -169,13 +146,13 @@
 
 ## POST /api/oauth/refresh
 
-使用刷新 Token 获取新的访问 Token。
+使用 Cognito Refresh Token 获取新的 JWT Token。
 
 ### 请求
 
 ```json
 {
-  "refreshToken": "刷新 Token"
+  "refreshToken": "Cognito Refresh Token"
 }
 ```
 
@@ -183,9 +160,9 @@
 
 ```json
 {
-  "userToken": "新的 JWT Token",
-  "expiresAt": 1738584000000,
-  "role": "authorized"
+  "accessToken": "新的 Access Token",
+  "idToken": "新的 ID Token",
+  "expiresIn": 3600
 }
 ```
 
@@ -204,39 +181,53 @@
 
 ### 请求
 
-需要 `Authorization` header：
-
 ```http
-Authorization: Bearer {userToken}
+Authorization: Bearer {jwt}
 ```
 
 ### 响应
 
 ```json
 {
-  "id": "usr_A6JCHNMFWRT90AXMYWHJ8HKS90",
+  "userId": "usr_A6JCHNMFWRT90AXMYWHJ8HKS90",
   "email": "user@example.com",
   "name": "用户名",
+  "realm": "usr_A6JCHNMFWRT90AXMYWHJ8HKS90",
   "role": "authorized",
-  "realms": ["usr_A6JCHNMFWRT90AXMYWHJ8HKS90"],
-  "createdAt": 1738497600000
+  "rootDelegateId": "dlt_01HQXK5V8N3Y7M2P4R6T9W0ABC"
 }
 ```
 
 | 字段 | 类型 | 描述 |
 |------|------|------|
-| `id` | `string` | 用户 ID |
+| `userId` | `string` | 用户 ID |
 | `email` | `string` | 用户邮箱 |
 | `name` | `string` | 用户名称 |
+| `realm` | `string` | 用户的 Realm（等于 userId） |
 | `role` | `string` | 用户角色：`unauthorized`, `authorized`, `admin` |
-| `realms` | `string[]` | 用户可访问的 Realm 列表（当前版本只有一个，等于用户 ID） |
-| `createdAt` | `number` | 账户创建时间（epoch 毫秒） |
+| `rootDelegateId` | `string \| null` | 用户的 Root Delegate ID（未创建时为 null） |
 
 ### 错误
 
 | 状态码 | 描述 |
 |--------|------|
-| 401 | 未认证或 Token 无效 |
+| 401 | 未认证或 JWT 无效 |
+
+---
+
+## User JWT 的用途
+
+User JWT 用于以下操作：
+
+| 操作 | 端点 |
+|------|------|
+| 创建/获取 Root Delegate | `POST /api/tokens/root` |
+| 获取用户信息 | `GET /api/oauth/me` |
+| 管理用户（Admin） | `GET /api/admin/users`, `PATCH /api/admin/users/:userId` |
+| MCP 调用 | `POST /api/mcp` |
+| 访问 Realm 数据（Root Delegate） | 所有 `/api/realm/*` 路由（中间件自动识别 JWT） |
+
+> **重要**：Root Delegate 用户可以直接用 JWT 访问 Realm 数据路由。中间件会自动检测 JWT 格式（包含 `.` 分隔符），验证后转换为与 Access Token 相同的 `AccessTokenAuthContext`，下游中间件和控制器无需区分。
 
 ---
 
@@ -244,22 +235,6 @@ Authorization: Bearer {userToken}
 
 | 角色 | 描述 |
 |------|------|
-| `unauthorized` | 未授权用户，无法访问 CAS 资源 |
-| `authorized` | 已授权用户，可以创建和管理 Token |
+| `unauthorized` | 未授权用户，无法创建 Root Delegate |
+| `authorized` | 已授权用户，可以创建 Root Delegate 和管理 Token |
 | `admin` | 管理员，可以管理所有用户 |
-
----
-
-## User JWT 的用途
-
-User JWT 仅用于以下操作：
-
-| 操作 | 说明 |
-|------|------|
-| 创建 Delegate Token | `POST /api/tokens` |
-| 列出/查看 Token | `GET /api/tokens`, `GET /api/tokens/:id` |
-| 撤销 Token | `POST /api/tokens/:id/revoke` |
-| 审批授权申请 | `/api/tokens/requests/:id/approve` |
-| 获取用户信息 | `GET /api/oauth/me` |
-
-> **重要**：User JWT 不能直接访问 CAS 数据（Node、Depot、Ticket）。访问数据需要使用 Access Token。

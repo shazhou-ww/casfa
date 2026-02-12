@@ -1,26 +1,41 @@
-# Token 管理 API
+# Delegate Token 管理 API
 
-用于创建、管理和转签发 Delegate Token 的 API 端点。
+用于创建 Root Delegate 和刷新 Token 的 API 端点。
 
 ## 概述
 
-### Token 类型
+### Delegate 模型
 
-| 类型 | 说明 |
-|------|------|
-| **Delegate Token（再授权 Token）** | 可以转签发子 Token，可以创建 Ticket，不能直接访问数据 |
-| **Access Token（访问 Token）** | 可以访问数据（读写 Node、操作 Depot），不能签发 Token |
+CASFA 使用统一的 Delegate 模型管理授权：
 
-### Token 格式
+| 层级 | 类型 | 认证方式 | 创建端点 |
+|------|------|----------|----------|
+| depth=0 | Root Delegate | JWT 直连 | `POST /api/tokens/root` |
+| depth>0 | Child Delegate | AT + RT | `POST /api/realm/{realmId}/delegates` |
 
-| 属性 | 说明 |
-|------|------|
-| 二进制大小 | 128 字节 |
-| 传输格式 | Base64 编码（约 172 字符） |
-| Token ID 格式 | `dlt1_{crockford_base32}` |
-| Token ID 计算 | Blake3-128(token_bytes) |
+### 认证流程
 
-> **安全设计**：服务端不保存完整 Token，仅保存 Token ID（hash）。Token 仅在创建时返回一次。
+```
+┌──────────┐        ┌──────────┐        ┌──────────────────┐
+│  OAuth   │  JWT   │  Root    │  JWT   │  Realm Routes    │
+│  Login   │───────>│  Token   │───────>│  (全部数据操作)   │
+│          │        │  /root   │        │                  │
+└──────────┘        └──────────┘        └──────────────────┘
+                         │
+                         │ JWT (创建子 Delegate)
+                         ▼
+                    ┌──────────┐
+                    │  Child   │  RT → Refresh → 新 RT + AT
+                    │ Delegate │  AT → Realm Routes
+                    └──────────┘
+                         │
+                         │ AT (继续转签发)
+                         ▼
+                    ┌──────────┐
+                    │ Grandchild│  RT → Refresh → 新 RT + AT
+                    │ Delegate │  AT → Realm Routes
+                    └──────────┘
+```
 
 ---
 
@@ -28,353 +43,131 @@
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
-| POST | `/api/tokens` | 创建 Delegate Token | User JWT |
-| GET | `/api/tokens` | 列出 Delegate Token | User JWT |
-| GET | `/api/tokens/:tokenId` | 获取 Token 详情 | User JWT |
-| POST | `/api/tokens/:tokenId/revoke` | 撤销 Token | User JWT |
-| POST | `/api/tokens/delegate` | 转签发 Token | Delegate Token |
+| POST | `/api/tokens/root` | 创建/获取 Root Delegate | User JWT |
+| POST | `/api/tokens/refresh` | 旋转 RT → 新 RT + AT | Refresh Token (Bearer) |
 
 ---
 
-## POST /api/tokens
+## POST /api/tokens/root
 
-用户直接创建 Delegate Token（无需客户端申请流程）。
+创建（或获取已有的）Root Delegate。Root Delegate 是用户在某个 Realm 的最高权限授权实体。
+
+> **幂等**：如果用户已有 Root Delegate，直接返回已有实体（HTTP 200），不会创建重复的。首次创建返回 HTTP 201。
 
 ### 请求
 
-需要 `Authorization` header：
-
 ```http
+POST /api/tokens/root
 Authorization: Bearer {jwt}
-```
-
-```json
-{
-  "realm": "usr_abc123",
-  "name": "My Token",
-  "type": "delegate",
-  "expiresIn": 2592000,
-  "canUpload": true,
-  "canManageDepot": true,
-  "scope": ["cas://depot:MAIN"]
-}
-```
-
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `realm` | `string` | 是 | 授权的 Realm ID |
-| `name` | `string` | 是 | Token 名称（1-64 字符） |
-| `type` | `"delegate" \| "access"` | 是 | Token 类型 |
-| `expiresIn` | `number` | 否 | 有效期（秒），默认 30 天 |
-| `canUpload` | `boolean` | 否 | 是否允许上传 Node，默认 false |
-| `canManageDepot` | `boolean` | 否 | 是否允许管理 Depot，默认 false |
-| `scope` | `string[]` | 是 | 授权范围（CAS URI 数组） |
-
-### Scope 格式
-
-用户签发时，Scope 必须使用 `depot:` 或 `ticket:` URI：
-
-```json
-{
-  "scope": [
-    "cas://depot:MAIN",
-    "cas://depot:BACKUP",
-    "cas://ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC"
-  ]
-}
-```
-
-> **注意**：用户签发时不能使用 `node:` URI，必须从 Depot 或 Ticket 开始授权。
-
-### 响应
-
-```json
-{
-  "tokenId": "dlt1_4xzrt7y2m5k9bqwp3fnhjc6d",
-  "tokenBase64": "SGVsbG8gV29ybGQh...",
-  "expiresAt": 1741089600000
-}
-```
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `tokenId` | `string` | Token ID（`dlt1_xxx` 格式） |
-| `tokenBase64` | `string` | 完整 Token 的 Base64 编码（约 172 字符） |
-| `expiresAt` | `number` | 过期时间（epoch 毫秒） |
-
-> **重要**：`tokenBase64` 是完整 Token 的 Base64 编码（128 字节），**仅返回一次**，客户端需妥善保管。
-
-### 错误
-
-| 错误码 | HTTP Status | 说明 |
-|--------|-------------|------|
-| `INVALID_REQUEST` | 400 | 请求参数无效 |
-| `INVALID_REALM` | 400 | 无权访问指定的 Realm |
-| `UNAUTHORIZED` | 401 | 未认证或 JWT 无效 |
-
----
-
-## GET /api/tokens
-
-列出当前用户的 Delegate Token。
-
-### 请求
-
-需要 `Authorization` header：
-
-```http
-GET /api/tokens?limit=20&cursor=xxx
-Authorization: Bearer {jwt}
-```
-
-### 查询参数
-
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `limit` | `number` | 每页数量，默认 20，最大 100 |
-| `cursor` | `string` | 分页游标 |
-
-### 响应
-
-```json
-{
-  "tokens": [
-    {
-      "tokenId": "dlt1_4xzrt7y2m5k9bqwp3fnhjc6d",
-      "name": "My Token",
-      "realm": "usr_abc123",
-      "tokenType": "delegate",
-      "expiresAt": 1741089600000,
-      "createdAt": 1738497600000,
-      "isRevoked": false,
-      "depth": 0
-    }
-  ],
-  "nextCursor": "xxx"
-}
-```
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `tokenId` | `string` | Token ID |
-| `name` | `string` | Token 名称 |
-| `realm` | `string` | 授权的 Realm |
-| `tokenType` | `string` | Token 类型：`delegate` 或 `access` |
-| `expiresAt` | `number` | 过期时间 |
-| `createdAt` | `number` | 创建时间 |
-| `isRevoked` | `boolean` | 是否已撤销 |
-| `depth` | `number` | Token 深度（0 = 用户直接签发） |
-
-> **注意**：列表不返回 Token 内容（`tokenBase64`），Token 内容仅在创建时返回一次。
-
----
-
-## GET /api/tokens/:tokenId
-
-获取单个 Token 详情。
-
-### 请求
-
-```http
-GET /api/tokens/dlt1_4xzrt7y2m5k9bqwp3fnhjc6d
-Authorization: Bearer {jwt}
-```
-
-### 响应
-
-```json
-{
-  "tokenId": "dlt1_4xzrt7y2m5k9bqwp3fnhjc6d",
-  "name": "My Token",
-  "realm": "usr_abc123",
-  "tokenType": "delegate",
-  "expiresAt": 1741089600000,
-  "createdAt": 1738497600000,
-  "isRevoked": false,
-  "depth": 0,
-  "canUpload": true,
-  "canManageDepot": true,
-  "issuerChain": ["usr_abc123"]
-}
-```
-
-### issuerChain 说明
-
-`issuerChain` 记录 Token 的签发链：
-
-- 第一个元素总是用户 ID（`usr_xxx`）
-- 后续元素为父 Token ID（`dlt1_xxx`）
-
-示例：
-```json
-// 用户直接签发的 Token
-"issuerChain": ["usr_abc123"]
-
-// 转签发的 Token（深度 1）
-"issuerChain": ["usr_abc123", "dlt1_parent_token"]
-
-// 转签发的 Token（深度 2）
-"issuerChain": ["usr_abc123", "dlt1_grandparent", "dlt1_parent"]
-```
-
-### 错误
-
-| 错误码 | HTTP Status | 说明 |
-|--------|-------------|------|
-| `TOKEN_NOT_FOUND` | 404 | Token 不存在或无权查看 |
-
----
-
-## POST /api/tokens/:tokenId/revoke
-
-撤销指定的 Delegate Token。**级联撤销所有子 Token**。
-
-### 请求
-
-```http
-POST /api/tokens/dlt1_4xzrt7y2m5k9bqwp3fnhjc6d/revoke
-Authorization: Bearer {jwt}
-```
-
-### 响应
-
-```json
-{
-  "success": true,
-  "revokedCount": 5
-}
-```
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `success` | `boolean` | 操作是否成功 |
-| `revokedCount` | `number` | 被撤销的 Token 总数（包括子 Token） |
-
-### 级联撤销
-
-撤销 Token 会自动撤销其所有子 Token：
-
-```
-Token A (revoked)
-├── Token B (cascade revoked)
-│   ├── Token D (cascade revoked)
-│   └── Token E (cascade revoked)
-└── Token C (cascade revoked)
-```
-
-### 错误
-
-| 错误码 | HTTP Status | 说明 |
-|--------|-------------|------|
-| `TOKEN_NOT_FOUND` | 404 | Token 不存在或无权撤销 |
-| `TOKEN_REVOKED` | 409 | Token 已被撤销 |
-
----
-
-## POST /api/tokens/delegate
-
-使用再授权 Token 转签发新 Token。
-
-### 请求
-
-```http
-POST /api/tokens/delegate
-Authorization: Bearer {base64_encoded_token}
 Content-Type: application/json
 
 {
-  "type": "access",
-  "expiresIn": 3600,
-  "canUpload": true,
-  "canManageDepot": false,
-  "scope": [".:0:1", ".:0:2"]
+  "realm": "usr_abc123"
 }
 ```
-
-> **注意**：`Authorization` Header 中是完整 Token（128 字节）的 Base64 编码，不是 Token ID。
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `type` | `"delegate" \| "access"` | 是 | Token 类型 |
-| `expiresIn` | `number` | 否 | 有效期（秒），不能超过父 Token 剩余有效期 |
-| `canUpload` | `boolean` | 否 | 是否允许上传，不能超过父 Token 权限 |
-| `canManageDepot` | `boolean` | 否 | 是否允许管理 Depot，不能超过父 Token 权限 |
-| `scope` | `string[]` | 是 | 相对 index-path 格式的 scope |
-
-### Scope 格式（相对 index-path）
-
-转签发时，scope 使用相对 index-path 格式，表示父 Token scope 的子集：
-
-```json
-{
-  "scope": [
-    ".:0:1",   // 父 scope 中第 0 个根的第 1 个子节点
-    ".:0:2",   // 父 scope 中第 0 个根的第 2 个子节点
-    ".:1"      // 父 scope 中第 1 个根
-  ]
-}
-```
+| `realm` | `string` | 是 | 目标 Realm（必须等于用户自己的 ID） |
 
 ### 响应
 
 ```json
 {
-  "tokenId": "dlt1_7ynmq3kp2jdfhw8x9bcrt6vz",
-  "tokenBase64": "SGVsbG8gV29ybGQh...",
-  "expiresAt": 1738501200000
+  "delegate": {
+    "delegateId": "dlt_01HQXK5V8N3Y7M2P4R6T9W0ABC",
+    "realm": "usr_abc123",
+    "depth": 0,
+    "canUpload": true,
+    "canManageDepot": true,
+    "createdAt": 1738497600000
+  }
 }
 ```
 
-### 约束
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `delegate.delegateId` | `string` | Root Delegate ID |
+| `delegate.realm` | `string` | Realm ID |
+| `delegate.depth` | `number` | 深度，固定为 0 |
+| `delegate.canUpload` | `boolean` | 是否允许上传（Root 默认 true） |
+| `delegate.canManageDepot` | `boolean` | 是否允许管理 Depot（Root 默认 true） |
+| `delegate.createdAt` | `number` | 创建时间（epoch 毫秒） |
 
-转签发时必须遵守以下约束：
-
-| 约束 | 说明 |
-|------|------|
-| Token 类型 | 只有 Delegate Token 可以转签发 |
-| 深度限制 | 最大深度 15 层 |
-| TTL | 不能超过父 Token 剩余有效期 |
-| 权限 | 不能超过父 Token 权限 |
-| Scope | 必须是父 Token scope 的子集 |
+> **注意**：Root Delegate 不返回 RT 和 AT。Root 操作直接使用 JWT 即可访问所有 Realm 路由。
 
 ### 错误
 
 | 错误码 | HTTP Status | 说明 |
 |--------|-------------|------|
-| `INVALID_TOKEN_FORMAT` | 401 | Token Base64 格式无效 |
-| `TOKEN_NOT_FOUND` | 401 | Token 不存在 |
-| `TOKEN_REVOKED` | 401 | Token 已被撤销 |
-| `TOKEN_EXPIRED` | 401 | Token 已过期 |
-| `DELEGATE_TOKEN_REQUIRED` | 403 | 需要 Delegate Token（Access Token 不能转签发） |
-| `MAX_DEPTH_EXCEEDED` | 400 | 超出最大转签发深度（15 层） |
-| `INVALID_SCOPE` | 400 | Scope 不是父 Token 的子集 |
-| `INVALID_TTL` | 400 | TTL 超过父 Token 剩余有效期 |
-| `PERMISSION_ESCALATION` | 400 | 权限不能超过父 Token |
+| `INVALID_REALM` | 400 | 不能为其他用户的 Realm 创建 Root |
+| `ROOT_DELEGATE_REVOKED` | 403 | Root Delegate 已被撤销，需联系管理员 |
+| `UNAUTHORIZED` | 401 | JWT 无效 |
 
 ---
 
-## Access Token 说明
+## POST /api/tokens/refresh
 
-Access Token 可以通过以下方式获得：
+使用 Refresh Token 旋转获取新的 RT + AT 对。
 
-| 方式 | 说明 | 使用场景 |
-|------|------|----------|
-| **用户直接签发** | `POST /api/tokens` with `type: "access"` | 给自己使用的短期 Token |
-| **Delegate Token 转签发** | `POST /api/tokens/delegate` with `type: "access"` | 给 Tool 使用的任务 Token |
-| **创建 Ticket 时自动签发** | `POST /api/realm/{realmId}/tickets` | 绑定 Ticket 的 Token |
+### 机制
 
-无论通过哪种方式获得，Access Token 都可以用于：
+1. 从 Authorization header 解析 24 字节 RT（Base64 编码）
+2. 从 RT 中提取 delegateId
+3. 验证 RT hash 与 delegate 存储的 `currentRtHash` 匹配
+4. 生成新 RT + AT 对
+5. 原子条件更新：`SET newHashes WHERE currentRtHash = oldHash`
+6. 返回新 Token
 
-- 读取 scope 内的 Node（需要 `X-CAS-Index-Path` 证明）
-- 写入 Node（需要 `canUpload` 权限）
-- 操作 Depot（需要 `canManageDepot` 权限）
+> **一次性使用**：每个 RT 只能使用一次。使用后旧 RT 失效，必须使用新返回的 RT。如果 RT 被重放（旧 RT 再次使用），请求会被拒绝但 delegate 不会被自动撤销。
+
+### 请求
+
+```http
+POST /api/tokens/refresh
+Authorization: Bearer {base64_encoded_rt}
+```
+
+> 注意：RT 通过 Authorization header 传递，请求体为空。
+
+### 响应
+
+```json
+{
+  "refreshToken": "base64_new_rt...",
+  "accessToken": "base64_new_at...",
+  "accessTokenExpiresAt": 1738501200000,
+  "delegateId": "dlt_01HQXK5V8N3Y7M2P4R6T9W0ABC"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `refreshToken` | `string` | 新 Refresh Token（Base64 编码的 24 字节） |
+| `accessToken` | `string` | 新 Access Token（Base64 编码的 32 字节） |
+| `accessTokenExpiresAt` | `number` | AT 过期时间（epoch 毫秒），默认 1 小时 |
+| `delegateId` | `string` | 关联的 Delegate ID |
+
+### 错误
+
+| 错误码 | HTTP Status | 说明 |
+|--------|-------------|------|
+| `UNAUTHORIZED` | 401 | 缺少 Authorization header |
+| `INVALID_TOKEN_FORMAT` | 401 | RT 不是有效的 24 字节 Base64 |
+| `NOT_REFRESH_TOKEN` | 400 | 传入的是 AT（32 字节）而非 RT |
+| `ROOT_REFRESH_NOT_ALLOWED` | 400 | Root delegate (depth=0) 使用 JWT，不需要 refresh |
+| `DELEGATE_NOT_FOUND` | 401 | Delegate 不存在 |
+| `DELEGATE_REVOKED` | 401 | Delegate 已被撤销 |
+| `DELEGATE_EXPIRED` | 401 | Delegate 已过期 |
+| `TOKEN_INVALID` | 401 | RT hash 不匹配（可能被重放） |
+| `TOKEN_INVALID` | 409 | 并发 refresh 冲突 |
 
 ---
 
 ## 安全说明
 
-1. **Token 是敏感凭证**：应当像密码一样保护，不要记录到日志
-2. **最小权限原则**：创建 Token 时应尽量限制 scope 和权限
-3. **合理设置有效期**：Delegate Token 可以较长（如 30 天），Access Token 应较短（如 1 小时）
-4. **及时撤销**：不再需要的 Token 应及时撤销
-5. **监控转签发链**：通过 `issuerChain` 追踪 Token 来源
+1. **Token 是敏感凭证**：RT 和 AT 应当像密码一样保护，不要记录到日志
+2. **RT 一次性使用**：每次 refresh 都会旋转 RT，旧 RT 立即失效
+3. **并发安全**：使用条件更新保证同一时间只有一个 refresh 请求成功
+4. **Root Delegate 无 Token**：Root 直接使用 JWT，不存在 Token 泄漏风险
+5. **合理设置有效期**：AT 默认 1 小时，Delegate 可自定义过期时间

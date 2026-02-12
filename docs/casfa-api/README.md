@@ -2,13 +2,13 @@
 
 CASFA (Content-Addressable Storage for Agents) 是一个为 AI Agent 设计的内容寻址存储服务 API。
 
-> **日期**: 2026-02-06
+> **日期**: 2026-02-12
 
 ## 概述
 
 所有 API 路由均以 `/api` 为前缀。
 
-CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机制。
+CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 
 ## 认证体系
 
@@ -16,42 +16,59 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 
 | 类型 | Header 格式 | 说明 |
 |------|-------------|------|
-| User Token (JWT) | `Authorization: Bearer {jwt}` | OAuth 登录后获取，用于用户管理和 Token 签发 |
-| Delegate Token | `Authorization: Bearer {base64}` | 再授权 Token，可转签发子 Token |
-| Access Token | `Authorization: Bearer {base64}` | 访问 Token，用于 CAS 数据操作 |
+| User JWT | `Authorization: Bearer {jwt}` | OAuth 登录后获取，用于管理操作，Root Delegate 也可直接访问数据 |
+| Access Token (AT) | `Authorization: Bearer {base64}` | 32 字节二进制 Token，用于 CAS 数据操作 |
+| Refresh Token (RT) | `Authorization: Bearer {base64}` | 24 字节二进制 Token，用于旋转获取新 RT + AT |
+
+### Delegate 模型
+
+所有授权实体统一为 **Delegate**：
+
+- **Root Delegate**（depth=0）：用户通过 `POST /api/tokens/root` 创建，使用 User JWT 直接访问数据，无需 RT/AT
+- **Child Delegate**（depth>0）：通过 `POST /api/realm/{realmId}/delegates` 转签发，持有 RT + AT
 
 ### Token 能力对比
 
-| 能力 | User JWT | Delegate Token | Access Token |
-|------|----------|----------------|--------------|
-| 创建 Delegate Token | ✓ | ✓ (转签发) | ✗ |
-| 创建 Access Token | ✓ | ✓ (转签发) | ✗ |
-| 创建 Ticket | ✗ | ✓ | ✗ |
-| 读取 Node | ✗ | ✗ | ✓ (需 scope 证明) |
-| 写入 Node | ✗ | ✗ | ✓ (需 can_upload) |
-| Depot 操作 | ✗ | ✗ | ✓ (需 can_manage_depot) |
-| 查看/管理 Token | ✓ | ✗ | ✗ |
+| 能力 | User JWT (Root Delegate) | Access Token (Child) | Refresh Token |
+|------|--------------------------|---------------------|---------------|
+| 创建 Root Delegate | ✓ | ✗ | ✗ |
+| 转签发 Child Delegate | ✓ | ✓ | ✗ |
+| 读取 Node | ✓ (需 scope 证明) | ✓ (需 scope 证明) | ✗ |
+| 写入 Node | ✓ (需 canUpload) | ✓ (需 canUpload) | ✗ |
+| Depot 操作 | ✓ (需 canManageDepot) | ✓ (需 canManageDepot) | ✗ |
+| 旋转获取新 AT | ✗ (JWT 自动续期) | ✗ | ✓ |
+| 管理用户 | ✓ (需 admin) | ✗ | ✗ |
+
+> **Root Delegate 特殊性**：Root delegate 使用 JWT 直接访问 Realm 数据路由，中间件自动将 JWT 转换为 `AccessTokenAuthContext`，下游无感知。Root delegate 不持有 RT/AT，不需要 refresh。PoP 验证也自动跳过。
 
 ## ID 格式规范
 
-所有标识符使用以下格式：
+所有标识符使用统一的 `prefix_[CrockfordBase32]{26}` 格式（128 位）：
 
-| 类型 | 格式 | 示例 |
+| 类型 | 前缀 | 示例 |
 |------|------|------|
-| User ID | `usr_{base32}` | `usr_A6JCHNMFWRT90AXMYWHJ8HKS90` |
-| Token ID | `dlt1_{base32}` | `dlt1_4xzrt7y2m5k9bqwp3fnhjc6d` |
-| Ticket ID | `ticket:{ulid}` | `ticket:01HQXK5V8N3Y7M2P4R6T9W0ABC` |
-| Depot ID | `depot:{name}` | `depot:MAIN` |
-| Node Key | `node:{blake3_hash}` | `node:abc123...` |
-| Request ID | `req_{base64}` | `req_xxxxxxxxxxxxxxxxxxxxxxxx` |
+| User ID | `usr_` | `usr_A6JCHNMFWRT90AXMYWHJ8HKS90` |
+| Delegate ID | `dlt_` | `dlt_01HQXK5V8N3Y7M2P4R6T9W0ABC` |
+| Depot ID | `dpt_` | `dpt_01HQXK5V8N3Y7M2P4R6T9W0DEF` |
+| Request ID | `req_` | `req_01HQXK5V8N3Y7M2P4R6T9W0GHI` |
+| Node Key | `nod_` | `nod_abc123def456...`（hex 编码的 Blake3 hash） |
 
-> **Token ID 计算**：Token ID 是 Token 内容（128 字节）的 Blake3-128 hash
+> **Delegate ID** 使用 ULID 格式（48 位时间戳 + 80 位随机 = 128 位），自然按时间排序。
+
+### Token 二进制格式
+
+| Token 类型 | 大小 | 布局 |
+|------------|------|------|
+| Access Token (AT) | 32 字节 | `[delegateId 16B][expiresAt 8B][nonce 8B]` |
+| Refresh Token (RT) | 24 字节 | `[delegateId 16B][nonce 8B]` |
+
+> **安全设计**：服务端不保存完整 Token，仅保存 Token 的 Blake3 hash。Token 仅在创建时返回一次。
 
 ## 时间格式规范
 
 | 类型 | 格式 | 单位 | 示例 |
 |------|------|------|------|
-| 时间戳 | Unix epoch | 毫秒 (int64) | `1738497600000` (2025-02-02T08:00:00Z) |
+| 时间戳 | Unix epoch | 毫秒 (int64) | `1738497600000` |
 | 持续时间 | 整数 | 秒 (int32) | `3600` (1 小时) |
 
 ### 字段命名约定
@@ -81,34 +98,23 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 | GET | `/api/oauth/config` | 获取 Cognito 配置 | 无 |
 | POST | `/api/oauth/token` | 交换授权码获取 Token | 无 |
 | POST | `/api/oauth/login` | 用户登录（邮箱密码） | 无 |
-| POST | `/api/oauth/refresh` | 刷新 Token | 无 |
+| POST | `/api/oauth/refresh` | 刷新 JWT Token | 无 |
 | GET | `/api/oauth/me` | 获取当前用户信息 | User JWT |
 
-### Token 管理 API
+### Delegate Token 管理 API
 
 [详细文档](./02-tokens.md)
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
-| POST | `/api/tokens` | 创建 Delegate Token | User JWT |
-| GET | `/api/tokens` | 列出 Delegate Token | User JWT |
-| GET | `/api/tokens/:tokenId` | 获取 Token 详情 | User JWT |
-| POST | `/api/tokens/:tokenId/revoke` | 撤销 Token | User JWT |
-| POST | `/api/tokens/delegate` | 转签发 Token | Delegate Token |
+| POST | `/api/tokens/root` | 创建/获取 Root Delegate | User JWT |
+| POST | `/api/tokens/refresh` | 旋转 RT → 新 RT + AT | Refresh Token |
 
-### 客户端授权申请 API
+### 客户端授权申请 API（未实现）
 
 [详细文档](./03-client-auth.md)
 
-| 方法 | 路径 | 描述 | 认证 |
-|------|------|------|------|
-| POST | `/api/tokens/requests` | 发起授权申请 | 无 |
-| GET | `/api/tokens/requests/:requestId/poll` | 轮询状态（客户端侧） | 无 |
-| GET | `/api/tokens/requests/:requestId` | 查看详情（用户侧） | User JWT |
-| POST | `/api/tokens/requests/:requestId/approve` | 批准申请 | User JWT |
-| POST | `/api/tokens/requests/:requestId/reject` | 拒绝申请 | User JWT |
-
-> **注意**：授权申请不可枚举，无列表 API。
+> **注意**：客户端授权申请流程尚未实现，文档描述的是设计规划。
 
 ### Admin 管理 API
 
@@ -125,15 +131,15 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
-| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/stat` | 获取文件/目录元信息 | Access Token |
-| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/read` | 读取文件内容 | Access Token |
-| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/ls` | 列出目录内容 | Access Token |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/write` | 创建或覆盖文件 | Access Token (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mkdir` | 创建目录 | Access Token (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rm` | 删除文件或目录 | Access Token (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mv` | 移动/重命名 | Access Token (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/cp` | 复制文件或目录 | Access Token (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rewrite` | 声明式树重写 | Access Token (canUpload) |
+| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/stat` | 获取文件/目录元信息 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/read` | 读取文件内容 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/ls` | 列出目录内容 | AT 或 JWT |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/write` | 创建或覆盖文件 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mkdir` | 创建目录 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rm` | 删除文件或目录 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mv` | 移动/重命名 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/cp` | 复制文件或目录 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rewrite` | 声明式树重写 | AT 或 JWT (canUpload) |
 
 ### Realm CAS 操作 API
 
@@ -141,18 +147,23 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
-| GET | `/api/realm/{realmId}` | 获取 Realm 端点信息 | Access Token |
-| GET | `/api/realm/{realmId}/usage` | 获取使用统计 | Access Token |
-| GET | `/api/realm/{realmId}/nodes/:key` | 读取节点 | Access Token |
-| PUT | `/api/realm/{realmId}/nodes/:key` | 写入节点 | Access Token |
-| GET | `/api/realm/{realmId}/depots` | 列出 Depot | Access Token |
-| POST | `/api/realm/{realmId}/depots` | 创建 Depot | Access Token |
-| PATCH | `/api/realm/{realmId}/depots/:depotId` | 修改 Depot | Access Token |
-| DELETE | `/api/realm/{realmId}/depots/:depotId` | 删除 Depot | Access Token |
-| GET | `/api/realm/{realmId}/tickets` | 列出 Ticket | Access Token |
-| POST | `/api/realm/{realmId}/tickets` | 创建 Ticket | Access Token |
-| GET | `/api/realm/{realmId}/tickets/:ticketId` | 查询 Ticket | Access Token |
-| POST | `/api/realm/{realmId}/tickets/:ticketId/submit` | 提交 Ticket | Access Token |
+| GET | `/api/realm/{realmId}` | 获取 Realm 端点信息 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/usage` | 获取使用统计 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/nodes/:key` | 读取节点 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/nodes/:key/metadata` | 获取节点元信息 | AT 或 JWT |
+| PUT | `/api/realm/{realmId}/nodes/:key` | 上传节点 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/check` | 批量检查节点状态 | AT 或 JWT |
+| POST | `/api/realm/{realmId}/nodes/:key/claim` | 认领节点所有权 (PoP) | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/delegates` | 创建子 Delegate | AT 或 JWT |
+| GET | `/api/realm/{realmId}/delegates` | 列出子 Delegate | AT 或 JWT |
+| GET | `/api/realm/{realmId}/delegates/:delegateId` | 获取 Delegate 详情 | AT 或 JWT |
+| POST | `/api/realm/{realmId}/delegates/:delegateId/revoke` | 撤销 Delegate | AT 或 JWT |
+| GET | `/api/realm/{realmId}/depots` | 列出 Depot | AT 或 JWT |
+| POST | `/api/realm/{realmId}/depots` | 创建 Depot | AT 或 JWT (canManageDepot) |
+| GET | `/api/realm/{realmId}/depots/:depotId` | 获取 Depot 详情 | AT 或 JWT |
+| PATCH | `/api/realm/{realmId}/depots/:depotId` | 修改 Depot | AT 或 JWT (canManageDepot) |
+| DELETE | `/api/realm/{realmId}/depots/:depotId` | 删除 Depot | AT 或 JWT (canManageDepot) |
+| POST | `/api/realm/{realmId}/depots/:depotId/commit` | 提交新 Root | AT 或 JWT (canUpload) |
 
 ## 错误响应
 
@@ -170,86 +181,32 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 
 | 错误代码 | HTTP 状态码 | 描述 |
 |---------|------------|------|
-| `INVALID_REQUEST` | 400 | 请求参数错误 |
-| `INVALID_TOKEN_FORMAT` | 401 | Token Base64 格式无效 |
-| `TOKEN_NOT_FOUND` | 401 | Token ID 不存在 |
-| `TOKEN_REVOKED` | 401 | Token 已被撤销 |
-| `TOKEN_EXPIRED` | 401 | Token 已过期 |
+| `validation_error` | 400 | 请求参数验证失败 |
+| `INVALID_TOKEN_FORMAT` | 401 | Token 格式无效 |
+| `TOKEN_INVALID` | 401 | Token 已失效（可能被重放） |
+| `DELEGATE_NOT_FOUND` | 401/404 | Delegate 不存在 |
+| `DELEGATE_REVOKED` | 401/403 | Delegate 已被撤销 |
+| `DELEGATE_EXPIRED` | 401 | Delegate 已过期 |
+| `DELEGATE_ALREADY_REVOKED` | 409 | Delegate 已被撤销（重复操作） |
+| `ROOT_REFRESH_NOT_ALLOWED` | 400 | Root delegate 不支持 refresh |
+| `NOT_REFRESH_TOKEN` | 400 | 期望 RT 但收到了 AT |
 | `UNAUTHORIZED` | 401 | 未认证或 Token 无效 |
 | `FORBIDDEN` | 403 | 权限不足 |
-| `ACCESS_TOKEN_REQUIRED` | 403 | 需要 Access Token |
-| `DELEGATE_TOKEN_REQUIRED` | 403 | 需要 Delegate Token |
+| `INVALID_REALM` | 400 | 无效的 Realm |
 | `REALM_MISMATCH` | 403 | Token realm 与 URL realmId 不匹配 |
+| `INVALID_SCOPE` | 400 | Scope 不是父 delegate 的子集 |
+| `PERMISSION_ESCALATION` | 400 | 权限不能超过父 delegate |
 | `NODE_NOT_IN_SCOPE` | 403 | 节点不在授权范围 |
-| `DEPOT_ACCESS_DENIED` | 403 | 无权访问该 Depot |
-| `NOT_FOUND` | 404 | 资源不存在 |
-| `PATH_NOT_FOUND` | 404 | 文件系统路径不存在 |
-| `NOT_A_FILE` | 400 | 目标不是文件 |
-| `NOT_A_DIRECTORY` | 400 | 目标不是目录 |
-| `FILE_TOO_LARGE` | 400/413 | 读取时表示多 block 不支持（400），写入时表示超过大小限制（413） |
-| `CONTENT_LENGTH_MISMATCH` | 400 | fs/write 实际 body 字节数与 Content-Length 不一致 |
-| `INVALID_ROOT` | 400 | nodeKey 无效或引用的节点不存在 |
-| `INVALID_PATH` | 400 | 文件路径无效（空段、`..`、绝对路径等） |
-| `INDEX_OUT_OF_BOUNDS` | 400 | indexPath 中的索引超出范围 |
-| `NAME_TOO_LONG` | 400 | 文件/目录名超过 maxNameBytes |
-| `COLLECTION_FULL` | 400 | 目录子节点数达到 maxCollectionChildren 上限 |
-| `CANNOT_REMOVE_ROOT` | 400 | 不能删除根节点 |
-| `CANNOT_MOVE_ROOT` | 400 | 不能移动根节点 |
-| `MOVE_INTO_SELF` | 400 | 不能将目录移入自身或其子目录 |
-| `TARGET_EXISTS` | 409 | 目标路径已存在 |
-| `EXISTS_AS_FILE` | 409 | 路径已存在且是文件 |
-| `TOO_MANY_ENTRIES` | 400 | rewrite entries + deletes 条目超限 |
-| `EMPTY_REWRITE` | 400 | rewrite 的 entries 和 deletes 都为空 |
-| `ROOT_NOT_AUTHORIZED` | 403 | PATCH depot root 引用验证失败 |
-| `LINK_NOT_AUTHORIZED` | 403 | link 引用验证失败（非本 Token 上传且无有效 proof） |
-| `CHILD_NOT_AUTHORIZED` | 403 | PUT node 子节点引用验证失败 |
-| `REQUEST_NOT_FOUND` | 404 | 授权申请不存在 |
-| `CONFLICT` | 409 | 资源状态冲突 |
-| `GONE` | 410 | 资源已过期或已撤销 |
-| `QUOTA_EXCEEDED` | 413 | 超出配额限制 |
-| `RATE_LIMITED` | 429 | 请求过于频繁 |
+| `UPLOAD_NOT_ALLOWED` | 403 | Token 没有 canUpload 权限 |
+| `DEPOT_MANAGE_NOT_ALLOWED` | 403 | Token 没有 canManageDepot 权限 |
+| `ROOT_NOT_AUTHORIZED` | 403 | Root 引用验证失败 |
+| `CHILD_NOT_AUTHORIZED` | 403 | 子节点引用验证失败 |
+| `INVALID_POP` | 403 | Proof-of-Possession 校验失败 |
+| `NODE_NOT_FOUND` | 404 | 节点不存在 |
+| `REALM_QUOTA_EXCEEDED` | 403 | 超出 Realm 配额限制 |
 | `MAX_DEPTH_EXCEEDED` | 400 | 超出最大转签发深度 |
 | `INDEX_PATH_REQUIRED` | 400 | 缺少 X-CAS-Index-Path |
 | `INTERNAL_ERROR` | 500 | 服务器内部错误 |
-
-### 示例
-
-```json
-{
-  "error": "NODE_NOT_IN_SCOPE",
-  "message": "The requested node is not within the authorized scope",
-  "details": {
-    "nodeKey": "node:abc123...",
-    "indexPath": "0:1:2"
-  }
-}
-```
-
-## 限流策略
-
-> **TODO**：限流策略待后续完善。以下为初步规划，实际参数可能根据压测结果调整。尤其需要考虑多 Token 聚合限流（Per realm 维度）以防止通过签发多个 Access Token 绕过 Per token 限流。
-
-| 端点类别 | 限制 | 窗口 | 维度 |
-|---------|------|------|------|
-| OAuth 端点 | 10 req | 1 min | Per IP |
-| Token 轮询 | 1 req | 5 sec | Per requestId |
-| Token 管理 | 30 req | 1 min | Per user |
-| Realm 操作 | 100 req | 1 min | Per token |
-| Node 上传 | 60 req | 1 min | Per realm |
-| 文件系统操作 | 60 req | 1 min | Per token |
-| Admin 操作 | 30 req | 1 min | Per admin |
-
-超出限制时返回 `429 Too Many Requests`：
-
-```json
-{
-  "error": "RATE_LIMITED",
-  "message": "Too many requests",
-  "details": {
-    "retryAfter": 30
-  }
-}
-```
 
 ## 幂等性保证
 
@@ -260,26 +217,25 @@ CASFA 采用 **Delegate Token 授权体系**，提供统一的认证和授权机
 | `GET` 所有端点 | ✅ 幂等 | 读取操作 |
 | `PUT /nodes/:key` | ✅ 幂等 | 相同内容产生相同 key |
 | `DELETE` 资源 | ✅ 幂等 | 重复删除返回成功 |
+| `POST /tokens/root` | ✅ 幂等 | 已存在时返回既有 delegate（200） |
 | `fs/stat`, `fs/read`, `fs/ls` | ✅ 幂等 | 读取操作 |
-| `fs/mkdir` | ⚠️ 条件幂等 | 目录已存在时返回当前 root，不产生新 root |
+| `fs/mkdir` | ⚠️ 条件幂等 | 目录已存在时返回当前 root |
 
 ### 非幂等操作
 
 | 操作 | 幂等性 | 说明 |
 |------|--------|------|
-| `POST /tokens` | ❌ 非幂等 | 每次创建新 Token |
-| `POST /tickets` | ❌ 非幂等 | 每次创建新 Ticket |
-| `POST /tokens/delegate` | ❌ 非幂等 | 每次创建新 Token |
-| `POST /tickets/:id/submit` | ⚠️ 仅一次 | 成功后不可重复 |
-| `fs/write`, `fs/rm`, `fs/mv`, `fs/cp` | ❌ 非幂等 | 每次产生新 root（但相同内容的 CAS hash 相同） |
+| `POST /realm/{realmId}/delegates` | ❌ 非幂等 | 每次创建新 delegate + RT + AT |
+| `POST /tokens/refresh` | ❌ 非幂等 | 每次旋转产生新 RT + AT |
+| `fs/write`, `fs/rm`, `fs/mv`, `fs/cp` | ❌ 非幂等 | 每次产生新 root |
 | `fs/rewrite` | ❌ 非幂等 | 声明式重写，每次产生新 root |
 
 ## 相关文档
 
 - [服务信息 API](./00-info.md)
 - [OAuth 认证 API](./01-oauth.md)
-- [Token 管理 API](./02-tokens.md)
-- [客户端授权申请](./03-client-auth.md)
+- [Delegate Token 管理 API](./02-tokens.md)
+- [客户端授权申请](./03-client-auth.md)（未实现）
 - [Admin 管理 API](./04-admin.md)
 - [文件系统操作 API](./05-filesystem.md)
 - [Realm CAS 操作 API](./06-realm/README.md)
