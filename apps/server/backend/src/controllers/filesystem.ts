@@ -4,7 +4,7 @@
  * HTTP handlers for filesystem operations on CAS trees.
  * Mounts under /api/realm/{realmId}/nodes/{nodeKey}/fs/...
  *
- * Based on docs/casfa-api/04-filesystem.md
+ * Based on docs/casfa-api/04-realm/03-filesystem.md
  */
 
 import type {

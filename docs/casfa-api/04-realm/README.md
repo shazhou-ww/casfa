@@ -23,8 +23,8 @@ URL 中的 `realmId` 必须与 Token 关联的 realm 一致，否则返回 `403 
 ## 子文档
 
 - [端点信息与使用统计](./01-endpoint.md) — Realm 基本信息和 usage 统计
-- [Ticket 管理](./02-tickets.md) — ⚠️ 未实现
-- [Node 操作](./03-nodes.md) — 节点的读取、上传与 Claim
+- [Node 操作](./02-nodes.md) — 节点的读取、上传与 Claim
+- [文件系统操作](./03-filesystem.md) — 基于 Node 的类文件系统 CRUD
 - [Depot 管理](./04-depots.md) — 命名存储空间的 CRUD 与 Commit
 
 ## 端点列表
@@ -69,7 +69,7 @@ URL 中的 `realmId` 必须与 Token 关联的 realm 一致，否则返回 `403 
 | POST | `…/nodes/:key/fs/cp` | 复制文件或目录 | AT 或 JWT + Proof (canUpload) |
 | POST | `…/nodes/:key/fs/rewrite` | 声明式批量重写目录树 | AT 或 JWT + Proof (canUpload) |
 
-> 文件系统操作详见 [04-filesystem.md](../04-filesystem.md)。
+> 文件系统操作详见 [03-filesystem.md](./03-filesystem.md)。
 
 ### Depot 操作
 
