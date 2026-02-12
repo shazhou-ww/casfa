@@ -69,7 +69,7 @@ URL 中的 `realmId` 必须与 Token 关联的 realm 一致，否则返回 `403 
 | POST | `…/nodes/:key/fs/cp` | 复制文件或目录 | AT 或 JWT + Proof (canUpload) |
 | POST | `…/nodes/:key/fs/rewrite` | 声明式批量重写目录树 | AT 或 JWT + Proof (canUpload) |
 
-> 文件系统操作详见 [05-filesystem.md](../05-filesystem.md)。
+> 文件系统操作详见 [04-filesystem.md](../04-filesystem.md)。
 
 ### Depot 操作
 
