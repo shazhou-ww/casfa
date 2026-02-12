@@ -114,6 +114,57 @@ export type SortField = "name" | "size" | "type";
 export type SortDirection = "asc" | "desc";
 
 // ============================================================================
+// Clipboard Types (Iter 4)
+// ============================================================================
+
+/** Clipboard state for cut/copy/paste operations */
+export type ClipboardData = {
+  /** Items on the clipboard */
+  items: ExplorerItem[];
+  /** Whether the operation is copy or cut (move) */
+  operation: "copy" | "cut";
+};
+
+// ============================================================================
+// Conflict Resolution Types (Iter 4)
+// ============================================================================
+
+/** How to resolve a name conflict during paste/upload */
+export type ConflictAction = "overwrite" | "skip" | "rename";
+
+/** User's conflict resolution choice */
+export type ConflictResolution = {
+  action: ConflictAction;
+  applyToAll: boolean;
+};
+
+/** Information about a name conflict */
+export type ConflictInfo = {
+  /** Source item */
+  source: ExplorerItem;
+  /** Existing target item */
+  existing: ExplorerItem;
+  /** Target path */
+  targetPath: string;
+};
+
+// ============================================================================
+// Detail Panel Types (Iter 4)
+// ============================================================================
+
+/** Metadata displayed in the detail panel */
+export type DetailInfo = {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  size?: number;
+  formattedSize?: string;
+  contentType?: string;
+  nodeKey?: string;
+  itemCount?: number;
+};
+
+// ============================================================================
 // Upload Types
 // ============================================================================
 
@@ -354,4 +405,43 @@ export type ExplorerTextKey =
   | "pathInput.invalid"
   // Tree sidebar (Iter 3)
   | "sidebar.collapse"
-  | "sidebar.expand";
+  | "sidebar.expand"
+  // Clipboard (Iter 4)
+  | "clipboard.copied"
+  | "clipboard.cut"
+  | "clipboard.pasted"
+  | "clipboard.pasteError"
+  // Detail panel (Iter 4)
+  | "detail.title"
+  | "detail.name"
+  | "detail.path"
+  | "detail.size"
+  | "detail.type"
+  | "detail.nodeKey"
+  | "detail.childCount"
+  | "detail.noSelection"
+  | "detail.multipleSelected"
+  | "detail.totalSize"
+  // Preview (Iter 4)
+  | "preview.title"
+  | "preview.unsupported"
+  | "preview.loading"
+  | "preview.error"
+  | "preview.tooLarge"
+  | "preview.open"
+  | "preview.lines"
+  // Conflict (Iter 4)
+  | "conflict.title"
+  | "conflict.message"
+  | "conflict.overwrite"
+  | "conflict.skip"
+  | "conflict.rename"
+  | "conflict.applyToAll"
+  | "conflict.source"
+  | "conflict.existing"
+  // Drag and drop (Iter 4)
+  | "dnd.moveItems"
+  | "dnd.copyItems"
+  // Upload (Iter 4)
+  | "upload.cancelAll"
+  | "upload.overallProgress";

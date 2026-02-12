@@ -11,6 +11,7 @@ import { createFsService, type FsService, isFsError } from "@casfa/fs";
 import type { DepotListItem, FsLsChild } from "@casfa/protocol";
 import { createStore } from "zustand/vanilla";
 import type {
+  ClipboardData,
   ExplorerError,
   ExplorerItem,
   ExplorerPermissions,
@@ -66,11 +67,22 @@ export type ExplorerState = {
   sortField: SortField | null;
   sortDirection: SortDirection;
 
-  // ── Selection (Iter 2) ──
+  // ── Clipboard (Iter 4) ──
+  clipboard: ClipboardData | null;
+
+  // ── Selection (Iter 2 + 4) ──
   selectedItems: ExplorerItem[];
+  lastSelectedIndex: number | null;
+
+  // ── Focus (Iter 4) ──
+  focusIndex: number | null;
+
+  // ── Detail Panel (Iter 4) ──
+  detailPanelOpen: boolean;
 
   // ── Upload queue (Iter 2) ──
   uploadQueue: UploadQueueItem[];
+  uploadConcurrency: number;
 
   // ── Operation loading (Iter 2) ──
   operationLoading: Record<string, boolean>;
@@ -128,9 +140,23 @@ export type ExplorerActions = {
   getFilteredItems: () => ExplorerItem[];
   getSortedItems: () => ExplorerItem[];
 
-  // ── Selection (Iter 2) ──
+  // ── Clipboard (Iter 4) ──
+  copyItems: (items: ExplorerItem[]) => void;
+  cutItems: (items: ExplorerItem[]) => void;
+  pasteItems: (targetPath: string) => Promise<void>;
+  canPaste: () => boolean;
+  clearClipboard: () => void;
+
+  // ── Selection (Iter 2 + 4) ──
   setSelectedItems: (items: ExplorerItem[]) => void;
+  setLastSelectedIndex: (index: number | null) => void;
   clearSelection: () => void;
+
+  // ── Focus (Iter 4) ──
+  setFocusIndex: (index: number | null) => void;
+
+  // ── Detail Panel (Iter 4) ──
+  toggleDetailPanel: () => void;
 
   // ── Upload queue (Iter 2) ──
   addToUploadQueue: (files: File[]) => void;
@@ -243,9 +269,14 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     sortField: null,
     sortDirection: "asc" as SortDirection,
 
-    // ── Iter 2 initial state ──
+    // ── Iter 2 + 4 initial state ──
+    clipboard: null,
     selectedItems: [],
+    lastSelectedIndex: null,
+    focusIndex: null,
+    detailPanelOpen: false,
     uploadQueue: [],
+    uploadConcurrency: 3,
     operationLoading: {},
     permissions: { canUpload: true, canManageDepot: true },
     lastError: null,
@@ -627,9 +658,69 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
       return sortItems(filtered, sortField, sortDirection);
     },
 
-    // ── Selection ──
+    // ── Clipboard (Iter 4) ──
+    copyItems: (items: ExplorerItem[]) => {
+      set({ clipboard: { items, operation: "copy" } });
+    },
+
+    cutItems: (items: ExplorerItem[]) => {
+      set({ clipboard: { items, operation: "cut" } });
+    },
+
+    pasteItems: async (targetPath: string) => {
+      const { clipboard, localFs, depotRoot, depotId, client } = get();
+      if (!clipboard || !depotRoot || !depotId) return;
+
+      set({ operationLoading: { ...get().operationLoading, paste: true } });
+
+      const op = clipboard.operation === "copy" ? "cp" : "mv";
+      let currentRoot = depotRoot;
+
+      try {
+        for (const item of clipboard.items) {
+          const dstPath = targetPath ? `${targetPath}/${item.name}` : item.name;
+          const result = await localFs[op](currentRoot, item.path, dstPath);
+          if (isFsError(result)) {
+            handleFsError(get, result);
+            continue;
+          }
+          currentRoot = result.newRoot;
+        }
+
+        if (currentRoot !== depotRoot) {
+          await get().beforeCommit?.();
+          await client.depots.commit(depotId, { root: currentRoot });
+          set({ depotRoot: currentRoot });
+        }
+
+        // Copy keeps clipboard, cut clears it
+        if (clipboard.operation === "cut") {
+          set({ clipboard: null });
+        }
+
+        set({ operationLoading: { ...get().operationLoading, paste: false } });
+        await get().refresh();
+      } catch {
+        set({
+          operationLoading: { ...get().operationLoading, paste: false },
+          lastError: { type: "network", message: "Paste operation failed" },
+        });
+      }
+    },
+
+    canPaste: () => get().clipboard !== null && get().clipboard!.items.length > 0,
+    clearClipboard: () => set({ clipboard: null }),
+
+    // ── Selection (Iter 2 + 4) ──
     setSelectedItems: (items) => set({ selectedItems: items }),
-    clearSelection: () => set({ selectedItems: [] }),
+    setLastSelectedIndex: (index: number | null) => set({ lastSelectedIndex: index }),
+    clearSelection: () => set({ selectedItems: [], lastSelectedIndex: null, focusIndex: null }),
+
+    // ── Focus (Iter 4) ──
+    setFocusIndex: (index: number | null) => set({ focusIndex: index }),
+
+    // ── Detail Panel (Iter 4) ──
+    toggleDetailPanel: () => set({ detailPanelOpen: !get().detailPanelOpen }),
 
     // ── Upload queue ──
     addToUploadQueue: (files: File[]) => {

@@ -93,6 +93,45 @@ const messages: Record<ExplorerTextKey, string> = {
   // Tree sidebar (Iter 3)
   "sidebar.collapse": "Collapse sidebar",
   "sidebar.expand": "Expand sidebar",
+  // Clipboard (Iter 4)
+  "clipboard.copied": "{count} item(s) copied",
+  "clipboard.cut": "{count} item(s) cut",
+  "clipboard.pasted": "Pasted successfully",
+  "clipboard.pasteError": "Paste failed",
+  // Detail panel (Iter 4)
+  "detail.title": "Details",
+  "detail.name": "Name",
+  "detail.path": "Path",
+  "detail.size": "Size",
+  "detail.type": "Type",
+  "detail.nodeKey": "Node Key",
+  "detail.childCount": "Children",
+  "detail.noSelection": "No item selected",
+  "detail.multipleSelected": "{count} items selected",
+  "detail.totalSize": "Total size",
+  // Preview (Iter 4)
+  "preview.title": "Preview",
+  "preview.unsupported": "Preview not available for this file type",
+  "preview.loading": "Loading preview\u2026",
+  "preview.error": "Failed to load preview",
+  "preview.tooLarge": "File is too large to preview",
+  "preview.open": "Open",
+  "preview.lines": "{count} lines",
+  // Conflict (Iter 4)
+  "conflict.title": "File Conflict",
+  "conflict.message": "A file named \"{name}\" already exists in the destination",
+  "conflict.overwrite": "Overwrite",
+  "conflict.skip": "Skip",
+  "conflict.rename": "Keep both (rename)",
+  "conflict.applyToAll": "Apply to all conflicts",
+  "conflict.source": "Source",
+  "conflict.existing": "Existing",
+  // Drag and drop (Iter 4)
+  "dnd.moveItems": "Move {count} item(s)",
+  "dnd.copyItems": "Copy {count} item(s)",
+  // Upload enhancements (Iter 4)
+  "upload.cancelAll": "Cancel all",
+  "upload.overallProgress": "Overall progress",
 };
 
 /**

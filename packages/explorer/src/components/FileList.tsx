@@ -48,6 +48,8 @@ type FileListProps = {
   onContextMenu?: (e: React.MouseEvent, item: ExplorerItem | null) => void;
   renderEmptyState?: () => React.ReactNode;
   renderNodeIcon?: (item: ExplorerItem) => React.ReactNode;
+  /** Paths of items currently cut to clipboard (shown at reduced opacity) */
+  cutPaths?: Set<string> | null;
 };
 
 /** Inline name with search term highlighting */
@@ -84,6 +86,7 @@ export function FileList({
   onContextMenu,
   renderEmptyState,
   renderNodeIcon,
+  cutPaths,
 }: FileListProps) {
   const t = useExplorerT();
   const items = useExplorerStore((s) => s.items);
@@ -98,6 +101,9 @@ export function FileList({
   const sortDirection = useExplorerStore((s) => s.sortDirection);
   const setSort = useExplorerStore((s) => s.setSort);
   const searchTerm = useExplorerStore((s) => s.searchTerm);
+  const focusIndex = useExplorerStore((s) => s.focusIndex);
+  const lastSelectedIndex = useExplorerStore((s) => s.lastSelectedIndex);
+  const setLastSelectedIndex = useExplorerStore((s) => s.setLastSelectedIndex);
 
   const sorted = getSortedItems();
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -121,6 +127,27 @@ export function FileList({
 
   const handleRowClick = useCallback(
     (item: ExplorerItem, e: React.MouseEvent) => {
+      const itemIndex = sorted.findIndex((i) => i.path === item.path);
+
+      // Shift+click for range selection
+      if (e.shiftKey && lastSelectedIndex !== null) {
+        const start = Math.min(lastSelectedIndex, itemIndex);
+        const end = Math.max(lastSelectedIndex, itemIndex);
+        const rangeItems = sorted.slice(start, end + 1);
+        // Merge with existing selection if Ctrl held, otherwise replace
+        if (e.metaKey || e.ctrlKey) {
+          const existing = new Set(selectedItems.map((i) => i.path));
+          const merged = [...selectedItems];
+          for (const ri of rangeItems) {
+            if (!existing.has(ri.path)) merged.push(ri);
+          }
+          setSelectedItems(merged);
+        } else {
+          setSelectedItems(rangeItems);
+        }
+        return;
+      }
+
       // Ctrl/Cmd+click for multi-select
       if (e.metaKey || e.ctrlKey) {
         if (selectedPaths.has(item.path)) {
@@ -128,13 +155,15 @@ export function FileList({
         } else {
           setSelectedItems([...selectedItems, item]);
         }
+        setLastSelectedIndex(itemIndex);
         return;
       }
 
-      // Normal click → single select, then navigate/open
+      // Normal click → single select
       setSelectedItems([item]);
+      setLastSelectedIndex(itemIndex);
     },
-    [selectedItems, selectedPaths, setSelectedItems]
+    [selectedItems, selectedPaths, setSelectedItems, sorted, lastSelectedIndex, setLastSelectedIndex],
   );
 
   const handleRowDoubleClick = useCallback(
@@ -250,8 +279,10 @@ export function FileList({
           </TableRow>
         </TableHead>
         <TableBody>
-          {sorted.map((item) => {
+          {sorted.map((item, idx) => {
             const isSelected = selectedPaths.has(item.path);
+            const isCut = cutPaths?.has(item.path) ?? false;
+            const isFocused = focusIndex === idx;
             return (
               <TableRow
                 key={item.path}
@@ -260,7 +291,16 @@ export function FileList({
                 onClick={(e) => handleRowClick(item, e)}
                 onDoubleClick={() => handleRowDoubleClick(item)}
                 onContextMenu={(e) => handleRowContextMenu(item, e)}
-                sx={{ cursor: "pointer", "&:last-child td": { borderBottom: 0 } }}
+                sx={{
+                  cursor: "pointer",
+                  "&:last-child td": { borderBottom: 0 },
+                  opacity: isCut ? 0.5 : 1,
+                  ...(isFocused && {
+                    outline: "2px dashed",
+                    outlineColor: "primary.main",
+                    outlineOffset: -2,
+                  }),
+                }}
               >
                 <TableCell padding="checkbox">
                   <Checkbox

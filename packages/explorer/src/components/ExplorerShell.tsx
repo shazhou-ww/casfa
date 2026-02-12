@@ -5,33 +5,41 @@
  * Iter 2: Integrates upload overlay, upload progress, context menu,
  * dialogs, and error snackbar.
  * Iter 3: Adds tree sidebar, resizable splitter, grid view, keyboard navigation.
+ * Iter 4: Adds clipboard, DnD, enhanced keyboard, detail/preview panels, conflict dialog.
  */
 
 import { Box } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useExplorerStore } from "../hooks/use-explorer-context.ts";
-import { useNavigationKeyboard } from "../hooks/use-navigation.ts";
+import { useKeyboardNavigation } from "../hooks/use-keyboard-navigation.ts";
 import { useUpload } from "../hooks/use-upload.ts";
 import type {
+  ConflictInfo,
+  ConflictResolution,
   ExplorerError,
   ExplorerItem,
   ExplorerMenuItem,
   ExplorerToolbarItem,
   PathSegment,
+  PreviewProvider,
 } from "../types.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
+import { ConflictDialog } from "./ConflictDialog.tsx";
 import { ContextMenu } from "./ContextMenu.tsx";
 import { CreateFolderDialog } from "./CreateFolderDialog.tsx";
 import { DepotSelector } from "./DepotSelector.tsx";
+import { DetailPanel } from "./DetailPanel.tsx";
 import { DirectoryTree } from "./DirectoryTree.tsx";
 import { ErrorSnackbar } from "./ErrorSnackbar.tsx";
 import { ExplorerToolbar } from "./ExplorerToolbar.tsx";
 import { FileGrid } from "./FileGrid.tsx";
 import { FileList } from "./FileList.tsx";
+import { PreviewPanel } from "./PreviewPanel.tsx";
 import { RenameDialog } from "./RenameDialog.tsx";
 import { ResizableSplitter } from "./ResizableSplitter.tsx";
 import { StatusBar } from "./StatusBar.tsx";
 import { UploadOverlay } from "./UploadOverlay.tsx";
+import { UploadProgress } from "./UploadProgress.tsx";
 
 type ExplorerShellProps = {
   onNavigate?: (path: string) => void;
@@ -44,6 +52,7 @@ type ExplorerShellProps = {
   renderNodeIcon?: (item: ExplorerItem) => React.ReactNode;
   extraContextMenuItems?: ExplorerMenuItem[];
   extraToolbarItems?: ExplorerToolbarItem[];
+  previewProviders?: PreviewProvider[];
 };
 
 export function ExplorerShell(props: ExplorerShellProps) {
@@ -63,9 +72,15 @@ export function ExplorerShell(props: ExplorerShellProps) {
   const sidebarWidth = useExplorerStore((s) => s.sidebarWidth);
   const sidebarCollapsed = useExplorerStore((s) => s.sidebarCollapsed);
   const setSidebarWidth = useExplorerStore((s) => s.setSidebarWidth);
+  const detailPanelOpen = useExplorerStore((s) => s.detailPanelOpen);
+  const clipboard = useExplorerStore((s) => s.clipboard);
+  const copyItems = useExplorerStore((s) => s.copyItems);
+  const cutItems = useExplorerStore((s) => s.cutItems);
+  const pasteItems = useExplorerStore((s) => s.pasteItems);
+  const currentPath = useExplorerStore((s) => s.currentPath);
+  const uploadQueue = useExplorerStore((s) => s.uploadQueue);
 
   const { uploadFiles } = useUpload({ onError: props.onError });
-  const navKeyboardHandler = useNavigationKeyboard({ onNavigate: props.onNavigate });
 
   // Ref for the shell container to compute max sidebar width
   const shellRef = useRef<HTMLDivElement>(null);
@@ -76,6 +91,13 @@ export function ExplorerShell(props: ExplorerShellProps) {
 
   // ── Hidden file input ref for upload via context menu ──
   const contextMenuFileInputRef = useRef<HTMLInputElement>(null);
+  const toolbarFileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Preview state (Iter 4) ──
+  const [previewItem, setPreviewItem] = useState<ExplorerItem | null>(null);
+
+  // ── Conflict state (Iter 4) ──
+  const [conflictInfo, setConflictInfo] = useState<ConflictInfo | null>(null);
 
   // ── Selection callback ──
   useEffect(() => {
@@ -105,29 +127,28 @@ export function ExplorerShell(props: ExplorerShellProps) {
         navigate(item.path);
         props.onNavigate?.(item.path);
       } else {
+        // Open file preview
+        setPreviewItem(item);
         props.onFileOpen?.(item);
       }
     },
-    [navigate, props]
+    [navigate, props],
   );
 
   const handleContextMenuRename = useCallback(
     (item: ExplorerItem) => {
       openDialog("rename", item);
     },
-    [openDialog]
+    [openDialog],
   );
 
   const handleContextMenuDelete = useCallback(
     (items: ExplorerItem[]) => {
-      if (items.length === 1) {
-        openDialog("delete", items[0]);
-      } else if (items.length > 1) {
-        // For multi-delete, we store the first item but will use selectedItems
+      if (items.length >= 1) {
         openDialog("delete", items[0]);
       }
     },
-    [openDialog]
+    [openDialog],
   );
 
   const handleContextMenuNewFolder = useCallback(() => {
@@ -141,6 +162,19 @@ export function ExplorerShell(props: ExplorerShellProps) {
   const handleContextMenuRefresh = useCallback(() => {
     refresh();
   }, [refresh]);
+
+  // ── Clipboard context menu handlers (Iter 4) ──
+  const handleContextMenuCopy = useCallback(() => {
+    if (selectedItems.length > 0) copyItems(selectedItems);
+  }, [selectedItems, copyItems]);
+
+  const handleContextMenuCut = useCallback(() => {
+    if (selectedItems.length > 0) cutItems(selectedItems);
+  }, [selectedItems, cutItems]);
+
+  const handleContextMenuPaste = useCallback(() => {
+    pasteItems(currentPath);
+  }, [pasteItems, currentPath]);
 
   // ── Delete confirmation handler ──
   const handleDeleteConfirm = useCallback(async () => {
@@ -176,32 +210,42 @@ export function ExplorerShell(props: ExplorerShellProps) {
       }
       e.target.value = "";
     },
-    [uploadFiles]
+    [uploadFiles],
   );
 
-  // ── Keyboard shortcuts ──
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      // Navigation keyboard shortcuts (Alt+arrows, Ctrl+Shift+1/2, Ctrl+F, etc.)
-      navKeyboardHandler(e);
-
-      if (!permissions.canUpload) return;
-
-      // Delete key
-      if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedItems.length > 0 && !(e.target instanceof HTMLInputElement)) {
-          e.preventDefault();
-          handleContextMenuDelete(selectedItems);
-        }
-      }
-
-      // F2 for rename
-      if (e.key === "F2" && selectedItems.length === 1) {
-        e.preventDefault();
-        openDialog("rename", selectedItems[0]);
+  // ── File open handler (opens preview for files) ──
+  const handleFileOpen = useCallback(
+    (item: ExplorerItem) => {
+      if (item.isDirectory) {
+        navigate(item.path);
+        props.onNavigate?.(item.path);
+      } else {
+        setPreviewItem(item);
+        props.onFileOpen?.(item);
       }
     },
-    [selectedItems, permissions.canUpload, handleContextMenuDelete, openDialog, navKeyboardHandler]
+    [navigate, props],
+  );
+
+  // ── Conflict resolution (Iter 4) ──
+  const handleConflictResolve = useCallback((_resolution: ConflictResolution) => {
+    // TODO: apply resolution to ongoing paste/upload operation
+    setConflictInfo(null);
+  }, []);
+
+  // ── Keyboard handler (Iter 4: full keyboard navigation) ──
+  const { handleKeyDown: kbHandler } = useKeyboardNavigation({
+    onNavigate: props.onNavigate,
+    onFileOpen: handleFileOpen,
+    onNewFolder: handleContextMenuNewFolder,
+    onUpload: () => toolbarFileInputRef.current?.click(),
+  });
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      kbHandler(e);
+    },
+    [kbHandler],
   );
 
   if (!depotId) {
@@ -230,29 +274,39 @@ export function ExplorerShell(props: ExplorerShellProps) {
     setSidebarWidth(newWidth);
   };
 
+  // Cut items shown with reduced opacity
+  const cutPaths = clipboard?.operation === "cut"
+    ? new Set(clipboard.items.map((i) => i.path))
+    : null;
+
   // Render the active view (list or grid)
   const renderBody = () => {
     if (layout === "grid") {
       return (
         <FileGrid
           onNavigate={props.onNavigate}
-          onFileOpen={props.onFileOpen}
+          onFileOpen={handleFileOpen}
           onContextMenu={handleContextMenu}
           renderEmptyState={props.renderEmptyState}
           renderNodeIcon={props.renderNodeIcon}
+          cutPaths={cutPaths}
         />
       );
     }
     return (
       <FileList
         onNavigate={props.onNavigate}
-        onFileOpen={props.onFileOpen}
+        onFileOpen={handleFileOpen}
         onContextMenu={handleContextMenu}
         renderEmptyState={props.renderEmptyState}
         renderNodeIcon={props.renderNodeIcon}
+        cutPaths={cutPaths}
       />
     );
   };
+
+  // Check if there are active uploads for UploadProgress
+  const hasActiveUploads = uploadQueue.length > 0;
 
   return (
     <Box
@@ -273,9 +327,10 @@ export function ExplorerShell(props: ExplorerShellProps) {
         onNewFolder={handleContextMenuNewFolder}
         onNavigate={props.onNavigate}
         extraToolbarItems={props.extraToolbarItems}
+        fileInputRef={toolbarFileInputRef}
       />
 
-      {/* Main body: sidebar + splitter + content */}
+      {/* Main body: sidebar + splitter + content + detail */}
       <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
         {/* Directory tree sidebar */}
         <Box
@@ -297,12 +352,17 @@ export function ExplorerShell(props: ExplorerShellProps) {
           <UploadOverlay onDrop={uploadFiles} canUpload={permissions.canUpload}>
             <Box sx={{ flex: 1, overflow: "auto" }}>{renderBody()}</Box>
           </UploadOverlay>
+          {/* Upload progress bar (Iter 4: enhanced) */}
+          {hasActiveUploads && <UploadProgress />}
         </Box>
+
+        {/* Detail panel (Iter 4) */}
+        {detailPanelOpen && <DetailPanel />}
       </Box>
 
       <StatusBar />
 
-      {/* Context menu */}
+      {/* Context menu (Iter 4: clipboard items enabled) */}
       <ContextMenu
         anchorPosition={contextMenuPos}
         onClose={handleContextMenuClose}
@@ -314,11 +374,22 @@ export function ExplorerShell(props: ExplorerShellProps) {
         onNewFolder={handleContextMenuNewFolder}
         onUpload={handleContextMenuUpload}
         onRefresh={handleContextMenuRefresh}
+        onCopy={handleContextMenuCopy}
+        onCut={handleContextMenuCut}
+        onPaste={handleContextMenuPaste}
+        canPaste={!!clipboard}
       />
 
-      {/* Hidden file input for context menu upload */}
+      {/* Hidden file inputs for upload */}
       <input
         ref={contextMenuFileInputRef}
+        type="file"
+        multiple
+        hidden
+        onChange={handleContextMenuFileChange}
+      />
+      <input
+        ref={toolbarFileInputRef}
         type="file"
         multiple
         hidden
@@ -349,6 +420,21 @@ export function ExplorerShell(props: ExplorerShellProps) {
         onConfirm={handleDeleteConfirm}
         onCancel={closeDialog}
         confirmColor="error"
+      />
+
+      {/* Conflict dialog (Iter 4) */}
+      <ConflictDialog
+        open={!!conflictInfo}
+        conflict={conflictInfo}
+        onResolve={handleConflictResolve}
+        onCancel={() => setConflictInfo(null)}
+      />
+
+      {/* Preview panel (Iter 4) */}
+      <PreviewPanel
+        item={previewItem}
+        onClose={() => setPreviewItem(null)}
+        previewProviders={props.previewProviders}
       />
 
       {/* Error snackbar */}

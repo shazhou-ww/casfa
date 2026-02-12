@@ -7,8 +7,10 @@
 
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { Box, Divider, IconButton, Tooltip } from "@mui/material";
+import type React from "react";
 import { useCallback, useRef } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import type { ExplorerToolbarItem, PathSegment } from "../types.ts";
@@ -23,6 +25,8 @@ type ExplorerToolbarProps = {
   onNewFolder?: () => void;
   onNavigate?: (path: string) => void;
   extraToolbarItems?: ExplorerToolbarItem[];
+  /** Optional external ref for the hidden file input (Iter 4) */
+  fileInputRef?: React.RefObject<HTMLInputElement | null>;
 };
 
 export function ExplorerToolbar({
@@ -31,11 +35,15 @@ export function ExplorerToolbar({
   onNewFolder,
   onNavigate,
   extraToolbarItems,
+  fileInputRef: externalFileInputRef,
 }: ExplorerToolbarProps) {
   const t = useExplorerT();
   const refresh = useExplorerStore((s) => s.refresh);
   const permissions = useExplorerStore((s) => s.permissions);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const detailPanelOpen = useExplorerStore((s) => s.detailPanelOpen);
+  const toggleDetailPanel = useExplorerStore((s) => s.toggleDetailPanel);
+  const internalFileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = externalFileInputRef ?? internalFileInputRef;
 
   const handleRefresh = useCallback(() => {
     refresh();
@@ -118,6 +126,17 @@ export function ExplorerToolbar({
       <Tooltip title={t("toolbar.refresh")}>
         <IconButton size="small" onClick={handleRefresh}>
           <RefreshIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+
+      {/* Detail panel toggle (Iter 4) */}
+      <Tooltip title={t("detail.title")}>
+        <IconButton
+          size="small"
+          onClick={toggleDetailPanel}
+          color={detailPanelOpen ? "primary" : "default"}
+        >
+          <InfoOutlinedIcon fontSize="small" />
         </IconButton>
       </Tooltip>
 
