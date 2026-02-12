@@ -9,14 +9,7 @@
 import CloseIcon from "@mui/icons-material/Close";
 import FolderIcon from "@mui/icons-material/Folder";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
-import {
-  Box,
-  Divider,
-  Drawer,
-  IconButton,
-  Tooltip,
-  Typography,
-} from "@mui/material";
+import { Box, Divider, Drawer, IconButton, Tooltip, Typography } from "@mui/material";
 import { useMemo } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import type { ExplorerItem } from "../types.ts";
@@ -35,10 +28,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <Typography variant="caption" color="text.secondary" fontWeight={600}>
         {label}
       </Typography>
-      <Typography
-        variant="body2"
-        sx={{ wordBreak: "break-all", userSelect: "text" }}
-      >
+      <Typography variant="body2" sx={{ wordBreak: "break-all", userSelect: "text" }}>
         {value}
       </Typography>
     </Box>

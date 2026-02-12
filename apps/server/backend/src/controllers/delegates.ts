@@ -12,6 +12,7 @@
 
 import type { Delegate } from "@casfa/delegate";
 import { buildChain, validateCreateDelegate } from "@casfa/delegate";
+import { storageKeyToNodeKey } from "@casfa/protocol";
 import type { Context } from "hono";
 import type { DelegatesDb } from "../db/delegates.ts";
 import type { DepotsDb } from "../db/depots.ts";
@@ -308,7 +309,9 @@ export const createDelegatesController = (deps: DelegatesControllerDeps): Delega
       canUpload: delegate.canUpload,
       canManageDepot: delegate.canManageDepot,
       delegatedDepots: delegate.delegatedDepots,
-      scopeNodeHash: delegate.scopeNodeHash,
+      scopeNodeHash: delegate.scopeNodeHash
+        ? storageKeyToNodeKey(delegate.scopeNodeHash)
+        : undefined,
       scopeSetNodeId: delegate.scopeSetNodeId,
       expiresAt: delegate.expiresAt,
       isRevoked: delegate.isRevoked,

@@ -42,62 +42,68 @@ export function useDnd() {
   const handleDragStart = useCallback(
     (item: ExplorerItem, altKey: boolean) => {
       // If the dragged item is in the selection, drag all selected
-      const items = selectedItems.some((i) => i.path === item.path)
-        ? selectedItems
-        : [item];
+      const items = selectedItems.some((i) => i.path === item.path) ? selectedItems : [item];
       setDragState({ items, isCopy: altKey });
     },
-    [selectedItems],
+    [selectedItems]
   );
 
-  const handleDragEnd = useCallback(async (
-    targetPath: string | null,
-    isCopy: boolean,
-  ) => {
-    if (!dragState || !targetPath || !depotRoot || !depotId) {
-      setDragState(null);
-      return;
-    }
-
-    // Validate: can't drop into self or descendant
-    for (const item of dragState.items) {
-      if (isDescendantPath(item.path, targetPath)) {
+  const handleDragEnd = useCallback(
+    async (targetPath: string | null, isCopy: boolean) => {
+      if (!dragState || !targetPath || !depotRoot || !depotId) {
         setDragState(null);
         return;
       }
-    }
 
-    let currentRoot = depotRoot;
-    const op = isCopy ? "cp" : "mv";
-
-    try {
+      // Validate: can't drop into self or descendant
       for (const item of dragState.items) {
-        const dstPath = targetPath ? `${targetPath}/${item.name}` : item.name;
-        const result = await localFs[op](currentRoot, item.path, dstPath);
-        if ("newRoot" in result) {
-          currentRoot = result.newRoot;
-        } else {
-          setError({ type: "unknown", message: result.message });
+        if (isDescendantPath(item.path, targetPath)) {
+          setDragState(null);
+          return;
         }
       }
 
-      if (currentRoot !== depotRoot) {
-        await beforeCommit?.();
-        await client.depots.commit(depotId, { root: currentRoot });
-        updateDepotRoot(currentRoot);
-      }
+      let currentRoot = depotRoot;
+      const op = isCopy ? "cp" : "mv";
 
-      setSelectedItems([]);
-      await refresh();
-    } catch {
-      setError({ type: "network", message: "Drag operation failed" });
-    } finally {
-      setDragState(null);
-    }
-  }, [
-    dragState, depotRoot, depotId, localFs, client,
-    beforeCommit, updateDepotRoot, setSelectedItems, refresh, setError,
-  ]);
+      try {
+        for (const item of dragState.items) {
+          const dstPath = targetPath ? `${targetPath}/${item.name}` : item.name;
+          const result = await localFs[op](currentRoot, item.path, dstPath);
+          if ("newRoot" in result) {
+            currentRoot = result.newRoot;
+          } else {
+            setError({ type: "unknown", message: result.message });
+          }
+        }
+
+        if (currentRoot !== depotRoot) {
+          await beforeCommit?.();
+          await client.depots.commit(depotId, { root: currentRoot });
+          updateDepotRoot(currentRoot);
+        }
+
+        setSelectedItems([]);
+        await refresh();
+      } catch {
+        setError({ type: "network", message: "Drag operation failed" });
+      } finally {
+        setDragState(null);
+      }
+    },
+    [
+      dragState,
+      depotRoot,
+      depotId,
+      localFs,
+      client,
+      beforeCommit,
+      updateDepotRoot,
+      setSelectedItems,
+      refresh,
+      setError,
+    ]
+  );
 
   const cancelDrag = useCallback(() => {
     setDragState(null);

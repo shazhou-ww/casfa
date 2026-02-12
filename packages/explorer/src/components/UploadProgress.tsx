@@ -143,11 +143,7 @@ export function UploadProgress({ onCancel, onRetry, onCancelAll }: UploadProgres
             </Button>
           )}
         </Box>
-        <LinearProgress
-          variant="determinate"
-          value={overallPercent}
-          sx={{ borderRadius: 1 }}
-        />
+        <LinearProgress variant="determinate" value={overallPercent} sx={{ borderRadius: 1 }} />
       </Box>
 
       {/* Per-file indeterminate bar for active uploads */}

@@ -63,11 +63,7 @@ export function DragPreview({ items }: DragPreviewProps) {
       >
         <Box sx={{ display: "flex", mr: -0.5 }}>
           <InsertDriveFileIcon fontSize="small" color="action" />
-          <InsertDriveFileIcon
-            fontSize="small"
-            color="action"
-            sx={{ ml: -1, opacity: 0.6 }}
-          />
+          <InsertDriveFileIcon fontSize="small" color="action" sx={{ ml: -1, opacity: 0.6 }} />
         </Box>
         <Typography variant="body2">{items.length} items</Typography>
       </Paper>

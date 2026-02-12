@@ -163,7 +163,14 @@ export function FileList({
       setSelectedItems([item]);
       setLastSelectedIndex(itemIndex);
     },
-    [selectedItems, selectedPaths, setSelectedItems, sorted, lastSelectedIndex, setLastSelectedIndex],
+    [
+      selectedItems,
+      selectedPaths,
+      setSelectedItems,
+      sorted,
+      lastSelectedIndex,
+      setLastSelectedIndex,
+    ]
   );
 
   const handleRowDoubleClick = useCallback(
