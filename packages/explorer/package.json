@@ -15,6 +15,11 @@
       "bun": "./src/core/sync-manager.ts",
       "types": "./dist/core/sync-manager.d.ts",
       "import": "./dist/core/sync-manager.js"
+    },
+    "./core/sync-coordinator": {
+      "bun": "./src/core/sync-coordinator.ts",
+      "types": "./dist/core/sync-coordinator.d.ts",
+      "import": "./dist/core/sync-coordinator.js"
     }
   },
   "files": [
