@@ -20,6 +20,7 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
   const client = useExplorerStore((s) => s.client);
   const localFs = useExplorerStore((s) => s.localFs);
   const beforeCommit = useExplorerStore((s) => s.beforeCommit);
+  const scheduleCommit = useExplorerStore((s) => s.scheduleCommit);
   const depotId = useExplorerStore((s) => s.depotId);
   const depotRoot = useExplorerStore((s) => s.depotRoot);
   const addToUploadQueue = useExplorerStore((s) => s.addToUploadQueue);
@@ -93,10 +94,14 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
           contentType
         );
         if (!isFsError(result)) {
-          // Commit new root to depot (persists across refresh)
+          // Enqueue background commit or commit directly
           if (depotId) {
-            await beforeCommit?.();
-            await client.depots.commit(depotId, { root: result.newRoot }).catch(() => {});
+            if (scheduleCommit) {
+              scheduleCommit(depotId, result.newRoot, depotRoot);
+            } else {
+              await beforeCommit?.();
+              await client.depots.commit(depotId, { root: result.newRoot }).catch(() => {});
+            }
           }
           updateDepotRoot(result.newRoot);
           updateUploadItem(nextPending.id, { status: "done" });
@@ -129,6 +134,7 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
     client,
     localFs,
     beforeCommit,
+    scheduleCommit,
     updateUploadItem,
     updateDepotRoot,
     onError,

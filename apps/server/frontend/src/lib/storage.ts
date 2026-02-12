@@ -26,6 +26,8 @@ import { createIndexedDBStorage } from "@casfa/storage-indexeddb";
 import { blake3 } from "@noble/hashes/blake3";
 import { getClient } from "./client.ts";
 
+import type { SyncManager } from "@casfa/explorer";
+
 // ============================================================================
 // KeyProvider — BLAKE3s-128 with size-flag byte (browser-compatible)
 // ============================================================================
@@ -148,6 +150,23 @@ export function pushSyncLog(label: string, status: SyncLogEntry["status"] = "don
 let storagePromise: Promise<CachedStorageProvider> | null = null;
 let flushInProgress = false;
 
+/** Global SyncManager reference — set by ExplorerPage, used by resetStorage. */
+let globalSyncManager: SyncManager | null = null;
+
+/**
+ * Register the SyncManager so resetStorage can flush Layer 2 before logout.
+ */
+export function setSyncManager(mgr: SyncManager | null): void {
+  globalSyncManager = mgr;
+}
+
+/**
+ * Get the registered SyncManager (if any).
+ */
+export function getSyncManager(): SyncManager | null {
+  return globalSyncManager;
+}
+
 /**
  * Get or initialize the cached CAS StorageProvider singleton.
  *
@@ -229,9 +248,21 @@ export async function flushStorage(): Promise<void> {
 
 /**
  * Reset the storage singleton (e.g., after logout).
- * Flushes pending writes before clearing.
+ * Flushes Layer 2 (depot commits) then Layer 1 (CAS nodes) before clearing.
  */
 export async function resetStorage(): Promise<void> {
+  // Layer 2: flush pending depot commits
+  if (globalSyncManager) {
+    try {
+      await globalSyncManager.flushNow();
+    } catch {
+      // best-effort
+    }
+    globalSyncManager.dispose();
+    globalSyncManager = null;
+  }
+
+  // Layer 1: flush pending CAS nodes
   if (storagePromise) {
     const storage = await storagePromise;
     await storage.flush();

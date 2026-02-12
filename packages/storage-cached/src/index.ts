@@ -10,6 +10,7 @@ export {
   type CachedStorageProvider,
   type CheckManyResult,
   createCachedStorage,
+  type PendingKeyStore,
   type SyncResult,
   type WriteBackConfig,
 } from "./cached-storage.ts";

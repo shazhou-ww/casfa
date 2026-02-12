@@ -284,8 +284,20 @@ export type CasfaExplorerProps = {
    * Use this to flush pending CAS node uploads (write-back mode)
    * so all referenced nodes exist on the remote before the root
    * pointer is updated.
+   *
+   * @deprecated Use `scheduleCommit` for background sync instead.
    */
   beforeCommit?: () => Promise<void>;
+
+  /**
+   * Schedule a depot root commit for background sync.
+   *
+   * When provided, write operations will NOT call `client.depots.commit()`
+   * directly. Instead they call this callback which enqueues the commit
+   * into the SyncManager. The SyncManager flushes Layer 1 (CAS nodes)
+   * and Layer 2 (depot commit) in the background.
+   */
+  scheduleCommit?: (depotId: string, newRoot: string, lastKnownServerRoot: string | null) => void;
 
   // ── Event callbacks ──
   onNavigate?: (path: string) => void;

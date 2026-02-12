@@ -39,7 +39,6 @@ import { RenameDialog } from "./RenameDialog.tsx";
 import { ResizableSplitter } from "./ResizableSplitter.tsx";
 import { StatusBar } from "./StatusBar.tsx";
 import { UploadOverlay } from "./UploadOverlay.tsx";
-import { UploadProgress } from "./UploadProgress.tsx";
 
 type ExplorerShellProps = {
   onNavigate?: (path: string) => void;
@@ -78,7 +77,6 @@ export function ExplorerShell(props: ExplorerShellProps) {
   const cutItems = useExplorerStore((s) => s.cutItems);
   const pasteItems = useExplorerStore((s) => s.pasteItems);
   const currentPath = useExplorerStore((s) => s.currentPath);
-  const uploadQueue = useExplorerStore((s) => s.uploadQueue);
 
   const { uploadFiles } = useUpload({ onError: props.onError });
 
@@ -304,9 +302,6 @@ export function ExplorerShell(props: ExplorerShellProps) {
     );
   };
 
-  // Check if there are active uploads for UploadProgress
-  const hasActiveUploads = uploadQueue.length > 0;
-
   return (
     <Box
       ref={shellRef}
@@ -351,8 +346,6 @@ export function ExplorerShell(props: ExplorerShellProps) {
           <UploadOverlay onDrop={uploadFiles} canUpload={permissions.canUpload}>
             <Box sx={{ flex: 1, overflow: "auto" }}>{renderBody()}</Box>
           </UploadOverlay>
-          {/* Upload progress bar (Iter 4: enhanced) */}
-          {hasActiveUploads && <UploadProgress />}
         </Box>
 
         {/* Detail panel (Iter 4) */}

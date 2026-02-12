@@ -31,6 +31,7 @@ export function useDnd() {
   const depotId = useExplorerStore((s) => s.depotId);
   const depotRoot = useExplorerStore((s) => s.depotRoot);
   const beforeCommit = useExplorerStore((s) => s.beforeCommit);
+  const scheduleCommit = useExplorerStore((s) => s.scheduleCommit);
   const refresh = useExplorerStore((s) => s.refresh);
   const selectedItems = useExplorerStore((s) => s.selectedItems);
   const setSelectedItems = useExplorerStore((s) => s.setSelectedItems);
@@ -78,8 +79,12 @@ export function useDnd() {
         }
 
         if (currentRoot !== depotRoot) {
-          await beforeCommit?.();
-          await client.depots.commit(depotId, { root: currentRoot });
+          if (scheduleCommit) {
+            scheduleCommit(depotId, currentRoot, depotRoot);
+          } else {
+            await beforeCommit?.();
+            await client.depots.commit(depotId, { root: currentRoot });
+          }
           updateDepotRoot(currentRoot);
         }
 
@@ -98,6 +103,7 @@ export function useDnd() {
       localFs,
       client,
       beforeCommit,
+      scheduleCommit,
       updateDepotRoot,
       setSelectedItems,
       refresh,
