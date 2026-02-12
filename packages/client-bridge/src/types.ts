@@ -58,6 +58,7 @@ export type AppClient = CasfaClient & {
   onConflict(fn: (event: ConflictEvent) => void): () => void;
   onSyncError(fn: (event: SyncErrorEvent) => void): () => void;
   onCommit(fn: (event: SyncCommitEvent) => void): () => void;
+  onPendingCountChange(fn: (count: number) => void): () => void;
 
   /** Flush pending sync → logout → clean up resources. */
   logout(): Promise<void>;

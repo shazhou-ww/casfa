@@ -1,10 +1,11 @@
 /**
  * Lazy-initialized AppClient singleton for the frontend.
  *
- * Phase 1: Uses createAppClient (direct mode) as a drop-in replacement
- * for the old getClient(). AppClient ⊇ CasfaClient, so all existing
- * call sites work unchanged. SyncManager is still wired externally
- * in ExplorerPage — it moves into AppClient in Phase 2.
+ * Uses createAppClient which auto-detects SW mode (if /sw.js registered)
+ * or falls back to direct mode (main-thread SyncManager).
+ *
+ * In direct mode, storage and queueStore are provided for the built-in
+ * SyncManager. In SW mode they are ignored — the SW creates its own.
  *
  * Token persistence: Uses localStorage to persist the two-tier token
  * state (User JWT, Root Delegate metadata) across page reloads.
@@ -15,6 +16,8 @@ import {
   type AppClient,
   createAppClient as createAppClientFactory,
 } from "@casfa/client-bridge";
+import { flushStorage } from "./storage.ts";
+import { createSyncQueueStore } from "./sync-queue-store.ts";
 
 const TOKEN_STORAGE_KEY = "casfa_tokens";
 
@@ -81,6 +84,9 @@ export function getAppClient(): Promise<AppClient> {
         onAuthRequired: () => {
           window.location.href = "/login";
         },
+        // Direct-mode sync: lazy flush proxy avoids circular dep with storage.ts
+        storage: { flush: () => flushStorage() },
+        queueStore: createSyncQueueStore(),
       });
     })();
   }

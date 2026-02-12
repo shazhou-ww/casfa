@@ -10,12 +10,28 @@ interface SyncManager {
   register(tag: string): Promise<void>;
   getTags(): Promise<string[]>;
 }
+
+// Periodic Background Sync API types
+interface PeriodicSyncEvent extends ExtendableEvent {
+  readonly tag: string;
+}
+interface PeriodicSyncManager {
+  register(
+    tag: string,
+    options?: { minInterval: number },
+  ): Promise<void>;
+  unregister(tag: string): Promise<void>;
+  getTags(): Promise<string[]>;
+}
+
 declare global {
   interface ServiceWorkerRegistration {
     readonly sync: SyncManager;
+    readonly periodicSync?: PeriodicSyncManager;
   }
   interface ServiceWorkerGlobalScopeEventMap {
     sync: SyncEvent;
+    periodicsync: PeriodicSyncEvent;
   }
 }
 
@@ -100,6 +116,16 @@ self.addEventListener("activate", (event) => {
         syncCoordinator.setClient(recovered);
         await syncCoordinator.recover();
       }
+      // Register Periodic Background Sync (progressive enhancement)
+      if (self.registration.periodicSync) {
+        try {
+          await self.registration.periodicSync.register("casfa-periodic-sync", {
+            minInterval: 60 * 60 * 1000, // 1 hour
+          });
+        } catch {
+          // Permission denied or API not available — ignore
+        }
+      }
     })(),
   );
 });
@@ -138,6 +164,8 @@ self.addEventListener("message", (event) => {
       authenticated: client !== null,
       tokenState: client?.getState() ?? null,
       serverInfo: client?.getServerInfo() ?? null,
+      syncState: syncCoordinator.getState(),
+      pendingCount: syncCoordinator.getPendingCount(),
     };
     port.postMessage(ack);
 
@@ -155,4 +183,23 @@ self.addEventListener("sync", (event) => {
   if (event.tag === "casfa-sync") {
     event.waitUntil(syncCoordinator.runSync());
   }
+});
+
+// ============================================================================
+// Periodic Background Sync
+// ============================================================================
+
+self.addEventListener("periodicsync", (event) => {
+  if (event.tag === "casfa-periodic-sync") {
+    event.waitUntil(syncCoordinator.runSync());
+  }
+});
+
+// ============================================================================
+// Network Recovery
+// ============================================================================
+
+self.addEventListener("online", () => {
+  // Network restored — immediately attempt to flush pending commits
+  syncCoordinator.runSync().catch(() => {});
 });
