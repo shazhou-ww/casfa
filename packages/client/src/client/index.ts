@@ -1,9 +1,8 @@
 /**
  * Stateful CASFA Client
  *
- * A closure-based client that manages two-tier token hierarchy:
- * - User JWT: OAuth login token, highest authority
- * - Root Delegate: RT + AT pair for realm operations (auto-refreshed)
+ * A closure-based client that manages JWT auth.
+ * Root delegate is auto-created by the server on first JWT request.
  */
 
 import type { ServiceInfo } from "@casfa/protocol";
@@ -48,14 +47,14 @@ export type CasfaClient = {
 
   /** Set root delegate metadata (e.g., from external source) */
   setRootDelegate: (delegate: StoredRootDelegate) => void;
-  /** Get current auth token (JWT for root, auto-ensures root delegate exists) */
+  /** Get current auth token (JWT — server auto-creates root delegate) */
   getAccessToken: () => Promise<StoredAccessToken | null>;
   /** Clear all tokens and logout */
   logout: () => void;
 
   /** OAuth methods */
   oauth: OAuthMethods;
-  /** Token management methods (root delegate creation) */
+  /** Token management methods */
   tokens: TokenMethods;
   /** Delegate management methods */
   delegates: DelegateMethods;
@@ -99,7 +98,7 @@ export const createClient = async (config: ClientConfig): Promise<CasfaClient> =
     serverInfo = infoResult.data;
   }
 
-  // Initialize token selector (auto-ensures root delegate + JWT auth)
+  // Initialize token selector (JWT auth)
   const tokenSelector = createTokenSelector({
     store,
     baseUrl,

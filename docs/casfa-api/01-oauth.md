@@ -221,13 +221,12 @@ User JWT 用于以下操作：
 
 | 操作 | 端点 |
 |------|------|
-| 创建/获取 Root Delegate | `POST /api/tokens/root` |
 | 获取用户信息 | `GET /api/oauth/me` |
 | 管理用户（Admin） | `GET /api/admin/users`, `PATCH /api/admin/users/:userId` |
 | MCP 调用 | `POST /api/mcp` |
-| 访问 Realm 数据（Root Delegate） | 所有 `/api/realm/*` 路由（中间件自动识别 JWT） |
+| 访问 Realm 数据（Root Delegate） | 所有 `/api/realm/*` 路由（中间件自动识别 JWT 并自动创建 Root Delegate） |
 
-> **重要**：Root Delegate 用户可以直接用 JWT 访问 Realm 数据路由。中间件会自动检测 JWT 格式（包含 `.` 分隔符），验证后转换为与 Access Token 相同的 `AccessTokenAuthContext`，下游中间件和控制器无需区分。
+> **重要**：Root Delegate 在用户首次发起 JWT 请求时由中间件自动创建（通过 `getOrCreateRoot`），无需客户端显式调用任何端点。中间件会自动检测 JWT 格式（包含 `.` 分隔符），验证后转换为与 Access Token 相同的 `AccessTokenAuthContext`，下游中间件和控制器无需区分。
 
 ---
 

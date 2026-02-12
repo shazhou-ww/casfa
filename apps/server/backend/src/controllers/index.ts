@@ -21,11 +21,6 @@ export {
   type RefreshController,
   type RefreshControllerDeps,
 } from "./refresh.ts";
-export {
-  createRootTokenController,
-  type RootTokenController,
-  type RootTokenControllerDeps,
-} from "./root-token.ts";
 
 // ============================================================================
 // Core Controllers

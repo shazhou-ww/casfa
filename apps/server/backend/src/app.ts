@@ -25,7 +25,6 @@ import {
   createOAuthController,
   createRealmController,
   createRefreshController,
-  createRootTokenController,
 } from "./controllers/index.ts";
 import { createLocalAuthController } from "./controllers/local-auth.ts";
 // MCP
@@ -225,9 +224,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     depotsDb,
     getNode: (realm: string, hash: string) => storage.get(hash),
   });
-  const rootToken = createRootTokenController({
-    delegatesDb,
-  });
   const refreshToken = createRefreshController({
     delegatesDb,
   });
@@ -273,7 +269,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     filesystem,
     delegates,
     claim,
-    rootToken,
     refreshToken,
     mcp,
     jwtAuthMiddleware,

@@ -1,37 +1,17 @@
 /**
  * Token API functions (new 2-tier model).
  *
- * Token Requirement:
- * - POST /api/tokens/root: User JWT → Root Delegate metadata (no RT/AT)
+ * Token Endpoint:
  * - POST /api/tokens/refresh: Bearer RT → new RT + AT (child delegates only)
+ *
+ * Root delegates no longer need a dedicated endpoint — the server's
+ * access-token-auth middleware auto-creates the root delegate on first
+ * JWT-authenticated request.
  */
 
-import type { RefreshTokenResponse, RootTokenResponse } from "@casfa/protocol";
+import type { RefreshTokenResponse } from "@casfa/protocol";
 import type { FetchResult } from "../types/client.ts";
 import { fetchWithAuth } from "../utils/http.ts";
-
-// ============================================================================
-// Root Token API (JWT → Root Delegate metadata)
-// ============================================================================
-
-/**
- * Ensure root delegate exists and get its metadata.
- * Requires User JWT. No RT/AT returned — root uses JWT directly.
- */
-export const createRootToken = async (
-  baseUrl: string,
-  userAccessToken: string,
-  realm: string
-): Promise<FetchResult<RootTokenResponse>> => {
-  return fetchWithAuth<RootTokenResponse>(
-    `${baseUrl}/api/tokens/root`,
-    `Bearer ${userAccessToken}`,
-    {
-      method: "POST",
-      body: { realm },
-    }
-  );
-};
 
 // ============================================================================
 // Refresh Token API (RT → new RT + AT, child delegates only)

@@ -96,8 +96,6 @@ export type {
   RefreshTokenRequest,
   RefreshTokenResponse,
   RevokeTokenResponse,
-  RootTokenRequest,
-  RootTokenResponse,
   TokenDetail,
   TokenListItem,
 } from "./token.ts";
@@ -109,8 +107,6 @@ export {
   RefreshTokenRequestSchema,
   RefreshTokenResponseSchema,
   RevokeTokenResponseSchema,
-  RootTokenRequestSchema,
-  RootTokenResponseSchema,
   TokenDetailSchema,
   TokenListItemSchema,
 } from "./token.ts";

@@ -42,7 +42,6 @@ export {
   isTokenExpiringSoon,
   isTokenValid,
   isUserTokenValid,
-  needsRootDelegate,
   type RefreshManager,
   type TokenSelector,
   type TokenStore,

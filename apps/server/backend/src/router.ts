@@ -19,7 +19,6 @@ import {
   LoginSchema,
   RefreshSchema,
   RegisterSchema,
-  RootTokenRequestSchema,
   TokenExchangeSchema,
   UpdateDepotSchema,
   UpdateUserRoleSchema,
@@ -64,7 +63,6 @@ import type { LocalAuthController } from "./controllers/local-auth.ts";
 import type { OAuthController } from "./controllers/oauth.ts";
 import type { RealmController } from "./controllers/realm.ts";
 import type { RefreshController } from "./controllers/refresh.ts";
-import type { RootTokenController } from "./controllers/root-token.ts";
 import type { McpController } from "./mcp/handler.ts";
 import type { Env } from "./types.ts";
 
@@ -86,7 +84,6 @@ export type RouterDeps = {
   mcp: McpController;
   delegates: DelegatesController;
   claim: ClaimController;
-  rootToken: RootTokenController;
   refreshToken: RefreshController;
 
   // Middleware
@@ -200,19 +197,10 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   app.post("/api/mcp", deps.jwtAuthMiddleware, deps.authorizedUserMiddleware, deps.mcp.handle);
 
   // ============================================================================
-  // New Delegate Model Routes
+  // Token Routes
   // ============================================================================
 
-  // Root token creation (JWT → Root Delegate + RT + AT)
-  app.post(
-    "/api/tokens/root",
-    deps.jwtAuthMiddleware,
-    deps.authorizedUserMiddleware,
-    validatedJson(RootTokenRequestSchema),
-    deps.rootToken.create
-  );
-
-  // Token refresh (RT → new RT + AT, rotation)
+  // Token refresh (RT → new RT + AT, rotation, child delegates only)
   app.post("/api/tokens/refresh", deps.refreshToken.refresh);
 
   // ============================================================================

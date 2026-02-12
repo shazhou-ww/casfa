@@ -22,6 +22,7 @@ import type { DelegatesDb } from "../db/delegates.ts";
 import type { UserRolesDb } from "../db/user-roles.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
 import { bytesToDelegateId, computeTokenHash } from "../util/delegate-token-utils.ts";
+import { generateDelegateId } from "../util/token-id.ts";
 import type { JwtVerifier } from "./jwt-auth.ts";
 
 // ============================================================================
@@ -116,17 +117,11 @@ const handleJwtAuth = async (
     return c.json({ error: "FORBIDDEN", message: "User is not authorized" }, 403);
   }
 
-  // 4. Look up root delegate by realm (realm = userId)
-  const rootDelegate = await delegatesDb.getRootByRealm(userId);
-  if (!rootDelegate) {
-    return c.json(
-      {
-        error: "ROOT_DELEGATE_NOT_FOUND",
-        message: "Root delegate not found. Call POST /api/tokens/root first.",
-      },
-      401
-    );
-  }
+  // 4. Auto-create root delegate if it doesn't exist (realm = userId)
+  const { delegate: rootDelegate } = await delegatesDb.getOrCreateRoot(
+    userId,
+    generateDelegateId()
+  );
 
   if (rootDelegate.isRevoked) {
     return c.json({ error: "DELEGATE_REVOKED", message: "Root delegate has been revoked" }, 401);

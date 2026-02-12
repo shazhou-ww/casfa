@@ -24,14 +24,13 @@ CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 
 所有授权实体统一为 **Delegate**：
 
-- **Root Delegate**（depth=0）：用户通过 `POST /api/tokens/root` 创建，使用 User JWT 直接访问数据，无需 RT/AT
+- **Root Delegate**（depth=0）：服务器中间件在用户首次 JWT 请求时自动创建，使用 User JWT 直接访问数据，无需 RT/AT
 - **Child Delegate**（depth>0）：通过 `POST /api/realm/{realmId}/delegates` 转签发，持有 RT + AT
 
 ### Token 能力对比
 
 | 能力 | User JWT (Root Delegate) | Access Token (Child) | Refresh Token |
 |------|--------------------------|---------------------|---------------|
-| 创建 Root Delegate | ✓ | ✗ | ✗ |
 | 转签发 Child Delegate | ✓ | ✓ | ✗ |
 | 读取 Node | ✓ (需 scope 证明) | ✓ (需 scope 证明) | ✗ |
 | 写入 Node | ✓ (需 canUpload) | ✓ (需 canUpload) | ✗ |
@@ -107,7 +106,6 @@ CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
-| POST | `/api/tokens/root` | 创建/获取 Root Delegate | User JWT |
 | POST | `/api/tokens/refresh` | 旋转 RT → 新 RT + AT | Refresh Token |
 
 ### 客户端授权申请 API（未实现）
@@ -217,7 +215,6 @@ CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 | `GET` 所有端点 | ✅ 幂等 | 读取操作 |
 | `PUT /nodes/:key` | ✅ 幂等 | 相同内容产生相同 key |
 | `DELETE` 资源 | ✅ 幂等 | 重复删除返回成功 |
-| `POST /tokens/root` | ✅ 幂等 | 已存在时返回既有 delegate（200） |
 | `fs/stat`, `fs/read`, `fs/ls` | ✅ 幂等 | 读取操作 |
 | `fs/mkdir` | ⚠️ 条件幂等 | 目录已存在时返回当前 root |
 

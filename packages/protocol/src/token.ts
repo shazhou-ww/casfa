@@ -157,39 +157,6 @@ export const RevokeTokenResponseSchema = z.object({
 export type RevokeTokenResponse = z.infer<typeof RevokeTokenResponseSchema>;
 
 // ============================================================================
-// Root Token Schemas (JWT → Root Delegate + RT + AT)
-// ============================================================================
-
-/**
- * Schema for POST /api/tokens/root
- *
- * Creates root delegate for user's realm + issues initial RT + AT pair.
- * Requires JWT authentication.
- */
-export const RootTokenRequestSchema = z.object({
-  /** Target realm (must be user's own realm: usr_{userId}) */
-  realm: z.string().min(1),
-});
-export type RootTokenRequest = z.infer<typeof RootTokenRequestSchema>;
-
-/**
- * Root token response schema
- * Returns root delegate info only — root operations use JWT directly
- */
-export const RootTokenResponseSchema = z.object({
-  /** Root delegate details */
-  delegate: z.object({
-    delegateId: z.string(),
-    realm: z.string(),
-    depth: z.number().int().min(0),
-    canUpload: z.boolean(),
-    canManageDepot: z.boolean(),
-    createdAt: z.number(),
-  }),
-});
-export type RootTokenResponse = z.infer<typeof RootTokenResponseSchema>;
-
-// ============================================================================
 // Refresh Token Schemas (RT → new RT + new AT)
 // ============================================================================
 
