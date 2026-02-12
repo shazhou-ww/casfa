@@ -3,7 +3,7 @@
  *
  * Processes port messages from main-thread AppClient instances.
  * Routes RPC calls to a single shared CasfaClient, handles auth
- * lifecycle, and stubs sync operations for Phase 3.
+ * lifecycle, and delegates sync operations to SyncCoordinator.
  */
 
 import {
@@ -32,6 +32,13 @@ export type MessageHandlerDeps = {
   tokenStorage: TokenStorageProvider;
   /** Broadcast a message to all tabs via BroadcastChannel. */
   broadcast: (msg: BroadcastMessage) => void;
+  /** SyncCoordinator for depot commit queue management. */
+  syncCoordinator: {
+    enqueue(depotId: string, targetRoot: string, lastKnownServerRoot: string | null): void;
+    flushNow(): Promise<void>;
+    getPendingRoot(depotId: string): string | null;
+    setClient(client: CasfaClient): void;
+  };
 };
 
 // ============================================================================
@@ -83,6 +90,7 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
               deps.broadcast({ type: "auth-required" }),
           });
           deps.setClient(newClient);
+          deps.syncCoordinator.setClient(newClient);
           respond(port, msg.id, null);
           // Broadcast updated state to all tabs
           deps.broadcast({
@@ -151,25 +159,38 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
         break;
       }
 
-      // ── Sync: fire-and-forget (Phase 3: SyncCoordinator) ──
+      // ── Sync: fire-and-forget ──
       case "schedule-commit":
-        // Phase 3: syncCoordinator.enqueue(msg.depotId, msg.targetRoot, msg.lastKnownServerRoot)
+        deps.syncCoordinator.enqueue(
+          msg.depotId,
+          msg.targetRoot,
+          msg.lastKnownServerRoot,
+        );
         break;
 
-      // ── Sync: RPC (Phase 3: SyncCoordinator) ──
+      // ── Sync: RPC ──
       case "get-pending-root":
-        // Phase 3: respond with syncCoordinator.getPendingRoot(msg.depotId)
-        respond(port, msg.id, null);
+        respond(
+          port,
+          msg.id,
+          deps.syncCoordinator.getPendingRoot(msg.depotId),
+        );
         break;
 
-      case "flush-now":
-        // Phase 3: await syncCoordinator.flushNow()
-        respond(port, msg.id, null);
+      case "flush-now": {
+        try {
+          await deps.syncCoordinator.flushNow();
+          respond(port, msg.id, null);
+        } catch (err) {
+          respondError(port, msg.id, "flush_error", err);
+        }
         break;
+      }
 
       // ── Lifecycle ──
       case "logout": {
         try {
+          await deps.syncCoordinator.flushNow();
           deps.getClient().logout();
           respond(port, msg.id, null);
         } catch (err) {
