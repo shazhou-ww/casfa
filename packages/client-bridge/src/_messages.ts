@@ -96,6 +96,8 @@ export type ConnectAckMessage = {
   authenticated: boolean;
   tokenState: TokenState | null;
   serverInfo: ReturnType<CasfaClient["getServerInfo"]>;
+  syncState: SyncState;
+  pendingCount: number;
 };
 
 // ============================================================================

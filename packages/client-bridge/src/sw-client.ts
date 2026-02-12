@@ -103,6 +103,8 @@ export async function createSWClient(
   };
   let cachedServerInfo: ReturnType<CasfaClient["getServerInfo"]> =
     ack.serverInfo;
+  let cachedSyncState: SyncState = ack.syncState ?? "idle";
+  let cachedPendingCount: number = ack.pendingCount ?? 0;
 
   // ── 5. Events (BroadcastChannel "casfa") ──
   const bc = new BroadcastChannel("casfa");
@@ -111,12 +113,14 @@ export async function createSWClient(
     conflict: new Set<(e: ConflictEvent) => void>(),
     syncError: new Set<(e: SyncErrorEvent) => void>(),
     commit: new Set<(e: SyncCommitEvent) => void>(),
+    pendingCount: new Set<(n: number) => void>(),
   };
 
   bc.onmessage = (e: MessageEvent) => {
     const msg = e.data as BroadcastMessage;
     switch (msg.type) {
       case "sync-state":
+        cachedSyncState = msg.payload;
         listeners.syncState.forEach((fn) => fn(msg.payload));
         break;
       case "conflict":
@@ -127,6 +131,10 @@ export async function createSWClient(
         break;
       case "commit":
         listeners.commit.forEach((fn) => fn(msg.payload));
+        break;
+      case "pending-count":
+        cachedPendingCount = msg.payload;
+        listeners.pendingCount.forEach((fn) => fn(msg.payload));
         break;
       case "auth-required":
         config.onAuthRequired?.();
@@ -237,6 +245,8 @@ export async function createSWClient(
     // ── AppClient: events ──
     onSyncStateChange(fn) {
       listeners.syncState.add(fn);
+      // Fire current state immediately so new subscribers get initial value
+      fn(cachedSyncState);
       return () => {
         listeners.syncState.delete(fn);
       };
@@ -259,6 +269,13 @@ export async function createSWClient(
         listeners.commit.delete(fn);
       };
     },
+    onPendingCountChange(fn) {
+      listeners.pendingCount.add(fn);
+      fn(cachedPendingCount);
+      return () => {
+        listeners.pendingCount.delete(fn);
+      };
+    },
 
     // ── AppClient: lifecycle ──
     async logout() {
@@ -274,6 +291,7 @@ export async function createSWClient(
       listeners.conflict.clear();
       listeners.syncError.clear();
       listeners.commit.clear();
+      listeners.pendingCount.clear();
     },
   };
 }

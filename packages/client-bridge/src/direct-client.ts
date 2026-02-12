@@ -40,6 +40,11 @@ export async function createDirectClient(
   // ── SyncManager (created after setUserToken or on auto-recover) ──
   let syncManager: SyncManager | null = null;
 
+  function notifyPendingCount(): void {
+    const count = syncManager?.getPendingCount() ?? 0;
+    syncListeners.pendingCount.forEach((fn) => fn(count));
+  }
+
   function initSyncManager(): void {
     if (syncManager) {
       syncManager.dispose();
@@ -64,6 +69,9 @@ export async function createDirectClient(
     syncManager.onCommit((e) =>
       syncListeners.commit.forEach((fn) => fn(e)),
     );
+    // Fire pending count after each state change (enqueue/commit/recover)
+    syncManager.onStateChange(() => notifyPendingCount());
+    syncManager.onCommit(() => notifyPendingCount());
   }
 
   // ── Event listeners ──
@@ -72,6 +80,7 @@ export async function createDirectClient(
     conflict: new Set<(e: import("./types.ts").ConflictEvent) => void>(),
     syncError: new Set<(e: import("./types.ts").SyncErrorEvent) => void>(),
     commit: new Set<(e: import("./types.ts").SyncCommitEvent) => void>(),
+    pendingCount: new Set<(n: number) => void>(),
   };
 
   // Auto-init SyncManager if we already have auth + storage
@@ -134,6 +143,7 @@ export async function createDirectClient(
         throw new Error("SyncManager not initialized — call setUserToken first or provide storage + queueStore");
       }
       syncManager.enqueue(depotId, newRoot, lastKnownServerRoot);
+      notifyPendingCount();
     },
 
     async getPendingRoot(depotId) {
@@ -170,6 +180,12 @@ export async function createDirectClient(
         syncListeners.commit.delete(fn);
       };
     },
+    onPendingCountChange(fn) {
+      syncListeners.pendingCount.add(fn);
+      return () => {
+        syncListeners.pendingCount.delete(fn);
+      };
+    },
 
     // ── AppClient: lifecycle ──
     async logout() {
@@ -190,6 +206,7 @@ export async function createDirectClient(
       syncListeners.conflict.clear();
       syncListeners.syncError.clear();
       syncListeners.commit.clear();
+      syncListeners.pendingCount.clear();
     },
   };
 }

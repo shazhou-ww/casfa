@@ -19,7 +19,6 @@
 
 import type { KeyProvider } from "@casfa/core";
 import { computeSizeFlagByte, encodeCB32, validateNodeStructure } from "@casfa/core";
-import type { SyncManager } from "@casfa/explorer";
 import type { PopContext } from "@casfa/proof";
 import { type CachedStorageProvider, createCachedStorage } from "@casfa/storage-cached";
 import { createHttpStorage } from "@casfa/storage-http";
@@ -149,23 +148,6 @@ export function pushSyncLog(label: string, status: SyncLogEntry["status"] = "don
 let storagePromise: Promise<CachedStorageProvider> | null = null;
 let flushInProgress = false;
 
-/** Global SyncManager reference — set by ExplorerPage, used by resetStorage. */
-let globalSyncManager: SyncManager | null = null;
-
-/**
- * Register the SyncManager so resetStorage can flush Layer 2 before logout.
- */
-export function setSyncManager(mgr: SyncManager | null): void {
-  globalSyncManager = mgr;
-}
-
-/**
- * Get the registered SyncManager (if any).
- */
-export function getSyncManager(): SyncManager | null {
-  return globalSyncManager;
-}
-
 /**
  * Get or initialize the cached CAS StorageProvider singleton.
  *
@@ -248,20 +230,10 @@ export async function flushStorage(): Promise<void> {
 
 /**
  * Reset the storage singleton (e.g., after logout).
- * Flushes Layer 2 (depot commits) then Layer 1 (CAS nodes) before clearing.
+ * Flushes Layer 1 (CAS nodes) before clearing.
+ * Layer 2 (depot commits) is now handled by AppClient.dispose/logout.
  */
 export async function resetStorage(): Promise<void> {
-  // Layer 2: flush pending depot commits
-  if (globalSyncManager) {
-    try {
-      await globalSyncManager.flushNow();
-    } catch {
-      // best-effort
-    }
-    globalSyncManager.dispose();
-    globalSyncManager = null;
-  }
-
   // Layer 1: flush pending CAS nodes
   if (storagePromise) {
     const storage = await storagePromise;

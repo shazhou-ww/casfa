@@ -7,17 +7,13 @@
  * - Shows a clickable sync indicator — expand to see per-key progress.
  */
 
-import type { CasfaClient } from "@casfa/client";
 import type { StorageProvider } from "@casfa/core";
 import {
   CasfaExplorer,
-  type ConflictEvent,
-  createSyncManager,
   type ExplorerStoreApi,
-  type FlushableStorage,
-  type SyncManager,
   type SyncState,
 } from "@casfa/explorer";
+import type { AppClient } from "@casfa/client-bridge";
 import {
   CheckCircle,
   CloudDone,
@@ -26,8 +22,11 @@ import {
   Error as ErrorIcon,
   ExpandLess,
   ExpandMore,
+  Replay as ReplayIcon,
+  Warning as WarningIcon,
 } from "@mui/icons-material";
 import {
+  Badge,
   Box,
   CircularProgress,
   Collapse,
@@ -37,11 +36,12 @@ import {
   ListItem,
   Paper,
   Snackbar,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { getClient } from "../lib/client.ts";
+import { getAppClient } from "../lib/client.ts";
 import {
   clearSyncLog,
   getKeyProvider,
@@ -50,78 +50,65 @@ import {
   onSyncLogChange,
   onSyncStatusChange,
   type SyncLogEntry,
-  setSyncManager,
 } from "../lib/storage.ts";
-import { createSyncQueueStore } from "../lib/sync-queue-store.ts";
 
 export function ExplorerPage() {
   const { depotId } = useParams<{ depotId: string }>();
   const navigate = useNavigate();
-  const [client, setClient] = useState<CasfaClient | null>(null);
+  const [appClient, setAppClient] = useState<AppClient | null>(null);
   const [storage, setStorage] = useState<StorageProvider | null>(null);
   const keyProv = getKeyProvider();
 
-  const syncManagerRef = useRef<SyncManager | null>(null);
   const explorerStoreRef = useRef<ExplorerStoreApi | null>(null);
   const [conflictToast, setConflictToast] = useState<string | null>(null);
 
+  // Local cache of pending roots — keeps getSyncPendingRoot synchronous.
+  // scheduleCommit sets the entry; onCommit clears it.
+  const pendingRootsRef = useRef(new Map<string, string>());
+
   useEffect(() => {
-    getClient().then(setClient);
+    getAppClient().then(setAppClient);
     getStorage().then(setStorage);
   }, []);
 
-  // Initialize SyncManager once client + storage are ready
+  // Wire AppClient events (conflict toast + commit → update explorer store)
   useEffect(() => {
-    if (!client || !storage || syncManagerRef.current) return;
+    if (!appClient) return;
 
-    const queueStore = createSyncQueueStore();
-    const mgr = createSyncManager({
-      storage: storage as unknown as FlushableStorage,
-      client,
-      queueStore,
-      debounceMs: 2000,
-    });
-
-    mgr.onConflict((event: ConflictEvent) => {
-      setConflictToast(
-        `Conflict detected on depot ${event.depotId.slice(0, 8)}… — overwriting with local version.`
-      );
-    });
-
-    // When a commit succeeds, update the explorer store's server root
-    mgr.onCommit((event) => {
-      explorerStoreRef.current?.getState().updateServerRoot(event.committedRoot);
-    });
-
-    // Recover any pending commits from previous session
-    mgr.recover();
-
-    syncManagerRef.current = mgr;
-    setSyncManager(mgr);
+    const unsubs = [
+      appClient.onConflict((event) => {
+        setConflictToast(
+          `Conflict detected on depot ${event.depotId.slice(0, 8)}… — overwriting with local version.`
+        );
+      }),
+      appClient.onCommit((event) => {
+        pendingRootsRef.current.delete(event.depotId);
+        explorerStoreRef.current?.getState().updateServerRoot(event.committedRoot);
+      }),
+    ];
 
     return () => {
-      mgr.dispose();
-      syncManagerRef.current = null;
-      setSyncManager(null);
+      for (const unsub of unsubs) unsub();
     };
-  }, [client, storage]);
+  }, [appClient]);
 
   const scheduleCommit = useCallback(
     (dId: string, newRoot: string, lastKnownServerRoot: string | null) => {
-      syncManagerRef.current?.enqueue(dId, newRoot, lastKnownServerRoot);
+      pendingRootsRef.current.set(dId, newRoot);
+      appClient?.scheduleCommit(dId, newRoot, lastKnownServerRoot);
     },
-    []
+    [appClient]
   );
 
   const getSyncPendingRoot = useCallback((dId: string): string | null => {
-    return syncManagerRef.current?.getPendingRoot(dId) ?? null;
+    return pendingRootsRef.current.get(dId) ?? null;
   }, []);
 
   const onStoreReady = useCallback((store: ExplorerStoreApi) => {
     explorerStoreRef.current = store;
   }, []);
 
-  if (!client || !storage) {
+  if (!appClient || !storage) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100%">
         <CircularProgress />
@@ -133,7 +120,7 @@ export function ExplorerPage() {
     <Box display="flex" flexDirection="column" height="100%">
       <CasfaExplorer
         key={depotId ?? "__no_depot__"}
-        client={client}
+        client={appClient}
         storage={storage}
         keyProvider={keyProv}
         depotId={depotId}
@@ -143,7 +130,7 @@ export function ExplorerPage() {
         getSyncPendingRoot={getSyncPendingRoot}
         onStoreReady={onStoreReady}
       />
-      <SyncIndicator syncManager={syncManagerRef.current} />
+      <SyncIndicator appClient={appClient} />
       <Snackbar
         open={!!conflictToast}
         autoHideDuration={6000}
@@ -162,17 +149,20 @@ export function ExplorerPage() {
 /**
  * Bottom-right pill: shows Layer 1 (CAS node sync) and Layer 2 (depot commit) status.
  * Click to expand and see individual put / commit operations.
+ * Shows pending commit count, conflict warning, and manual retry button.
  */
-function SyncIndicator({ syncManager }: { syncManager: SyncManager | null }) {
+function SyncIndicator({ appClient }: { appClient: AppClient | null }) {
   // Layer 1 status (CAS node sync)
   const [casSyncing, setCasSyncing] = useState(false);
 
-  // Layer 2 status (depot commit sync)
+  // Layer 2 status (depot commit sync via AppClient events)
   const [syncState, setSyncState] = useState<SyncState>("idle");
+  const [pendingCount, setPendingCount] = useState(0);
 
   const [showSynced, setShowSynced] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [log, setLog] = useState<readonly SyncLogEntry[]>([]);
+  const [retrying, setRetrying] = useState(false);
   const wasSyncing = useRef(false);
 
   useEffect(() => {
@@ -182,9 +172,15 @@ function SyncIndicator({ syncManager }: { syncManager: SyncManager | null }) {
   }, []);
 
   useEffect(() => {
-    if (!syncManager) return;
-    return syncManager.onStateChange(setSyncState);
-  }, [syncManager]);
+    if (!appClient) return;
+    const unsubs = [
+      appClient.onSyncStateChange(setSyncState),
+      appClient.onPendingCountChange(setPendingCount),
+    ];
+    return () => {
+      for (const unsub of unsubs) unsub();
+    };
+  }, [appClient]);
 
   // Derive overall syncing state
   const isSyncing = casSyncing || syncState === "syncing" || syncState === "recovering";
@@ -205,7 +201,7 @@ function SyncIndicator({ syncManager }: { syncManager: SyncManager | null }) {
     return onSyncLogChange(() => setLog([...getSyncLog()]));
   }, []);
 
-  const visible = isSyncing || showSynced || hasError;
+  const visible = isSyncing || showSynced || hasError || pendingCount > 0;
 
   // Collapse & clear when hidden
   useEffect(() => {
@@ -214,6 +210,13 @@ function SyncIndicator({ syncManager }: { syncManager: SyncManager | null }) {
       clearSyncLog();
     }
   }, [visible]);
+
+  // Manual retry
+  const handleRetry = useCallback(() => {
+    if (!appClient || retrying) return;
+    setRetrying(true);
+    appClient.flushNow().finally(() => setRetrying(false));
+  }, [appClient, retrying]);
 
   // Determine icon and label
   let icon: React.ReactNode;
@@ -250,24 +253,54 @@ function SyncIndicator({ syncManager }: { syncManager: SyncManager | null }) {
       >
         {/* Header — click to expand */}
         <Box
-          onClick={() => log.length > 0 && setExpanded((v) => !v)}
+          onClick={() => (log.length > 0 || hasError) && setExpanded((v) => !v)}
           sx={{
             display: "flex",
             alignItems: "center",
             gap: 0.75,
             px: 1.5,
             py: 0.75,
-            cursor: log.length > 0 ? "pointer" : "default",
+            cursor: log.length > 0 || hasError ? "pointer" : "default",
             userSelect: "none",
             borderBottom: expanded ? 1 : 0,
             borderColor: "divider",
           }}
         >
-          {icon}
+          {pendingCount > 0 ? (
+            <Badge badgeContent={pendingCount} color="primary" max={99}>
+              {icon}
+            </Badge>
+          ) : (
+            icon
+          )}
           <Typography variant="caption" color={labelColor} sx={{ flex: 1, fontWeight: 500 }}>
             {label}
           </Typography>
-          {log.length > 0 && (
+          {hasError && (
+            <Tooltip title="Retry now">
+              <IconButton
+                size="small"
+                sx={{ p: 0.25 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRetry();
+                }}
+                disabled={retrying}
+              >
+                {retrying ? (
+                  <CircularProgress size={14} />
+                ) : (
+                  <ReplayIcon fontSize="small" />
+                )}
+              </IconButton>
+            </Tooltip>
+          )}
+          {syncState === "conflict" && (
+            <Tooltip title="Conflict detected — local version will overwrite">
+              <WarningIcon fontSize="small" sx={{ color: "warning.main" }} />
+            </Tooltip>
+          )}
+          {(log.length > 0 || hasError) && (
             <IconButton size="small" sx={{ p: 0 }}>
               {expanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
             </IconButton>
