@@ -280,6 +280,7 @@ function SyncIndicator({ appClient }: { appClient: AppClient | null }) {
             <Tooltip title="Retry now">
               <IconButton
                 size="small"
+                tabIndex={-1}
                 sx={{ p: 0.25 }}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -301,7 +302,7 @@ function SyncIndicator({ appClient }: { appClient: AppClient | null }) {
             </Tooltip>
           )}
           {(log.length > 0 || hasError) && (
-            <IconButton size="small" sx={{ p: 0 }}>
+            <IconButton size="small" tabIndex={-1} sx={{ p: 0 }}>
               {expanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
             </IconButton>
           )}
