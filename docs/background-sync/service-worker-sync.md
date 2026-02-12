@@ -4,7 +4,7 @@
 
 ## 动机
 
-1. **Token 管理分散**：每个 Tab 各自持有 CasfaClient，各自 refresh JWT / AT，产生并发 race
+1. **Token 管理分散**：每个 Tab 各自持有 CasfaClient，各自 refresh JWT，产生并发 race
 2. **网络 I/O 阻塞 UI**：`flush()` 期间批量 `checkMany` + `put` + `claim` 在主线程 `fetch()`
 3. **页面关闭 = 同步中断**：pending 数据在 IndexedDB，上传必须等下次打开页面
 4. **多 Tab 重复请求**：每个 Tab 各自 flush / commit
@@ -17,29 +17,24 @@
 ┌───────────────────────────────────────────────┐
 │  Main Thread (per Tab)                        │
 │                                               │
-│  bridge.getClient() → CasfaClient proxy       │
-│  bridge.pushDelegate(params) → depth++        │
-│  bridge.popDelegate()        → depth--        │
-│                                               │
-│  proxy 始终路由到 SW 端该 port 的栈顶 client    │
+│  const client = await createAppClient(config) │
+│  client.depots.list()   ← RPC 透明            │
+│  client.scheduleCommit()                      │
 │                                               │
 │  CachedStorage (IndexedDB)                    │
 │    put() → cache + pendingKeys                │
-│    get() → cache hit ? return : proxy.get()   │
+│    get() → cache hit ? return : client.get()  │
 └──────────────┬────────────────────────────────┘
                │ MessagePort (RPC, per Tab)
                │ BroadcastChannel (events, all Tabs)
 ┌──────────────▼────────────────────────────────┐
 │  Service Worker (单实例)                       │
 │                                               │
-│  rootClient (共享, 1 实例)                     │
-│  portStacks: Map<port, CasfaClient[]>         │
-│    port₁: [root, delegateA]        ← depth 1  │
-│    port₂: [root]                   ← depth 0  │
+│  client: CasfaClient (单实例，JWT 鉴权)        │
+│  所有 port 共享同一 client                     │
 │                                               │
-│  JWT → root delegate → 自治 refresh            │
-│  push → delegates.create → 截获 token → 入栈   │
-│  pop  → flush sync → revoke → 出栈             │
+│  JWT 直通 → root 权限访问 API                  │
+│  SW 自治 JWT refresh                           │
 │                                               │
 │  SyncCoordinator                              │
 │    Layer 1: pending CAS → check/put/claim     │
@@ -47,92 +42,37 @@
 └───────────────────────────────────────────────┘
 ```
 
-## Delegate 栈
+## 单 Client 模型
 
-delegate token 由服务端一次性返回，服务端不保留明文。不存在"拿 delegateId 去换 client"的场景。
+Root 直接使用 JWT 访问 API（见 `root-delegate-jwt-auth.md`），不再持有 delegate AT/RT。
+SW 只需维护**一个** CasfaClient 实例，绑定用户的 JWT，代表 root 权限。
 
-sub-delegate 的唯一用途：**从当前身份临时收窄权限**（如只读、限定 depot scope），用完即销毁。
-
-因此 client 是一个**栈**，而非 Map：
-
-```
-Stack (per port):
-  [0] root client    ← JWT 登录后创建（共享实例）
-  [1] sub-delegate A ← pushDelegate({ canUpload: false })
-  [2] sub-delegate B ← pushDelegate({ delegatedDepots: ["d1"] })
-       ↑ 栈顶 = 当前活跃
-```
-
-- `getClient()` 始终返回同一 proxy，SW 侧路由到该 port 的栈顶
-- `pushDelegate(params)` → SW 用栈顶 client 调用 `delegates.create(params)` → 截获返回的 token → 创建新 CasfaClient → 入栈
-- `popDelegate()` → 立即出栈（后续 RPC 路由到父级），client 进入 draining 阶段等待 pending sync 完成 → revoke → 销毁
-- root（depth 0）不可 pop
-
-### Delegate 生命周期
-
-```
-active (栈中)  ──pop──→  draining (等 sync)  ──done──→  destroyed
-  ↑ RPC 路由到这里        ↑ sync 仍用此 client         revoke + logout
-```
-
-`popDelegate()` 立即返回，不阻塞。draining 在后台完成，调用方无需关心。
-
-### 多 Tab
-
-每个 Tab 通过 `MessagePort` 连接 SW，各自维护独立栈。Tab A push delegate 不影响 Tab B。
+- 所有 Tab 通过 `MessagePort` 连接 SW，共享同一 CasfaClient
+- 调用方拿到的 client 对象内部透明路由到 SW（或直连，降级模式）
+- JWT refresh 由 SW 内的 `RefreshManager` 自治管理
+- bridge 是内部传输层实现，不暴露给调用方
 
 SW 内部结构：
 
 ```typescript
-// rootClient 共享
-let rootClient: CasfaClient | null = null;
-
-// per-port 栈
-type StackEntry = { client: CasfaClient; delegateId: string };
-const portStacks = new Map<MessagePort, StackEntry[]>();
-
-// 已 pop 但 sync 未完成的 delegate（后台 draining）
-const draining = new Map<string, { client: CasfaClient; delegateId: string }>();
-
-function getTopClient(port: MessagePort): CasfaClient {
-  const stack = portStacks.get(port)!;
-  return stack.length > 0 ? stack[stack.length - 1].client : rootClient!;
-}
+let client: CasfaClient | null = null;
 ```
 
 ## 接口
 
+调用方只接触一个统一类型 `AppClient`，不感知底层是 SW RPC 还是主线程直连。
+
 ```typescript
-type ClientBridge = {
+/**
+ * CasfaClient + 同步 + 鉴权管理。
+ * 两种构造方式返回相同接口，调用方无需感知底层传输方式。
+ */
+type AppClient = CasfaClient & {
   /**
-   * RPC: 推送 user JWT。SW 创建 root CasfaClient，自治 refresh。
+   * 推送 user JWT。创建/覆盖底层 CasfaClient，自治 refresh。
    * 重复调用覆盖旧 token（re-login）。
    */
   setUserToken(token: StoredUserToken): Promise<void>;
-
-  /**
-   * 获取 CasfaClient proxy。
-   *
-   * 返回的 proxy 始终路由到 SW 端当前栈顶 client。
-   * push/pop 改变栈顶后，同一 proxy 自动指向新的 client——调用方无需感知。
-   *
-   * 首次调用前必须先 setUserToken。
-   */
-  getClient(): Promise<CasfaClient>;
-
-  // ── Delegate 栈 ──
-
-  /** RPC: 从栈顶 client 创建子 delegate，push 新 client，返回 delegateId */
-  pushDelegate(params: CreateDelegateInput): Promise<string>;
-
-  /**
-   * RPC: 立即出栈，client 进入 draining 等待 pending sync 完成后 revoke + 销毁。
-   * 非阻塞——不等 sync 结束即返回。root 不可 pop，会 throw。
-   */
-  popDelegate(): Promise<void>;
-
-  /** RPC: 当前栈深度（0 = root only） */
-  getDepth(): Promise<number>;
 
   // ── Sync ──
 
@@ -147,63 +87,69 @@ type ClientBridge = {
   onSyncError(fn: (event: SyncErrorEvent) => void): () => void;
   onCommit(fn: (event: SyncCommitEvent) => void): () => void;
 
+  /** flush pending sync → logout → 清理资源 */
   logout(): Promise<void>;
   dispose(): void;
 };
+```
 
-/** SW 模式 */
-function createSWBridge(config: BridgeConfig): Promise<ClientBridge>;
+`AppClient` 是 `CasfaClient` 的超集（intersection type）。所有 `CasfaClient` 方法（`oauth`、`tokens`、`delegates`、`depots`、`fs`、`nodes`、`getState`、`getServerInfo` 等）直接在 `AppClient` 上调用。
 
-/** 降级：主线程直接运行 */
-function createDirectBridge(config: BridgeConfig): Promise<ClientBridge>;
+### 构造
 
-/** 工厂：SW 注册失败自动降级 */
-async function createBridge(config: BridgeConfig): Promise<ClientBridge> {
+```typescript
+type AppClientConfig = {
+  baseUrl: string;
+  realm: string;
+  swUrl?: string | URL;            // 默认 "/sw.js"，仅 SW 模式
+  rpcTimeoutMs?: number;           // 默认 30_000，仅 SW 模式
+  syncDebounceMs?: number;         // 默认 2_000
+};
+
+/** SW 模式 — CasfaClient API 通过 RPC 路由到 SW */
+function createSWClient(config: AppClientConfig): Promise<AppClient>;
+
+/** 直连模式 — CasfaClient 在主线程直接运行 */
+function createDirectClient(config: AppClientConfig): Promise<AppClient>;
+
+/** 自动选择：SW 可用走 SW，否则降级直连 */
+async function createAppClient(config: AppClientConfig): Promise<AppClient> {
   if ("serviceWorker" in navigator) {
     try {
-      return await createSWBridge(config);
+      return await createSWClient(config);
     } catch {
       console.warn("SW registration failed, falling back to direct mode");
     }
   }
-  return createDirectBridge(config);
+  return createDirectClient(config);
 }
-
-type BridgeConfig = {
-  baseUrl: string;
-  realm: string;
-  swUrl?: string | URL;            // 默认 "/sw.js"
-  rpcTimeoutMs?: number;           // 默认 30_000
-  syncDebounceMs?: number;         // 默认 2_000
-};
 ```
 
 ### 使用示例
 
 ```typescript
-// 初始化
-const bridge = await createBridge({ baseUrl: "", realm });
+// 初始化 — 调用方不关心底层走 SW 还是直连
+const client = await createAppClient({ baseUrl: "", realm });
 
 // OAuth 登录后
-await bridge.setUserToken(userJWT);
+await client.setUserToken(userJWT);
 
-// 获取 client — 始终同一 proxy
-const client = await bridge.getClient();
+// CasfaClient API — 直接调用，透明路由
 const depots = await client.depots.list();
+const result = await client.fs.write(rootKey, path, data);
 
-// 临时收窄权限
-const delegateId = await bridge.pushDelegate({ canUpload: false, canManageDepot: false });
-// client 仍是同一 proxy，但 SW 现在路由到子 delegate
-const restricted = await client.fs.ls(rootKey);   // 用的是子 delegate 权限
+// Sync — 同一对象上的方法
+if (result.ok) {
+  client.scheduleCommit(depotId, result.data.newRoot, lastKnownServerRoot);
+}
 
-// 用完回退
-await bridge.popDelegate();
-// client 自动回到 root
+// 事件
+const off = client.onSyncStateChange((state) => console.log(state));
 ```
 
 ### CasfaClient（不变）
 
-proxy 和真实 CasfaClient 实现同一接口：
+底层核心类型，`AppClient` 通过 intersection 扩展它：
 
 ```typescript
 type CasfaClient = {
@@ -232,7 +178,7 @@ type FetchResult<T> =
 
 1. **RPC 用 `MessagePort`** — 点对点、Transferable、不广播
 2. **事件用 `BroadcastChannel("casfa")`** — sync 状态需通知所有 Tab
-3. **RPC 无需 delegateId** — SW 按 port 找栈，取栈顶 client
+3. **单 client** — 所有 port 共享，RPC 直接路由到唯一 client
 
 ### 主线程 → SW（MessagePort）
 
@@ -250,30 +196,13 @@ type SetUserTokenMessage = {
   token: StoredUserToken;
 };
 
-/** RPC 调用：路由到栈顶 client */
+/** RPC 调用：路由到单一 client */
 type RPCRequest = {
   type: "rpc";
   id: number;
   target: "oauth" | "tokens" | "delegates" | "depots" | "fs" | "nodes" | "client";
   method: string;
   args: unknown[];
-};
-
-/** Delegate 栈操作 */
-type PushDelegateMessage = {
-  type: "push-delegate";
-  id: number;
-  params: CreateDelegateInput;
-};
-
-type PopDelegateMessage = {
-  type: "pop-delegate";
-  id: number;
-};
-
-type GetDepthMessage = {
-  type: "get-depth";
-  id: number;
 };
 
 /** Sync 控制 */
@@ -304,9 +233,6 @@ type MainToSWMessage =
   | ConnectMessage
   | SetUserTokenMessage
   | RPCRequest
-  | PushDelegateMessage
-  | PopDelegateMessage
-  | GetDepthMessage
   | ScheduleCommitMessage
   | GetPendingRootMessage
   | FlushNowMessage
@@ -336,11 +262,11 @@ type ConnectAckMessage = {
 
 ```typescript
 type BroadcastMessage =
-  | { type: "sync-state";    state: SyncState }
-  | { type: "conflict";      event: ConflictEvent }
-  | { type: "sync-error";    event: SyncErrorEvent }
-  | { type: "commit";        event: SyncCommitEvent }
-  | { type: "pending-count"; count: number }
+  | { type: "sync-state";    payload: SyncState }
+  | { type: "conflict";      payload: ConflictEvent }
+  | { type: "sync-error";    payload: SyncErrorEvent }
+  | { type: "commit";        payload: SyncCommitEvent }
+  | { type: "pending-count"; payload: number }
   | { type: "auth-required" };       // 所有 token refresh 失败
 ```
 
@@ -365,7 +291,7 @@ proxy 自动扫描 args 中的 `Uint8Array`，提取 `buffer` 作为 transferabl
 Tab                                    SW
  │                                      │
  │── sw.postMessage({ type: "connect",  │
- │     port: port2 }, [port2])  ──────→│  portStacks.set(port, [])
+ │     port: port2 }, [port2])  ──────→│  ports.add(port)
  │                                      │
  │←── port.postMessage({                │
  │     type: "connect-ack",             │
@@ -375,13 +301,13 @@ Tab                                    SW
  │── port.postMessage({                 │
  │     type: "set-user-token",          │
  │     id: 1, token })  ─────────────→│  IndexedDB 存储
- │                                      │  创建 root CasfaClient
- │                                      │  此后自治 refresh
+ │                                      │  创建 CasfaClient（JWT 鉴权）
+ │                                      │  此后自治 refresh JWT
  │←── { type: "rpc-response",          │
  │     id: 1, result: null }  ─────────│
 ```
 
-#### 2. RPC：nodes.get（栈顶 = root）
+#### 2. RPC：nodes.get
 
 ```
 Tab                                    SW
@@ -390,9 +316,8 @@ Tab                                    SW
  │     type: "rpc", id: 2,             │
  │     target: "nodes",                 │
  │     method: "get",                   │
- │     args: ["0a1b..."] })  ────────→│  client = getTopClient(port)
- │                                      │  result = await client.nodes.get(...)
- │                                      │   (AT 过期 → 自动 refresh)
+ │     args: ["0a1b..."] })  ────────→│  result = await client.nodes.get(...)
+ │                                      │   (JWT 过期 → 自动 refresh)
  │←── port.postMessage({                │
  │     type: "rpc-response", id: 2,     │
  │     result: { ok: true,              │
@@ -400,39 +325,7 @@ Tab                                    SW
  │     [data.buffer])  ← Transfer ────│
 ```
 
-#### 3. Push → RPC → Pop
-
-```
-Tab                                    SW
- │                                      │
- │── { type: "push-delegate", id: 3,   │
- │     params: { canUpload: false,      │
- │     canManageDepot: false } }  ────→│  topClient = getTopClient(port)
- │                                      │  res = await topClient.delegates.create(params)
- │                                      │  newClient = createClient(截获的 token)
- │                                      │  stack.push({ client: newClient, delegateId })
- │←── { id: 3, result: delegateId }  ──│
- │                                      │
- │── { type: "rpc", id: 4,             │
- │     target: "fs", method: "ls",     │
- │     args: [rootKey] }  ───────────→│  client = getTopClient(port)  ← 现在是子 delegate
- │                                      │  result = await client.fs.ls(rootKey)
- │←── { id: 4, result: ... }  ─────────│
- │                                      │
- │── { type: "pop-delegate",           │
- │     id: 5 }  ──────────────────────→│  { client, delegateId } = stack.pop()
- │                                      │  draining.set(delegateId, { client, delegateId })
- │←── { id: 5, result: null }  ────────│  ← 立即返回
- │                                      │
- │── { type: "rpc", id: 6, ... }  ───→│  client = getTopClient(port)  ← 回到 root
- │                                      │
- │                                      │  (后台) sync 完成 →
- │                                      │    rootClient.delegates.revoke(delegateId)
- │                                      │    client.logout()
- │                                      │    draining.delete(delegateId)
-```
-
-#### 4. Sync
+#### 3. Sync
 
 ```
 Tab                                    SW
@@ -442,13 +335,12 @@ Tab                                    SW
  │     depotId: "d_1",                  │
  │     targetRoot: "0xabc",             │
  │     lastKnownServerRoot: "0x789"     │
- │   })  ──────────────────────────→│  capturedClient = getTopClient(port)
- │                                      │  enqueue(depotId, targetRoot, capturedClient)
+ │   })  ──────────────────────────→│  enqueue(depotId, targetRoot)
  │                                      │  debounce 2s
  │                                      │
  │                                      │  runSync():
- │                                      │    用 capturedClient flush CAS nodes
- │                                      │    用 capturedClient commit depot
+ │                                      │    用 client flush CAS nodes
+ │                                      │    用 client commit depot
  │                                      │
  │←── BroadcastChannel ──────────────│
  │     { type: "commit",               │
@@ -458,18 +350,13 @@ Tab                                    SW
 Tab₂ ←── (也收到)  ──────────────────│
 ```
 
-> `scheduleCommit` 时 SW **捕获当前栈顶 client**。即使之后 pop，已入队的 sync 仍用原 client 完成。
->
-> MessagePort 保证消息 FIFO。`scheduleCommit` 后紧接 `popDelegate`，SW 端保证先 enqueue 再 pop。
->
-> `popDelegate` **立即出栈返回**，client 进入 draining 集合。SyncCoordinator 在所有 pending commits 完成后自动 revoke + 销毁。
+> MessagePort 保证消息 FIFO。
 
-#### 5. Token Refresh 失败
+#### 4. Token Refresh 失败
 
 ```
                                        SW
                                         │
-                                        │  AT refresh → 401
                                         │  JWT refresh → 401
                                         │  所有重试失败
                                         │
@@ -501,9 +388,6 @@ function createRPC(port: MessagePort, timeoutMs: number) {
   type RPCMessage = Omit<
     | SetUserTokenMessage
     | RPCRequest
-    | PushDelegateMessage
-    | PopDelegateMessage
-    | GetDepthMessage
     | GetPendingRootMessage
     | FlushNowMessage
     | LogoutMessage,
@@ -550,16 +434,15 @@ packages/
 
   client-bridge/                   # @casfa/client-bridge (新建)
     src/
-      types.ts                     #   ClientBridge, BridgeConfig, 所有消息类型
-      sw-bridge.ts                 #   createSWBridge
-      direct-bridge.ts             #   createDirectBridge
-      proxy.ts                     #   createClientProxy (Proxy-based)
-      rpc.ts                       #   createRPC, extractTransferables
-      index.ts                     #   export createBridge 工厂
+      types.ts                     #   AppClient, AppClientConfig, 所有消息类型
+      sw-client.ts                 #   createSWClient (内部 proxy + RPC)
+      direct-client.ts             #   createDirectClient (内部 CasfaClient + SyncManager)
+      _proxy.ts                    #   createClientProxy (内部实现)
+      _rpc.ts                      #   createRPC (内部实现)
+      index.ts                     #   export { createAppClient, AppClient, AppClientConfig }
 
   client-sw/                       # @casfa/client-sw (新建)
     src/
-      client-stack.ts              #   per-port CasfaClient 栈
       message-handler.ts           #   onMessage 分发
       token-storage-idb.ts         #   IndexedDB TokenStorageProvider
       index.ts
@@ -571,6 +454,8 @@ packages/
         sync-coordinator.ts        #   SyncCoordinator (新建，SW 环境用)
 ```
 
+`_proxy.ts` / `_rpc.ts` 以 `_` 前缀标记为内部模块，不从 package 入口导出。
+
 ### SW 入口
 
 ```
@@ -579,7 +464,7 @@ apps/server/frontend/
     sw/
       sw.ts                        # 薄壳
     lib/
-      bridge.ts                    # createBridge 工厂 + config
+      client.ts                    # createAppClient(config) 工厂
 ```
 
 ### 依赖关系
@@ -588,32 +473,32 @@ apps/server/frontend/
 apps/server/frontend (主线程 bundle)
   └─ @casfa/client-bridge
        ├─ (types only) @casfa/client
-       └─ (dynamic) @casfa/client       ← DirectBridge 降级时才 import
+       └─ (dynamic) @casfa/client       ← DirectClient 降级时才 import
 
 apps/server/frontend (SW bundle: sw.ts)
   ├─ @casfa/client-sw
-  │    └─ @casfa/client                  ← 真实实例
+  │    └─ @casfa/client                  ← 单实例
   └─ @casfa/explorer (SyncCoordinator)
 ```
 
 | Bundle | 包含 | 不包含 |
 |--------|------|--------|
-| 主线程 | `@casfa/client-bridge` (proxy) | `@casfa/client`¹, `@casfa/client-sw` |
+| 主线程 | `@casfa/client-bridge` (proxy + factory) | `@casfa/client`¹, `@casfa/client-sw` |
 | SW | `@casfa/client`, `@casfa/client-sw`, `SyncCoordinator` | `@casfa/client-bridge` |
 
-¹ 降级到 `DirectBridge` 时动态 import。
+¹ 降级到 `createDirectClient` 时动态 import。
 
 ### 各 Package 设计
 
 #### `@casfa/client-bridge`
 
 **exports**:
-- `"."` → types + createBridge 工厂
-- `"./sw"` → sw-bridge.ts + proxy.ts + rpc.ts
-- `"./direct"` → direct-bridge.ts
+- `"."` → `AppClient`, `AppClientConfig`, `createAppClient`
+
+内部模块（不导出）：`_proxy.ts`、`_rpc.ts`、`sw-client.ts`、`direct-client.ts`。
 
 ```typescript
-// ── proxy.ts ──
+// ── _proxy.ts ── (内部模块)
 // Proxy-based 动态分发 — 无需手写每个方法
 
 const CLIENT_NAMESPACES = new Set(["oauth", "tokens", "delegates", "depots", "fs", "nodes"]);
@@ -638,22 +523,21 @@ export function createClientProxy(rpc: RPCFn): CasfaClient {
 ```
 
 ```typescript
-// ── sw-bridge.ts ──
+// ── sw-client.ts ──
+// SW 模式：CasfaClient API 通过 RPC 路由到 SW
+// 返回 AppClient，bridge 不暴露给调用方。
 
-export async function createSWBridge(config: BridgeConfig): Promise<ClientBridge> {
+export async function createSWClient(config: AppClientConfig): Promise<AppClient> {
   const swUrl = config.swUrl ?? "/sw.js";
   const reg = await navigator.serviceWorker.register(swUrl, { type: "module" });
   await navigator.serviceWorker.ready;
 
   const ch = new MessageChannel();
   const port = ch.port1;
-  const rpc = createRPC(port, config.rpcTimeoutMs ?? DEFAULT_RPC_TIMEOUT_MS);
   port.start();
 
-  reg.active!.postMessage({ type: "connect", port: ch.port2 }, [ch.port2]);
-
-  // 等待 connect-ack
-  const ack = await new Promise<ConnectAckMessage>((resolve) => {
+  // 先注册 connect-ack 监听，再发送 connect，避免与 createRPC listener 竞争
+  const ackPromise = new Promise<ConnectAckMessage>((resolve) => {
     const handler = (e: MessageEvent) => {
       if (e.data?.type === "connect-ack") {
         port.removeEventListener("message", handler);
@@ -662,6 +546,12 @@ export async function createSWBridge(config: BridgeConfig): Promise<ClientBridge
     };
     port.addEventListener("message", handler);
   });
+
+  reg.active!.postMessage({ type: "connect", port: ch.port2 }, [ch.port2]);
+  const ack = await ackPromise;
+
+  // connect-ack 已收到，此后所有 port 消息走 RPC 分发
+  const rpc = createRPC(port, config.rpcTimeoutMs ?? DEFAULT_RPC_TIMEOUT_MS);
 
   const bc = new BroadcastChannel("casfa");
   const listeners = {
@@ -674,34 +564,26 @@ export async function createSWBridge(config: BridgeConfig): Promise<ClientBridge
   bc.onmessage = (e) => {
     const msg = e.data as BroadcastMessage;
     switch (msg.type) {
-      case "sync-state":    listeners.syncState.forEach((fn) => fn(msg.state)); break;
-      case "conflict":      listeners.conflict.forEach((fn) => fn(msg.event)); break;
-      case "sync-error":    listeners.syncError.forEach((fn) => fn(msg.event)); break;
-      case "commit":        listeners.commit.forEach((fn) => fn(msg.event)); break;
+      case "sync-state":    listeners.syncState.forEach((fn) => fn(msg.payload)); break;
+      case "conflict":      listeners.conflict.forEach((fn) => fn(msg.payload)); break;
+      case "sync-error":    listeners.syncError.forEach((fn) => fn(msg.payload)); break;
+      case "commit":        listeners.commit.forEach((fn) => fn(msg.payload)); break;
       case "auth-required": /* app-level redirect */ break;
     }
   };
 
-  let proxy: CasfaClient | null = null;
+  // CasfaClient proxy — 直接展开到返回对象上，调用方无需 getClient()
+  const proxy = createClientProxy(rpc);
 
   return {
+    // ── CasfaClient API（RPC 透传）──
+    ...proxy,
+
+    // ── 鉴权 ──
     setUserToken: (token) =>
       rpc({ type: "set-user-token", token }),
 
-    async getClient() {
-      if (!proxy) proxy = createClientProxy(rpc);
-      return proxy;
-    },
-
-    pushDelegate: (params) =>
-      rpc({ type: "push-delegate", params }) as Promise<string>,
-
-    popDelegate: () =>
-      rpc({ type: "pop-delegate" }) as Promise<void>,
-
-    getDepth: () =>
-      rpc({ type: "get-depth" }) as Promise<number>,
-
+    // ── Sync ──
     scheduleCommit(depotId, newRoot, lastKnownServerRoot) {
       port.postMessage({ type: "schedule-commit", depotId, targetRoot: newRoot, lastKnownServerRoot });
     },
@@ -712,302 +594,166 @@ export async function createSWBridge(config: BridgeConfig): Promise<ClientBridge
     flushNow: () =>
       rpc({ type: "flush-now" }) as Promise<void>,
 
+    // ── 事件 ──
     onSyncStateChange(fn) { listeners.syncState.add(fn); return () => listeners.syncState.delete(fn); },
     onConflict(fn)        { listeners.conflict.add(fn);   return () => listeners.conflict.delete(fn); },
     onSyncError(fn)       { listeners.syncError.add(fn);  return () => listeners.syncError.delete(fn); },
     onCommit(fn)          { listeners.commit.add(fn);     return () => listeners.commit.delete(fn); },
 
+    // ── 生命周期 ──
     logout: () =>
       rpc({ type: "logout" }) as Promise<void>,
 
     dispose() {
       port.close();
       bc.close();
-      proxy = null;
     },
   };
 }
 ```
 
 ```typescript
-// ── direct-bridge.ts ──
-// 降级模式：主线程直接运行，无 SW。接口相同，行为一致。
+// ── direct-client.ts ──
+// 降级模式：主线程直接运行，无 SW。AppClient 接口相同，行为一致。
+// CasfaClient + SyncManager 直接运行在主线程。
 
-export async function createDirectBridge(bridgeConfig: BridgeConfig): Promise<ClientBridge> {
+export async function createDirectClient(config: AppClientConfig): Promise<AppClient> {
   const { createClient } = await import("@casfa/client");
   const { createSyncManager } = await import("@casfa/explorer");
 
-  type StackEntry = { client: CasfaClient; delegateId: string };
-  const stack: StackEntry[] = [];
-  let rootClient: CasfaClient | null = null;
+  let client: CasfaClient | null = null;
   let syncManager: SyncManager | null = null;
 
-  function getTop(): CasfaClient {
-    return stack.length > 0 ? stack[stack.length - 1].client : rootClient!;
-  }
+  const syncListeners = {
+    syncState:  new Set<(s: SyncState) => void>(),
+    conflict:   new Set<(e: ConflictEvent) => void>(),
+    syncError:  new Set<(e: SyncErrorEvent) => void>(),
+    commit:     new Set<(e: SyncCommitEvent) => void>(),
+  };
 
-  // proxy delegates to getTop() — stack changes are transparent
-  const proxy: CasfaClient = new Proxy({} as CasfaClient, {
+  // CasfaClient 方法的懒代理：setUserToken 后才有 client 实例
+  const clientProxy = new Proxy({} as CasfaClient, {
     get(_, prop: string) {
-      const target = getTop();
-      if (CLIENT_NAMESPACES.has(prop)) return (target as any)[prop];
-      return (target as any)[prop];
+      if (!client) throw new Error("Call setUserToken first");
+      return (client as any)[prop];
     },
   });
 
   return {
+    // ── CasfaClient API（直连委托）──
+    ...clientProxy,
+
     async setUserToken(token) {
-      rootClient = await createClient({
-        baseUrl: bridgeConfig.baseUrl,
-        realm: bridgeConfig.realm,
+      client = await createClient({
+        baseUrl: config.baseUrl,
+        realm: config.realm,
         tokenStorage: createLocalStorageProvider(),
         onAuthRequired: () => { /* app-level redirect */ },
       });
-      // TODO: set user token on rootClient
-    },
-
-    async getClient() {
-      return proxy;
-    },
-
-    async pushDelegate(params) {
-      const top = getTop();
-      const result = await top.delegates.create(params);
-      if (!result.ok) throw new Error(result.error.message);
-      const { delegateId, refreshToken, accessToken } = result.data;
-
-      const client = await createClient({
-        baseUrl: bridgeConfig.baseUrl,
-        realm: bridgeConfig.realm,
-        tokenStorage: createLocalStorageProvider(`casfa_tokens_${delegateId}`),
+      // set user token → JWT 鉴权
+      syncManager = createSyncManager({
+        storage: /* FlushableStorage */,
+        client,
+        queueStore: /* SyncQueueStore */,
+        debounceMs: config.syncDebounceMs ?? 2_000,
+        onSyncStateChange: (state) => syncListeners.syncState.forEach((fn) => fn(state)),
+        onConflict:        (event) => syncListeners.conflict.forEach((fn) => fn(event)),
+        onSyncError:       (event) => syncListeners.syncError.forEach((fn) => fn(event)),
+        onCommit:          (event) => syncListeners.commit.forEach((fn) => fn(event)),
       });
-      client.setRootDelegate({
-        delegateId, realm: bridgeConfig.realm,
-        refreshToken, accessToken,
-        accessTokenExpiresAt: /* from response */,
-        depth: stack.length + 1,
-        canUpload: params.canUpload,
-        canManageDepot: params.canManageDepot,
-      });
-      stack.push({ client, delegateId });
-      return delegateId;
-    },
-
-    async popDelegate() {
-      if (stack.length === 0) throw new Error("Cannot pop root client");
-      const { client, delegateId } = stack.pop()!;
-      await syncManager?.flushNow();
-      await rootClient!.delegates.revoke(delegateId);
-      client.logout();
-    },
-
-    async getDepth() {
-      return stack.length;
     },
 
     scheduleCommit(depotId, newRoot, lastKnownServerRoot) {
-      syncManager?.enqueue(depotId, newRoot, lastKnownServerRoot);
+      if (!syncManager) throw new Error("Call setUserToken first");
+      syncManager.enqueue(depotId, newRoot, lastKnownServerRoot);
     },
 
     async getPendingRoot(depotId) {
-      return syncManager?.getPendingRoot(depotId) ?? null;
+      if (!syncManager) return null;
+      return syncManager.getPendingRoot(depotId);
     },
 
     async flushNow() {
-      await syncManager?.flushNow();
+      if (!syncManager) return;
+      await syncManager.flushNow();
     },
 
-    // events → direct listeners on syncManager
-    // logout → flush + clear all
-    // dispose → noop
+    onSyncStateChange(fn) { syncListeners.syncState.add(fn); return () => syncListeners.syncState.delete(fn); },
+    onConflict(fn)        { syncListeners.conflict.add(fn);   return () => syncListeners.conflict.delete(fn); },
+    onSyncError(fn)       { syncListeners.syncError.add(fn);  return () => syncListeners.syncError.delete(fn); },
+    onCommit(fn)          { syncListeners.commit.add(fn);     return () => syncListeners.commit.delete(fn); },
+
+    async logout() {
+      if (syncManager) await syncManager.flushNow();
+      client?.logout();
+      syncManager = null;
+      client = null;
+    },
+
+    dispose() {
+      syncManager = null;
+      client = null;
+      syncListeners.syncState.clear();
+      syncListeners.conflict.clear();
+      syncListeners.syncError.clear();
+      syncListeners.commit.clear();
+    },
   };
 }
 ```
 
 #### `@casfa/client-sw`
 
-SW 端：per-port 栈管理、消息分发。
-
-```typescript
-// ── client-stack.ts ──
-
-export type StackEntry = {
-  client: CasfaClient;
-  delegateId: string;
-};
-
-export type ClientStackManager = {
-  /** 初始化 root client（所有 port 共享） */
-  initRoot(userToken: StoredUserToken): Promise<void>;
-
-  /** 注册新 port，初始化空栈 */
-  registerPort(port: MessagePort): void;
-
-  /** 注销 port，清理该 port 的全部子 delegate */
-  unregisterPort(port: MessagePort): Promise<void>;
-
-  /** 获取指定 port 的栈顶 client */
-  getTopClient(port: MessagePort): CasfaClient;
-
-  /** push: 从栈顶 client 创建子 delegate → 入栈 */
-  push(port: MessagePort, params: CreateDelegateInput): Promise<string>;
-
-  /** pop: 出栈并返回 entry（不 revoke，由调用方通过 drainDelegate 处理）。root 不可 pop。 */
-  pop(port: MessagePort): StackEntry;
-
-  /** 获取指定 port 的栈顶 delegateId（null = root） */
-  getTopDelegateId(port: MessagePort): string | null;
-
-  /** 获取指定 port 的栈深度 */
-  getDepth(port: MessagePort): number;
-
-  /** 全局登出 */
-  logout(): Promise<void>;
-
-  /** SW 重启恢复 root client */
-  recover(): Promise<void>;
-
-  /** root client 是否已初始化 */
-  isAuthenticated(): boolean;
-
-  /** 获取 root client（recover 后传给 SyncCoordinator） */
-  getRootClient(): CasfaClient | null;
-};
-
-export function createClientStackManager(callbacks: {
-  onAuthRequired: () => void;
-  baseUrl: string;
-  realm: string;
-}): ClientStackManager {
-  let rootClient: CasfaClient | null = null;
-  const portStacks = new Map<MessagePort, StackEntry[]>();
-
-  return {
-    async initRoot(userToken) {
-      rootClient = await createClient({
-        baseUrl: callbacks.baseUrl,
-        realm: callbacks.realm,
-        tokenStorage: createIndexedDBTokenStorage("root"),
-        onAuthRequired: callbacks.onAuthRequired,
-      });
-      // set user token → trigger root delegate creation
-    },
-
-    registerPort(port) {
-      portStacks.set(port, []);
-    },
-
-    async unregisterPort(port) {
-      const stack = portStacks.get(port);
-      if (stack) {
-        // pop all sub-delegates for this port
-        while (stack.length > 0) {
-          const { client, delegateId } = stack.pop()!;
-          await rootClient?.delegates.revoke(delegateId);
-          client.logout();
-        }
-      }
-      portStacks.delete(port);
-    },
-
-    getTopClient(port) {
-      const stack = portStacks.get(port)!;
-      return stack.length > 0 ? stack[stack.length - 1].client : rootClient!;
-    },
-
-    async push(port, params) {
-      const top = this.getTopClient(port);
-      const result = await top.delegates.create(params);
-      if (!result.ok) throw new Error(result.error.message);
-
-      const { delegateId, refreshToken, accessToken } = result.data;
-      const client = await createClient({
-        baseUrl: callbacks.baseUrl,
-        realm: callbacks.realm,
-        tokenStorage: createIndexedDBTokenStorage(delegateId),
-        onAuthRequired: callbacks.onAuthRequired,
-      });
-      // delegates.create 返回 token 明文 → 直接注入
-      client.setRootDelegate({
-        delegateId, realm: callbacks.realm,
-        refreshToken, accessToken,
-        accessTokenExpiresAt: result.data.atExpiresAt,
-        depth: (portStacks.get(port)?.length ?? 0) + 1,
-        canUpload: params.canUpload,
-        canManageDepot: params.canManageDepot,
-      });
-
-      portStacks.get(port)!.push({ client, delegateId });
-      return delegateId;
-    },
-
-    async pop(port) {
-      const stack = portStacks.get(port)!;
-      if (stack.length === 0) throw new Error("Cannot pop root client");
-      return stack.pop()!;  // 返回 entry，不 revoke——caller 负责 drain
-    },
-
-    getTopDelegateId(port) {
-      const stack = portStacks.get(port)!;
-      return stack.length > 0 ? stack[stack.length - 1].delegateId : null;
-    },
-
-    getDepth(port) {
-      return portStacks.get(port)?.length ?? 0;
-    },
-
-    async logout() {
-      // pop all stacks for all ports
-      for (const [port, stack] of portStacks) {
-        while (stack.length > 0) {
-          const { client, delegateId } = stack.pop()!;
-          await rootClient?.delegates.revoke(delegateId);
-          client.logout();
-        }
-      }
-      rootClient?.logout();
-      rootClient = null;
-    },
-
-    async recover() {
-      // 从 IndexedDB 加载 root token
-      // 若有效 → 重建 rootClient
-    },
-
-    isAuthenticated() {
-      return rootClient !== null;
-    },
-
-    getRootClient() {
-      return rootClient;
-    },
-  };
-}
-```
+SW 端：消息分发。client 由调用方（SW entry）持有，通过 getter/setter 传入。
 
 ```typescript
 // ── message-handler.ts ──
 
-export function createMessageHandler(deps: {
-  stackManager: ClientStackManager;
+export type MessageHandlerDeps = {
+  getClient: () => CasfaClient;
+  setClient: (client: CasfaClient) => void;
   syncCoordinator: SyncCoordinator;
   broadcast: (msg: BroadcastMessage) => void;
-}) {
-  const { stackManager, syncCoordinator, broadcast } = deps;
+};
+
+export function createMessageHandler(deps: MessageHandlerDeps) {
+  const { getClient, setClient, syncCoordinator, broadcast } = deps;
 
   return async function handleMessage(msg: MainToSWMessage, port: MessagePort): Promise<void> {
     switch (msg.type) {
       case "set-user-token": {
-        await stackManager.initRoot(msg.token);
+        const client = await createClient({
+          baseUrl: /* from config or msg */,
+          realm: /* from config or msg */,
+          tokenStorage: createIndexedDBTokenStorage("root"),
+          onAuthRequired: () => broadcast({ type: "auth-required" }),
+        });
+        // set user token → JWT 鉴权
+        setClient(client);
+        syncCoordinator.setClient(client);
         port.postMessage({ type: "rpc-response", id: msg.id, result: null });
         break;
       }
 
       case "rpc": {
         try {
-          const client = stackManager.getTopClient(port);
+          const client = getClient();
+
+          // ── 白名单校验 ──
+          const ALLOWED_TOP_LEVEL = new Set(["getState", "getServerInfo", "getAccessToken"]);
+          const ALLOWED_NAMESPACES = new Set(["oauth", "tokens", "delegates", "depots", "fs", "nodes"]);
+
+          if (msg.target === "client") {
+            if (!ALLOWED_TOP_LEVEL.has(msg.method)) {
+              throw new Error(`Blocked RPC method: client.${msg.method}`);
+            }
+          } else if (!ALLOWED_NAMESPACES.has(msg.target)) {
+            throw new Error(`Blocked RPC namespace: ${msg.target}`);
+          }
+
           const target = msg.target === "client" ? client : (client as any)[msg.target];
           const fn = msg.target === "client" ? (client as any)[msg.method] : target[msg.method];
+          if (typeof fn !== "function") throw new Error(`Not a function: ${msg.target}.${msg.method}`);
           const result = await fn.apply(target, msg.args);
 
           const transferables: Transferable[] = [];
@@ -1022,50 +768,8 @@ export function createMessageHandler(deps: {
         break;
       }
 
-      case "push-delegate": {
-        try {
-          const delegateId = await stackManager.push(port, msg.params);
-          port.postMessage({ type: "rpc-response", id: msg.id, result: delegateId });
-        } catch (err) {
-          port.postMessage({
-            type: "rpc-response", id: msg.id,
-            error: { code: "push_error", message: (err as Error).message },
-          });
-        }
-        break;
-      }
-
-      case "pop-delegate": {
-        try {
-          // 取出栈顶 entry
-          const { client, delegateId } = stackManager.pop(port);
-          // 注册 draining：sync 完成后自动 revoke + 销毁
-          syncCoordinator.drainDelegate(delegateId, async () => {
-            await rootClient.delegates.revoke(delegateId);
-            client.logout();
-          });
-          // 立即返回，不等 sync
-          port.postMessage({ type: "rpc-response", id: msg.id, result: null });
-        } catch (err) {
-          port.postMessage({
-            type: "rpc-response", id: msg.id,
-            error: { code: "pop_error", message: (err as Error).message },
-          });
-        }
-        break;
-      }
-
-      case "get-depth":
-        port.postMessage({
-          type: "rpc-response", id: msg.id,
-          result: stackManager.getDepth(port),
-        });
-        break;
-
       case "schedule-commit": {
-        const client = stackManager.getTopClient(port);
-        const delegateId = stackManager.getTopDelegateId(port);
-        syncCoordinator.enqueue(msg.depotId, msg.targetRoot, msg.lastKnownServerRoot, client, delegateId);
+        syncCoordinator.enqueue(msg.depotId, msg.targetRoot, msg.lastKnownServerRoot);
         break;
       }
 
@@ -1083,7 +787,7 @@ export function createMessageHandler(deps: {
 
       case "logout":
         await syncCoordinator.flushNow();
-        await stackManager.logout();
+        getClient().logout();
         port.postMessage({ type: "rpc-response", id: msg.id, result: null });
         break;
     }
@@ -1093,20 +797,31 @@ export function createMessageHandler(deps: {
 
 ```typescript
 // ── token-storage-idb.ts ──
-// DB: "casfa-auth", store: "tokens", key: delegateId | "root"
+// DB: "casfa-auth", store: "tokens", key: "root"
+// 连接池化：整个 SW 生命周期复用同一 IDBDatabase 实例。
+
+let dbCache: IDBDatabase | null = null;
+
+async function getDB(): Promise<IDBDatabase> {
+  if (dbCache) return dbCache;
+  dbCache = await openDB("casfa-auth", 1, "tokens");
+  // 浏览器可能主动关闭闲置连接
+  dbCache.onclose = () => { dbCache = null; };
+  return dbCache;
+}
 
 export function createIndexedDBTokenStorage(key: string): TokenStorageProvider {
   return {
     async load() {
-      const db = await openDB("casfa-auth", 1, "tokens");
+      const db = await getDB();
       return (await get(db, "tokens", key))?.state ?? null;
     },
     async save(state) {
-      const db = await openDB("casfa-auth", 1, "tokens");
+      const db = await getDB();
       await put(db, "tokens", { id: key, state });
     },
     async clear() {
-      const db = await openDB("casfa-auth", 1, "tokens");
+      const db = await getDB();
       await del(db, "tokens", key);
     },
   };
@@ -1115,19 +830,12 @@ export function createIndexedDBTokenStorage(key: string): TokenStorageProvider {
 
 #### `@casfa/explorer` — SyncCoordinator
 
-SyncCoordinator = SyncManager 的 SW 变体：接受 per-client 的 enqueue，支持 `flushClient()` 按 client 纬度 flush。
+SyncCoordinator = SyncManager 的 SW 变体：单 client 驱动 sync。
 
 ```typescript
 export type SyncCoordinator = {
-  /** 入队 depot commit。捕获当时的 client 引用和 delegateId，后续 sync 用它执行。 */
-  enqueue(depotId: string, targetRoot: string, lastKnownServerRoot: string | null, client: CasfaClient, delegateId: string | null): void;
-
-  /**
-   * 注册 draining delegate。pop 后调用，SyncCoordinator 在该 delegate 的
-   * 所有 pending commits 完成后自动执行 onDrained 回调（revoke + 销毁）。
-   * 如果没有 pending commits，立即执行 onDrained。
-   */
-  drainDelegate(delegateId: string, onDrained: () => Promise<void>): void;
+  /** 入队 depot commit。 */
+  enqueue(depotId: string, targetRoot: string, lastKnownServerRoot: string | null): void;
 
   /** flush 所有 pending sync。 */
   flushNow(): Promise<void>;
@@ -1135,12 +843,11 @@ export type SyncCoordinator = {
   /** Background Sync 入口。 */
   runSync(): Promise<void>;
 
-  /**
-   * SW activate 时恢复。
-   * 持久化的 sync entry 不保存 client 引用，恢复后一律用 rootClient
-   * 执行（安全，因为 root 权限 ⊇ 任何子 delegate）。
-   */
-  recover(rootClient: CasfaClient): Promise<void>;
+  /** 设置用于 sync 的 client。首次 setUserToken 和 recover 后调用。 */
+  setClient(client: CasfaClient): void;
+
+  /** SW activate 时恢复。从 IndexedDB 恢复 depot-queue。需先 setClient。 */
+  recover(): Promise<void>;
 
   getPendingRoot(depotId: string): string | null;
   getState(): SyncState;
@@ -1153,11 +860,6 @@ export type SyncCoordinatorConfig = {
   broadcast: (msg: BroadcastMessage) => void;
   debounceMs?: number;           // default 2_000
 };
-
-type SyncQueueEntry = DepotSyncEntry & {
-  client: CasfaClient;          // 入队时捕获的 client 引用
-  delegateId: string | null;    // null = root。用于匹配 drainDelegate。
-};
 ```
 
 #### SW Entry — 薄壳
@@ -1167,12 +869,12 @@ type SyncQueueEntry = DepotSyncEntry & {
 /// <reference lib="webworker" />
 declare const self: ServiceWorkerGlobalScope;
 
-import { createClientStackManager, createMessageHandler } from "@casfa/client-sw";
+import { createMessageHandler } from "@casfa/client-sw";
 import { createSyncCoordinator } from "@casfa/explorer";
+import { createClient } from "@casfa/client";
 import type { BroadcastMessage } from "@casfa/client-bridge";
 
 const BASE_URL = self.location.origin;
-const REALM = "default";  // or from config
 
 function broadcast(msg: BroadcastMessage): void {
   const bc = new BroadcastChannel("casfa");
@@ -1180,11 +882,8 @@ function broadcast(msg: BroadcastMessage): void {
   bc.close();
 }
 
-const stackManager = createClientStackManager({
-  onAuthRequired: () => broadcast({ type: "auth-required" }),
-  baseUrl: BASE_URL,
-  realm: REALM,
-});
+// ── 单 client，SW entry 直接持有 ──
+let client: CasfaClient | null = null;
 
 const syncCoordinator = createSyncCoordinator({
   storage: /* CAS storage */,
@@ -1193,7 +892,8 @@ const syncCoordinator = createSyncCoordinator({
 });
 
 const handleMessage = createMessageHandler({
-  stackManager,
+  getClient: () => { if (!client) throw new Error("Not authenticated"); return client; },
+  setClient: (c) => { client = c; },
   syncCoordinator,
   broadcast,
 });
@@ -1202,21 +902,40 @@ self.addEventListener("install", () => self.skipWaiting());
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(self.clients.claim());
-  e.waitUntil(stackManager.recover());
-  e.waitUntil(syncCoordinator.recover(stackManager.getRootClient()));
+  e.waitUntil(
+    recoverClient().then((c) => {
+      if (c) {
+        client = c;
+        syncCoordinator.setClient(c);
+        syncCoordinator.recover();
+      }
+    })
+  );
 });
+
+/** 从 IndexedDB 恢复 token → 重建 client。失败返回 null。 */
+async function recoverClient(): Promise<CasfaClient | null> {
+  const tokenStorage = createIndexedDBTokenStorage("root");
+  const state = await tokenStorage.load();
+  if (!state?.user) return null;
+  return createClient({
+    baseUrl: BASE_URL,
+    realm: state.rootDelegate?.realm ?? "",
+    tokenStorage,
+    onAuthRequired: () => broadcast({ type: "auth-required" }),
+  });
+}
 
 self.addEventListener("message", (event) => {
   if (event.data?.type === "connect" && event.data.port instanceof MessagePort) {
     const port = event.data.port as MessagePort;
-    stackManager.registerPort(port);
 
     // 回复初始状态
     port.postMessage({
       type: "connect-ack",
       syncState: syncCoordinator.getState(),
       pendingCount: syncCoordinator.getPendingCount(),
-      authenticated: stackManager.isAuthenticated(),
+      authenticated: client !== null,
     } satisfies ConnectAckMessage);
 
     port.onmessage = (e) => handleMessage(e.data, port);
@@ -1266,7 +985,7 @@ export default defineConfig({
 
 | 数据库 | Store | 访问者 | 说明 |
 |--------|-------|--------|------|
-| `casfa-auth` | `tokens` | SW only | token 持久化，key = "root" / delegateId |
+| `casfa-auth` | `tokens` | SW only | JWT token 持久化，key = "root" |
 | `casfa-cas-cache` (v2) | `blocks` | 主线程 W/R + SW R | CAS 节点缓存 |
 | `casfa-cas-cache` (v2) | `pending-sync` | 主线程 W + SW R/D | pending keys |
 | `casfa-sync` (v1) | `depot-queue` | SW R/W/D | depot commit 队列 |
@@ -1278,33 +997,31 @@ export default defineConfig({
 ```
 Cognito (主线程) → exchangeCode → JWT
   → setUserToken (RPC) → SW
-  → SW 创建 root CasfaClient
-  → 自治 refresh JWT + RT → AT
+  → SW 创建 CasfaClient（JWT 鉴权）
+  → 自治 refresh JWT
   → 全部失败 → broadcast auth-required
 ```
 
-sub-delegate token：`delegates.create()` 在 SW 内执行 → token 明文不出 SW → 比主线程更安全。
+JWT 直接作为 Bearer token 访问 realm API，不再需要 root delegate 的 AT/RT。
 
 ### SW 生命周期
 
 SW 空闲后被浏览器终止：
 
 - CasfaClient 的 proactive refresh（`setTimeout`）丢失 → 不影响正确性，重新激活时 `ensureAccessToken()` lazy check 会同步刷新
-- per-port 栈在 SW 终止后丢失 → sub-delegate 是临时的（用于权限收窄），SW 重启时不恢复
-- `recover()` 仅恢复 root client（从 IndexedDB token）和 SyncCoordinator（从 IndexedDB depot-queue）
+- `recover()` 从 IndexedDB 恢复 JWT token 并重建 client，同时恢复 SyncCoordinator 的 depot-queue
 
 ### Port 断开
 
-Tab 关闭后 MessagePort 变为不可用。SW 无法主动感知 port 断开（`MessagePort` 没有 close 事件）。两种处理方式：
+Tab 关闭后 MessagePort 变为不可用。SW 无法主动感知 port 断开（`MessagePort` 没有 close 事件）。
 
-1. **主线程 `beforeunload`**：发送 `disconnect` 消息，SW 调用 `unregisterPort(port)` 清理栈
-2. **惰性清理**：RPC 发送失败（port.postMessage throw）时移除 port
+单 client 模型下 port 断开无需清理资源——client 和 sync 状态是全局共享的。orphan port 只占微量内存，浏览器 GC 在 Tab 关闭后自动回收 `MessagePort`。
 
-推荐方案 1 + 方案 2 兜底。
+如需主动追踪连接数（如 debug 信息），可在 `beforeunload` 时发 `disconnect` 消息。
 
 ### 迁移
 
 1. **Phase 1** — 新建 `@casfa/client-bridge`，实现 `DirectBridge`，重构调用方。无 SW，行为不变。
-2. **Phase 2** — 新建 `@casfa/client-sw`（ClientStackManager + MessageHandler + IndexedDB TokenStorage），实现 `SWBridge` + proxy + SW entry。
+2. **Phase 2** — 新建 `@casfa/client-sw`（MessageHandler + IndexedDB TokenStorage），实现 `SWBridge` + proxy + SW entry。
 3. **Phase 3** — `SyncCoordinator` 迁入 SW，Background Sync 集成。
 4. **Phase 4** — Periodic sync、进度上报、网络状态感知。
