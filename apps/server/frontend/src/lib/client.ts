@@ -15,6 +15,7 @@ import type { TokenState, TokenStorageProvider } from "@casfa/client";
 import {
   type AppClient,
   createAppClient as createAppClientFactory,
+  createDirectClient,
 } from "@casfa/client-bridge";
 import { flushStorage } from "./storage.ts";
 import { createSyncQueueStore } from "./sync-queue-store.ts";
@@ -77,7 +78,11 @@ export function getAppClient(): Promise<AppClient> {
         }
       }
 
-      return createAppClientFactory({
+      const create = import.meta.env.DEV
+        ? createDirectClient
+        : createAppClientFactory;
+
+      return create({
         baseUrl: "",
         realm,
         tokenStorage: localStorageProvider,
