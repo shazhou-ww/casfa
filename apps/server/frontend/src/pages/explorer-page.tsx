@@ -13,6 +13,7 @@ import {
   CasfaExplorer,
   type ConflictEvent,
   createSyncManager,
+  type ExplorerStoreApi,
   type FlushableStorage,
   type SyncManager,
   type SyncState,
@@ -61,6 +62,7 @@ export function ExplorerPage() {
   const keyProv = getKeyProvider();
 
   const syncManagerRef = useRef<SyncManager | null>(null);
+  const explorerStoreRef = useRef<ExplorerStoreApi | null>(null);
   const [conflictToast, setConflictToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -86,6 +88,11 @@ export function ExplorerPage() {
       );
     });
 
+    // When a commit succeeds, update the explorer store's server root
+    mgr.onCommit((event) => {
+      explorerStoreRef.current?.getState().updateServerRoot(event.committedRoot);
+    });
+
     // Recover any pending commits from previous session
     mgr.recover();
 
@@ -106,6 +113,14 @@ export function ExplorerPage() {
     []
   );
 
+  const getSyncPendingRoot = useCallback((dId: string): string | null => {
+    return syncManagerRef.current?.getPendingRoot(dId) ?? null;
+  }, []);
+
+  const onStoreReady = useCallback((store: ExplorerStoreApi) => {
+    explorerStoreRef.current = store;
+  }, []);
+
   if (!client || !storage) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100%">
@@ -125,6 +140,8 @@ export function ExplorerPage() {
         height="100%"
         onDepotChange={(id) => navigate(`/depot/${encodeURIComponent(id)}`)}
         scheduleCommit={scheduleCommit}
+        getSyncPendingRoot={getSyncPendingRoot}
+        onStoreReady={onStoreReady}
       />
       <SyncIndicator syncManager={syncManagerRef.current} />
       <Snackbar

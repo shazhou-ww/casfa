@@ -6,6 +6,7 @@
  *         uses store's getSortedItems() for filtered + sorted data.
  */
 
+import CloudSyncIcon from "@mui/icons-material/CloudSync";
 import FolderIcon from "@mui/icons-material/Folder";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import {
@@ -325,13 +326,26 @@ export function FileList({
                 </TableCell>
                 <TableCell>
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    {renderNodeIcon ? (
-                      renderNodeIcon(item)
-                    ) : item.isDirectory ? (
-                      <FolderIcon fontSize="small" color="primary" />
-                    ) : (
-                      <InsertDriveFileIcon fontSize="small" color="action" />
-                    )}
+                    <Box sx={{ position: "relative", display: "inline-flex" }}>
+                      {renderNodeIcon ? (
+                        renderNodeIcon(item)
+                      ) : item.isDirectory ? (
+                        <FolderIcon fontSize="small" color="primary" />
+                      ) : (
+                        <InsertDriveFileIcon fontSize="small" color="action" />
+                      )}
+                      {item.syncStatus === "pending" && (
+                        <CloudSyncIcon
+                          color="info"
+                          sx={{
+                            position: "absolute",
+                            right: -4,
+                            bottom: -4,
+                            fontSize: 12,
+                          }}
+                        />
+                      )}
+                    </Box>
                     <HighlightedName name={item.name} searchTerm={searchTerm} />
                   </Box>
                 </TableCell>
