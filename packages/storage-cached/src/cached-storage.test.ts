@@ -343,8 +343,12 @@ describe("createCachedStorage (write-back)", () => {
         remote,
         writeBack: {
           debounceMs: DEBOUNCE,
-          onSyncStart: () => syncEvents.push("start"),
-          onSyncEnd: () => syncEvents.push("end"),
+          onSyncStart: () => {
+            syncEvents.push("start");
+          },
+          onSyncEnd: () => {
+            syncEvents.push("end");
+          },
         },
       });
 
@@ -410,7 +414,9 @@ describe("createCachedStorage (write-back)", () => {
         remote,
         writeBack: {
           debounceMs: DEBOUNCE,
-          onSyncStart: () => events.push("start"),
+          onSyncStart: () => {
+            events.push("start");
+          },
           onSyncEnd: (result) => {
             events.push("end");
             capturedResult = result;

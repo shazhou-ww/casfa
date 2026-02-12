@@ -9,8 +9,8 @@
  * Uses the raw IndexedDB API (no external dependencies).
  */
 
-import type { StorageProvider } from "@casfa/storage-core";
 import type { PendingKeyStore } from "@casfa/storage-cached";
+import type { StorageProvider } from "@casfa/storage-core";
 
 // ============================================================================
 // Types
@@ -215,9 +215,7 @@ export const createIndexedDBStorage = (
  * Shares the same IndexedDB database as the CAS block cache.
  * Used by CachedStorage (Layer 1) to persist pending keys across page reloads.
  */
-export const createPendingKeyStore = (
-  config: { dbName?: string } = {}
-): PendingKeyStore => {
+export const createPendingKeyStore = (config: { dbName?: string } = {}): PendingKeyStore => {
   const dbName = config.dbName ?? DEFAULT_DB_NAME;
   const pendingStoreName = DEFAULT_PENDING_STORE_NAME;
 

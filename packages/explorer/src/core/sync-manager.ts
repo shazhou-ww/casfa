@@ -70,6 +70,18 @@ export type ConflictEvent = {
   resolution: "lww-overwrite";
 };
 
+/**
+ * Emitted when a sync entry permanently fails (non-retryable server error
+ * or max retries exhausted).
+ */
+export type SyncErrorEvent = {
+  depotId: string;
+  targetRoot: string;
+  error: { code: string; message: string; status?: number };
+  /** true = permanently abandoned; false = will still retry */
+  permanent: boolean;
+};
+
 export type SyncManagerConfig = {
   /** Layer 1: storage with flush() — used to sync CAS nodes before committing */
   storage: FlushableStorage;
@@ -107,6 +119,9 @@ export type SyncManager = {
   /** Subscribe to conflict events. Returns unsubscribe function. */
   onConflict(listener: (event: ConflictEvent) => void): () => void;
 
+  /** Subscribe to sync error events (permanent failures). Returns unsubscribe function. */
+  onError(listener: (event: SyncErrorEvent) => void): () => void;
+
   /** Get current state */
   getState(): SyncState;
 
@@ -131,12 +146,7 @@ const MAX_RETRY_DELAY = 60_000;
 // ============================================================================
 
 export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
-  const {
-    storage,
-    client,
-    queueStore,
-    debounceMs = DEFAULT_DEBOUNCE_MS,
-  } = config;
+  const { storage, client, queueStore, debounceMs = DEFAULT_DEBOUNCE_MS } = config;
 
   // -- State --
   let state: SyncState = "idle";
@@ -154,8 +164,20 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
   // -- Listeners --
   const stateListeners = new Set<(state: SyncState) => void>();
   const conflictListeners = new Set<(event: ConflictEvent) => void>();
+  const errorListeners = new Set<(event: SyncErrorEvent) => void>();
 
   // -- Helpers --
+
+  /**
+   * Determine whether a server error response is retryable.
+   * Only transient failures (429 rate-limit, 5xx server errors) warrant retry.
+   * Client errors (4xx except 429) are permanent — the request itself is wrong.
+   * When status is undefined we treat it as retryable (unknown failure).
+   */
+  function isRetryableStatus(status: number | undefined): boolean {
+    if (status === undefined) return true;
+    return status === 429 || status >= 500;
+  }
 
   function setState(s: SyncState): void {
     if (state === s) return;
@@ -169,6 +191,10 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
 
   function emitConflict(event: ConflictEvent): void {
     for (const fn of conflictListeners) fn(event);
+  }
+
+  function emitError(event: SyncErrorEvent): void {
+    for (const fn of errorListeners) fn(event);
   }
 
   function clearTimers(): void {
@@ -197,6 +223,17 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
       retryTimer = null;
       triggerSync();
     }, delay);
+  }
+
+  /** Increment retryCount for a transient failure (network error or 5xx/429). */
+  function bumpRetry(entry: DepotSyncEntry): void {
+    const updated: DepotSyncEntry = {
+      ...entry,
+      retryCount: entry.retryCount + 1,
+      updatedAt: Date.now(),
+    };
+    memQueue.set(entry.depotId, updated);
+    queueStore.upsert(updated).catch(() => {});
   }
 
   function triggerSync(): void {
@@ -239,6 +276,14 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
         console.error(
           `[SyncManager] depot ${entry.depotId} exceeded max retries (${MAX_RETRY_COUNT}), giving up`
         );
+        memQueue.delete(entry.depotId);
+        await queueStore.remove(entry.depotId);
+        emitError({
+          depotId: entry.depotId,
+          targetRoot: entry.targetRoot,
+          error: { code: "max_retries", message: `Exceeded ${MAX_RETRY_COUNT} retries` },
+          permanent: true,
+        });
         continue;
       }
 
@@ -246,7 +291,21 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
         // Check current server state
         const result = await client.depots.get(entry.depotId);
         if (!result.ok) {
-          throw new Error(`Failed to get depot: ${result.error.message}`);
+          if (isRetryableStatus(result.error.status)) {
+            // Transient — retry later
+            bumpRetry(entry);
+          } else {
+            // Permanent server error — give up
+            memQueue.delete(entry.depotId);
+            await queueStore.remove(entry.depotId);
+            emitError({
+              depotId: entry.depotId,
+              targetRoot: entry.targetRoot,
+              error: result.error,
+              permanent: true,
+            });
+          }
+          continue;
         }
 
         const serverRoot = result.data.root;
@@ -259,10 +318,7 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
         }
 
         // Conflict detection
-        if (
-          entry.lastKnownServerRoot !== null &&
-          serverRoot !== entry.lastKnownServerRoot
-        ) {
+        if (entry.lastKnownServerRoot !== null && serverRoot !== entry.lastKnownServerRoot) {
           emitConflict({
             depotId: entry.depotId,
             localRoot: entry.targetRoot,
@@ -276,21 +332,29 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
           root: entry.targetRoot,
         });
         if (!commitResult.ok) {
-          throw new Error(`Commit failed: ${commitResult.error.message}`);
+          if (isRetryableStatus(commitResult.error.status)) {
+            // Transient — retry later
+            bumpRetry(entry);
+          } else {
+            // Permanent server error — give up
+            memQueue.delete(entry.depotId);
+            await queueStore.remove(entry.depotId);
+            emitError({
+              depotId: entry.depotId,
+              targetRoot: entry.targetRoot,
+              error: commitResult.error,
+              permanent: true,
+            });
+          }
+          continue;
         }
 
         // Success — remove from queue
         memQueue.delete(entry.depotId);
         await queueStore.remove(entry.depotId);
-      } catch (err) {
-        // Commit failed — increment retry, keep in queue
-        const updated: DepotSyncEntry = {
-          ...entry,
-          retryCount: entry.retryCount + 1,
-          updatedAt: Date.now(),
-        };
-        memQueue.set(entry.depotId, updated);
-        await queueStore.upsert(updated).catch(() => {});
+      } catch (_err) {
+        // Network error (fetch threw) — always retry
+        bumpRetry(entry);
       }
     }
 
@@ -392,6 +456,11 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
     onConflict(listener: (event: ConflictEvent) => void): () => void {
       conflictListeners.add(listener);
       return () => conflictListeners.delete(listener);
+    },
+
+    onError(listener: (event: SyncErrorEvent) => void): () => void {
+      errorListeners.add(listener);
+      return () => errorListeners.delete(listener);
     },
 
     getState(): SyncState {
