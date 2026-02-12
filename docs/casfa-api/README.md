@@ -102,7 +102,7 @@ CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 
 ### Auth API
 
-[详细文档](./03-client-auth.md)
+[详细文档](./02-auth.md)
 
 | 方法 | 路径 | 描述 | 认证 | 状态 |
 |------|------|------|------|------|
@@ -114,7 +114,7 @@ CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 
 ### Admin 管理 API
 
-[详细文档](./04-admin.md)
+[详细文档](./03-admin.md)
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
@@ -123,7 +123,7 @@ CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 
 ### 文件系统操作 API
 
-[详细文档](./05-filesystem.md)
+[详细文档](./04-filesystem.md)
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
@@ -139,7 +139,7 @@ CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 
 ### Realm CAS 操作 API
 
-[详细文档](./06-realm/README.md)
+[详细文档](./05-realm/README.md)
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
@@ -229,7 +229,7 @@ CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 
 - [服务信息 API](./00-info.md)
 - [OAuth 认证 API](./01-oauth.md)
-- [Auth API](./03-client-auth.md)
-- [Admin 管理 API](./04-admin.md)
-- [文件系统操作 API](./05-filesystem.md)
-- [Realm CAS 操作 API](./06-realm/README.md)
+- [Auth API](./02-auth.md)
+- [Admin 管理 API](./03-admin.md)
+- [文件系统操作 API](./04-filesystem.md)
+- [Realm CAS 操作 API](./05-realm/README.md)

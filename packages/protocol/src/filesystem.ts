@@ -4,7 +4,7 @@
  * Schemas and types for the CAS filesystem API.
  * All fs operations are mounted under /api/realm/{realmId}/nodes/{nodeKey}/fs/...
  *
- * Based on docs/casfa-api/05-filesystem.md
+ * Based on docs/casfa-api/04-filesystem.md
  */
 
 import { z } from "zod";
