@@ -1,0 +1,41 @@
+{
+  "name": "@casfa/client-bridge",
+  "version": "0.1.0",
+  "description": "Unified AppClient — CasfaClient + sync + auth, with SW/direct modes",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun ../../scripts/build-pkg.ts",
+    "test": "bun run test:unit",
+    "test:unit": "bun test src/",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "check": "tsc --noEmit && biome check .",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@casfa/client": "workspace:*",
+    "@casfa/explorer": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@casfa/explorer": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  }
+}
