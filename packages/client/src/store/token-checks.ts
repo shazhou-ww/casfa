@@ -5,7 +5,7 @@
  * AT validity checks have been removed.
  */
 
-import type { StoredAccessToken, StoredUserToken, TokenState } from "../types/tokens.ts";
+import type { StoredAccessToken, StoredUserToken } from "../types/tokens.ts";
 
 // ============================================================================
 // Validity Checks
@@ -56,14 +56,4 @@ export const isStoredAccessTokenValid = (
   return isTokenValid(accessToken, bufferMs);
 };
 
-// ============================================================================
-// State-level Checks
-// ============================================================================
 
-/**
- * Determine if we need to obtain a root delegate.
- * Returns true if no root delegate metadata is cached.
- */
-export const needsRootDelegate = (state: TokenState): boolean => {
-  return state.rootDelegate === null;
-};

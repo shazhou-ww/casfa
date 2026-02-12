@@ -10,7 +10,6 @@ import {
   getAuthType,
   getCredentials,
   getExpirationInfo,
-  setRootDelegate,
   setUserToken,
 } from "../lib/credentials";
 import { oauthLogin } from "../lib/oauth-login";
@@ -54,40 +53,8 @@ export function registerAuthCommands(program: Command): void {
             formatter.info(`Realm set to ${result.userId}`);
           }
 
-          const realm = profile.realm;
-          formatter.info("Acquiring root delegate...");
-          try {
-            const cred = getCredentials(profileName);
-            if (cred?.userToken) {
-              const rootResult = await api.createRootToken(
-                profile.baseUrl,
-                cred.userToken.accessToken,
-                realm
-              );
-
-              if (rootResult.ok) {
-                const rd = rootResult.data;
-                setRootDelegate(profileName, {
-                  delegateId: rd.delegate.delegateId,
-                  realm: rd.delegate.realm,
-                  depth: rd.delegate.depth,
-                  canUpload: rd.delegate.canUpload,
-                  canManageDepot: rd.delegate.canManageDepot,
-                });
-                formatter.success("Root delegate acquired");
-              } else {
-                formatter.warn(
-                  `Could not acquire root delegate: ${rootResult.error.message}. ` +
-                    "You may need to run 'casfa auth init-delegate' manually."
-                );
-              }
-            }
-          } catch (error) {
-            formatter.warn(
-              `Could not acquire root delegate: ${(error as Error).message}. ` +
-                "You may need to run 'casfa auth init-delegate' manually."
-            );
-          }
+          // Root delegate is auto-created by the server on first JWT request.
+          // No explicit acquisition step needed.
         }
 
         formatter.info(`Credentials saved to profile: ${profileName}`);
@@ -124,76 +91,6 @@ export function registerAuthCommands(program: Command): void {
           saveConfig(config);
         }
         formatter.success(`Logged out from profile: ${profileName}`);
-      }
-    });
-
-  // ========================================================================
-  // Init Delegate (manual root delegate acquisition)
-  // ========================================================================
-
-  auth
-    .command("init-delegate")
-    .description("Acquire root delegate for current realm (requires login)")
-    .action(async () => {
-      const opts = program.opts();
-      const formatter = createFormatter(opts);
-
-      try {
-        const config = loadConfig();
-        const profileName = opts.profile || config.currentProfile;
-        const profile = getProfile(config, profileName);
-        const baseUrl = opts.baseUrl || profile.baseUrl;
-        const realm = opts.realm || profile.realm;
-
-        if (!realm) {
-          formatter.error(
-            "Realm is required. Set via --realm option or 'casfa config set realm <id>'."
-          );
-          process.exit(1);
-        }
-
-        const cred = getCredentials(profileName);
-        if (!cred?.userToken) {
-          formatter.error("User token not found. Run 'casfa auth login' first.");
-          process.exit(1);
-        }
-
-        const rootResult = await api.createRootToken(baseUrl, cred.userToken.accessToken, realm);
-
-        if (!rootResult.ok) {
-          formatter.error(`Failed to acquire root delegate: ${rootResult.error.message}`);
-          process.exit(1);
-        }
-
-        const rd = rootResult.data;
-        setRootDelegate(profileName, {
-          delegateId: rd.delegate.delegateId,
-          realm: rd.delegate.realm,
-          depth: rd.delegate.depth,
-          canUpload: rd.delegate.canUpload,
-          canManageDepot: rd.delegate.canManageDepot,
-        });
-
-        formatter.success("Root delegate acquired");
-        formatter.output(
-          {
-            delegateId: rd.delegate.delegateId,
-            realm: rd.delegate.realm,
-            canUpload: rd.delegate.canUpload,
-            canManageDepot: rd.delegate.canManageDepot,
-          },
-          () => {
-            return [
-              `Delegate ID:    ${rd.delegate.delegateId}`,
-              `Realm:          ${rd.delegate.realm}`,
-              `Can Upload:     ${rd.delegate.canUpload ? "yes" : "no"}`,
-              `Can Manage:     ${rd.delegate.canManageDepot ? "yes" : "no"}`,
-            ].join("\n");
-          }
-        );
-      } catch (error) {
-        formatter.error((error as Error).message);
-        process.exit(1);
       }
     });
 

@@ -1,6 +1,6 @@
 # Delegate Token 管理 API
 
-用于创建 Root Delegate 和刷新 Token 的 API 端点。
+用于管理 Root Delegate 和刷新 Token 的 API 端点。
 
 ## 概述
 
@@ -8,19 +8,20 @@
 
 CASFA 使用统一的 Delegate 模型管理授权：
 
-| 层级 | 类型 | 认证方式 | 创建端点 |
+| 层级 | 类型 | 认证方式 | 创建方式 |
 |------|------|----------|----------|
-| depth=0 | Root Delegate | JWT 直连 | `POST /api/tokens/root` |
+| depth=0 | Root Delegate | JWT 直连 | 服务器中间件自动创建 |
 | depth>0 | Child Delegate | AT + RT | `POST /api/realm/{realmId}/delegates` |
 
 ### 认证流程
 
 ```
-┌──────────┐        ┌──────────┐        ┌──────────────────┐
-│  OAuth   │  JWT   │  Root    │  JWT   │  Realm Routes    │
-│  Login   │───────>│  Token   │───────>│  (全部数据操作)   │
-│          │        │  /root   │        │                  │
-└──────────┘        └──────────┘        └──────────────────┘
+┌──────────┐        ┌──────────────────┐
+│  OAuth   │  JWT   │  Realm Routes    │
+│  Login   │───────>│  (全部数据操作)   │
+│          │        │  中间件自动创建   │
+└──────────┘        │  Root Delegate   │
+                    └──────────────────┘
                          │
                          │ JWT (创建子 Delegate)
                          ▼
@@ -37,72 +38,18 @@ CASFA 使用统一的 Delegate 模型管理授权：
                     └──────────┘
 ```
 
+### Root Delegate 自动创建
+
+Root Delegate 由服务器的认证中间件在用户首次发起 JWT 请求时自动创建，无需客户端显式调用任何端点。
+中间件调用 `getOrCreateRoot(userId, delegateId)` 实现幂等创建，支持并发安全（通过 DynamoDB 条件写入）。
+
 ---
 
 ## 端点列表
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
-| POST | `/api/tokens/root` | 创建/获取 Root Delegate | User JWT |
 | POST | `/api/tokens/refresh` | 旋转 RT → 新 RT + AT | Refresh Token (Bearer) |
-
----
-
-## POST /api/tokens/root
-
-创建（或获取已有的）Root Delegate。Root Delegate 是用户在某个 Realm 的最高权限授权实体。
-
-> **幂等**：如果用户已有 Root Delegate，直接返回已有实体（HTTP 200），不会创建重复的。首次创建返回 HTTP 201。
-
-### 请求
-
-```http
-POST /api/tokens/root
-Authorization: Bearer {jwt}
-Content-Type: application/json
-
-{
-  "realm": "usr_abc123"
-}
-```
-
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `realm` | `string` | 是 | 目标 Realm（必须等于用户自己的 ID） |
-
-### 响应
-
-```json
-{
-  "delegate": {
-    "delegateId": "dlt_01HQXK5V8N3Y7M2P4R6T9W0ABC",
-    "realm": "usr_abc123",
-    "depth": 0,
-    "canUpload": true,
-    "canManageDepot": true,
-    "createdAt": 1738497600000
-  }
-}
-```
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `delegate.delegateId` | `string` | Root Delegate ID |
-| `delegate.realm` | `string` | Realm ID |
-| `delegate.depth` | `number` | 深度，固定为 0 |
-| `delegate.canUpload` | `boolean` | 是否允许上传（Root 默认 true） |
-| `delegate.canManageDepot` | `boolean` | 是否允许管理 Depot（Root 默认 true） |
-| `delegate.createdAt` | `number` | 创建时间（epoch 毫秒） |
-
-> **注意**：Root Delegate 不返回 RT 和 AT。Root 操作直接使用 JWT 即可访问所有 Realm 路由。
-
-### 错误
-
-| 错误码 | HTTP Status | 说明 |
-|--------|-------------|------|
-| `INVALID_REALM` | 400 | 不能为其他用户的 Realm 创建 Root |
-| `ROOT_DELEGATE_REVOKED` | 403 | Root Delegate 已被撤销，需联系管理员 |
-| `UNAUTHORIZED` | 401 | JWT 无效 |
 
 ---
 

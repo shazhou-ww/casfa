@@ -66,4 +66,4 @@ export {
   rejectAuthRequest,
 } from "./requests.ts";
 // Token management API (new 2-tier model)
-export { createRootToken, refreshToken } from "./tokens.ts";
+export { refreshToken } from "./tokens.ts";

@@ -5,9 +5,7 @@
 import { describe, expect, it } from "bun:test";
 import type {
   StoredAccessToken,
-  StoredRootDelegate,
   StoredUserToken,
-  TokenState,
 } from "../types/tokens.ts";
 import { emptyTokenState } from "../types/tokens.ts";
 import {
@@ -16,7 +14,6 @@ import {
   isTokenExpiringSoon,
   isTokenValid,
   isUserTokenValid,
-  needsRootDelegate,
 } from "./token-checks.ts";
 
 // ============================================================================
@@ -31,14 +28,6 @@ const createUserToken = (overrides: Partial<StoredUserToken> = {}): StoredUserTo
   ...overrides,
 });
 
-const createRootDelegate = (overrides: Partial<StoredRootDelegate> = {}): StoredRootDelegate => ({
-  delegateId: "dlg_root123",
-  realm: "test-realm",
-  depth: 0,
-  canUpload: true,
-  canManageDepot: true,
-  ...overrides,
-});
 
 const createAccessToken = (overrides: Partial<StoredAccessToken> = {}): StoredAccessToken => ({
   tokenBase64: "base64-access-token",
@@ -173,37 +162,4 @@ describe("isStoredAccessTokenValid", () => {
   });
 });
 
-// ============================================================================
-// needsRootDelegate Tests
-// ============================================================================
 
-describe("needsRootDelegate", () => {
-  it("should return true when no root delegate", () => {
-    const state = emptyTokenState();
-    expect(needsRootDelegate(state)).toBe(true);
-  });
-
-  it("should return true when rootDelegate is null with user present", () => {
-    const state: TokenState = {
-      user: createUserToken(),
-      rootDelegate: null,
-    };
-    expect(needsRootDelegate(state)).toBe(true);
-  });
-
-  it("should return false when root delegate exists", () => {
-    const state: TokenState = {
-      user: createUserToken(),
-      rootDelegate: createRootDelegate(),
-    };
-    expect(needsRootDelegate(state)).toBe(false);
-  });
-
-  it("should return false when root delegate exists without user", () => {
-    const state: TokenState = {
-      user: null,
-      rootDelegate: createRootDelegate(),
-    };
-    expect(needsRootDelegate(state)).toBe(false);
-  });
-});

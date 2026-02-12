@@ -23,7 +23,7 @@ export interface UserTokenCredential {
 /**
  * Root Delegate credential (metadata only).
  *
- * Created via POST /api/tokens/root.
+ * Auto-created by the server's auth middleware on first JWT request.
  * Root delegate operations use the user's JWT directly for authentication,
  * so no RT/AT pair is stored.
  */

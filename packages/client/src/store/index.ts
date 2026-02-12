@@ -14,7 +14,6 @@ export {
   isTokenExpiringSoon,
   isTokenValid,
   isUserTokenValid,
-  needsRootDelegate,
 } from "./token-checks.ts";
 export {
   createTokenSelector,

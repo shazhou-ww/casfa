@@ -92,10 +92,8 @@ describe("Client SDK Integration", () => {
       "authorized"
     );
 
-    // Ensure root delegate exists in DB
-    const rootResult = await ctx.helpers.createRootToken(token, realm);
-
-    // Build initial token state with user JWT + root delegate metadata
+    // Root delegate is auto-created by server middleware on first JWT request.
+    // Build initial token state with user JWT only.
     const initialState: TokenState = {
       user: {
         accessToken: token,
@@ -103,13 +101,7 @@ describe("Client SDK Integration", () => {
         userId: userId,
         expiresAt: Date.now() + 3600_000, // 1 hour
       },
-      rootDelegate: {
-        delegateId: rootResult.delegate.delegateId,
-        realm: rootResult.delegate.realm,
-        depth: rootResult.delegate.depth,
-        canUpload: rootResult.delegate.canUpload,
-        canManageDepot: rootResult.delegate.canManageDepot,
-      },
+      rootDelegate: null,
     };
 
     // Create CasfaClient with pre-loaded state

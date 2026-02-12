@@ -14,7 +14,6 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   type CasfaClient,
   createClient,
-  type StoredRootDelegate,
   type TokenState,
 } from "@casfa/client";
 import { computeSizeFlagByte, encodeFileNode, type KeyProvider } from "@casfa/core";
@@ -77,24 +76,13 @@ async function createTestClient(
 ): Promise<{
   client: CasfaClient;
   realm: string;
-  rootDelegate: StoredRootDelegate;
 }> {
   const { canUpload = true, canManageDepot = true } = options;
   const userUuid = uniqueId();
   const { token, realm, userId } = await ctx.helpers.createTestUser(userUuid, "authorized");
 
-  // Ensure root delegate exists in DB
-  const rootResult = await ctx.helpers.createRootToken(token, realm);
-
-  const rootDelegate: StoredRootDelegate = {
-    delegateId: rootResult.delegate.delegateId,
-    realm: rootResult.delegate.realm,
-    depth: rootResult.delegate.depth,
-    canUpload: rootResult.delegate.canUpload,
-    canManageDepot: rootResult.delegate.canManageDepot,
-  };
-
-  // Build initial token state with user JWT + root delegate metadata
+  // Root delegate is auto-created by server middleware on first JWT request.
+  // Build initial token state with user JWT only.
   const initialState: TokenState = {
     user: {
       accessToken: token,
@@ -102,7 +90,7 @@ async function createTestClient(
       userId,
       expiresAt: Date.now() + 3600_000,
     },
-    rootDelegate,
+    rootDelegate: null,
   };
 
   const client = await createClient({
@@ -115,7 +103,7 @@ async function createTestClient(
     },
   });
 
-  return { client, realm, rootDelegate };
+  return { client, realm };
 }
 
 async function encodeTestFile(content: string) {
@@ -130,7 +118,7 @@ async function encodeTestFile(content: string) {
 }
 
 async function createStorageWithClient(ctx: E2EContext) {
-  const { client, realm, rootDelegate } = await createTestClient(ctx);
+  const { client, realm } = await createTestClient(ctx);
 
   let cachedTokenBytes: Uint8Array | null = null;
 
@@ -146,7 +134,7 @@ async function createStorageWithClient(ctx: E2EContext) {
   const at = await client.getAccessToken();
   if (at) cachedTokenBytes = at.tokenBytes;
 
-  return { storage, client, realm, rootDelegate, config };
+  return { storage, client, realm, config };
 }
 
 // ============================================================================

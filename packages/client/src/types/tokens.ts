@@ -30,7 +30,7 @@ export type StoredUserToken = {
 /**
  * Root Delegate metadata (no RT/AT — root uses JWT directly).
  *
- * Created via POST /api/tokens/root (ensures delegate entity exists).
+ * Auto-created by the server's auth middleware on first JWT request.
  * All root realm operations use the user's JWT as the Bearer token;
  * the server's unified auth middleware resolves the root delegate automatically.
  */

@@ -156,17 +156,6 @@ export type TestServer = {
   stop: () => void;
 };
 
-/** Root Token creation result (no RT/AT — root uses JWT auth directly) */
-export type RootTokenResult = {
-  delegate: {
-    delegateId: string;
-    realm: string;
-    depth: number;
-    canUpload: boolean;
-    canManageDepot: boolean;
-  };
-};
-
 /** Delegate Token creation result (child delegates that have RT/AT) */
 export type DelegateTokenResult = {
   delegate: {
@@ -229,11 +218,8 @@ export type TestHelpers = {
   ) => Promise<Response>;
 
   // ========================================================================
-  // Token Management Helpers (User JWT required → Root Delegate + AT)
+  // Token Management Helpers (New Delegate Model)
   // ========================================================================
-
-  /** Create a root delegate token (User JWT → Root Delegate metadata, no RT/AT) */
-  createRootToken: (userToken: string, realm: string) => Promise<RootTokenResult>;
 
   /** Create a child delegate (Access Token → Child Delegate + RT + AT) */
   createChildDelegate: (
@@ -248,8 +234,8 @@ export type TestHelpers = {
     }
   ) => Promise<DelegateTokenResult>;
 
-  // For backward compat in tests: createDelegateToken = createRootToken + optional child
-  /** Create a Delegate Token (creates root, optionally with custom permissions via child) */
+  // For backward compat in tests: createDelegateToken creates a child delegate
+  /** Create a Delegate Token (creates child delegate with AT/RT) */
   createDelegateToken: (
     userToken: string,
     realm: string,
@@ -445,20 +431,6 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
     // Token Management Helpers (New Delegate Model)
     // ========================================================================
 
-    createRootToken: async (userToken, realm) => {
-      const response = await helpers.authRequest(userToken, "POST", "/api/tokens/root", {
-        realm,
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Failed to create root token: ${response.status} - ${error}`);
-      }
-
-      const raw = (await response.json()) as any;
-      return raw as RootTokenResult;
-    },
-
     createChildDelegate: async (accessTokenBase64, realm, options = {}) => {
       const {
         name = "Test Child Delegate",
@@ -493,10 +465,8 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
     },
 
     createDelegateToken: async (userToken, realm, options = {}) => {
-      // In the new model, first ensure root delegate exists, then create
-      // a child delegate using the JWT directly (middleware supports JWT auth).
-      await helpers.createRootToken(userToken, realm);
-
+      // Root delegate is auto-created by middleware on first JWT request.
+      // Just create a child delegate using JWT directly.
       const { canUpload, canManageDepot, scope, name, expiresIn } = options;
 
       // Always create a child delegate — root delegates don't have AT/RT.

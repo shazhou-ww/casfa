@@ -3,13 +3,12 @@
  *
  * Tests both authentication paths:
  *
- * JWT path (root delegate):
+ * JWT path (root delegate auto-created):
  * - JWT verification failure → 401
  * - JWT expired → 401
  * - Unauthorized user → 403
- * - Root delegate not found → 401
  * - Root delegate revoked → 401
- * - Valid JWT → sets correct AccessTokenAuthContext
+ * - Valid JWT → auto-creates root delegate & sets correct AccessTokenAuthContext
  *
  * AT path (child delegate):
  * - Invalid Base64 → 401
@@ -287,10 +286,14 @@ describe("AccessTokenMiddleware", () => {
       expect(next).not.toHaveBeenCalled();
     });
 
-    it("returns 401 when root delegate does not exist", async () => {
+    it("auto-creates root delegate when none exists", async () => {
+      const newRoot = makeRootDelegate();
       const deps: AccessTokenMiddlewareDeps = {
         delegatesDb: createMockDelegatesDb({
-          getRootByRealm: mock(async () => null),
+          getOrCreateRoot: mock(async (_realm: string, id: string) => ({
+            delegate: { ...newRoot, delegateId: id },
+            created: true,
+          })),
         }),
         jwtVerifier: createMockJwtVerifier(),
         userRolesDb: createMockUserRolesDb(),
@@ -301,17 +304,17 @@ describe("AccessTokenMiddleware", () => {
 
       await middleware(c as any, next);
 
-      expect(c.responseData.status).toBe(401);
-      expect((c.responseData.body as any).error).toBe("ROOT_DELEGATE_NOT_FOUND");
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(deps.delegatesDb.getOrCreateRoot).toHaveBeenCalledTimes(1);
     });
 
     it("returns 401 when root delegate is revoked", async () => {
       const deps: AccessTokenMiddlewareDeps = {
         delegatesDb: createMockDelegatesDb({
-          getRootByRealm: mock(async () =>
-            makeRootDelegate({ isRevoked: true, revokedAt: Date.now() })
-          ),
+          getOrCreateRoot: mock(async (_realm: string, id: string) => ({
+            delegate: makeRootDelegate({ delegateId: id, isRevoked: true, revokedAt: Date.now() }),
+            created: false,
+          })),
         }),
         jwtVerifier: createMockJwtVerifier(),
         userRolesDb: createMockUserRolesDb(),
@@ -331,7 +334,10 @@ describe("AccessTokenMiddleware", () => {
       const rootDelegate = makeRootDelegate();
       const deps: AccessTokenMiddlewareDeps = {
         delegatesDb: createMockDelegatesDb({
-          getRootByRealm: mock(async () => rootDelegate),
+          getOrCreateRoot: mock(async () => ({
+            delegate: rootDelegate,
+            created: false,
+          })),
         }),
         jwtVerifier: createMockJwtVerifier(),
         userRolesDb: createMockUserRolesDb(),

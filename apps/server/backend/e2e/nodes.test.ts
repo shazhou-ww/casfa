@@ -409,8 +409,7 @@ describe("Node Operations", () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Root delegate uses JWT directly — ensure root delegate exists
-      await ctx.helpers.createRootToken(token, realm);
+      // Root delegate is auto-created by middleware on first JWT request
       const nodeKey = testNodeKey(99);
 
       // Use JWT (token) directly — middleware auto-detects JWT and resolves root delegate
@@ -463,8 +462,7 @@ describe("Node Operations", () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Root delegate uses JWT directly — ensure root delegate exists
-      await ctx.helpers.createRootToken(token, realm);
+      // Root delegate is auto-created by middleware on first JWT request
       const nodeKey = testNodeKey(99);
 
       // Use JWT (token) directly — middleware auto-detects JWT and resolves root delegate

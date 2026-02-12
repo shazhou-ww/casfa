@@ -47,18 +47,6 @@ export interface TestServer {
       realm: string;
       mainDepotId: string;
     }>;
-    createRootToken: (
-      userToken: string,
-      realm: string
-    ) => Promise<{
-      delegate: {
-        delegateId: string;
-        realm: string;
-        depth: number;
-        canUpload: boolean;
-        canManageDepot: boolean;
-      };
-    }>;
     createDelegateToken: (
       userToken: string,
       realm: string,
@@ -248,14 +236,6 @@ export interface TestUserSetup {
   realm: string;
   /** Main depot ID */
   mainDepotId: string;
-  /** Root delegate info for credential storage (metadata only, no RT/AT) */
-  rootDelegate: {
-    delegateId: string;
-    realm: string;
-    depth: number;
-    canUpload: boolean;
-    canManageDepot: boolean;
-  };
 }
 
 /**
@@ -276,8 +256,8 @@ export async function createTestUserWithToken(
     mainDepotId,
   } = await ctx.helpers.createTestUser(userUuid, "authorized");
 
-  // Create root delegate via POST /api/tokens/root (no RT/AT returned)
-  const rootResult = await ctx.helpers.createRootToken(userToken, realm);
+  // Root delegate is auto-created by the server on first JWT request.
+  // No explicit creation step needed.
 
   return {
     userId,
@@ -285,13 +265,6 @@ export async function createTestUserWithToken(
     userToken,
     realm,
     mainDepotId,
-    rootDelegate: {
-      delegateId: rootResult.delegate.delegateId,
-      realm: rootResult.delegate.realm,
-      depth: rootResult.delegate.depth,
-      canUpload: rootResult.delegate.canUpload,
-      canManageDepot: rootResult.delegate.canManageDepot,
-    },
   };
 }
 
@@ -324,7 +297,7 @@ export function writeCredentialsFile(
   };
   writeFileSync(join(casfaDir, "config.json"), JSON.stringify(config, null, 2));
 
-  // Write credentials.json with root delegate
+  // Write credentials.json (user JWT only; root delegate is auto-created by server)
   const credentials = {
     [profileName]: {
       version: 3,
@@ -334,7 +307,6 @@ export function writeCredentialsFile(
         userId: user.userId,
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
       },
-      rootDelegate: user.rootDelegate,
     },
   };
   writeFileSync(join(casfaDir, "credentials.json"), JSON.stringify(credentials, null, 2), {
