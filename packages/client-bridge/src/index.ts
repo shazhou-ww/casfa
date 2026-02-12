@@ -19,4 +19,15 @@ export type {
   SyncState,
 } from "./types.ts";
 
+export type {
+  BroadcastMessage,
+  ConnectAckMessage,
+  PortMessage,
+  RPCCallable,
+  RPCRequest,
+  RPCResponse,
+  ScheduleCommitMessage,
+  SetUserTokenMessage,
+} from "./_messages.ts";
+
 export { createAppClient, createDirectClient } from "./factory.ts";

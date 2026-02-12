@@ -31,6 +31,7 @@
       "@casfa/storage-memory": ["./packages/storage-memory/src/index.ts"],
       "@casfa/storage-s3": ["./packages/storage-s3/src/index.ts"],
       "@casfa/client-bridge": ["./packages/client-bridge/src/index.ts"],
+      "@casfa/client-sw": ["./packages/client-sw/src/index.ts"],
       "@casfa/explorer": ["./packages/explorer/src/index.ts"],
       "@casfa/explorer/core/sync-manager": ["./packages/explorer/src/core/sync-manager.ts"],
       "@casfa/fs": ["./packages/fs/src/index.ts"],
