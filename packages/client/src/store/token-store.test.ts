@@ -23,9 +23,6 @@ const createUserToken = (overrides: Partial<StoredUserToken> = {}): StoredUserTo
 const createRootDelegate = (overrides: Partial<StoredRootDelegate> = {}): StoredRootDelegate => ({
   delegateId: "dlg_root123",
   realm: "test-realm",
-  refreshToken: "base64-refresh-token",
-  accessToken: "base64-access-token",
-  accessTokenExpiresAt: Date.now() + 3600_000,
   depth: 0,
   canUpload: true,
   canManageDepot: true,

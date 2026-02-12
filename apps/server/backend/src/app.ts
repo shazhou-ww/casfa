@@ -123,6 +123,8 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   });
   const accessTokenMiddleware = createAccessTokenMiddleware({
     delegatesDb,
+    jwtVerifier,
+    userRolesDb,
   });
   const realmAccessMiddleware = createRealmAccessMiddleware();
   const adminAccessMiddleware = createAdminAccessMiddleware();

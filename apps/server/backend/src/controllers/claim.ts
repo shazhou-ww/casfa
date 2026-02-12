@@ -117,7 +117,9 @@ export const createClaimController = (deps: ClaimControllerDeps): ClaimControlle
     }
 
     // 4. Verify PoP
-    if (!verifyPoP(pop, auth.tokenBytes, content, popContext)) {
+    // Root delegates (depth=0) use JWT authentication — they don't have binary
+    // token bytes, so PoP verification is skipped. JWT already proves identity.
+    if (auth.delegate.depth > 0 && !verifyPoP(pop, auth.tokenBytes, content, popContext)) {
       return c.json(
         { error: "INVALID_POP", message: "Proof-of-Possession verification failed" },
         403

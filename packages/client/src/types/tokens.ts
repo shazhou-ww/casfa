@@ -1,13 +1,12 @@
 /**
  * Token types for the stateful client.
  *
- * Two-tier token hierarchy:
- * - User JWT: OAuth login token, highest authority
- * - Root Delegate: RT + AT pair for realm operations (auto-refreshed)
+ * Two-tier hierarchy:
+ * - User JWT: OAuth login token, highest authority, used for all root operations
+ * - Root Delegate: metadata-only entity (no RT/AT), anchor of the delegate tree
  *
- * The client holds at most one User JWT and one Root Delegate at a time.
- * Child delegates are created via the Delegate API and returned to callers
- * (not stored in the client's token state).
+ * Root operations use JWT directly via the server's unified auth middleware.
+ * Child delegates (created via Delegate API) use their own AT/RT pairs.
  */
 
 // ============================================================================
@@ -29,22 +28,17 @@ export type StoredUserToken = {
 };
 
 /**
- * Root Delegate with Refresh Token + Access Token pair.
+ * Root Delegate metadata (no RT/AT — root uses JWT directly).
  *
- * Created via POST /api/tokens/root (JWT → Root Delegate + RT + AT).
- * The RT is used to rotate AT when it expires (POST /api/tokens/refresh).
+ * Created via POST /api/tokens/root (ensures delegate entity exists).
+ * All root realm operations use the user's JWT as the Bearer token;
+ * the server's unified auth middleware resolves the root delegate automatically.
  */
 export type StoredRootDelegate = {
   /** Delegate entity ID */
   delegateId: string;
   /** Realm this delegate belongs to */
   realm: string;
-  /** Refresh Token (base64-encoded 24-byte binary) */
-  refreshToken: string;
-  /** Access Token (base64-encoded 32-byte binary) */
-  accessToken: string;
-  /** Access Token expiration time (epoch ms) */
-  accessTokenExpiresAt: number;
   /** Delegate depth (0 = root) */
   depth: number;
   /** Whether the delegate can upload nodes */
@@ -59,7 +53,7 @@ export type StoredRootDelegate = {
 export type TokenState = {
   /** User JWT (optional) */
   user: StoredUserToken | null;
-  /** Root Delegate with RT + AT (optional) */
+  /** Root Delegate metadata (optional) */
   rootDelegate: StoredRootDelegate | null;
 };
 
@@ -88,57 +82,26 @@ export type AuthHeader = {
 };
 
 // ============================================================================
-// Compatibility Types (kept for helpers/client API surface)
+// Access Token View (for client module API surface)
 // ============================================================================
 
 /**
- * Stored Access Token — a view onto the root delegate's AT.
- * Used by client methods that need an access token for API calls.
+ * Stored Access Token — used by client methods for API calls.
+ *
+ * In root mode: `tokenBase64` is the user's JWT string, `tokenBytes` is empty.
+ * In child delegate mode: `tokenBase64` is AT base64, `tokenBytes` is raw AT bytes.
+ *
+ * The server's unified auth middleware detects JWT vs AT automatically.
  */
 export type StoredAccessToken = {
-  /** Access Token (base64-encoded) */
+  /** Token string (JWT or AT base64) to use in Authorization: Bearer header */
   tokenBase64: string;
-  /** Raw 32-byte access token (for PoP computation) */
+  /** Raw token bytes (empty for JWT mode, 32 bytes for AT mode) */
   tokenBytes: Uint8Array;
-  /** Access Token expiration time (epoch ms) */
+  /** Token expiration time (epoch ms) */
   expiresAt: number;
   /** Whether the delegate can upload nodes */
   canUpload: boolean;
   /** Whether the delegate can manage depots */
   canManageDepot: boolean;
-};
-
-/**
- * Extract a StoredAccessToken view from a StoredRootDelegate.
- */
-/**
- * Decode a base64-encoded token string to raw bytes.
- * Works in both Node.js (Buffer) and browser (atob) environments.
- */
-const decodeBase64 = (base64: string): Uint8Array => {
-  if (typeof Buffer !== "undefined") {
-    return new Uint8Array(Buffer.from(base64, "base64"));
-  }
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-};
-
-export const rootDelegateToAccessToken = (rd: StoredRootDelegate): StoredAccessToken => ({
-  tokenBase64: rd.accessToken,
-  tokenBytes: decodeBase64(rd.accessToken),
-  expiresAt: rd.accessTokenExpiresAt,
-  canUpload: rd.canUpload,
-  canManageDepot: rd.canManageDepot,
-});
-
-/**
- * Check if root delegate has a valid (non-expired) access token.
- */
-export const hasValidAccessToken = (state: TokenState): boolean => {
-  if (!state.rootDelegate) return false;
-  return state.rootDelegate.accessTokenExpiresAt > Date.now();
 };

@@ -1,13 +1,11 @@
 /**
  * Token validity checks for the two-tier model.
+ *
+ * Root delegates use JWT directly (no AT/RT), so root-specific
+ * AT validity checks have been removed.
  */
 
-import type {
-  StoredAccessToken,
-  StoredRootDelegate,
-  StoredUserToken,
-  TokenState,
-} from "../types/tokens.ts";
+import type { StoredAccessToken, StoredUserToken, TokenState } from "../types/tokens.ts";
 
 // ============================================================================
 // Validity Checks
@@ -49,17 +47,6 @@ export const isUserTokenValid = (userToken: StoredUserToken | null, bufferMs?: n
 };
 
 /**
- * Check if a root delegate's access token is valid.
- */
-export const isAccessTokenValid = (
-  rootDelegate: StoredRootDelegate | null,
-  bufferMs: number = DEFAULT_EXPIRY_BUFFER_MS
-): boolean => {
-  if (!rootDelegate) return false;
-  return Date.now() + bufferMs < rootDelegate.accessTokenExpiresAt;
-};
-
-/**
  * Check if a StoredAccessToken (view) is valid.
  */
 export const isStoredAccessTokenValid = (
@@ -69,32 +56,14 @@ export const isStoredAccessTokenValid = (
   return isTokenValid(accessToken, bufferMs);
 };
 
-/**
- * Check if root delegate has a refresh token (RT never expires independently).
- */
-export const hasRefreshToken = (rootDelegate: StoredRootDelegate | null): boolean => {
-  return rootDelegate !== null && rootDelegate.refreshToken.length > 0;
-};
-
 // ============================================================================
 // State-level Checks
 // ============================================================================
 
 /**
  * Determine if we need to obtain a root delegate.
- * Returns true if no root delegate is present.
+ * Returns true if no root delegate metadata is cached.
  */
 export const needsRootDelegate = (state: TokenState): boolean => {
   return state.rootDelegate === null;
-};
-
-/**
- * Determine if access token needs refresh via RT rotation.
- * Returns true if root delegate exists but AT is expired/expiring.
- */
-export const shouldRefreshAccessToken = (state: TokenState): boolean => {
-  const rd = state.rootDelegate;
-  if (!rd) return false;
-  // AT expired or expiring within buffer
-  return !isAccessTokenValid(rd);
 };

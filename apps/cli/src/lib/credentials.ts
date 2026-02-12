@@ -21,22 +21,17 @@ export interface UserTokenCredential {
 }
 
 /**
- * Root Delegate credential with RT + AT pair.
+ * Root Delegate credential (metadata only).
  *
- * Created via POST /api/tokens/root (JWT → Root Delegate + RT + AT).
- * The RT is used to rotate AT when it expires (POST /api/tokens/refresh).
+ * Created via POST /api/tokens/root.
+ * Root delegate operations use the user's JWT directly for authentication,
+ * so no RT/AT pair is stored.
  */
 export interface RootDelegateCredential {
   /** Delegate entity ID */
   delegateId: string;
   /** Realm this delegate belongs to */
   realm: string;
-  /** Refresh Token (base64-encoded 24-byte binary) */
-  refreshToken: string;
-  /** Access Token (base64-encoded 32-byte binary) */
-  accessToken: string;
-  /** Access Token expiration time (epoch seconds) */
-  accessTokenExpiresAt: number;
   /** Delegate depth (0 = root) */
   depth: number;
   /** Whether the delegate can upload nodes */
@@ -314,13 +309,12 @@ export function isUserTokenExpired(cred: Credentials): boolean {
 }
 
 /**
- * Check if root delegate's access token is expired (with 60s buffer).
+ * Check if root delegate needs re-creation.
+ * Root delegates use JWT auth directly, so there's no AT to expire.
+ * Returns true only if no root delegate exists.
  */
-export function isAccessTokenExpired(cred: Credentials): boolean {
-  if (!cred.rootDelegate) return true;
-  const expiresAt = cred.rootDelegate.accessTokenExpiresAt;
-  // Add 60 second buffer
-  return Date.now() >= (expiresAt - 60) * 1000;
+export function isRootDelegateMissing(cred: Credentials): boolean {
+  return !cred.rootDelegate;
 }
 
 /**
@@ -374,7 +368,7 @@ export function getExpirationInfo(cred: Credentials): { type: string; expiresIn:
   if (cred.rootDelegate) {
     return {
       type: "delegate",
-      expiresIn: formatExpiresIn(cred.rootDelegate.accessTokenExpiresAt),
+      expiresIn: "N/A (uses JWT)",
     };
   }
   return { type: "none", expiresIn: "N/A" };

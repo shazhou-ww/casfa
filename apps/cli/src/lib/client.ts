@@ -50,15 +50,13 @@ export interface ResolvedClient {
 // ============================================================================
 
 /**
- * Convert RootDelegateCredential (epoch seconds) to StoredRootDelegate (epoch ms).
+ * Convert RootDelegateCredential to StoredRootDelegate.
+ * No time conversion needed since root delegates no longer have AT/RT.
  */
 function credentialToStoredRootDelegate(cred: RootDelegateCredential): StoredRootDelegate {
   return {
     delegateId: cred.delegateId,
     realm: cred.realm,
-    refreshToken: cred.refreshToken,
-    accessToken: cred.accessToken,
-    accessTokenExpiresAt: cred.accessTokenExpiresAt * 1000, // seconds → ms
     depth: cred.depth,
     canUpload: cred.canUpload,
     canManageDepot: cred.canManageDepot,
@@ -66,15 +64,12 @@ function credentialToStoredRootDelegate(cred: RootDelegateCredential): StoredRoo
 }
 
 /**
- * Convert StoredRootDelegate (epoch ms) to RootDelegateCredential (epoch seconds).
+ * Convert StoredRootDelegate to RootDelegateCredential.
  */
 function storedRootDelegateToCredential(rd: StoredRootDelegate): RootDelegateCredential {
   return {
     delegateId: rd.delegateId,
     realm: rd.realm,
-    refreshToken: rd.refreshToken,
-    accessToken: rd.accessToken,
-    accessTokenExpiresAt: Math.floor(rd.accessTokenExpiresAt / 1000), // ms → seconds
     depth: rd.depth,
     canUpload: rd.canUpload,
     canManageDepot: rd.canManageDepot,

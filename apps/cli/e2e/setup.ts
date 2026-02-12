@@ -47,6 +47,18 @@ export interface TestServer {
       realm: string;
       mainDepotId: string;
     }>;
+    createRootToken: (
+      userToken: string,
+      realm: string
+    ) => Promise<{
+      delegate: {
+        delegateId: string;
+        realm: string;
+        depth: number;
+        canUpload: boolean;
+        canManageDepot: boolean;
+      };
+    }>;
     createDelegateToken: (
       userToken: string,
       realm: string,
@@ -236,14 +248,10 @@ export interface TestUserSetup {
   realm: string;
   /** Main depot ID */
   mainDepotId: string;
-  /** Root delegate info for credential storage */
+  /** Root delegate info for credential storage (metadata only, no RT/AT) */
   rootDelegate: {
     delegateId: string;
     realm: string;
-    refreshToken: string;
-    accessToken: string;
-    /** Epoch seconds */
-    accessTokenExpiresAt: number;
     depth: number;
     canUpload: boolean;
     canManageDepot: boolean;
@@ -260,8 +268,6 @@ export async function createTestUserWithToken(
     canManageDepot?: boolean;
   } = {}
 ): Promise<TestUserSetup> {
-  const { canUpload = true, canManageDepot = true } = options;
-
   const userUuid = uniqueId();
   const {
     userId,
@@ -270,12 +276,8 @@ export async function createTestUserWithToken(
     mainDepotId,
   } = await ctx.helpers.createTestUser(userUuid, "authorized");
 
-  // Create a root delegate for CLI operations
-  const delegateResult = await ctx.helpers.createDelegateToken(userToken, realm, {
-    name: "CLI E2E Test Token",
-    canUpload,
-    canManageDepot,
-  });
+  // Create root delegate via POST /api/tokens/root (no RT/AT returned)
+  const rootResult = await ctx.helpers.createRootToken(userToken, realm);
 
   return {
     userId,
@@ -284,15 +286,11 @@ export async function createTestUserWithToken(
     realm,
     mainDepotId,
     rootDelegate: {
-      delegateId: delegateResult.delegate.delegateId,
-      realm: delegateResult.delegate.realm,
-      refreshToken: delegateResult.refreshToken,
-      accessToken: delegateResult.accessToken,
-      // Server returns epoch ms, credentials store epoch seconds
-      accessTokenExpiresAt: Math.floor(delegateResult.accessTokenExpiresAt / 1000),
-      depth: delegateResult.delegate.depth,
-      canUpload: delegateResult.delegate.canUpload,
-      canManageDepot: delegateResult.delegate.canManageDepot,
+      delegateId: rootResult.delegate.delegateId,
+      realm: rootResult.delegate.realm,
+      depth: rootResult.delegate.depth,
+      canUpload: rootResult.delegate.canUpload,
+      canManageDepot: rootResult.delegate.canManageDepot,
     },
   };
 }

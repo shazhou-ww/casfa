@@ -129,18 +129,22 @@ describe("Authentication", () => {
       expect(response.status).toBe(201);
       const data = (await response.json()) as any;
       expect(data.delegate).toBeDefined();
-      expect(data.accessToken).toBeDefined();
-      expect(data.refreshToken).toBeDefined();
+      expect(data.delegate.delegateId).toBeDefined();
+      // Root tokens no longer return AT/RT — root uses JWT auth directly
+      expect(data.accessToken).toBeUndefined();
+      expect(data.refreshToken).toBeUndefined();
     });
 
-    it("should authenticate with Access Token to create child delegate", async () => {
+    it("should authenticate with JWT to create child delegate", async () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const rootToken = await ctx.helpers.createRootToken(token, realm);
+      // Ensure root delegate exists
+      await ctx.helpers.createRootToken(token, realm);
 
+      // Use JWT directly on realm endpoint (middleware supports both JWT and AT)
       const response = await ctx.helpers.accessRequest(
-        rootToken.accessToken,
+        token,
         "POST",
         `/api/realm/${realm}/delegates`,
         {
@@ -207,17 +211,19 @@ describe("Authentication", () => {
       expect(response.status).toBe(201);
       const data = (await response.json()) as any;
       expect(data.delegate.delegateId).toBeDefined();
-      expect(data.accessToken).toBeDefined();
-      expect(data.refreshToken).toBeDefined();
+      // Root delegates no longer return AT/RT
+      expect(data.accessToken).toBeUndefined();
+      expect(data.refreshToken).toBeUndefined();
     });
 
-    it("should allow Access Token to create child delegate", async () => {
+    it("should allow JWT to create child delegate (via root)", async () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
-      const rootToken = await ctx.helpers.createRootToken(token, realm);
+      await ctx.helpers.createRootToken(token, realm);
 
+      // JWT is accepted on realm endpoints via unified middleware
       const response = await ctx.helpers.accessRequest(
-        rootToken.accessToken,
+        token,
         "POST",
         `/api/realm/${realm}/delegates`,
         {
