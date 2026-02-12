@@ -12,7 +12,7 @@
 export async function concurrentPool<T>(
   items: T[],
   concurrency: number,
-  fn: (item: T) => Promise<void>,
+  fn: (item: T) => Promise<void>
 ): Promise<void> {
   const pool: Promise<void>[] = [];
 

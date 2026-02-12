@@ -119,7 +119,7 @@ const messages: Record<ExplorerTextKey, string> = {
   "preview.lines": "{count} lines",
   // Conflict (Iter 4)
   "conflict.title": "File Conflict",
-  "conflict.message": "A file named \"{name}\" already exists in the destination",
+  "conflict.message": 'A file named "{name}" already exists in the destination',
   "conflict.overwrite": "Overwrite",
   "conflict.skip": "Skip",
   "conflict.rename": "Keep both (rename)",

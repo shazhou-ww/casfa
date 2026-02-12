@@ -40,6 +40,8 @@ export type ValidationResult = {
   kind?: NodeKind;
   size?: number;
   childKeys?: string[];
+  /** Keys of children that failed the existence check (subset of childKeys) */
+  missingChildKeys?: string[];
 };
 
 /**
@@ -427,6 +429,7 @@ export async function validateNode(
         kind,
         size: header.size,
         childKeys,
+        missingChildKeys: missing,
       };
     }
   }

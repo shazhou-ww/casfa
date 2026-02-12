@@ -231,7 +231,7 @@ export function FileGrid({
       setSelectedItems([item]);
       setLastSelectedIndex(itemIndex);
     },
-    [selectedItems, selectedPaths, setSelectedItems, items, lastSelectedIndex, setLastSelectedIndex],
+    [selectedItems, selectedPaths, setSelectedItems, items, lastSelectedIndex, setLastSelectedIndex]
   );
 
   const handleOpen = useCallback(

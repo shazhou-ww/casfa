@@ -6,7 +6,6 @@
  * over these built-in ones.
  */
 
-import type React from "react";
 import type { PreviewProvider } from "../types.ts";
 import { AudioPreview } from "./AudioPreview.tsx";
 import { ImagePreview } from "./ImagePreview.tsx";
@@ -50,7 +49,7 @@ export const builtinProviders: PreviewProvider[] = [
  */
 export function findPreviewProvider(
   contentType: string,
-  customProviders?: PreviewProvider[],
+  customProviders?: PreviewProvider[]
 ): PreviewProvider | null {
   if (customProviders) {
     for (const p of customProviders) {

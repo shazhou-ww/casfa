@@ -51,7 +51,7 @@ export function ExplorerToolbar({
 
   const handleUploadClick = useCallback(() => {
     fileInputRef.current?.click();
-  }, []);
+  }, [fileInputRef.current]);
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {

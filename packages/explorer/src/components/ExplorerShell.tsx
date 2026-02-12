@@ -132,14 +132,14 @@ export function ExplorerShell(props: ExplorerShellProps) {
         props.onFileOpen?.(item);
       }
     },
-    [navigate, props],
+    [navigate, props]
   );
 
   const handleContextMenuRename = useCallback(
     (item: ExplorerItem) => {
       openDialog("rename", item);
     },
-    [openDialog],
+    [openDialog]
   );
 
   const handleContextMenuDelete = useCallback(
@@ -148,7 +148,7 @@ export function ExplorerShell(props: ExplorerShellProps) {
         openDialog("delete", items[0]);
       }
     },
-    [openDialog],
+    [openDialog]
   );
 
   const handleContextMenuNewFolder = useCallback(() => {
@@ -210,7 +210,7 @@ export function ExplorerShell(props: ExplorerShellProps) {
       }
       e.target.value = "";
     },
-    [uploadFiles],
+    [uploadFiles]
   );
 
   // ── File open handler (opens preview for files) ──
@@ -224,7 +224,7 @@ export function ExplorerShell(props: ExplorerShellProps) {
         props.onFileOpen?.(item);
       }
     },
-    [navigate, props],
+    [navigate, props]
   );
 
   // ── Conflict resolution (Iter 4) ──
@@ -245,7 +245,7 @@ export function ExplorerShell(props: ExplorerShellProps) {
     (e: React.KeyboardEvent) => {
       kbHandler(e);
     },
-    [kbHandler],
+    [kbHandler]
   );
 
   if (!depotId) {
@@ -275,9 +275,8 @@ export function ExplorerShell(props: ExplorerShellProps) {
   };
 
   // Cut items shown with reduced opacity
-  const cutPaths = clipboard?.operation === "cut"
-    ? new Set(clipboard.items.map((i) => i.path))
-    : null;
+  const cutPaths =
+    clipboard?.operation === "cut" ? new Set(clipboard.items.map((i) => i.path)) : null;
 
   // Render the active view (list or grid)
   const renderBody = () => {

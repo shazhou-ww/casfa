@@ -220,7 +220,12 @@ export function useKeyboardNavigation(opts?: UseKeyboardNavigationOpts) {
 
       // ── Arrow key focus navigation ──
 
-      if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      if (
+        e.key === "ArrowDown" ||
+        e.key === "ArrowUp" ||
+        e.key === "ArrowLeft" ||
+        e.key === "ArrowRight"
+      ) {
         if (items.length === 0) return;
         e.preventDefault();
 
@@ -257,15 +262,32 @@ export function useKeyboardNavigation(opts?: UseKeyboardNavigationOpts) {
       }
     },
     [
-      getSortedItems, canGoBack, canGoForward, canGoUp,
-      goBack, goForward, goUp, navigate,
-      selectedItems, setSelectedItems,
-      focusIndex, setFocusIndex, layout,
-      copyItems, cutItems, pasteItems, canPaste, currentPath,
-      setLayout, setSearchTerm, refresh,
-      openDialog, toggleDetailPanel, permissions,
+      getSortedItems,
+      canGoBack,
+      canGoForward,
+      canGoUp,
+      goBack,
+      goForward,
+      goUp,
+      navigate,
+      selectedItems,
+      setSelectedItems,
+      focusIndex,
+      setFocusIndex,
+      layout,
+      copyItems,
+      cutItems,
+      pasteItems,
+      canPaste,
+      currentPath,
+      setLayout,
+      setSearchTerm,
+      refresh,
+      openDialog,
+      toggleDetailPanel,
+      permissions,
       opts,
-    ],
+    ]
   );
 
   return { handleKeyDown, focusIndex };

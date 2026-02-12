@@ -60,7 +60,7 @@ PUT Node（`PUT /api/realm/{realmId}/nodes/{key}`）在上传包含 children 的
 // 每个节点只有一条 ownership 记录，后写覆盖
 type CasOwnership = {
   realm: string;
-  key: string;           // node hash (hex)
+  key: string;           // node storage key (CB32)
   createdBy: string;     // 最后一个上传者的 tokenId（Access Token ID）
   createdAt: number;
   kind?: NodeKind;
@@ -74,7 +74,7 @@ type CasOwnership = {
 // 每次 PUT 产生一条记录，同一 node 可有多条
 type CasOwnership = {
   realm: string;
-  key: string;           // node hash (hex)
+  key: string;           // node storage key (CB32)
   ownerId: string;       // Delegate Token ID 或 User ID（不再是 Access Token ID）
   createdAt: number;     // 本次 PUT 的时间
   kind?: NodeKind;
@@ -88,7 +88,7 @@ type CasOwnership = {
 |------|----|----|
 | 记录者 | Access Token ID | Delegate Token ID（AT 的 issuer） |
 | 记录数 | 1 per node per realm（覆盖写） | N per node per realm（追加写） |
-| DDB Sort Key | `OWN#{key}` | `OWN#{key}##{ownerId}` |
+| DDB Sort Key | `OWN#{cb32_key}` | `OWN#{cb32_key}##{ownerId}` |
 | 含义 | "谁最后上传了这个节点" | "哪些 Token（的 issuer）上传过这个节点" |
 
 ### 3.2 为什么用 Delegate Token 而非 Access Token
@@ -126,14 +126,14 @@ User (usr_abc)
 ### 3.4 DDB Schema 变更
 
 ```
-旧 Sort Key: OWN#{hex_key}
-新 Sort Key: OWN#{hex_key}##{ownerId}
+旧 Sort Key: OWN#{cb32_key}
+新 Sort Key: OWN#{cb32_key}##{ownerId}
 
-旧查询: getOwnership(realm, key) → 一条记录
+旧查询: getOwnership(realm, cb32Key) → 一条记录
 新查询:
-  - hasOwnershipByToken(realm, key, ownerId) → boolean
-  - listOwners(realm, key) → ownerId[]
-  - hasAnyOwnership(realm, key) → boolean （用于 prepare-nodes）
+  - hasOwnershipByToken(realm, cb32Key, ownerId) → boolean
+  - listOwners(realm, cb32Key) → ownerId[]
+  - hasAnyOwnership(realm, cb32Key) → boolean （用于 prepare-nodes）
 ```
 
 `addOwnership` 使用简单 `PutItem`（无 ConditionExpression）：因为 SK 已包含 ownerId，同一 owner 重复 PUT 同一 node 会覆盖自己的记录（`createdAt` 更新为最新时间），不影响其他 owner 的记录。如果需要保留首次 PUT 时间，可改用 `ConditionExpression: attribute_not_exists(sk)` 来防止覆盖——但对于 ownership 验证场景，只需判断记录是否存在，`createdAt` 精确值不重要，简单 Put 即可。
@@ -199,12 +199,12 @@ Proof 机制是 Token 访问非自己 own 的节点的**唯一**方式。
 PUT /api/realm/{realmId}/nodes/node:abc123...
 Authorization: Bearer {access_token}
 Content-Type: application/octet-stream
-X-CAS-Child-Proofs: child1_hex=0:1:2,child2_hex=0:3
+X-CAS-Child-Proofs: nod_XXXXXX=0:1:2,nod_YYYYYY=0:3
 
 (二进制数据)
 ```
 
-`X-CAS-Child-Proofs` Header 格式：逗号分隔的 `childHex=indexPath` 对。服务端对每个需要 proof 的 child，验证 index-path 指向的节点确实是该 child。
+`X-CAS-Child-Proofs` Header 格式：逗号分隔的 `nod_key=indexPath` 对（key 使用 `nod_` 前缀的 CB32 格式）。服务端对每个需要 proof 的 child，验证 index-path 指向的节点确实是该 child。
 
 > **Header 大小限制**：HTTP Header 通常受 server/proxy 限制（8KB~16KB）。实践中，绝大多数 children 应通过 uploader 验证通过，需要 proof 的应该极少。如果某个场景下需要大量 proof，客户端应优先通过重新 PUT 获取 ownership，而非全部走 proof。
 
@@ -221,7 +221,7 @@ if (!entry.proof) {
 if (!entry.proof) {
   return fsError("LINK_NOT_AUTHORIZED", 403, ...);
 }
-const isInScope = await validateProofAgainstScope(entry.proof, linkHex, auth, deps);
+const isInScope = await validateProofAgainstScope(entry.proof, linkStorageKey, auth, deps);
 if (!isInScope) {
   return fsError("LINK_NOT_AUTHORIZED", 403, "Invalid proof: node is not at the specified index-path");
 }
@@ -240,8 +240,8 @@ Proof 是一个 index-path（如 `0:1:2`），含义是：从 Token 的 scope �
 
 ```typescript
 async function validateProofAgainstScope(
-  proof: string,          // "0:1:2" 格式
-  targetNodeHex: string,  // 要验证的目标节点 hash (hex)
+  proof: string,              // "0:1:2" 格式
+  targetStorageKey: string,   // 要验证的目标节点 storage key (CB32)
   auth: AccessTokenAuthContext,
   deps: { storage: StorageProvider, scopeSetNodesDb: ScopeSetNodesDb },
 ): Promise<boolean> {
@@ -280,11 +280,11 @@ async function validateProofAgainstScope(
     if (!nodeData) return false;
     const node = decodeNode(nodeData);
     if (!node.children || indices[i] >= node.children.length) return false;
-    currentHash = hashToHex(node.children[indices[i]]);
+    currentHash = hashToStorageKey(node.children[indices[i]]);
   }
   
   // 4. 最终节点是否等于目标
-  return currentHash === targetNodeHex;
+  return currentHash === targetStorageKey;
 }
 ```
 
@@ -344,7 +344,7 @@ type PrepareNodesResponse = {
 
 ```
 1. 客户端: POST /nodes/prepare { keys: [A, B, C] }
-2. 服务端: { missing: [A], owned: [B], unowned: [C], challenge: "random_256bit_hex" }
+2. 服务端: { missing: [A], owned: [B], unowned: [C], challenge: "random_256bit" }
 3. 客户端: 对于 unowned 的 C:
    - 读取 C 的原始节点数据
    - 计算 challenge_hash = blake3(challenge_bytes + node_bytes)
@@ -382,8 +382,8 @@ type PrepareNodesResponse = {
 // db/ownership.ts
 
 // DDB Schema 变更
-// 旧 SK: OWN#{hex_key}
-// 新 SK: OWN#{hex_key}##{ownerId}
+// 旧 SK: OWN#{cb32_key}
+// 新 SK: OWN#{cb32_key}##{ownerId}
 
 // 新增方法
 async hasOwnershipByToken(realm: string, key: string, ownerId: string): Promise<boolean>;
@@ -396,8 +396,8 @@ async listOwners(realm: string, key: string): Promise<string[]>;
 //   SK 改为 OWN#{key}##{ownerId}
 //   同一 ownerId 重复 PUT 同一 node 幂等覆盖（自然行为，SK 相同）
 
-// hasOwnership(realm, key): 
-//   改为 begins_with(SK, "OWN#{key}##") query limit 1
+// hasOwnership(realm, cb32Key): 
+//   改为 begins_with(SK, "OWN#{cb32_key}##") query limit 1
 //   含义从"有没有 owner"不变
 
 // getOwnership(realm, key):
@@ -518,13 +518,13 @@ return c.json<PrepareNodesResponse>({ missing, owned, unowned });
 // services/fs/write-ops.ts, rewrite 的 link 处理
 
 } else if ("link" in entry) {
-  const linkHex = /* ... */;
+  const linkStorageKey = /* ... */;
   
   // Step 1: uploader 验证
   let authorized = false;
   const myFamily = [...issuerChain, issuerId]; // issuerId = auth.tokenRecord.issuerId
   for (const id of myFamily) {
-    if (await ownershipDb.hasOwnershipByToken(realm, linkHex, id)) {
+    if (await ownershipDb.hasOwnershipByToken(realm, linkStorageKey, id)) {
       authorized = true;
       break;
     }
@@ -532,7 +532,7 @@ return c.json<PrepareNodesResponse>({ missing, owned, unowned });
   
   // Step 2: scope 验证（proof）
   if (!authorized && entry.proof) {
-    authorized = await validateProofAgainstScope(entry.proof, linkHex, auth, deps);
+    authorized = await validateProofAgainstScope(entry.proof, linkStorageKey, auth, deps);
   }
   
   if (!authorized) {
@@ -560,7 +560,7 @@ if (root) {
   const myFamily = [...auth.issuerChain, auth.tokenRecord.issuerId];
   let authorized = false;
   for (const id of myFamily) {
-    if (await ownershipDb.hasOwnershipByToken(realm, rootHex, id)) {
+    if (await ownershipDb.hasOwnershipByToken(realm, rootStorageKey, id)) {
       authorized = true;
       break;
     }

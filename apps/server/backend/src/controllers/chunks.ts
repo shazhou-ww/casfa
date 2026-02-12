@@ -22,6 +22,7 @@ import {
   type NodeUploadResponse,
   nodeKeyToStorageKey,
   type SuccessorNodeMetadata,
+  storageKeyToNodeKey,
 } from "@casfa/protocol";
 import type { StorageProvider } from "@casfa/storage-core";
 import type { Context } from "hono";
@@ -127,8 +128,9 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       }
 
       // Full validation (use storageKey which is hex format)
+      // existsChecker must handle well-known nodes which are virtual (never persisted to storage)
       const validationResult = await validateNode(bytes, storageKey, keyProvider, (childKey) =>
-        storage.has(childKey)
+        isWellKnownNode(childKey) ? Promise.resolve(true) : storage.has(childKey)
       );
 
       if (!validationResult.valid) {
@@ -137,7 +139,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
             {
               success: false,
               error: "missing_nodes",
-              missing: validationResult.childKeys ?? [],
+              missing: (validationResult.missingChildKeys ?? []).map(storageKeyToNodeKey),
             },
             409
           );
@@ -180,7 +182,9 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
 
           // Step 2: scope verification (proof) — only if ownership verification failed
           if (!authorized) {
-            const proof = childProofs.get(childKey);
+            // Client sends nod_-prefixed keys in X-CAS-Child-Proofs header,
+            // but childKey is a raw CB32 storage key from validateNode().
+            const proof = childProofs.get(storageKeyToNodeKey(childKey));
             if (proof) {
               authorized = await validateProofAgainstScope(proof, childKey, auth, {
                 storage,
@@ -199,7 +203,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
             {
               error: "CHILD_NOT_AUTHORIZED",
               message: "Not authorized to reference these child nodes",
-              unauthorized,
+              unauthorized: unauthorized.map(storageKeyToNodeKey),
             },
             403
           );

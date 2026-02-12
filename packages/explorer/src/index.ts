@@ -47,15 +47,15 @@ export { useNavigation, useNavigationKeyboard } from "./hooks/use-navigation.ts"
 export { useHighlightMatch, useSearch } from "./hooks/use-search.ts";
 export { useSelection } from "./hooks/use-selection.ts";
 export { useUpload } from "./hooks/use-upload.ts";
+// ── i18n ──
+export { createEnUsT } from "./i18n/en-US.ts";
+export { createZhCnT } from "./i18n/zh-CN.ts";
 // ── Preview ──
 export {
   builtinProviders,
   findPreviewProvider,
   MAX_PREVIEW_SIZE,
 } from "./preview/builtin-providers.tsx";
-// ── i18n ──
-export { createEnUsT } from "./i18n/en-US.ts";
-export { createZhCnT } from "./i18n/zh-CN.ts";
 // ── Types ──
 export type {
   CasfaExplorerProps,

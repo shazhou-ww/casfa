@@ -23,7 +23,7 @@ export function useSelection() {
       const idx = items.findIndex((i) => i.path === item.path);
       setLastSelectedIndex(idx >= 0 ? idx : null);
     },
-    [setSelectedItems, setLastSelectedIndex],
+    [setSelectedItems, setLastSelectedIndex]
   );
 
   /** Ctrl/Cmd+Click: toggle item in selection */
@@ -38,7 +38,7 @@ export function useSelection() {
       const idx = items.findIndex((i) => i.path === item.path);
       setLastSelectedIndex(idx >= 0 ? idx : null);
     },
-    [selectedItems, setSelectedItems, setLastSelectedIndex],
+    [selectedItems, setSelectedItems, setLastSelectedIndex]
   );
 
   /** Shift+Click: range select from last selected to current */
@@ -55,7 +55,7 @@ export function useSelection() {
       setSelectedItems(rangeItems);
       // Keep the anchor (lastSelectedIndex) unchanged for range
     },
-    [lastSelectedIndex, setSelectedItems],
+    [lastSelectedIndex, setSelectedItems]
   );
 
   /** Ctrl+A: select all items */
@@ -84,7 +84,7 @@ export function useSelection() {
         select(item, items);
       }
     },
-    [select, toggleSelect, rangeSelect],
+    [select, toggleSelect, rangeSelect]
   );
 
   return {
