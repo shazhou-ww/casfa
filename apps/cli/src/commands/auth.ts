@@ -70,9 +70,6 @@ export function registerAuthCommands(program: Command): void {
                 setRootDelegate(profileName, {
                   delegateId: rd.delegate.delegateId,
                   realm: rd.delegate.realm,
-                  refreshToken: rd.refreshToken,
-                  accessToken: rd.accessToken,
-                  accessTokenExpiresAt: Math.floor(rd.accessTokenExpiresAt / 1000),
                   depth: rd.delegate.depth,
                   canUpload: rd.delegate.canUpload,
                   canManageDepot: rd.delegate.canManageDepot,
@@ -172,9 +169,6 @@ export function registerAuthCommands(program: Command): void {
         setRootDelegate(profileName, {
           delegateId: rd.delegate.delegateId,
           realm: rd.delegate.realm,
-          refreshToken: rd.refreshToken,
-          accessToken: rd.accessToken,
-          accessTokenExpiresAt: Math.floor(rd.accessTokenExpiresAt / 1000),
           depth: rd.delegate.depth,
           canUpload: rd.delegate.canUpload,
           canManageDepot: rd.delegate.canManageDepot,
@@ -282,7 +276,6 @@ export function registerAuthCommands(program: Command): void {
           ? {
               delegateId: credentials.rootDelegate.delegateId,
               realm: credentials.rootDelegate.realm,
-              accessTokenExpiresIn: formatExpiresIn(credentials.rootDelegate.accessTokenExpiresAt),
               canUpload: credentials.rootDelegate.canUpload,
               canManageDepot: credentials.rootDelegate.canManageDepot,
             }
@@ -304,7 +297,7 @@ export function registerAuthCommands(program: Command): void {
           lines.push("Root Delegate:");
           lines.push(`  Delegate:  ${status.rootDelegate.delegateId}`);
           lines.push(`  Realm:     ${status.rootDelegate.realm}`);
-          lines.push(`  AT Expiry: ${status.rootDelegate.accessTokenExpiresIn}`);
+          lines.push(`  Auth:      JWT (no AT/RT)`);
           lines.push(`  Upload:    ${status.rootDelegate.canUpload ? "yes" : "no"}`);
           lines.push(`  Manage:    ${status.rootDelegate.canManageDepot ? "yes" : "no"}`);
         }

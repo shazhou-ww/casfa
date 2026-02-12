@@ -118,6 +118,17 @@ export const createRefreshController = (deps: RefreshControllerDeps): RefreshCon
       return c.json({ error: "DELEGATE_NOT_FOUND", message: "Delegate not found" }, 401);
     }
 
+    // Root delegates (depth=0) use JWT auth directly — no RT/AT rotation
+    if (delegate.depth === 0) {
+      return c.json(
+        {
+          error: "ROOT_REFRESH_NOT_ALLOWED",
+          message: "Root delegate uses JWT authentication directly. Use your JWT for API calls.",
+        },
+        400
+      );
+    }
+
     if (delegate.isRevoked) {
       return c.json(
         { error: "DELEGATE_REVOKED", message: "Associated delegate has been revoked" },

@@ -100,22 +100,16 @@ function createMockDelegatesDb(overrides?: Partial<DelegatesDb>): DelegatesDb {
     revoke: mock(async () => true),
     listChildren: mock(async () => ({ delegates: [], nextCursor: undefined })),
     rotateTokens: mock(async () => true),
-    getOrCreateRoot: mock(
-      async (
-        realm: string,
-        id: string,
-        tokenHashes: { currentRtHash: string; currentAtHash: string; atExpiresAt: number }
-      ) => ({
-        delegate: makeDelegate({
-          delegateId: id,
-          realm,
-          currentRtHash: tokenHashes.currentRtHash,
-          currentAtHash: tokenHashes.currentAtHash,
-          atExpiresAt: tokenHashes.atExpiresAt,
-        }),
-        created: true,
-      })
-    ),
+    getOrCreateRoot: mock(async (realm: string, id: string) => ({
+      delegate: makeDelegate({
+        delegateId: id,
+        realm,
+        currentRtHash: "",
+        currentAtHash: "",
+        atExpiresAt: 0,
+      }),
+      created: true,
+    })),
     getRootByRealm: mock(async () => null),
     ...overrides,
   };

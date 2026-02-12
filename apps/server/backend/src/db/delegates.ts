@@ -85,13 +85,11 @@ export type DelegatesDb = {
    *
    * @param realm - The realm (= userId)
    * @param delegateId - Pre-generated delegate ID for the root
-   * @param tokenHashes - Initial token hashes for the root delegate
    * @returns The root delegate (either newly created or existing)
    */
   getOrCreateRoot: (
     realm: string,
-    delegateId: string,
-    tokenHashes: { currentRtHash: string; currentAtHash: string; atExpiresAt: number }
+    delegateId: string
   ) => Promise<{ delegate: Delegate; created: boolean }>;
 
   /**
@@ -340,8 +338,7 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
 
   const getOrCreateRoot = async (
     realm: string,
-    delegateId: string,
-    tokenHashes: { currentRtHash: string; currentAtHash: string; atExpiresAt: number }
+    delegateId: string
   ): Promise<{ delegate: Delegate; created: boolean }> => {
     // Try to find existing root delegate using realm-scoped index
     const existing = await getRootByRealm(realm);
@@ -349,7 +346,7 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
       return { delegate: existing, created: false };
     }
 
-    // Create new root delegate with token hashes
+    // Create new root delegate — no token hashes (root uses JWT directly)
     const now = Date.now();
     const rootDelegate: Delegate = {
       delegateId,
@@ -361,9 +358,9 @@ export const createDelegatesDb = (config: DelegatesDbConfig): DelegatesDb => {
       canManageDepot: true,
       isRevoked: false,
       createdAt: now,
-      currentRtHash: tokenHashes.currentRtHash,
-      currentAtHash: tokenHashes.currentAtHash,
-      atExpiresAt: tokenHashes.atExpiresAt,
+      currentRtHash: "",
+      currentAtHash: "",
+      atExpiresAt: 0,
     };
 
     try {

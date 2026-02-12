@@ -2,8 +2,10 @@
  * @casfa/client - CASFA client library
  *
  * A stateful client that manages two-tier token hierarchy:
- * - User JWT: OAuth login token, highest authority
- * - Root Delegate: RT + AT pair for realm operations (auto-refreshed)
+ * - User JWT: OAuth login token, highest authority, used for root operations
+ * - Root Delegate: metadata-only entity (no RT/AT), anchor of delegate tree
+ *
+ * Root operations use JWT directly via the server's unified auth middleware.
  *
  * @packageDocumentation
  */
@@ -36,15 +38,12 @@ export {
   createTokenSelector,
   createTokenStore,
   DEFAULT_EXPIRY_BUFFER_MS,
-  hasRefreshToken,
-  isAccessTokenValid,
   isStoredAccessTokenValid,
   isTokenExpiringSoon,
   isTokenValid,
   isUserTokenValid,
   needsRootDelegate,
   type RefreshManager,
-  shouldRefreshAccessToken,
   type TokenSelector,
   type TokenStore,
 } from "./store/index.ts";
@@ -62,11 +61,7 @@ export type {
   TokenState,
 } from "./types/tokens.ts";
 
-export {
-  emptyTokenState,
-  hasValidAccessToken,
-  rootDelegateToAccessToken,
-} from "./types/tokens.ts";
+export { emptyTokenState } from "./types/tokens.ts";
 
 // ============================================================================
 // API (for advanced usage)

@@ -1,8 +1,11 @@
 /**
- * Token management methods for the stateful client (new 2-tier model).
+ * Token management methods for the stateful client.
+ *
+ * Root delegates no longer hold RT/AT — root operations use JWT directly.
+ * The `createRoot` method ensures the root delegate entity exists on the server.
  */
 
-import type { RefreshTokenResponse, RootTokenResponse } from "@casfa/protocol";
+import type { RootTokenResponse } from "@casfa/protocol";
 import * as api from "../api/index.ts";
 import type { RefreshManager } from "../store/jwt-refresh.ts";
 import type { TokenSelector } from "../store/token-selector.ts";
@@ -16,10 +19,8 @@ import { withUserToken } from "./helpers.ts";
 // ============================================================================
 
 export type TokenMethods = {
-  /** Create root delegate + RT + AT (User JWT required) */
+  /** Ensure root delegate exists (User JWT required). Returns delegate metadata. */
   createRoot: (realm: string) => Promise<FetchResult<StoredRootDelegate>>;
-  /** Manually refresh tokens using current RT */
-  refresh: () => Promise<FetchResult<StoredRootDelegate>>;
 };
 
 export type TokenDeps = {
@@ -57,27 +58,6 @@ export const createTokenMethods = ({
 
         return { ok: true, data: rd, status: result.status };
       }),
-
-    refresh: async () => {
-      const state = store.getState();
-      const rd = state.rootDelegate;
-      if (!rd) {
-        return {
-          ok: false,
-          error: {
-            code: "NO_ROOT_DELEGATE",
-            message: "No root delegate to refresh",
-          },
-        };
-      }
-
-      const result = await api.refreshToken(baseUrl, rd.refreshToken);
-      if (!result.ok) return result;
-
-      const updated = updateRootDelegate(rd, result.data);
-      store.setRootDelegate(updated);
-      return { ok: true, data: updated, status: result.status };
-    },
   };
 };
 
@@ -88,20 +68,7 @@ export const createTokenMethods = ({
 const toStoredRootDelegate = (response: RootTokenResponse): StoredRootDelegate => ({
   delegateId: response.delegate.delegateId,
   realm: response.delegate.realm,
-  refreshToken: response.refreshToken,
-  accessToken: response.accessToken,
-  accessTokenExpiresAt: response.accessTokenExpiresAt,
   depth: response.delegate.depth,
   canUpload: response.delegate.canUpload,
   canManageDepot: response.delegate.canManageDepot,
-});
-
-const updateRootDelegate = (
-  current: StoredRootDelegate,
-  response: RefreshTokenResponse
-): StoredRootDelegate => ({
-  ...current,
-  refreshToken: response.refreshToken,
-  accessToken: response.accessToken,
-  accessTokenExpiresAt: response.accessTokenExpiresAt,
 });

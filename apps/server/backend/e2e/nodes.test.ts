@@ -409,12 +409,13 @@ describe("Node Operations", () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Root delegate has unrestricted access — no proof needed
-      const accessToken = await ctx.helpers.createAccessToken(token, realm);
+      // Root delegate uses JWT directly — ensure root delegate exists
+      await ctx.helpers.createRootToken(token, realm);
       const nodeKey = testNodeKey(99);
 
+      // Use JWT (token) directly — middleware auto-detects JWT and resolves root delegate
       const response = await ctx.helpers.accessRequest(
-        accessToken.accessToken,
+        token,
         "GET",
         `/api/realm/${realm}/nodes/${nodeKey}/metadata`
       );
@@ -462,12 +463,13 @@ describe("Node Operations", () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Root delegate has unrestricted access — no proof needed
-      const accessToken = await ctx.helpers.createAccessToken(token, realm);
+      // Root delegate uses JWT directly — ensure root delegate exists
+      await ctx.helpers.createRootToken(token, realm);
       const nodeKey = testNodeKey(99);
 
+      // Use JWT (token) directly — middleware auto-detects JWT and resolves root delegate
       const response = await ctx.helpers.accessRequest(
-        accessToken.accessToken,
+        token,
         "GET",
         `/api/realm/${realm}/nodes/${nodeKey}`
       );

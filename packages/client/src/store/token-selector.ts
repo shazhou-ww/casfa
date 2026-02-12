@@ -1,16 +1,16 @@
 /**
- * Token selector — ensures the client has valid tokens for API calls.
+ * Token selector — ensures the client has valid auth for API calls.
  *
- * Two-tier model:
- * 1. Root Delegate: obtained via POST /api/tokens/root (requires JWT)
- * 2. Access Token: obtained via RT rotation POST /api/tokens/refresh
+ * Two-tier model (JWT direct auth for root):
+ * 1. Root operations: use user JWT directly (no AT/RT for root delegate)
+ * 2. Child delegate operations: use child delegate AT (with RT refresh)
  *
- * The selector auto-issues/refreshes tokens as needed.
+ * The selector auto-ensures the root delegate entity exists and returns
+ * a StoredAccessToken backed by the user's JWT for realm API calls.
  */
 
 import type { StoredAccessToken, StoredRootDelegate } from "../types/tokens.ts";
-import { rootDelegateToAccessToken } from "../types/tokens.ts";
-import { isAccessTokenValid, isUserTokenValid, needsRootDelegate } from "./token-checks.ts";
+import { isUserTokenValid, needsRootDelegate } from "./token-checks.ts";
 import type { TokenStore } from "./token-store.ts";
 
 // ============================================================================
@@ -25,21 +25,24 @@ export type TokenSelectorConfig = {
 
 export type TokenSelector = {
   /**
-   * Get or refresh an Access Token.
-   * - If valid AT exists in root delegate, return it
-   * - If AT expired but RT exists, refresh via /api/tokens/refresh
-   * - If no root delegate, issue one via /api/tokens/root (requires JWT)
+   * Get an auth token for realm API calls.
+   *
+   * Returns a StoredAccessToken where `tokenBase64` is:
+   * - The user's JWT string (root mode — default for stateful client)
+   *
+   * The server's unified auth middleware detects JWT vs AT automatically.
    */
   ensureAccessToken: () => Promise<StoredAccessToken | null>;
 
   /**
-   * Ensure root delegate exists, creating one if needed.
+   * Ensure root delegate entity exists on server, creating one if needed.
+   * Caches the delegate metadata locally (no RT/AT — root uses JWT).
    */
   ensureRootDelegate: () => Promise<StoredRootDelegate | null>;
 };
 
 // ============================================================================
-// API Calls for Token Issuance
+// API Calls
 // ============================================================================
 
 type RootTokenResponse = {
@@ -51,23 +54,13 @@ type RootTokenResponse = {
     canManageDepot: boolean;
     createdAt: number;
   };
-  refreshToken: string;
-  accessToken: string;
-  accessTokenExpiresAt: number;
-};
-
-type RefreshTokenResponse = {
-  refreshToken: string;
-  accessToken: string;
-  accessTokenExpiresAt: number;
-  delegateId: string;
 };
 
 /**
- * Create root delegate via POST /api/tokens/root.
- * Requires User JWT.
+ * Ensure root delegate exists via POST /api/tokens/root.
+ * Returns delegate metadata only (no RT/AT).
  */
-const createRootToken = async (
+const createRootDelegate = async (
   baseUrl: string,
   userAccessToken: string,
   realm: string
@@ -83,41 +76,13 @@ const createRootToken = async (
     });
 
     if (!response.ok) {
-      console.error("[TokenSelector] Failed to create root token:", response.status);
+      console.error("[TokenSelector] Failed to create root delegate:", response.status);
       return null;
     }
 
     return (await response.json()) as RootTokenResponse;
   } catch (err) {
-    console.error("[TokenSelector] Error creating root token:", err);
-    return null;
-  }
-};
-
-/**
- * Refresh tokens via POST /api/tokens/refresh.
- * Uses RT as Bearer token.
- */
-const refreshTokens = async (
-  baseUrl: string,
-  refreshTokenBase64: string
-): Promise<RefreshTokenResponse | null> => {
-  try {
-    const response = await fetch(`${baseUrl}/api/tokens/refresh`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${refreshTokenBase64}`,
-      },
-    });
-
-    if (!response.ok) {
-      console.error("[TokenSelector] Failed to refresh tokens:", response.status);
-      return null;
-    }
-
-    return (await response.json()) as RefreshTokenResponse;
-  } catch (err) {
-    console.error("[TokenSelector] Error refreshing tokens:", err);
+    console.error("[TokenSelector] Error creating root delegate:", err);
     return null;
   }
 };
@@ -132,15 +97,13 @@ const refreshTokens = async (
 export const createTokenSelector = (config: TokenSelectorConfig): TokenSelector => {
   const { store, baseUrl, realm } = config;
 
-  // Promise deduplication for root token creation
-  let rootTokenPromise: Promise<StoredRootDelegate | null> | null = null;
-  // Promise deduplication for refresh
-  let refreshPromise: Promise<StoredRootDelegate | null> | null = null;
+  // Promise deduplication for root delegate creation
+  let rootDelegatePromise: Promise<StoredRootDelegate | null> | null = null;
 
   const ensureRootDelegate = async (): Promise<StoredRootDelegate | null> => {
     const state = store.getState();
 
-    // Already have a root delegate
+    // Already have root delegate metadata cached
     if (!needsRootDelegate(state)) {
       return state.rootDelegate;
     }
@@ -152,18 +115,15 @@ export const createTokenSelector = (config: TokenSelectorConfig): TokenSelector 
     }
 
     // Deduplicate concurrent calls
-    if (!rootTokenPromise) {
-      rootTokenPromise = (async () => {
-        const result = await createRootToken(baseUrl, userToken!.accessToken, realm);
+    if (!rootDelegatePromise) {
+      rootDelegatePromise = (async () => {
+        const result = await createRootDelegate(baseUrl, userToken!.accessToken, realm);
 
         if (!result) return null;
 
         const newRootDelegate: StoredRootDelegate = {
           delegateId: result.delegate.delegateId,
           realm: result.delegate.realm,
-          refreshToken: result.refreshToken,
-          accessToken: result.accessToken,
-          accessTokenExpiresAt: result.accessTokenExpiresAt,
           depth: result.delegate.depth,
           canUpload: result.delegate.canUpload,
           canManageDepot: result.delegate.canManageDepot,
@@ -172,54 +132,35 @@ export const createTokenSelector = (config: TokenSelectorConfig): TokenSelector 
         store.setRootDelegate(newRootDelegate);
         return newRootDelegate;
       })().finally(() => {
-        rootTokenPromise = null;
+        rootDelegatePromise = null;
       });
     }
 
-    return rootTokenPromise;
-  };
-
-  const doRefresh = async (currentRd: StoredRootDelegate): Promise<StoredRootDelegate | null> => {
-    const result = await refreshTokens(baseUrl, currentRd.refreshToken);
-
-    if (!result) {
-      // Refresh failed — clear root delegate, require re-auth
-      store.setRootDelegate(null);
-      return null;
-    }
-
-    const updatedRd: StoredRootDelegate = {
-      ...currentRd,
-      refreshToken: result.refreshToken,
-      accessToken: result.accessToken,
-      accessTokenExpiresAt: result.accessTokenExpiresAt,
-    };
-
-    store.setRootDelegate(updatedRd);
-    return updatedRd;
+    return rootDelegatePromise;
   };
 
   const ensureAccessToken = async (): Promise<StoredAccessToken | null> => {
-    // Step 1: Ensure we have a root delegate
-    let rd = await ensureRootDelegate();
+    // Step 1: Ensure root delegate entity exists
+    const rd = await ensureRootDelegate();
     if (!rd) return null;
 
-    // Step 2: Check if AT is still valid
-    if (isAccessTokenValid(rd)) {
-      return rootDelegateToAccessToken(rd);
+    // Step 2: Ensure user JWT is valid
+    const state = store.getState();
+    const userToken = state.user;
+    if (!isUserTokenValid(userToken)) {
+      return null;
     }
 
-    // Step 3: AT expired — refresh via RT rotation
-    if (!refreshPromise) {
-      refreshPromise = doRefresh(rd).finally(() => {
-        refreshPromise = null;
-      });
-    }
-
-    rd = await refreshPromise;
-    if (!rd) return null;
-
-    return rootDelegateToAccessToken(rd);
+    // Step 3: Return JWT-backed StoredAccessToken
+    // The server's unified auth middleware detects JWT (contains '.') and
+    // resolves the root delegate automatically.
+    return {
+      tokenBase64: userToken!.accessToken,
+      tokenBytes: new Uint8Array(0), // JWT has no raw token bytes (PoP N/A for root)
+      expiresAt: userToken!.expiresAt,
+      canUpload: rd.canUpload,
+      canManageDepot: rd.canManageDepot,
+    };
   };
 
   return {

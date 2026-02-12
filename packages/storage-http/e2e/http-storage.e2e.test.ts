@@ -11,7 +11,12 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { type CasfaClient, createClient, type StoredRootDelegate } from "@casfa/client";
+import {
+  type CasfaClient,
+  createClient,
+  type StoredRootDelegate,
+  type TokenState,
+} from "@casfa/client";
 import { computeSizeFlagByte, encodeFileNode, type KeyProvider } from "@casfa/core";
 import type { PopContext } from "@casfa/proof";
 import { hashToNodeKey, nodeKeyToStorageKey } from "@casfa/protocol";
@@ -76,26 +81,39 @@ async function createTestClient(
 }> {
   const { canUpload = true, canManageDepot = true } = options;
   const userUuid = uniqueId();
-  const { token, realm } = await ctx.helpers.createTestUser(userUuid, "authorized");
+  const { token, realm, userId } = await ctx.helpers.createTestUser(userUuid, "authorized");
 
-  const delegateResult = await ctx.helpers.createDelegateToken(token, realm, {
-    canUpload,
-    canManageDepot,
-  });
+  // Ensure root delegate exists in DB
+  const rootResult = await ctx.helpers.createRootToken(token, realm);
 
   const rootDelegate: StoredRootDelegate = {
-    delegateId: delegateResult.delegate.delegateId,
-    realm: delegateResult.delegate.realm,
-    refreshToken: delegateResult.refreshToken,
-    accessToken: delegateResult.accessToken,
-    accessTokenExpiresAt: delegateResult.accessTokenExpiresAt,
-    depth: delegateResult.delegate.depth,
-    canUpload: delegateResult.delegate.canUpload,
-    canManageDepot: delegateResult.delegate.canManageDepot,
+    delegateId: rootResult.delegate.delegateId,
+    realm: rootResult.delegate.realm,
+    depth: rootResult.delegate.depth,
+    canUpload: rootResult.delegate.canUpload,
+    canManageDepot: rootResult.delegate.canManageDepot,
   };
 
-  const client = await createClient({ baseUrl: ctx.baseUrl, realm });
-  client.setRootDelegate(rootDelegate);
+  // Build initial token state with user JWT + root delegate metadata
+  const initialState: TokenState = {
+    user: {
+      accessToken: token,
+      refreshToken: "",
+      userId,
+      expiresAt: Date.now() + 3600_000,
+    },
+    rootDelegate,
+  };
+
+  const client = await createClient({
+    baseUrl: ctx.baseUrl,
+    realm,
+    tokenStorage: {
+      load: async () => initialState,
+      save: async () => {},
+      clear: async () => {},
+    },
+  });
 
   return { client, realm, rootDelegate };
 }

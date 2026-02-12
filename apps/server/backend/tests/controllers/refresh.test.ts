@@ -69,9 +69,9 @@ function makeDelegate(overrides?: Partial<Delegate>): Delegate {
   return {
     delegateId: testDelegateId,
     realm: testRealm,
-    parentId: null,
-    chain: [testDelegateId],
-    depth: 0,
+    parentId: "dlt_PARENT0000000000000000000",
+    chain: ["dlt_PARENT0000000000000000000", testDelegateId],
+    depth: 1,
     canUpload: true,
     canManageDepot: true,
     isRevoked: false,
@@ -94,13 +94,13 @@ function createMockDelegatesDb(overrides?: Partial<DelegatesDb>): DelegatesDb {
     revoke: mock(async () => true),
     listChildren: mock(async () => ({ delegates: [], nextCursor: undefined })),
     rotateTokens: mock(async () => true),
-    getOrCreateRoot: mock(async (realm: string, id: string, tokenHashes) => ({
+    getOrCreateRoot: mock(async (realm: string, id: string) => ({
       delegate: makeDelegate({
         delegateId: id,
         realm,
-        currentRtHash: tokenHashes.currentRtHash,
-        currentAtHash: tokenHashes.currentAtHash,
-        atExpiresAt: tokenHashes.atExpiresAt,
+        currentRtHash: "",
+        currentAtHash: "",
+        atExpiresAt: 0,
       }),
       created: true,
     })),
@@ -226,6 +226,29 @@ describe("RefreshController", () => {
       const getCalls = getMock.mock.calls as unknown as Array<[string]>;
       expect(getCalls.length).toBe(1);
       expect(getCalls[0]![0]).toBe(testDelegateId);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Error: root delegate (depth=0) refresh not allowed
+  // --------------------------------------------------------------------------
+
+  describe("refresh — root delegate rejection", () => {
+    it("returns 400 when trying to refresh a root delegate (depth=0)", async () => {
+      const rt = makeRefreshToken();
+
+      mockDelegatesDb = createMockDelegatesDb({
+        get: mock(async () => makeDelegate({ depth: 0, parentId: null, currentRtHash: rt.hash })),
+      });
+
+      controller = createRefreshController({ delegatesDb: mockDelegatesDb });
+
+      const ctx = createMockContext(`Bearer ${rt.base64}`);
+      await controller.refresh(ctx as never);
+
+      expect(ctx.responseData.status).toBe(400);
+      const body = ctx.responseData.body as Record<string, unknown>;
+      expect(body.error).toBe("ROOT_REFRESH_NOT_ALLOWED");
     });
   });
 

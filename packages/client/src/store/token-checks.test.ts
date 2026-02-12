@@ -12,14 +12,11 @@ import type {
 import { emptyTokenState } from "../types/tokens.ts";
 import {
   DEFAULT_EXPIRY_BUFFER_MS,
-  hasRefreshToken,
-  isAccessTokenValid,
   isStoredAccessTokenValid,
   isTokenExpiringSoon,
   isTokenValid,
   isUserTokenValid,
   needsRootDelegate,
-  shouldRefreshAccessToken,
 } from "./token-checks.ts";
 
 // ============================================================================
@@ -37,9 +34,6 @@ const createUserToken = (overrides: Partial<StoredUserToken> = {}): StoredUserTo
 const createRootDelegate = (overrides: Partial<StoredRootDelegate> = {}): StoredRootDelegate => ({
   delegateId: "dlg_root123",
   realm: "test-realm",
-  refreshToken: "base64-refresh-token",
-  accessToken: "base64-access-token",
-  accessTokenExpiresAt: Date.now() + 3600_000,
   depth: 0,
   canUpload: true,
   canManageDepot: true,
@@ -154,45 +148,6 @@ describe("isUserTokenValid", () => {
 });
 
 // ============================================================================
-// isAccessTokenValid Tests (root delegate)
-// ============================================================================
-
-describe("isAccessTokenValid", () => {
-  it("should return false for null root delegate", () => {
-    expect(isAccessTokenValid(null)).toBe(false);
-  });
-
-  it("should return true for root delegate with valid access token", () => {
-    const rd = createRootDelegate({
-      accessTokenExpiresAt: Date.now() + 3600_000,
-    });
-    expect(isAccessTokenValid(rd)).toBe(true);
-  });
-
-  it("should return false for root delegate with expired access token", () => {
-    const rd = createRootDelegate({
-      accessTokenExpiresAt: Date.now() - 1000,
-    });
-    expect(isAccessTokenValid(rd)).toBe(false);
-  });
-
-  it("should return false when AT expires within default buffer", () => {
-    const rd = createRootDelegate({
-      accessTokenExpiresAt: Date.now() + 30_000, // 30 seconds, buffer is 60s
-    });
-    expect(isAccessTokenValid(rd)).toBe(false);
-  });
-
-  it("should respect custom buffer", () => {
-    const rd = createRootDelegate({
-      accessTokenExpiresAt: Date.now() + 30_000,
-    });
-    expect(isAccessTokenValid(rd, 10_000)).toBe(true);
-    expect(isAccessTokenValid(rd, 60_000)).toBe(false);
-  });
-});
-
-// ============================================================================
 // isStoredAccessTokenValid Tests (view type)
 // ============================================================================
 
@@ -215,26 +170,6 @@ describe("isStoredAccessTokenValid", () => {
     const at = createAccessToken({ expiresAt: Date.now() + 30_000 });
     expect(isStoredAccessTokenValid(at, 10_000)).toBe(true);
     expect(isStoredAccessTokenValid(at, 60_000)).toBe(false);
-  });
-});
-
-// ============================================================================
-// hasRefreshToken Tests
-// ============================================================================
-
-describe("hasRefreshToken", () => {
-  it("should return false for null root delegate", () => {
-    expect(hasRefreshToken(null)).toBe(false);
-  });
-
-  it("should return true when refresh token is present", () => {
-    const rd = createRootDelegate({ refreshToken: "some-rt" });
-    expect(hasRefreshToken(rd)).toBe(true);
-  });
-
-  it("should return false when refresh token is empty string", () => {
-    const rd = createRootDelegate({ refreshToken: "" });
-    expect(hasRefreshToken(rd)).toBe(false);
   });
 });
 
@@ -270,64 +205,5 @@ describe("needsRootDelegate", () => {
       rootDelegate: createRootDelegate(),
     };
     expect(needsRootDelegate(state)).toBe(false);
-  });
-});
-
-// ============================================================================
-// shouldRefreshAccessToken Tests
-// ============================================================================
-
-describe("shouldRefreshAccessToken", () => {
-  it("should return false when no root delegate", () => {
-    const state: TokenState = {
-      user: createUserToken(),
-      rootDelegate: null,
-    };
-    expect(shouldRefreshAccessToken(state)).toBe(false);
-  });
-
-  it("should return false when empty state", () => {
-    const state = emptyTokenState();
-    expect(shouldRefreshAccessToken(state)).toBe(false);
-  });
-
-  it("should return false when access token is still valid", () => {
-    const state: TokenState = {
-      user: createUserToken(),
-      rootDelegate: createRootDelegate({
-        accessTokenExpiresAt: Date.now() + 3600_000, // 1 hour
-      }),
-    };
-    expect(shouldRefreshAccessToken(state)).toBe(false);
-  });
-
-  it("should return true when access token is expired", () => {
-    const state: TokenState = {
-      user: createUserToken(),
-      rootDelegate: createRootDelegate({
-        accessTokenExpiresAt: Date.now() - 1000,
-      }),
-    };
-    expect(shouldRefreshAccessToken(state)).toBe(true);
-  });
-
-  it("should return true when access token is expiring within buffer", () => {
-    const state: TokenState = {
-      user: createUserToken(),
-      rootDelegate: createRootDelegate({
-        accessTokenExpiresAt: Date.now() + 30_000, // 30 seconds, buffer is 60s
-      }),
-    };
-    expect(shouldRefreshAccessToken(state)).toBe(true);
-  });
-
-  it("should return true when root delegate present but AT expired, no user", () => {
-    const state: TokenState = {
-      user: null,
-      rootDelegate: createRootDelegate({
-        accessTokenExpiresAt: Date.now() - 1000,
-      }),
-    };
-    expect(shouldRefreshAccessToken(state)).toBe(true);
   });
 });

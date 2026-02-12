@@ -10,14 +10,11 @@ export {
 
 export {
   DEFAULT_EXPIRY_BUFFER_MS,
-  hasRefreshToken,
-  isAccessTokenValid,
   isStoredAccessTokenValid,
   isTokenExpiringSoon,
   isTokenValid,
   isUserTokenValid,
   needsRootDelegate,
-  shouldRefreshAccessToken,
 } from "./token-checks.ts";
 export {
   createTokenSelector,

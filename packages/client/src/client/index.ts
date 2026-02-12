@@ -46,16 +46,16 @@ export type CasfaClient = {
   /** Get server info */
   getServerInfo: () => ServiceInfo | null;
 
-  /** Set root delegate (e.g., from external source) */
+  /** Set root delegate metadata (e.g., from external source) */
   setRootDelegate: (delegate: StoredRootDelegate) => void;
-  /** Get current access token (auto-refreshes if needed) */
+  /** Get current auth token (JWT for root, auto-ensures root delegate exists) */
   getAccessToken: () => Promise<StoredAccessToken | null>;
   /** Clear all tokens and logout */
   logout: () => void;
 
   /** OAuth methods */
   oauth: OAuthMethods;
-  /** Token management methods (root token + refresh) */
+  /** Token management methods (root delegate creation) */
   tokens: TokenMethods;
   /** Delegate management methods */
   delegates: DelegateMethods;
@@ -99,7 +99,7 @@ export const createClient = async (config: ClientConfig): Promise<CasfaClient> =
     serverInfo = infoResult.data;
   }
 
-  // Initialize token selector (for root delegate + RT/AT refresh)
+  // Initialize token selector (auto-ensures root delegate + JWT auth)
   const tokenSelector = createTokenSelector({
     store,
     baseUrl,

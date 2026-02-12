@@ -2,8 +2,8 @@
  * Token API functions (new 2-tier model).
  *
  * Token Requirement:
- * - POST /api/tokens/root: User JWT → Root Delegate + RT + AT
- * - POST /api/tokens/refresh: Bearer RT → new RT + AT
+ * - POST /api/tokens/root: User JWT → Root Delegate metadata (no RT/AT)
+ * - POST /api/tokens/refresh: Bearer RT → new RT + AT (child delegates only)
  */
 
 import type { RefreshTokenResponse, RootTokenResponse } from "@casfa/protocol";
@@ -11,12 +11,12 @@ import type { FetchResult } from "../types/client.ts";
 import { fetchWithAuth } from "../utils/http.ts";
 
 // ============================================================================
-// Root Token API (JWT → Root Delegate + RT + AT)
+// Root Token API (JWT → Root Delegate metadata)
 // ============================================================================
 
 /**
- * Create root delegate and initial RT + AT pair.
- * Requires User JWT.
+ * Ensure root delegate exists and get its metadata.
+ * Requires User JWT. No RT/AT returned — root uses JWT directly.
  */
 export const createRootToken = async (
   baseUrl: string,
@@ -34,12 +34,13 @@ export const createRootToken = async (
 };
 
 // ============================================================================
-// Refresh Token API (RT → new RT + AT)
+// Refresh Token API (RT → new RT + AT, child delegates only)
 // ============================================================================
 
 /**
  * Rotate refresh token to get new RT + AT pair.
  * Uses Bearer auth with the refresh token.
+ * Only valid for child delegates (depth > 0).
  */
 export const refreshToken = async (
   baseUrl: string,

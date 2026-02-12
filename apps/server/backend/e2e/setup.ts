@@ -156,7 +156,18 @@ export type TestServer = {
   stop: () => void;
 };
 
-/** Delegate Token creation result (new model) */
+/** Root Token creation result (no RT/AT — root uses JWT auth directly) */
+export type RootTokenResult = {
+  delegate: {
+    delegateId: string;
+    realm: string;
+    depth: number;
+    canUpload: boolean;
+    canManageDepot: boolean;
+  };
+};
+
+/** Delegate Token creation result (child delegates that have RT/AT) */
 export type DelegateTokenResult = {
   delegate: {
     delegateId: string;
@@ -221,8 +232,8 @@ export type TestHelpers = {
   // Token Management Helpers (User JWT required → Root Delegate + AT)
   // ========================================================================
 
-  /** Create a root delegate token (User JWT → Root Delegate + RT + AT) */
-  createRootToken: (userToken: string, realm: string) => Promise<DelegateTokenResult>;
+  /** Create a root delegate token (User JWT → Root Delegate metadata, no RT/AT) */
+  createRootToken: (userToken: string, realm: string) => Promise<RootTokenResult>;
 
   /** Create a child delegate (Access Token → Child Delegate + RT + AT) */
   createChildDelegate: (
@@ -445,7 +456,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
       }
 
       const raw = (await response.json()) as any;
-      return raw as DelegateTokenResult;
+      return raw as RootTokenResult;
     },
 
     createChildDelegate: async (accessTokenBase64, realm, options = {}) => {
@@ -482,33 +493,21 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
     },
 
     createDelegateToken: async (userToken, realm, options = {}) => {
-      // In the new model, first create root delegate, then if specific
-      // permissions are needed, create a child delegate
-      const rootResult = await helpers.createRootToken(userToken, realm);
+      // In the new model, first ensure root delegate exists, then create
+      // a child delegate using the JWT directly (middleware supports JWT auth).
+      await helpers.createRootToken(userToken, realm);
 
       const { canUpload, canManageDepot, scope, name, expiresIn } = options;
 
-      // Root delegate has canUpload=true, canManageDepot=true by default.
-      // If the caller wants restricted permissions, scope, name, or expiry,
-      // we need to create a child delegate.
-      const needsChild =
-        scope !== undefined ||
-        expiresIn !== undefined ||
-        name !== undefined ||
-        canUpload === false ||
-        canManageDepot === false;
-
-      if (needsChild) {
-        return helpers.createChildDelegate(rootResult.accessToken, realm, {
-          name,
-          expiresIn,
-          canUpload: canUpload ?? false,
-          canManageDepot: canManageDepot ?? false,
-          scope,
-        });
-      }
-
-      return rootResult;
+      // Always create a child delegate — root delegates don't have AT/RT.
+      // Use JWT (userToken) directly as the access token for authentication.
+      return helpers.createChildDelegate(userToken, realm, {
+        name: name ?? "Test Delegate",
+        expiresIn,
+        canUpload: canUpload ?? true,
+        canManageDepot: canManageDepot ?? true,
+        scope,
+      });
     },
 
     createAccessToken: async (userToken, realm, options = {}) => {

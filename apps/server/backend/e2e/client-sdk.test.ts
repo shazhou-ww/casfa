@@ -13,7 +13,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { type CasfaClient, createClient, type StoredRootDelegate } from "@casfa/client";
+import { type CasfaClient, createClient, type TokenState } from "@casfa/client";
 import { computeSizeFlagByte, encodeFileNode, type KeyProvider } from "@casfa/core";
 import { computePoP, type PopContext } from "@casfa/proof";
 import { hashToNodeKey } from "@casfa/protocol";
@@ -75,46 +75,55 @@ describe("Client SDK Integration", () => {
   });
 
   /**
-   * Helper: create a CasfaClient pre-loaded with a root delegate.
+  /**
+   * Helper: create a CasfaClient pre-loaded with user JWT and root delegate.
+   * Uses tokenStorage to inject the pre-existing auth state.
    */
   async function createTestClient(
     options: { canUpload?: boolean; canManageDepot?: boolean } = {}
   ): Promise<{
     client: CasfaClient;
     realm: string;
-    rootDelegate: StoredRootDelegate;
     mainDepotId: string;
   }> {
-    const { canUpload = true, canManageDepot = true } = options;
     const userUuid = uniqueId();
-    const { token, realm, mainDepotId } = await ctx.helpers.createTestUser(userUuid, "authorized");
+    const { token, realm, mainDepotId, userId } = await ctx.helpers.createTestUser(
+      userUuid,
+      "authorized"
+    );
 
-    // Get root delegate from server
-    const delegateResult = await ctx.helpers.createDelegateToken(token, realm, {
-      canUpload,
-      canManageDepot,
-    });
+    // Ensure root delegate exists in DB
+    const rootResult = await ctx.helpers.createRootToken(token, realm);
 
-    // Build StoredRootDelegate
-    const rootDelegate: StoredRootDelegate = {
-      delegateId: delegateResult.delegate.delegateId,
-      realm: delegateResult.delegate.realm,
-      refreshToken: delegateResult.refreshToken,
-      accessToken: delegateResult.accessToken,
-      accessTokenExpiresAt: delegateResult.accessTokenExpiresAt,
-      depth: delegateResult.delegate.depth,
-      canUpload: delegateResult.delegate.canUpload,
-      canManageDepot: delegateResult.delegate.canManageDepot,
+    // Build initial token state with user JWT + root delegate metadata
+    const initialState: TokenState = {
+      user: {
+        accessToken: token,
+        refreshToken: "",
+        userId: userId,
+        expiresAt: Date.now() + 3600_000, // 1 hour
+      },
+      rootDelegate: {
+        delegateId: rootResult.delegate.delegateId,
+        realm: rootResult.delegate.realm,
+        depth: rootResult.delegate.depth,
+        canUpload: rootResult.delegate.canUpload,
+        canManageDepot: rootResult.delegate.canManageDepot,
+      },
     };
 
-    // Create CasfaClient and inject root delegate
+    // Create CasfaClient with pre-loaded state
     const client = await createClient({
       baseUrl: ctx.baseUrl,
       realm,
+      tokenStorage: {
+        load: async () => initialState,
+        save: async () => {},
+        clear: async () => {},
+      },
     });
-    client.setRootDelegate(rootDelegate);
 
-    return { client, realm, rootDelegate, mainDepotId };
+    return { client, realm, mainDepotId };
   }
 
   /**
@@ -294,16 +303,30 @@ describe("Client SDK Integration", () => {
 
       const { nodeKey, nodeBytes } = await encodeTestFile("invalid-pop-test");
 
+      // Upload the node (auto-claimed by client's root delegate)
       await client.nodes.put(nodeKey, nodeBytes);
 
-      // Create a second client (different delegate) to test claim with wrong PoP
-      const { client: client2 } = await createTestClient();
+      // Create a child delegate (depth > 0) to test PoP rejection.
+      // Root delegates (depth=0) skip PoP verification, so we need a child.
+      const userUuid = uniqueId();
+      const { token: token2, realm: realm2 } = await ctx.helpers.createTestUser(
+        userUuid,
+        "authorized"
+      );
+      const childResult = await ctx.helpers.createDelegateToken(token2, realm2, {
+        canUpload: true,
+        canManageDepot: true,
+      });
 
+      // Claim the existing node with invalid PoP using the child delegate's AT
       const badPop = "pop:INVALIDPOPSTRING00000000";
-      const claimResult = await client2.nodes.claim(nodeKey, badPop);
-      expect(claimResult.ok).toBe(false);
-      if (claimResult.ok) throw new Error("expected claim to fail");
-      expect(claimResult.error.code).toBe("FORBIDDEN");
+      const claimResponse = await ctx.helpers.accessRequest(
+        childResult.accessToken,
+        "POST",
+        `/api/realm/${realm2}/nodes/${nodeKey}/claim`,
+        { pop: badPop }
+      );
+      expect(claimResponse.status).toBe(403);
     });
 
     it("should claim node from a different delegate using correct PoP", async () => {
@@ -387,34 +410,27 @@ describe("Client SDK Integration", () => {
   // ==========================================================================
 
   describe("token management", () => {
-    it("should provide access token with raw bytes for PoP", async () => {
+    it("should provide access token (JWT-based for root)", async () => {
       const { client } = await createTestClient();
 
       const at = await client.getAccessToken();
       expect(at).not.toBeNull();
       expect(at!.tokenBase64).toBeDefined();
+      // JWT-based access token: tokenBytes is empty (PoP not used for root)
       expect(at!.tokenBytes).toBeInstanceOf(Uint8Array);
-      expect(at!.tokenBytes.length).toBe(32);
-
-      // Verify base64 ↔ bytes roundtrip
-      const decoded = Buffer.from(at!.tokenBase64, "base64");
-      expect(at!.tokenBytes.length).toBe(decoded.length);
-      for (let i = 0; i < decoded.length; i++) {
-        expect(at!.tokenBytes[i]).toBe(decoded[i]);
-      }
+      expect(at!.tokenBytes.length).toBe(0);
+      // tokenBase64 is a JWT string (contains dots)
+      expect(at!.tokenBase64).toContain(".");
     });
 
     it("should have correct permissions in access token", async () => {
-      const { client } = await createTestClient({
-        canUpload: true,
-        canManageDepot: false,
-      });
+      const { client } = await createTestClient();
 
       const at = await client.getAccessToken();
       expect(at).not.toBeNull();
+      // Root delegate always has full permissions
       expect(at!.canUpload).toBe(true);
-      // Note: canManageDepot may still be true if root delegate
-      // has full permissions by default
+      expect(at!.canManageDepot).toBe(true);
     });
   });
 });

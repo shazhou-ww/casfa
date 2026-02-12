@@ -174,7 +174,7 @@ export type RootTokenRequest = z.infer<typeof RootTokenRequestSchema>;
 
 /**
  * Root token response schema
- * Returns root delegate info + RT + AT pair
+ * Returns root delegate info only — root operations use JWT directly
  */
 export const RootTokenResponseSchema = z.object({
   /** Root delegate details */
@@ -186,12 +186,6 @@ export const RootTokenResponseSchema = z.object({
     canManageDepot: z.boolean(),
     createdAt: z.number(),
   }),
-  /** Refresh Token (base64-encoded 24-byte binary) — store securely */
-  refreshToken: z.string(),
-  /** Access Token (base64-encoded 32-byte binary) — use for API calls */
-  accessToken: z.string(),
-  /** Access Token expiration (Unix epoch ms) */
-  accessTokenExpiresAt: z.number(),
 });
 export type RootTokenResponse = z.infer<typeof RootTokenResponseSchema>;
 
