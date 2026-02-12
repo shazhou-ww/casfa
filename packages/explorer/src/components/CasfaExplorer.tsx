@@ -29,7 +29,9 @@ export function CasfaExplorer(props: CasfaExplorerProps) {
       initialLayout: props.initialLayout,
       beforeCommit: props.beforeCommit,
       scheduleCommit: props.scheduleCommit,
+      getSyncPendingRoot: props.getSyncPendingRoot,
     });
+    props.onStoreReady?.(store.current);
   }
 
   const t = useMemo<ExplorerT>(() => {

@@ -21,6 +21,7 @@ import type {
   ConflictEvent,
   DepotSyncEntry,
   FlushableStorage,
+  SyncCommitEvent,
   SyncErrorEvent,
   SyncQueueStore,
   SyncState,
@@ -1188,6 +1189,231 @@ describe("createSyncManager", () => {
       // Only one flush call (shared Layer 1)
       expect(storage.flushCount).toBe(1);
 
+      mgr.dispose();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // getPendingRoot
+  // --------------------------------------------------------------------------
+
+  describe("getPendingRoot", () => {
+    it("should return null when no pending entry exists", () => {
+      const store = createMemoryQueueStore();
+      const storage = createMockStorage();
+      const client = createMockClient();
+
+      const mgr = createSyncManager({
+        storage,
+        client,
+        queueStore: store,
+        debounceMs: DEBOUNCE,
+      });
+
+      expect(mgr.getPendingRoot("d1")).toBeNull();
+      mgr.dispose();
+    });
+
+    it("should return targetRoot for enqueued depot", async () => {
+      const store = createMemoryQueueStore();
+      const storage = createMockStorage();
+      const client = createMockClient();
+
+      const mgr = createSyncManager({
+        storage,
+        client,
+        queueStore: store,
+        debounceMs: DEBOUNCE,
+      });
+
+      mgr.enqueue("d1", "rootB", "rootA");
+      expect(mgr.getPendingRoot("d1")).toBe("rootB");
+      mgr.dispose();
+    });
+
+    it("should return latest targetRoot after merge", async () => {
+      const store = createMemoryQueueStore();
+      const storage = createMockStorage();
+      const client = createMockClient();
+
+      const mgr = createSyncManager({
+        storage,
+        client,
+        queueStore: store,
+        debounceMs: DEBOUNCE,
+      });
+
+      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "rootC", "rootB");
+      expect(mgr.getPendingRoot("d1")).toBe("rootC");
+      mgr.dispose();
+    });
+
+    it("should return null after successful sync", async () => {
+      const store = createMemoryQueueStore();
+      const storage = createMockStorage();
+      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const client = createMockClient({ depots });
+
+      const mgr = createSyncManager({
+        storage,
+        client,
+        queueStore: store,
+        debounceMs: DEBOUNCE,
+      });
+
+      mgr.enqueue("d1", "rootB", "rootA");
+      await wait(DEBOUNCE + 100);
+
+      expect(mgr.getPendingRoot("d1")).toBeNull();
+      mgr.dispose();
+    });
+
+    it("should return targetRoot from recovered entries", async () => {
+      const store = createMemoryQueueStore();
+      store.entries.set("d1", {
+        depotId: "d1",
+        targetRoot: "rootB",
+        lastKnownServerRoot: "rootA",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        retryCount: 0,
+      });
+      const storage = createMockStorage();
+      // Block the sync so entry stays in queue
+      const client = createMockClient({
+        getFn: async () => new Promise(() => {}),
+      });
+
+      const mgr = createSyncManager({
+        storage,
+        client,
+        queueStore: store,
+        debounceMs: DEBOUNCE,
+      });
+
+      await mgr.recover();
+      // After recover, entry is in memQueue
+      expect(mgr.getPendingRoot("d1")).toBe("rootB");
+      mgr.dispose();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // onCommit
+  // --------------------------------------------------------------------------
+
+  describe("onCommit", () => {
+    it("should emit commit event on successful commit", async () => {
+      const store = createMemoryQueueStore();
+      const storage = createMockStorage();
+      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const client = createMockClient({ depots });
+
+      const mgr = createSyncManager({
+        storage,
+        client,
+        queueStore: store,
+        debounceMs: DEBOUNCE,
+      });
+
+      const commits: SyncCommitEvent[] = [];
+      mgr.onCommit((event) => {
+        commits.push(event);
+      });
+
+      mgr.enqueue("d1", "rootB", "rootA");
+      await wait(DEBOUNCE + 100);
+
+      expect(commits).toHaveLength(1);
+      expect(commits[0]!.depotId).toBe("d1");
+      expect(commits[0]!.committedRoot).toBe("rootB");
+      mgr.dispose();
+    });
+
+    it("should emit commit event when already synced", async () => {
+      const store = createMemoryQueueStore();
+      const storage = createMockStorage();
+      // Server already has rootB
+      const depots = new Map([["d1", { depotId: "d1", root: "rootB" }]]);
+      const client = createMockClient({ depots });
+
+      const mgr = createSyncManager({
+        storage,
+        client,
+        queueStore: store,
+        debounceMs: DEBOUNCE,
+      });
+
+      const commits: SyncCommitEvent[] = [];
+      mgr.onCommit((event) => {
+        commits.push(event);
+      });
+
+      mgr.enqueue("d1", "rootB", "rootA");
+      await wait(DEBOUNCE + 100);
+
+      expect(commits).toHaveLength(1);
+      expect(commits[0]!.depotId).toBe("d1");
+      expect(commits[0]!.committedRoot).toBe("rootB");
+      mgr.dispose();
+    });
+
+    it("should support unsubscribe", async () => {
+      const store = createMemoryQueueStore();
+      const storage = createMockStorage();
+      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const client = createMockClient({ depots });
+
+      const mgr = createSyncManager({
+        storage,
+        client,
+        queueStore: store,
+        debounceMs: DEBOUNCE,
+      });
+
+      const commits: SyncCommitEvent[] = [];
+      const unsub = mgr.onCommit((event) => {
+        commits.push(event);
+      });
+
+      unsub();
+
+      mgr.enqueue("d1", "rootB", "rootA");
+      await wait(DEBOUNCE + 100);
+
+      expect(commits).toHaveLength(0);
+      mgr.dispose();
+    });
+
+    it("should emit for each depot in multi-depot sync", async () => {
+      const store = createMemoryQueueStore();
+      const storage = createMockStorage();
+      const depots = new Map([
+        ["d1", { depotId: "d1", root: "rootA" }],
+        ["d2", { depotId: "d2", root: "rootX" }],
+      ]);
+      const client = createMockClient({ depots });
+
+      const mgr = createSyncManager({
+        storage,
+        client,
+        queueStore: store,
+        debounceMs: DEBOUNCE,
+      });
+
+      const commits: SyncCommitEvent[] = [];
+      mgr.onCommit((event) => {
+        commits.push(event);
+      });
+
+      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d2", "rootY", "rootX");
+      await wait(DEBOUNCE + 100);
+
+      expect(commits).toHaveLength(2);
+      const depotIds = commits.map((c) => c.depotId).sort();
+      expect(depotIds).toEqual(["d1", "d2"]);
       mgr.dispose();
     });
   });

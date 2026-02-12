@@ -82,6 +82,15 @@ export type SyncErrorEvent = {
   permanent: boolean;
 };
 
+/**
+ * Emitted when a depot root is successfully committed to the server
+ * (or was already in sync).
+ */
+export type SyncCommitEvent = {
+  depotId: string;
+  committedRoot: string;
+};
+
 export type SyncManagerConfig = {
   /** Layer 1: storage with flush() — used to sync CAS nodes before committing */
   storage: FlushableStorage;
@@ -121,6 +130,15 @@ export type SyncManager = {
 
   /** Subscribe to sync error events (permanent failures). Returns unsubscribe function. */
   onError(listener: (event: SyncErrorEvent) => void): () => void;
+
+  /** Subscribe to successful commit events. Returns unsubscribe function. */
+  onCommit(listener: (event: SyncCommitEvent) => void): () => void;
+
+  /**
+   * Get the pending (uncommitted) target root for a depot.
+   * Returns null if no pending entry exists for this depot.
+   */
+  getPendingRoot(depotId: string): string | null;
 
   /** Get current state */
   getState(): SyncState;
@@ -165,6 +183,7 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
   const stateListeners = new Set<(state: SyncState) => void>();
   const conflictListeners = new Set<(event: ConflictEvent) => void>();
   const errorListeners = new Set<(event: SyncErrorEvent) => void>();
+  const commitListeners = new Set<(event: SyncCommitEvent) => void>();
 
   // -- Helpers --
 
@@ -195,6 +214,10 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
 
   function emitError(event: SyncErrorEvent): void {
     for (const fn of errorListeners) fn(event);
+  }
+
+  function emitCommit(event: SyncCommitEvent): void {
+    for (const fn of commitListeners) fn(event);
   }
 
   function clearTimers(): void {
@@ -314,6 +337,7 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
         if (serverRoot === entry.targetRoot) {
           memQueue.delete(entry.depotId);
           await queueStore.remove(entry.depotId);
+          emitCommit({ depotId: entry.depotId, committedRoot: entry.targetRoot });
           continue;
         }
 
@@ -352,6 +376,7 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
         // Success — remove from queue
         memQueue.delete(entry.depotId);
         await queueStore.remove(entry.depotId);
+        emitCommit({ depotId: entry.depotId, committedRoot: entry.targetRoot });
       } catch (_err) {
         // Network error (fetch threw) — always retry
         bumpRetry(entry);
@@ -461,6 +486,15 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
     onError(listener: (event: SyncErrorEvent) => void): () => void {
       errorListeners.add(listener);
       return () => errorListeners.delete(listener);
+    },
+
+    onCommit(listener: (event: SyncCommitEvent) => void): () => void {
+      commitListeners.add(listener);
+      return () => commitListeners.delete(listener);
+    },
+
+    getPendingRoot(depotId: string): string | null {
+      return memQueue.get(depotId)?.targetRoot ?? null;
     },
 
     getState(): SyncState {

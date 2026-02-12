@@ -129,25 +129,19 @@ export const createHttpStorage = (config: HttpStorageConfig): HttpStorageProvide
       if (result.ok) {
         // Successful GET means the node exists on the server.
         // Mark it as "owned" if not already cached.
-        const wasCached = checkCache.has(nodeKey);
-        if (!wasCached) {
+        if (!checkCache.has(nodeKey)) {
           checkCache.set(nodeKey, "owned");
         }
         // Also mark direct children as owned (no recursive expansion).
         // If we can read the parent, its children must also exist & be owned.
-        let childrenMarked = 0;
         if (getChildKeys) {
           for (const childKey of getChildKeys(result.data)) {
             const childNodeKey = storageKeyToNodeKey(childKey);
             if (!checkCache.has(childNodeKey)) {
               checkCache.set(childNodeKey, "owned");
-              childrenMarked++;
             }
           }
         }
-        console.log(
-          `[http-storage] get(${nodeKey}) → OK, cached=${wasCached}, children marked owned=${childrenMarked}, cache size=${checkCache.size}`
-        );
         return result.data;
       }
       return null;
@@ -212,11 +206,6 @@ export const createHttpStorage = (config: HttpStorageConfig): HttpStorageProvide
           uncachedNodeKeys.push(nk);
         }
       }
-
-      console.log(
-        `[http-storage] checkMany: total=${keys.length}, fromCache=${keys.length - uncachedNodeKeys.length} (owned=${owned.length}, unowned=${unowned.length}, missing=${missing.length}), toNetwork=${uncachedNodeKeys.length}`,
-        uncachedNodeKeys.length > 0 ? `\n  uncached: ${uncachedNodeKeys.join(", ")}` : ""
-      );
 
       // All keys resolved from cache — no network call needed
       if (uncachedNodeKeys.length === 0) return { missing, unowned, owned };

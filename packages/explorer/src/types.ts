@@ -6,6 +6,7 @@ import type { CasfaClient } from "@casfa/client";
 import type { KeyProvider, StorageProvider } from "@casfa/core";
 import type { SxProps, Theme } from "@mui/material";
 import type React from "react";
+import type { ExplorerStoreApi } from "./core/explorer-store.ts";
 
 // ============================================================================
 // Core Data Types
@@ -29,6 +30,8 @@ export type ExplorerItem = {
   childCount?: number;
   /** Index in the parent directory */
   index?: number;
+  /** Sync status — "pending" means locally modified but not yet committed to server */
+  syncStatus?: "pending";
 };
 
 /** A breadcrumb segment */
@@ -299,12 +302,26 @@ export type CasfaExplorerProps = {
    */
   scheduleCommit?: (depotId: string, newRoot: string, lastKnownServerRoot: string | null) => void;
 
+  /**
+   * Return the pending (uncommitted) root for a depot, or null if none.
+   * Used after page refresh to display local data instead of stale server root,
+   * and to diff against server root to mark pending items.
+   */
+  getSyncPendingRoot?: (depotId: string) => string | null;
+
   // ── Event callbacks ──
   onNavigate?: (path: string) => void;
   onSelect?: (items: ExplorerItem[]) => void;
   onFileOpen?: (item: ExplorerItem) => void;
   onError?: (error: ExplorerError) => void;
   onRootChange?: (newRoot: string) => void;
+
+  /**
+   * Called once when the internal explorer store is created.
+   * Use to obtain a reference for external integration (e.g. updating server root
+   * from a SyncManager commit event).
+   */
+  onStoreReady?: (store: ExplorerStoreApi) => void;
 
   // ── Custom rendering ──
   renderEmptyState?: () => React.ReactNode;

@@ -39,6 +39,10 @@ export type ExplorerState = {
     | null;
   depotId: string | null;
   depotRoot: string | null; // current root node key
+  /** Server-confirmed root — may lag behind depotRoot when sync is pending */
+  serverRoot: string | null;
+  /** Paths of items that differ between local and server root (pending sync) */
+  pendingPaths: Set<string>;
 
   // ── Depot list ──
   depots: DepotListItem[];
@@ -170,6 +174,8 @@ export type ExplorerActions = {
 
   // ── Root pointer ──
   updateDepotRoot: (newRoot: string) => void;
+  /** Update the server-confirmed root. If it matches depotRoot, clears pending state. */
+  updateServerRoot: (newRoot: string) => void;
 
   // ── File operations (Iter 2) ──
   createFolder: (name: string) => Promise<boolean>;
@@ -211,6 +217,68 @@ function toExplorerItem(child: FsLsChild, parentPath: string): ExplorerItem {
   };
 }
 
+/**
+ * Compare the current directory listing against the server root.
+ * Items whose nodeKey differs (or is absent in the server tree) are marked
+ * with `syncStatus: "pending"`.
+ *
+ * This only compares the currently displayed directory (shallow),
+ * not the entire tree.
+ */
+async function diffCurrentDir(
+  localFs: FsService,
+  localRoot: string,
+  srvRoot: string | null,
+  currentPath: string,
+  get: () => ExplorerStore,
+  set: (partial: Partial<ExplorerStore>) => void
+): Promise<void> {
+  if (!srvRoot || localRoot === srvRoot) {
+    // No diff needed — roots match or no server root
+    set({ pendingPaths: new Set<string>() });
+    return;
+  }
+
+  try {
+    // List the same directory under the server root
+    const serverResult = await localFs.ls(srvRoot, currentPath || undefined, undefined, 10000);
+    if (isFsError(serverResult)) {
+      // Server tree doesn't have this path — all items are pending
+      const { items } = get();
+      const pending = new Set(items.map((i) => i.path));
+      set({
+        pendingPaths: pending,
+        items: items.map((i) => ({ ...i, syncStatus: "pending" as const })),
+      });
+      return;
+    }
+
+    // Build a map of name → nodeKey from the server listing
+    const serverKeyMap = new Map<string, string | undefined>();
+    for (const child of serverResult.children) {
+      serverKeyMap.set(child.name, child.key);
+    }
+
+    // Compare against current items
+    const { items } = get();
+    const pending = new Set<string>();
+    const updatedItems = items.map((item) => {
+      const serverKey = serverKeyMap.get(item.name);
+      // Item is pending if: not on server, or nodeKey differs
+      if (serverKey === undefined || (item.nodeKey && serverKey !== item.nodeKey)) {
+        pending.add(item.path);
+        return { ...item, syncStatus: "pending" as const };
+      }
+      return item.syncStatus ? { ...item, syncStatus: undefined } : item;
+    });
+
+    set({ pendingPaths: pending, items: updatedItems });
+  } catch {
+    // If diff fails, don't block — just clear pending state
+    set({ pendingPaths: new Set<string>() });
+  }
+}
+
 // ============================================================================
 // Store Factory
 // ============================================================================
@@ -231,6 +299,11 @@ export type CreateExplorerStoreOpts = {
    * of calling `client.depots.commit()` directly.
    */
   scheduleCommit?: (depotId: string, newRoot: string, lastKnownServerRoot: string | null) => void;
+  /**
+   * Return the pending (uncommitted) root for a depot, or null.
+   * Used after refresh to display local data instead of stale server root.
+   */
+  getSyncPendingRoot?: (depotId: string) => string | null;
 };
 
 const LS_PAGE_SIZE = 200;
@@ -259,6 +332,8 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     scheduleCommit: opts.scheduleCommit ?? null,
     depotId: opts.depotId ?? null,
     depotRoot: null,
+    serverRoot: null,
+    pendingPaths: new Set<string>(),
     depots: [],
     depotsLoading: false,
     currentPath: opts.initialPath ?? "",
@@ -313,9 +388,15 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
       // Fetch depot detail to get root node key
       const result = await client.depots.get(depotId);
       if (result.ok) {
+        const serverRoot = result.data.root;
+        // Check if SyncManager has a pending root that hasn't been committed yet
+        const pendingRoot = opts.getSyncPendingRoot?.(depotId) ?? null;
+        const effectiveRoot = pendingRoot ?? serverRoot;
         set({
           depotId,
-          depotRoot: result.data.root,
+          depotRoot: effectiveRoot,
+          serverRoot,
+          pendingPaths: new Set<string>(),
           currentPath: "",
           items: [],
           cursor: null,
@@ -413,6 +494,11 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           totalItems: result.total,
           isLoading: false,
         });
+        // Diff against server root to mark pending items
+        const { serverRoot } = get();
+        if (serverRoot && serverRoot !== depotRoot) {
+          diffCurrentDir(localFs, depotRoot, serverRoot, path, get, set);
+        }
       } catch {
         set({ isLoading: false });
       }
@@ -449,6 +535,11 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           totalItems: result.total,
           isLoading: false,
         });
+        // Diff against server root to mark pending items
+        const { serverRoot } = get();
+        if (serverRoot && serverRoot !== depotRoot) {
+          diffCurrentDir(localFs, depotRoot, serverRoot, currentPath, get, set);
+        }
         // Also refresh tree node cache for current path
         const treeNodes = new Map(get().treeNodes);
         const node = treeNodes.get(currentPath);
@@ -768,6 +859,23 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
     // ── Root pointer ──
     updateDepotRoot: (newRoot: string) => set({ depotRoot: newRoot }),
+
+    updateServerRoot: (newRoot: string) => {
+      const { depotRoot, currentPath, localFs, serverRoot: oldServerRoot } = get();
+      set({ serverRoot: newRoot });
+      // If server caught up to local, clear pending state
+      if (newRoot === depotRoot) {
+        set({ pendingPaths: new Set<string>() });
+        // Also clear syncStatus on current items
+        const { items } = get();
+        if (items.some((i) => i.syncStatus)) {
+          set({ items: items.map((i) => ({ ...i, syncStatus: undefined })) });
+        }
+      } else if (oldServerRoot !== newRoot && depotRoot) {
+        // Server root changed but still differs from local — re-diff current view
+        diffCurrentDir(localFs, depotRoot, newRoot, currentPath, get, set);
+      }
+    },
 
     // ── File operations ──
     createFolder: async (name: string) => {

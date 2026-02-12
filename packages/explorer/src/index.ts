@@ -43,6 +43,7 @@ export {
   createSyncManager,
   type DepotSyncEntry,
   type FlushableStorage,
+  type SyncCommitEvent,
   type SyncErrorEvent,
   type SyncManager,
   type SyncManagerConfig,

@@ -7,6 +7,7 @@
  */
 
 import AudioFileIcon from "@mui/icons-material/AudioFile";
+import CloudSyncIcon from "@mui/icons-material/CloudSync";
 import CodeIcon from "@mui/icons-material/Code";
 import DescriptionIcon from "@mui/icons-material/Description";
 import FolderIcon from "@mui/icons-material/Folder";
@@ -105,7 +106,20 @@ function GridItem({
         }),
       }}
     >
-      {renderNodeIcon ? renderNodeIcon(item) : getGridIcon(category)}
+      <Box sx={{ position: "relative", display: "inline-flex" }}>
+        {renderNodeIcon ? renderNodeIcon(item) : getGridIcon(category)}
+        {item.syncStatus === "pending" && (
+          <CloudSyncIcon
+            color="info"
+            sx={{
+              position: "absolute",
+              right: -4,
+              bottom: -4,
+              fontSize: 14,
+            }}
+          />
+        )}
+      </Box>
       <Typography
         variant="caption"
         align="center"
