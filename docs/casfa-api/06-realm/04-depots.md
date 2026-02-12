@@ -1,66 +1,30 @@
 # Depot 管理
 
-Depot 是 CAS 中的命名存储空间，用于组织和管理数据。
+Depot 是命名存储空间，每个 Depot 持有一个可变的 root 指针（指向 CAS 节点），以及 root 的变更历史。
 
-## 认证
+## ID 格式
 
-Depot 操作需要 **Access Token**：
-
-```http
-Authorization: Bearer {base64_encoded_token}
-```
-
-### 权限要求
-
-| 操作 | 权限要求 |
-|------|----------|
-| 列出 Depot | Access Token |
-| 查看 Depot | Access Token |
-| 创建 Depot | Access Token + `canManageDepot` |
-| 修改 Depot | Access Token + `canManageDepot` |
-| 删除 Depot | Access Token + `canManageDepot` |
-
-### 可见范围
-
-Depot 的可见范围由 Issuer Chain 决定。Access Token 可以看到其 Issuer Chain 中任意 Token 创建的 Depot：
-
-- 该 Access Token 的直接 Issuer（签发它的 Delegate Token）创建的 Depot
-- Issuer 的 Issuer 创建的 Depot，以此类推
-- 直到用户创建的 Depot
-
-对于修改操作（更新、删除），还需要验证 Depot 的 `creatorIssuerId` 在当前 Token 的 Issuer Chain 中。
-
----
-
-## 端点列表
-
-| 方法 | 路径 | 描述 | 权限 |
-|------|------|------|------|
-| GET | `/api/realm/{realmId}/depots` | 列出 Depot | Access Token |
-| POST | `/api/realm/{realmId}/depots` | 创建 Depot | canManageDepot |
-| GET | `/api/realm/{realmId}/depots/:depotId` | 获取 Depot 详情 | Access Token |
-| PATCH | `/api/realm/{realmId}/depots/:depotId` | 修改 Depot | canManageDepot |
-| DELETE | `/api/realm/{realmId}/depots/:depotId` | 删除 Depot | canManageDepot |
+Depot ID 使用 `dpt_` 前缀 + 26 位 Crockford Base32 编码的 ULID（128 位），例如 `dpt_01H5K6Z9X3ABCDEF01234567`。创建时自动生成。
 
 ---
 
 ## GET /api/realm/{realmId}/depots
 
-列出 Realm 中的 Depot。
+列出 Realm 下的所有 Depot。
 
 ### 请求
 
 ```http
 GET /api/realm/usr_abc123/depots?limit=20
-Authorization: Bearer {access_token}
+Authorization: Bearer {access_token 或 jwt}
 ```
 
 ### 查询参数
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `limit` | `number` | 每页数量，默认 20，最大 100 |
-| `cursor` | `string` | 分页游标 |
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `limit` | `number` | 100 | 每页数量 |
+| `cursor` | `string` | — | 分页游标 |
 
 ### 响应
 
@@ -68,168 +32,150 @@ Authorization: Bearer {access_token}
 {
   "depots": [
     {
-      "depotId": "depot:MAIN",
-      "name": "Main Depot",
-      "creatorIssuerId": "dlt1_xxxxx",
-      "createdAt": 1738497600000
+      "depotId": "dpt_01H5K6Z9X3ABCDEF01234567",
+      "title": "main",
+      "root": "nod_abc123...",
+      "maxHistory": 100,
+      "history": ["nod_prev1...", "nod_prev2..."],
+      "createdAt": 1707600000000,
+      "updatedAt": 1707600100000
     }
   ],
-  "nextCursor": "xxx"
+  "nextCursor": null,
+  "hasMore": false
 }
 ```
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `depotId` | `string` | Depot ID |
-| `name` | `string` | Depot 名称 |
-| `creatorIssuerId` | `string` | 创建者 Token ID |
-| `createdAt` | `number` | 创建时间 |
 
 ---
 
 ## POST /api/realm/{realmId}/depots
 
-创建新的 Depot。需要 `canManageDepot` 权限。
+创建 Depot。需要 `canManageDepot` 权限。
 
 ### 请求
 
 ```http
 POST /api/realm/usr_abc123/depots
-Authorization: Bearer {access_token}
+Authorization: Bearer {access_token 或 jwt}
 Content-Type: application/json
 
 {
-  "name": "My Depot",
-  "depotId": "my-depot"
+  "title": "my-project",
+  "maxHistory": 50
 }
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `name` | `string` | 是 | Depot 显示名称（1-128 字符） |
-| `depotId` | `string` | 否 | Depot ID（省略则自动生成 ULID） |
+| `title` | `string` | 否 | Depot 标题（同一 Realm 内唯一） |
+| `maxHistory` | `number` | 否 | Root 历史保留数量（默认由系统配置决定） |
 
-### 响应
+> **唯一性**：同一 Realm 下不能创建同 `title` 的 Depot。
+
+### 响应（201）
 
 ```json
 {
-  "depotId": "depot:my-depot",
-  "name": "My Depot",
-  "root": "node:empty...",
-  "creatorIssuerId": "dlt1_xxxxx",
-  "createdAt": 1738497600000,
-  "updatedAt": 1738497600000
+  "depotId": "dpt_01H5K6Z9X3ABCDEF01234567",
+  "title": "my-project",
+  "root": "nod_empty...",
+  "maxHistory": 50,
+  "history": [],
+  "createdAt": 1707600000000,
+  "updatedAt": 1707600000000
 }
 ```
 
-> 新创建的 Depot 以空 dict node (d-node) 作为初始 root
+> 初始 root 指向空字典节点（well-known node）。
 
 ### 错误
 
 | 错误码 | HTTP Status | 说明 |
 |--------|-------------|------|
-| `DEPOT_MANAGE_NOT_ALLOWED` | 403 | Token 没有 canManageDepot 权限 |
-| `CONFLICT` | 409 | Depot ID 已存在 |
+| 409 | 409 | `title` 重复 |
+| `maxHistory cannot exceed N` | 400 | maxHistory 超过系统上限 |
 
 ---
 
 ## GET /api/realm/{realmId}/depots/:depotId
 
-获取 Depot 详情，包含当前 root。
+获取 Depot 详情。
 
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/depots/depot:MAIN
-Authorization: Bearer {access_token}
+GET /api/realm/usr_abc123/depots/dpt_01H5K6Z9X3ABCDEF01234567
+Authorization: Bearer {access_token 或 jwt}
 ```
 
 ### 响应
 
 ```json
 {
-  "depotId": "depot:MAIN",
-  "name": "Main Depot",
-  "root": "node:abc123...",
-  "creatorIssuerId": "dlt1_xxxxx",
-  "createdAt": 1704067200000,
-  "updatedAt": 1738497600000
+  "depotId": "dpt_01H5K6Z9X3ABCDEF01234567",
+  "title": "my-project",
+  "root": "nod_abc123...",
+  "maxHistory": 50,
+  "history": ["nod_prev1...", "nod_prev2..."],
+  "createdAt": 1707600000000,
+  "updatedAt": 1707600100000
 }
 ```
 
-| 字段 | 描述 |
-|------|------|
-| `depotId` | Depot 唯一标识 |
-| `name` | Depot 名称 |
-| `root` | 当前根节点 key |
-| `creatorIssuerId` | 创建者 Token ID |
-| `createdAt` | 创建时间（epoch 毫秒） |
-| `updatedAt` | 最后更新时间（epoch 毫秒） |
+### 响应字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `depotId` | `string` | Depot ID（`dpt_` 前缀） |
+| `title` | `string` | Depot 标题 |
+| `root` | `string` | 当前 root 节点 key（`nod_` 前缀） |
+| `maxHistory` | `number` | Root 历史保留数量 |
+| `history` | `string[]` | 历史 root 列表（最近的在前） |
+| `createdAt` | `number` | 创建时间（Unix 毫秒） |
+| `updatedAt` | `number` | 最后修改时间（Unix 毫秒） |
 
 ### 错误
 
 | 错误码 | HTTP Status | 说明 |
 |--------|-------------|------|
-| `NOT_FOUND` | 404 | Depot 不存在 |
-| `DEPOT_ACCESS_DENIED` | 403 | 无权访问该 Depot |
+| `Depot not found` | 404 | Depot 不存在 |
 
 ---
 
 ## PATCH /api/realm/{realmId}/depots/:depotId
 
-修改 Depot 的元数据或更新 root。需要 `canManageDepot` 权限。
+修改 Depot 元信息。需要 `canManageDepot` 权限。
+
+> **注意**：此端点仅修改元信息（title、maxHistory），不修改 root。更新 root 请使用 `POST .../commit`。
 
 ### 请求
 
 ```http
-PATCH /api/realm/usr_abc123/depots/depot:MAIN
-Authorization: Bearer {access_token}
+PATCH /api/realm/usr_abc123/depots/dpt_01H5K6Z9X3ABCDEF01234567
+Authorization: Bearer {access_token 或 jwt}
 Content-Type: application/json
 
 {
-  "name": "New Name",
-  "root": "node:newroot..."
+  "title": "renamed-project",
+  "maxHistory": 200
 }
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `name` | `string` | 否 | 新名称（1-128 字符） |
-| `root` | `string` | 否 | 新的根节点 key（必须已存在，且需通过引用验证） |
-
-### Root 引用验证
-
-更新 `root` 时，服务端验证调用方有权引用该节点，与 `rewrite` 的 `link` 和底层 `PUT /nodes/:key` 的子节点引用验证规则一致：
-
-| 验证方式 | 条件 | 典型场景 |
-|----------|------|----------|
-| **uploader 验证** | 节点的 `uploaderTokenId` == 当前 Token ID | fs/write 或 rewrite 产生的 newRoot |
-| **scope 验证** | 节点在当前 Token 的 scope 树内 | 回退到已知的历史 root |
-
-> **安全说明**：如果不做引用验证，攻击者可以猜测/泄漏一个 node hash，将其设为自己 Depot 的 root，再通过 `fs/read` 等路径读取其内容——hash 泄漏即等于内容泄漏。
+| `title` | `string` | 否 | 新标题 |
+| `maxHistory` | `number` | 否 | 新的历史保留数量 |
 
 ### 响应
 
-```json
-{
-  "depotId": "depot:MAIN",
-  "name": "New Name",
-  "root": "node:newroot...",
-  "creatorIssuerId": "dlt1_xxxxx",
-  "createdAt": 1704067200000,
-  "updatedAt": 1738501200000
-}
-```
+返回更新后的完整 Depot 对象（同 GET 响应格式）。
 
 ### 错误
 
 | 错误码 | HTTP Status | 说明 |
 |--------|-------------|------|
-| `DEPOT_MANAGE_NOT_ALLOWED` | 403 | Token 没有 canManageDepot 权限 |
-| `DEPOT_ACCESS_DENIED` | 403 | 无权访问该 Depot |
-| `NOT_FOUND` | 404 | Depot 不存在 |
-| `INVALID_ROOT` | 400 | root 节点不存在 |
-| `ROOT_NOT_AUTHORIZED` | 403 | root 引用验证失败：既非本 Token 上传，也不在 Token scope 内 |
+| `Depot not found` | 404 | Depot 不存在 |
+| `maxHistory cannot exceed N` | 400 | maxHistory 超过系统上限 |
 
 ---
 
@@ -240,8 +186,8 @@ Content-Type: application/json
 ### 请求
 
 ```http
-DELETE /api/realm/usr_abc123/depots/depot:my-depot
-Authorization: Bearer {access_token}
+DELETE /api/realm/usr_abc123/depots/dpt_01H5K6Z9X3ABCDEF01234567
+Authorization: Bearer {access_token 或 jwt}
 ```
 
 ### 响应
@@ -256,40 +202,81 @@ Authorization: Bearer {access_token}
 
 | 错误码 | HTTP Status | 说明 |
 |--------|-------------|------|
-| `DEPOT_MANAGE_NOT_ALLOWED` | 403 | Token 没有 canManageDepot 权限 |
-| `DEPOT_ACCESS_DENIED` | 403 | 无权访问该 Depot |
-| `NOT_FOUND` | 404 | Depot 不存在 |
+| `Depot not found` | 404 | Depot 不存在 |
 
 ---
 
-## Issuer Chain 验证
+## POST /api/realm/{realmId}/depots/:depotId/commit
 
-Depot 的访问权限通过 Issuer Chain 验证：
+提交新的 Root 到 Depot。需要 `canUpload` 权限。
 
+这是文件系统写操作后的关键步骤：`fs/write`、`fs/mkdir` 等操作只产生新 Root（返回 `newRoot`），不会自动更新 Depot。调用方需显式调用此端点将新 Root 提交到 Depot。
+
+### 请求
+
+```http
+POST /api/realm/usr_abc123/depots/dpt_01H5K6Z9X3ABCDEF01234567/commit
+Authorization: Bearer {access_token 或 jwt}
+Content-Type: application/json
+
+{
+  "root": "nod_abc123..."
+}
 ```
-User (usr_abc)
-  └── Token A (dlt1_aaa)  ← created depot:X
-      └── Token B (dlt1_bbb)  ← can access depot:X
-          └── Token C (dlt1_ccc)  ← can access depot:X
-```
 
-- Token A 创建的 depot:X，其 `creatorIssuerId` = `dlt1_aaa`
-- Token B 和 Token C 的 Issuer Chain 包含 `dlt1_aaa`，所以可以访问
-- 其他 Token（不在这个 chain 上）不能访问 depot:X
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `root` | `string` | 是 | 新的 root 节点 key（`nod_` 前缀） |
 
-### 示例
+### 验证流程
 
-Token C 的 issuerChain: `["usr_abc", "dlt1_aaa", "dlt1_bbb"]`
+1. **Depot 存在性**：确认 depotId 有效
+2. **Root 存在性**：确认 root 节点在存储中存在
+3. **所有权验证**：root 节点必须被当前 Delegate 链中任一成员拥有（well-known 节点如空字典免检）
 
-验证逻辑：
-1. depot:X 的 creatorIssuerId = `dlt1_aaa`
-2. Token C 的 issuerChain 包含 `dlt1_aaa`
-3. ✓ 允许访问
+### 响应
+
+返回更新后的完整 Depot 对象（同 GET 响应格式），`root` 已更新为新值，旧 root 自动移入 `history`。
+
+### 错误
+
+| 错误码 | HTTP Status | 说明 |
+|--------|-------------|------|
+| `Depot not found` | 404 | Depot 不存在 |
+| `Root node does not exist` | 400 | root 节点在存储中不存在 |
+| `ROOT_NOT_AUTHORIZED` | 403 | root 节点未被当前 Delegate 链拥有 |
 
 ---
 
-## 使用建议
+## 典型工作流
 
-1. **合理命名**：使用有意义的 depot 名称和 ID
-2. **权限分离**：只给需要管理 depot 的 Token 设置 `canManageDepot`
-3. **追踪来源**：通过 `creatorIssuerId` 追踪 depot 的创建者
+### 修改文件并提交
+
+```
+1. 读取文件
+   GET /api/realm/{realmId}/nodes/dpt_xxx/fs/read?path=src/main.ts
+
+2. 写入修改后的文件
+   POST /api/realm/{realmId}/nodes/dpt_xxx/fs/write?path=src/main.ts
+   → newRoot: "nod_modified..."
+
+3. 提交到 Depot
+   POST /api/realm/{realmId}/depots/dpt_xxx/commit
+   { "root": "nod_modified..." }
+```
+
+### 多次修改后一次提交
+
+```
+1. 第一次修改
+   POST /api/realm/{realmId}/nodes/dpt_xxx/fs/write?path=file1.ts
+   → newRoot: "nod_step1..."
+
+2. 基于上一步的 newRoot 继续修改
+   POST /api/realm/{realmId}/nodes/nod_step1.../fs/write?path=file2.ts
+   → newRoot: "nod_step2..."
+
+3. 一次性提交最终 Root
+   POST /api/realm/{realmId}/depots/dpt_xxx/commit
+   { "root": "nod_step2..." }
+```

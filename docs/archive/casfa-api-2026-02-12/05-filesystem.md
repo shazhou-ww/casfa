@@ -10,13 +10,13 @@
 
 ### 为什么需要文件系统 API
 
-现有底层 API（`PUT /nodes/:key`、`POST /depots/:depotId/commit`）提供了 CAS 原语操作，但客户端需要自行：
+现有底层 API（`PUT /nodes/:key`、`PATCH /depots/:depotId`）提供了 CAS 原语操作，但客户端需要自行：
 
 1. 解析 d-node 的 children 列表找到目标文件
 2. 构建新的 d-node 二进制数据
 3. 逐层重建 Merkle 路径至新 Root
 4. 上传所有变更的节点
-5. 更新 Depot 的 root
+5. 更新 Depot 或 Ticket 的 root
 
 文件系统 API 将这些步骤封装为直观的路径操作，降低客户端复杂度。
 
@@ -27,7 +27,7 @@
 | **不可变** | 所有写操作返回新的 Root Node，原数据不受影响 |
 | **单 Block 文件** | read/write 仅支持单 block 文件（≤ `maxNodeSize`，线上 4MB），多 block 大文件应使用底层 Node API 分块读写 |
 | **路径寻址** | 支持 CAS URI 的 path 和 index-path 两种定位方式 |
-| **权限复用** | 复用现有 AT / JWT + Scope 权限体系 |
+| **权限复用** | 复用现有 Access Token + Scope 权限体系 |
 | **声明式重写** | 提供 `rewrite` 端点，声明新树的路径映射关系，一次性产出新 Root，避免中间结果 |
 
 ### 限制
@@ -54,26 +54,24 @@
 - 与现有 `GET /nodes/:key`（获取原始二进制）和 `GET /nodes/:key/metadata` 形成自然层级
 - `nodeKey` 直接在 URL 中，无需额外的 `root` 查询参数
 
-> **CAS URI 解析**：`nodeKey` 支持 `nod_xxx`（直接 hash）、`dpt_xxx`（解析 Depot 当前 root）两种格式。
+> **CAS URI 解析**：`nodeKey` 支持 `node:xxx`（直接 hash）、`depot:xxx`（解析 Depot 当前 root）、`ticket:xxx`（解析 Ticket 当前 root）三种格式，与 CAS URI 的 root 部分一致。
 
 ---
 
 ## 认证
 
-所有文件系统操作需要 **Access Token 或 User JWT**（Root Delegate）：
+所有文件系统操作需要 **Access Token**：
 
 ```http
-Authorization: Bearer {access_token_base64 或 jwt}
+Authorization: Bearer {base64_encoded_token}
 ```
-
-> 中间件自动识别 Token 格式：包含 `.` 分隔符为 JWT，否则为 AT。
 
 ### 权限要求
 
 | 操作 | 权限要求 |
 |------|----------|
-| 读取文件/目录 | AT 或 JWT（需 scope 证明） |
-| 创建/更新/删除文件或目录 | AT 或 JWT + `canUpload` |
+| 读取文件/目录 | Access Token（需 scope 证明） |
+| 创建/更新/删除文件或目录 | Access Token + `canUpload` |
 
 ### Scope 证明
 
@@ -91,15 +89,15 @@ X-CAS-Index-Path: 0:1
 
 | 方法 | 路径 | 描述 | 权限 |
 |------|------|------|------|
-| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/stat` | 获取文件/目录元信息 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/read` | 读取文件内容 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/ls` | 列出目录内容 | AT 或 JWT |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/write` | 创建或覆盖文件 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mkdir` | 创建目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rm` | 删除文件或目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mv` | 移动/重命名 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/cp` | 复制文件或目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rewrite` | 声明式批量重写目录树 | AT 或 JWT (canUpload) |
+| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/stat` | 获取文件/目录元信息 | Access Token |
+| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/read` | 读取文件内容 | Access Token |
+| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/ls` | 列出目录内容 | Access Token |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/write` | 创建或覆盖文件 | Access Token (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mkdir` | 创建目录 | Access Token (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rm` | 删除文件或目录 | Access Token (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mv` | 移动/重命名 | Access Token (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/cp` | 复制文件或目录 | Access Token (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rewrite` | 声明式批量重写目录树 | Access Token (canUpload) |
 
 ---
 
@@ -110,7 +108,7 @@ X-CAS-Index-Path: 0:1
 | 参数 | 类型 | 说明 |
 |------|------|------|
 | `realmId` | `string` | Realm ID |
-| `nodeKey` | `string` | 根节点标识，支持 `nod_xxx`（直接 hash）、`dpt_xxx`（解析 Depot 当前 root） |
+| `nodeKey` | `string` | 根节点标识，支持 `node:xxx`、`depot:xxx`、`ticket:xxx` |
 
 ### 查询参数：路径定位
 
@@ -142,9 +140,9 @@ X-CAS-Index-Path: 0:1
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `newRoot` | `string` | 新的根节点 key（`nod_xxx`） |
+| `newRoot` | `string` | 新的根节点 key（`node:xxx`） |
 
-> **重要**：写操作只产生新 Root，**不会自动更新** Depot 的 root。调用方需要自行调用 `POST /api/realm/{realmId}/depots/:depotId/commit` 来提交新 Root。
+> **重要**：写操作只产生新 Root，**不会自动更新** Depot 或 Ticket 的 root。调用方需要自行调用 `PATCH /api/realm/{realmId}/depots/:depotId` 或 `POST /api/realm/{realmId}/tickets/:ticketId/submit` 来提交新 Root。
 
 ---
 
@@ -155,7 +153,7 @@ X-CAS-Index-Path: 0:1
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/nodes/dpt_abc123/fs/stat?path=src/main.ts
+GET /api/realm/usr_abc123/nodes/depot:MAIN/fs/stat?path=src/main.ts
 Authorization: Bearer {access_token}
 X-CAS-Index-Path: 0
 ```
@@ -173,7 +171,7 @@ X-CAS-Index-Path: 0
 {
   "type": "file",
   "name": "main.ts",
-  "key": "nod_abc123...",
+  "key": "node:abc123...",
   "size": 2048,
   "contentType": "text/typescript"
 }
@@ -185,7 +183,7 @@ X-CAS-Index-Path: 0
 {
   "type": "dir",
   "name": "src",
-  "key": "nod_def456...",
+  "key": "node:def456...",
   "childCount": 5
 }
 ```
@@ -198,7 +196,7 @@ X-CAS-Index-Path: 0
 {
   "type": "dir",
   "name": "",
-  "key": "nod_root...",
+  "key": "node:root...",
   "childCount": 3
 }
 ```
@@ -235,7 +233,7 @@ X-CAS-Index-Path: 0
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/nodes/dpt_abc123/fs/read?path=src/main.ts
+GET /api/realm/usr_abc123/nodes/depot:MAIN/fs/read?path=src/main.ts
 Authorization: Bearer {access_token}
 X-CAS-Index-Path: 0
 ```
@@ -258,7 +256,7 @@ X-CAS-Index-Path: 0
 HTTP/1.1 200 OK
 Content-Type: text/typescript
 Content-Length: 2048
-X-CAS-Key: nod_abc123...
+X-CAS-Key: node:abc123...
 
 (文件内容)
 ```
@@ -284,7 +282,7 @@ X-CAS-Key: nod_abc123...
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/nodes/dpt_abc123/fs/ls?path=src
+GET /api/realm/usr_abc123/nodes/depot:MAIN/fs/ls?path=src
 Authorization: Bearer {access_token}
 X-CAS-Index-Path: 0
 ```
@@ -298,20 +296,20 @@ X-CAS-Index-Path: 0
 | `limit` | `number` | 否 | 每页数量，默认 100，最大 1000 |
 | `cursor` | `string` | 否 | 分页游标（首次请求时不提供） |
 
-> **分页一致性说明**：当 `nodeKey` 使用 `dpt_xxx` 时，两次请求之间 root 可能被更新，导致分页结果不一致。建议在需要分页的场景下使用 `nod_xxx`（不可变 hash）以确保一致性。
+> **分页一致性说明**：当 `nodeKey` 使用 `depot:xxx` 或 `ticket:xxx` 时，两次请求之间 root 可能被更新，导致分页结果不一致。建议在需要分页的场景下使用 `node:xxx`（不可变 hash）以确保一致性。
 
 ### 响应
 
 ```json
 {
   "path": "src",
-  "key": "nod_def456...",
+  "key": "node:def456...",
   "children": [
     {
       "name": "cli.ts",
       "index": 0,
       "type": "file",
-      "key": "nod_aaa...",
+      "key": "node:aaa...",
       "size": 1024,
       "contentType": "text/typescript"
     },
@@ -319,14 +317,14 @@ X-CAS-Index-Path: 0
       "name": "commands",
       "index": 1,
       "type": "dir",
-      "key": "nod_bbb...",
+      "key": "node:bbb...",
       "childCount": 3
     },
     {
       "name": "lib",
       "index": 2,
       "type": "dir",
-      "key": "nod_ccc...",
+      "key": "node:ccc...",
       "childCount": 7
     }
   ],
@@ -373,7 +371,7 @@ X-CAS-Index-Path: 0
 文件路径和元信息通过查询参数和 Header 传递，文件内容通过 binary body 传递：
 
 ```http
-POST /api/realm/usr_abc123/nodes/dpt_abc123/fs/write?path=src/utils/helper.ts
+POST /api/realm/usr_abc123/nodes/depot:MAIN/fs/write?path=src/utils/helper.ts
 Authorization: Bearer {access_token}
 X-CAS-Index-Path: 0
 Content-Type: text/typescript
@@ -408,10 +406,10 @@ Content-Length: 2048
 
 ```json
 {
-  "newRoot": "nod_newroot...",
+  "newRoot": "node:newroot...",
   "file": {
     "path": "src/utils/helper.ts",
-    "key": "nod_filekey...",
+    "key": "node:filekey...",
     "size": 2048,
     "contentType": "text/typescript"
   },
@@ -452,7 +450,7 @@ Content-Length: 2048
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/nodes/dpt_abc123/fs/mkdir
+POST /api/realm/usr_abc123/nodes/depot:MAIN/fs/mkdir
 Authorization: Bearer {access_token}
 X-CAS-Index-Path: 0
 Content-Type: application/json
@@ -472,10 +470,10 @@ Content-Type: application/json
 
 ```json
 {
-  "newRoot": "nod_newroot...",
+  "newRoot": "node:newroot...",
   "dir": {
     "path": "src/utils/parsers",
-    "key": "nod_dirkey..."
+    "key": "node:dirkey..."
   },
   "created": true
 }
@@ -510,7 +508,7 @@ Content-Type: application/json
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/nodes/dpt_abc123/fs/rm
+POST /api/realm/usr_abc123/nodes/depot:MAIN/fs/rm
 Authorization: Bearer {access_token}
 X-CAS-Index-Path: 0
 Content-Type: application/json
@@ -529,11 +527,11 @@ Content-Type: application/json
 
 ```json
 {
-  "newRoot": "nod_newroot...",
+  "newRoot": "node:newroot...",
   "removed": {
     "path": "src/utils/helper.ts",
     "type": "file",
-    "key": "nod_oldkey..."
+    "key": "node:oldkey..."
   }
 }
 ```
@@ -564,7 +562,7 @@ Content-Type: application/json
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/nodes/dpt_abc123/fs/mv
+POST /api/realm/usr_abc123/nodes/depot:MAIN/fs/mv
 Authorization: Bearer {access_token}
 X-CAS-Index-Path: 0
 Content-Type: application/json
@@ -589,7 +587,7 @@ Content-Type: application/json
 
 ```json
 {
-  "newRoot": "nod_newroot...",
+  "newRoot": "node:newroot...",
   "from": "src/old-name.ts",
   "to": "src/utils/new-name.ts"
 }
@@ -617,7 +615,7 @@ Content-Type: application/json
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/nodes/dpt_abc123/fs/cp
+POST /api/realm/usr_abc123/nodes/depot:MAIN/fs/cp
 Authorization: Bearer {access_token}
 X-CAS-Index-Path: 0
 Content-Type: application/json
@@ -639,7 +637,7 @@ Content-Type: application/json
 
 ```json
 {
-  "newRoot": "nod_newroot...",
+  "newRoot": "node:newroot...",
   "from": "src/template.ts",
   "to": "src/utils/template-copy.ts"
 }
@@ -681,7 +679,7 @@ Content-Type: application/json
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/nodes/dpt_abc123/fs/rewrite
+POST /api/realm/usr_abc123/nodes/depot:MAIN/fs/rewrite
 Authorization: Bearer {access_token}
 X-CAS-Index-Path: 0
 Content-Type: application/json
@@ -691,7 +689,7 @@ Content-Type: application/json
     "src/new-module/utils.ts": { "from": "src/old-utils.ts" },
     "src/new-module/template.ts": { "from": "src/template.ts" },
     "src/new-module": { "dir": true },
-    "data/large-file.bin": { "link": "nod_abc123..." }
+    "data/large-file.bin": { "link": "node:abc123..." }
   },
   "deletes": [
     "src/old-utils.ts",
@@ -717,7 +715,7 @@ Content-Type: application/json
 |------|------|------|
 | **from（移动/复制）** | `{ "from": "旧路径" }` | 从旧树的指定路径引用节点（文件或目录均可） |
 | **dir（空目录）** | `{ "dir": true }` | 创建空目录 |
-| **link（挂载节点）** | `{ "link": "nod_xxx", "proof?": "index-path" }` | 挂载一个已存在的 CAS 节点（需通过引用验证） |
+| **link（挂载节点）** | `{ "link": "node:xxx", "proof?": "index-path" }` | 挂载一个已存在的 CAS 节点（需通过引用验证） |
 
 > **如何创建新文件？** 使用 `fs/write` 端点先创建文件获取新 Root，或通过底层 `PUT /nodes/:key` 上传 f-node 后用 `link` 挂载。`rewrite` 专注于树的结构变更（移动、复制、删除、挂载），不内嵌文件内容。
 
@@ -748,8 +746,8 @@ Content-Type: application/json
 **`link` — 挂载已有节点**
 
 ```json
-"data/large-file.bin": { "link": "nod_abc123..." }
-"data/ref-file.bin":   { "link": "nod_def456...", "proof": "0:3:1" }
+"data/large-file.bin": { "link": "node:abc123..." }
+"data/ref-file.bin":   { "link": "node:def456...", "proof": "0:3:1" }
 ```
 
 - 将一个已存在于存储中的 CAS 节点挂载到指定路径
@@ -787,7 +785,7 @@ Content-Type: application/json
 
 ```json
 {
-  "newRoot": "nod_newroot...",
+  "newRoot": "node:newroot...",
   "entriesApplied": 5,
   "deleted": 2
 }
@@ -863,9 +861,9 @@ Content-Type: application/json
   "entries": {
     "lib/core/index.ts":   { "from": "src/core.ts" },
     "lib/core/utils.ts":   { "from": "src/utils/core-utils.ts" },
-    "lib/core/types.ts":   { "link": "nod_types..." },
+    "lib/core/types.ts":   { "link": "node:types-node..." },
     "lib/plugins":         { "from": "src/plugins" },
-    "assets/logo.png":     { "link": "nod_abc123..." }
+    "assets/logo.png":     { "link": "node:abc123..." }
   },
   "deletes": [
     "src/core.ts",
@@ -879,49 +877,49 @@ Content-Type: application/json
 
 ## 典型使用流程
 
-### 场景 1：Agent 修改文件并提交 Depot
+### 场景 1：Agent 修改文件并提交 Ticket
 
 ```
 1. 获取 Depot 当前 root
-   GET /api/realm/{realmId}/depots/{depotId}
-   → root: "nod_original..."
+   GET /api/realm/{realmId}/depots/depot:MAIN
+   → root: "node:original..."
 
 2. 读取目标文件
-   GET /api/realm/{realmId}/nodes/dpt_abc123/fs/read?path=src/config.ts
+   GET /api/realm/{realmId}/nodes/depot:MAIN/fs/read?path=src/config.ts
    → 文件内容
 
 3. 修改文件（binary body）
-   POST /api/realm/{realmId}/nodes/dpt_abc123/fs/write?path=src/config.ts
+   POST /api/realm/{realmId}/nodes/depot:MAIN/fs/write?path=src/config.ts
    Content-Type: text/typescript
    Body: (文件二进制内容)
-   → newRoot: "nod_modified..."
+   → newRoot: "node:modified..."
 
 4. 可选：继续修改其他文件（使用上一步的 newRoot）
-   POST /api/realm/{realmId}/nodes/nod_modified.../fs/write?path=src/app.ts
+   POST /api/realm/{realmId}/nodes/node:modified.../fs/write?path=src/app.ts
    Content-Type: text/typescript
    Body: (文件二进制内容)
-   → newRoot: "nod_modified2..."
+   → newRoot: "node:modified2..."
 
-5. 提交到 Depot
-   POST /api/realm/{realmId}/depots/{depotId}/commit
-   { root: "nod_modified2..." }
+5. 提交 Ticket
+   POST /api/realm/{realmId}/tickets/{ticketId}/submit
+   { root: "node:modified2..." }
 ```
 
 ### 场景 2：Agent 浏览项目结构
 
 ```
 1. 列出项目根目录
-   GET /api/realm/{realmId}/nodes/dpt_abc123/fs/ls
+   GET /api/realm/{realmId}/nodes/depot:MAIN/fs/ls
    → 根目录子节点列表
 
 2. 深入查看某个子目录
-   GET /api/realm/{realmId}/nodes/dpt_abc123/fs/ls?path=src/commands
+   GET /api/realm/{realmId}/nodes/depot:MAIN/fs/ls?path=src/commands
 
 3. 如果目录子节点很多，使用 cursor 分页
-   GET /api/realm/{realmId}/nodes/dpt_abc123/fs/ls?path=src&cursor=xxx
+   GET /api/realm/{realmId}/nodes/depot:MAIN/fs/ls?path=src&cursor=xxx
 
 4. 读取具体文件
-   GET /api/realm/{realmId}/nodes/dpt_abc123/fs/read?path=src/commands/auth.ts
+   GET /api/realm/{realmId}/nodes/depot:MAIN/fs/read?path=src/commands/auth.ts
 ```
 
 ### 场景 3：声明式重构操作
@@ -931,7 +929,7 @@ Content-Type: application/json
 ```typescript
 // 1. 先写入新文件，获取新 Root
 const writeResult = await fetch(
-  `/api/realm/${realmId}/nodes/dpt_abc123/fs/write?path=src/new-module/index.ts`,
+  `/api/realm/${realmId}/nodes/depot:MAIN/fs/write?path=src/new-module/index.ts`,
   {
     method: "POST",
     headers: {
@@ -970,9 +968,8 @@ const result = await fetch(
 const { newRoot } = await result.json();
 
 // 3. 一次性提交最终结果
-await fetch(`/api/realm/${realmId}/depots/${depotId}/commit`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
+await fetch(`/api/realm/${realmId}/depots/depot:MAIN`, {
+  method: "PATCH",
   body: JSON.stringify({ root: newRoot }),
 });
 ```
@@ -997,14 +994,14 @@ await fetch(`/api/realm/${realmId}/depots/${depotId}/commit`, {
 
 ```
 1. 使用底层 API 分块上传文件
-   PUT /api/realm/{realmId}/nodes/nod_chunk1...  (s-node)
-   PUT /api/realm/{realmId}/nodes/nod_chunk2...  (s-node)
-   PUT /api/realm/{realmId}/nodes/nod_file...    (f-node, 引用 chunks)
+   PUT /api/realm/{realmId}/nodes/node:chunk1...  (s-node)
+   PUT /api/realm/{realmId}/nodes/node:chunk2...  (s-node)
+   PUT /api/realm/{realmId}/nodes/node:file...    (f-node, 引用 chunks)
 
 2. 使用 rewrite 将已上传的 f-node 挂载到目录树
-   POST /api/realm/{realmId}/nodes/dpt_abc123/fs/rewrite
-   { entries: { "data/large-file.bin": { "link": "nod_file..." } } }
-   （无需 proof——nod_file... 是本 Token 刚上传的，自动通过 uploader 验证）
+   POST /api/realm/{realmId}/nodes/depot:MAIN/fs/rewrite
+   { entries: { "data/large-file.bin": { "link": "node:file..." } } }
+   （无需 proof——node:file... 是本 Token 刚上传的，自动通过 uploader 验证）
 ```
 
 > **注意**：`link` 是 rewrite 专有的操作类型，用于将一个已存在的节点挂载到指定路径。不在单独端点中提供。
