@@ -52,6 +52,8 @@ function getGridIcon(category: IconCategory) {
 type GridItemProps = {
   item: ExplorerItem;
   isSelected: boolean;
+  isCut: boolean;
+  isFocused: boolean;
   searchTerm: string;
   onSelect: (item: ExplorerItem, e: React.MouseEvent) => void;
   onOpen: (item: ExplorerItem) => void;
@@ -62,6 +64,8 @@ type GridItemProps = {
 function GridItem({
   item,
   isSelected,
+  isCut,
+  isFocused,
   searchTerm,
   onSelect,
   onOpen,
@@ -93,6 +97,12 @@ function GridItem({
         },
         minHeight: 100,
         overflow: "hidden",
+        opacity: isCut ? 0.5 : 1,
+        ...(isFocused && {
+          outline: "2px dashed",
+          outlineColor: "primary.main",
+          outlineOffset: -2,
+        }),
       }}
     >
       {renderNodeIcon ? renderNodeIcon(item) : getGridIcon(category)}
@@ -143,6 +153,8 @@ type FileGridProps = {
   onContextMenu?: (e: React.MouseEvent, item: ExplorerItem | null) => void;
   renderEmptyState?: () => React.ReactNode;
   renderNodeIcon?: (item: ExplorerItem) => React.ReactNode;
+  /** Paths of items currently cut to clipboard (shown at reduced opacity) */
+  cutPaths?: Set<string> | null;
 };
 
 export function FileGrid({
@@ -151,6 +163,7 @@ export function FileGrid({
   onContextMenu,
   renderEmptyState,
   renderNodeIcon,
+  cutPaths,
 }: FileGridProps) {
   const t = useExplorerT();
   const isLoading = useExplorerStore((s) => s.isLoading);
@@ -161,6 +174,9 @@ export function FileGrid({
   const setSelectedItems = useExplorerStore((s) => s.setSelectedItems);
   const getSortedItems = useExplorerStore((s) => s.getSortedItems);
   const searchTerm = useExplorerStore((s) => s.searchTerm);
+  const focusIndex = useExplorerStore((s) => s.focusIndex);
+  const lastSelectedIndex = useExplorerStore((s) => s.lastSelectedIndex);
+  const setLastSelectedIndex = useExplorerStore((s) => s.setLastSelectedIndex);
 
   const items = getSortedItems();
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -183,17 +199,39 @@ export function FileGrid({
 
   const handleSelect = useCallback(
     (item: ExplorerItem, e: React.MouseEvent) => {
+      const itemIndex = items.findIndex((i) => i.path === item.path);
+
+      // Shift+click for range selection
+      if (e.shiftKey && lastSelectedIndex !== null) {
+        const start = Math.min(lastSelectedIndex, itemIndex);
+        const end = Math.max(lastSelectedIndex, itemIndex);
+        const rangeItems = items.slice(start, end + 1);
+        if (e.metaKey || e.ctrlKey) {
+          const existing = new Set(selectedItems.map((i) => i.path));
+          const merged = [...selectedItems];
+          for (const ri of rangeItems) {
+            if (!existing.has(ri.path)) merged.push(ri);
+          }
+          setSelectedItems(merged);
+        } else {
+          setSelectedItems(rangeItems);
+        }
+        return;
+      }
+
       if (e.metaKey || e.ctrlKey) {
         if (selectedPaths.has(item.path)) {
           setSelectedItems(selectedItems.filter((i) => i.path !== item.path));
         } else {
           setSelectedItems([...selectedItems, item]);
         }
+        setLastSelectedIndex(itemIndex);
         return;
       }
       setSelectedItems([item]);
+      setLastSelectedIndex(itemIndex);
     },
-    [selectedItems, selectedPaths, setSelectedItems]
+    [selectedItems, selectedPaths, setSelectedItems, items, lastSelectedIndex, setLastSelectedIndex],
   );
 
   const handleOpen = useCallback(
@@ -270,11 +308,13 @@ export function FileGrid({
           p: 1,
         }}
       >
-        {items.map((item) => (
+        {items.map((item, idx) => (
           <Box key={item.path} data-grid-item>
             <GridItem
               item={item}
               isSelected={selectedPaths.has(item.path)}
+              isCut={cutPaths?.has(item.path) ?? false}
+              isFocused={focusIndex === idx}
               searchTerm={searchTerm}
               onSelect={handleSelect}
               onOpen={handleOpen}

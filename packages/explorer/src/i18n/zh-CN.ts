@@ -93,6 +93,45 @@ const messages: Record<ExplorerTextKey, string> = {
   // 侧边栏 (Iter 3)
   "sidebar.collapse": "折叠侧边栏",
   "sidebar.expand": "展开侧边栏",
+  // 剪贴板 (Iter 4)
+  "clipboard.copied": "已复制 {count} 个项目",
+  "clipboard.cut": "已剪切 {count} 个项目",
+  "clipboard.pasted": "粘贴成功",
+  "clipboard.pasteError": "粘贴失败",
+  // 详情面板 (Iter 4)
+  "detail.title": "详情",
+  "detail.name": "名称",
+  "detail.path": "路径",
+  "detail.size": "大小",
+  "detail.type": "类型",
+  "detail.nodeKey": "节点密钥",
+  "detail.childCount": "子项数",
+  "detail.noSelection": "未选择项目",
+  "detail.multipleSelected": "已选择 {count} 个项目",
+  "detail.totalSize": "总大小",
+  // 预览 (Iter 4)
+  "preview.title": "预览",
+  "preview.unsupported": "此文件类型不支持预览",
+  "preview.loading": "正在加载预览\u2026",
+  "preview.error": "加载预览失败",
+  "preview.tooLarge": "文件过大，无法预览",
+  "preview.open": "打开",
+  "preview.lines": "{count} 行",
+  // 冲突 (Iter 4)
+  "conflict.title": "文件冲突",
+  "conflict.message": "目标位置已存在名为「{name}」的文件",
+  "conflict.overwrite": "覆盖",
+  "conflict.skip": "跳过",
+  "conflict.rename": "保留两者（重命名）",
+  "conflict.applyToAll": "应用到所有冲突",
+  "conflict.source": "源文件",
+  "conflict.existing": "已有文件",
+  // 拖放 (Iter 4)
+  "dnd.moveItems": "移动 {count} 个项目",
+  "dnd.copyItems": "复制 {count} 个项目",
+  // 上传增强 (Iter 4)
+  "upload.cancelAll": "取消全部",
+  "upload.overallProgress": "总体进度",
 };
 
 /**

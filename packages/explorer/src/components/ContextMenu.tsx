@@ -35,6 +35,11 @@ type ContextMenuProps = {
   onNewFolder?: () => void;
   onUpload?: () => void;
   onRefresh?: () => void;
+  /** Clipboard callbacks (Iter 4) */
+  onCopy?: () => void;
+  onCut?: () => void;
+  onPaste?: () => void;
+  canPaste?: boolean;
 };
 
 export function ContextMenu({
@@ -48,6 +53,10 @@ export function ContextMenu({
   onNewFolder,
   onUpload,
   onRefresh,
+  onCopy,
+  onCut,
+  onPaste,
+  canPaste = false,
 }: ContextMenuProps) {
   const t = useExplorerT();
   const selectedItems = useExplorerStore((s) => s.selectedItems);
@@ -85,8 +94,8 @@ export function ContextMenu({
           label: t("menu.cut"),
           icon: <ContentCutIcon fontSize="small" />,
           shortcut: "⌘X",
-          onClick: () => {},
-          disabled: true, // Iter 4
+          onClick: () => onCut?.(),
+          disabled: false,
           hidden: !canUpload,
         },
         {
@@ -94,8 +103,8 @@ export function ContextMenu({
           label: t("menu.copy"),
           icon: <ContentCopyIcon fontSize="small" />,
           shortcut: "⌘C",
-          onClick: () => {},
-          disabled: true, // Iter 4
+          onClick: () => onCopy?.(),
+          disabled: false,
           hidden: false,
           dividerAfter: true,
         },
@@ -127,8 +136,8 @@ export function ContextMenu({
             label: t("menu.cut"),
             icon: <ContentCutIcon fontSize="small" />,
             shortcut: "⌘X",
-            onClick: () => {},
-            disabled: true, // Iter 4
+            onClick: () => onCut?.(),
+            disabled: false,
             hidden: !canUpload,
           },
           {
@@ -136,8 +145,8 @@ export function ContextMenu({
             label: t("menu.copy"),
             icon: <ContentCopyIcon fontSize="small" />,
             shortcut: "⌘C",
-            onClick: () => {},
-            disabled: true, // Iter 4
+            onClick: () => onCopy?.(),
+            disabled: false,
             hidden: false,
           },
           {
@@ -145,8 +154,8 @@ export function ContextMenu({
             label: t("menu.paste"),
             icon: <ContentPasteIcon fontSize="small" />,
             shortcut: "⌘V",
-            onClick: () => {},
-            disabled: true, // Iter 4
+            onClick: () => onPaste?.(),
+            disabled: !canPaste,
             hidden: !canUpload,
             dividerAfter: true,
           },
@@ -203,8 +212,8 @@ export function ContextMenu({
             label: t("menu.cut"),
             icon: <ContentCutIcon fontSize="small" />,
             shortcut: "⌘X",
-            onClick: () => {},
-            disabled: true, // Iter 4
+            onClick: () => onCut?.(),
+            disabled: false,
             hidden: !canUpload,
           },
           {
@@ -212,8 +221,8 @@ export function ContextMenu({
             label: t("menu.copy"),
             icon: <ContentCopyIcon fontSize="small" />,
             shortcut: "⌘C",
-            onClick: () => {},
-            disabled: true, // Iter 4
+            onClick: () => onCopy?.(),
+            disabled: false,
             hidden: false,
           },
           {
@@ -253,8 +262,8 @@ export function ContextMenu({
           label: t("menu.paste"),
           icon: <ContentPasteIcon fontSize="small" />,
           shortcut: "⌘V",
-          onClick: () => {},
-          disabled: true, // Iter 4
+          onClick: () => onPaste?.(),
+          disabled: !canPaste,
           hidden: !canUpload,
           dividerAfter: true,
         },
@@ -292,6 +301,7 @@ export function ContextMenu({
     isMultiSelect,
     selectedItems,
     canUpload,
+    canPaste,
     t,
     onOpen,
     onRename,
@@ -299,6 +309,9 @@ export function ContextMenu({
     onNewFolder,
     onUpload,
     onRefresh,
+    onCopy,
+    onCut,
+    onPaste,
   ]);
 
   return (

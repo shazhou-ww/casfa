@@ -3,6 +3,7 @@
  *
  * Shows as a collapsible bottom panel with per-file status,
  * cancel (for pending), and retry (for failed) actions.
+ * Iter 4: Added overall progress bar and cancel-all button.
  */
 
 import CancelIcon from "@mui/icons-material/Cancel";
@@ -12,9 +13,11 @@ import ErrorIcon from "@mui/icons-material/Error";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ReplayIcon from "@mui/icons-material/Replay";
+import StopCircleIcon from "@mui/icons-material/StopCircle";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import {
   Box,
+  Button,
   Chip,
   Collapse,
   IconButton,
@@ -30,11 +33,12 @@ import { useCallback, useState } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 
 type UploadProgressProps = {
-  onCancel: (id: string) => void;
-  onRetry: (id: string) => void;
+  onCancel?: (id: string) => void;
+  onRetry?: (id: string) => void;
+  onCancelAll?: () => void;
 };
 
-export function UploadProgress({ onCancel, onRetry }: UploadProgressProps) {
+export function UploadProgress({ onCancel, onRetry, onCancelAll }: UploadProgressProps) {
   const t = useExplorerT();
   const uploadQueue = useExplorerStore((s) => s.uploadQueue);
   const clearCompletedUploads = useExplorerStore((s) => s.clearCompletedUploads);
@@ -44,10 +48,19 @@ export function UploadProgress({ onCancel, onRetry }: UploadProgressProps) {
   const done = uploadQueue.filter((item) => item.status === "done").length;
   const errors = uploadQueue.filter((item) => item.status === "error").length;
   const uploading = uploadQueue.filter((item) => item.status === "uploading").length;
+  const pending = uploadQueue.filter((item) => item.status === "pending").length;
+
+  // Overall progress percentage
+  const overallPercent = total > 0 ? Math.round((done / total) * 100) : 0;
+  const isActive = uploading > 0 || pending > 0;
 
   const handleClearAll = useCallback(() => {
     clearCompletedUploads();
   }, [clearCompletedUploads]);
+
+  const handleCancelAll = useCallback(() => {
+    onCancelAll?.();
+  }, [onCancelAll]);
 
   if (total === 0) return null;
 
@@ -108,25 +121,54 @@ export function UploadProgress({ onCancel, onRetry }: UploadProgressProps) {
         </Tooltip>
       </Box>
 
-      {/* Progress bar */}
+      {/* Overall progress bar (Iter 4) */}
+      <Box sx={{ px: 1.5, py: 0.5 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+            {overallPercent}%
+          </Typography>
+          {isActive && onCancelAll && (
+            <Button
+              size="small"
+              variant="text"
+              color="error"
+              startIcon={<StopCircleIcon fontSize="small" />}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCancelAll();
+              }}
+              sx={{ minWidth: 0, py: 0, px: 0.5, fontSize: "0.7rem" }}
+            >
+              {t("upload.cancel")}
+            </Button>
+          )}
+        </Box>
+        <LinearProgress
+          variant="determinate"
+          value={overallPercent}
+          sx={{ borderRadius: 1 }}
+        />
+      </Box>
+
+      {/* Per-file indeterminate bar for active uploads */}
       {uploading > 0 && <LinearProgress />}
 
       {/* Item list */}
       <Collapse in={expanded}>
-        <List dense sx={{ maxHeight: 240, overflow: "auto", py: 0 }}>
+        <List dense sx={{ maxHeight: 200, overflow: "auto", py: 0 }}>
           {uploadQueue.map((item) => (
             <ListItem
               key={item.id}
               secondaryAction={
                 item.status === "pending" ? (
                   <Tooltip title={t("upload.cancel")}>
-                    <IconButton edge="end" size="small" onClick={() => onCancel(item.id)}>
+                    <IconButton edge="end" size="small" onClick={() => onCancel?.(item.id)}>
                       <CancelIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
                 ) : item.status === "error" ? (
                   <Tooltip title={t("upload.retry")}>
-                    <IconButton edge="end" size="small" onClick={() => onRetry(item.id)}>
+                    <IconButton edge="end" size="small" onClick={() => onRetry?.(item.id)}>
                       <ReplayIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
