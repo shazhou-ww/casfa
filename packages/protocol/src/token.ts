@@ -161,7 +161,7 @@ export type RevokeTokenResponse = z.infer<typeof RevokeTokenResponseSchema>;
 // ============================================================================
 
 /**
- * Schema for POST /api/tokens/refresh
+ * Schema for POST /api/auth/refresh
  *
  * Rotates a Refresh Token: consumes the old RT (one-time use),
  * issues a new RT + AT pair for the same delegate.

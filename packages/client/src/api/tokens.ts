@@ -2,7 +2,7 @@
  * Token API functions (new 2-tier model).
  *
  * Token Endpoint:
- * - POST /api/tokens/refresh: Bearer RT → new RT + AT (child delegates only)
+ * - POST /api/auth/refresh: Bearer RT → new RT + AT (child delegates only)
  *
  * Root delegates no longer need a dedicated endpoint — the server's
  * access-token-auth middleware auto-creates the root delegate on first
@@ -27,7 +27,7 @@ export const refreshToken = async (
   refreshTokenBase64: string
 ): Promise<FetchResult<RefreshTokenResponse>> => {
   return fetchWithAuth<RefreshTokenResponse>(
-    `${baseUrl}/api/tokens/refresh`,
+    `${baseUrl}/api/auth/refresh`,
     `Bearer ${refreshTokenBase64}`,
     {
       method: "POST",

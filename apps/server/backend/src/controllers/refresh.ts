@@ -1,7 +1,7 @@
 /**
  * Refresh Token Controller (token-simplification v3)
  *
- * POST /api/tokens/refresh — Binary RT → new RT + new AT (rotation)
+ * POST /api/auth/refresh — Binary RT → new RT + new AT (rotation)
  *
  * Simplified flow:
  * 1. Decode 24-byte RT from Authorization: Bearer {base64}
@@ -50,7 +50,7 @@ export const createRefreshController = (deps: RefreshControllerDeps): RefreshCon
   const { delegatesDb } = deps;
 
   /**
-   * POST /api/tokens/refresh
+   * POST /api/auth/refresh
    *
    * RT is passed via Authorization: Bearer {base64} header.
    */

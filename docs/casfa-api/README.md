@@ -100,19 +100,17 @@ CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 | POST | `/api/oauth/refresh` | 刷新 JWT Token | 无 |
 | GET | `/api/oauth/me` | 获取当前用户信息 | User JWT |
 
-### Delegate Token 管理 API
-
-[详细文档](./02-tokens.md)
-
-| 方法 | 路径 | 描述 | 认证 |
-|------|------|------|------|
-| POST | `/api/tokens/refresh` | 旋转 RT → 新 RT + AT | Refresh Token |
-
-### 客户端授权申请 API（未实现）
+### Auth API
 
 [详细文档](./03-client-auth.md)
 
-> **注意**：客户端授权申请流程尚未实现，文档描述的是设计规划。
+| 方法 | 路径 | 描述 | 认证 | 状态 |
+|------|------|------|------|------|
+| POST | `/api/auth/refresh` | 旋转 RT → 新 RT + AT | Refresh Token | ✅ 已实现 |
+| POST | `/api/auth/request` | 发起授权申请 | 无 | ⚠️ 未实现 |
+| GET | `/api/auth/request/:requestId/poll` | 轮询授权状态 | 无 | ⚠️ 未实现 |
+| POST | `/api/auth/request/:requestId/approve` | 批准申请 | User JWT | ⚠️ 未实现 |
+| POST | `/api/auth/request/:requestId/deny` | 拒绝申请 | User JWT | ⚠️ 未实现 |
 
 ### Admin 管理 API
 
@@ -223,7 +221,7 @@ CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 | 操作 | 幂等性 | 说明 |
 |------|--------|------|
 | `POST /realm/{realmId}/delegates` | ❌ 非幂等 | 每次创建新 delegate + RT + AT |
-| `POST /tokens/refresh` | ❌ 非幂等 | 每次旋转产生新 RT + AT |
+| `POST /auth/refresh` | ❌ 非幂等 | 每次旋转产生新 RT + AT |
 | `fs/write`, `fs/rm`, `fs/mv`, `fs/cp` | ❌ 非幂等 | 每次产生新 root |
 | `fs/rewrite` | ❌ 非幂等 | 声明式重写，每次产生新 root |
 
@@ -231,8 +229,7 @@ CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 
 - [服务信息 API](./00-info.md)
 - [OAuth 认证 API](./01-oauth.md)
-- [Delegate Token 管理 API](./02-tokens.md)
-- [客户端授权申请](./03-client-auth.md)（未实现）
+- [Auth API](./03-client-auth.md)
 - [Admin 管理 API](./04-admin.md)
 - [文件系统操作 API](./05-filesystem.md)
 - [Realm CAS 操作 API](./06-realm/README.md)

@@ -197,11 +197,11 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   app.post("/api/mcp", deps.jwtAuthMiddleware, deps.authorizedUserMiddleware, deps.mcp.handle);
 
   // ============================================================================
-  // Token Routes
+  // Auth Routes
   // ============================================================================
 
   // Token refresh (RT → new RT + AT, rotation, child delegates only)
-  app.post("/api/tokens/refresh", deps.refreshToken.refresh);
+  app.post("/api/auth/refresh", deps.refreshToken.refresh);
 
   // ============================================================================
   // Realm Routes (Access Token authenticated)
