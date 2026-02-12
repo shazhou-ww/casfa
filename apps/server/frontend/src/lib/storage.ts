@@ -23,7 +23,7 @@ import type { SyncManager } from "@casfa/explorer";
 import type { PopContext } from "@casfa/proof";
 import { type CachedStorageProvider, createCachedStorage } from "@casfa/storage-cached";
 import { createHttpStorage } from "@casfa/storage-http";
-import { createIndexedDBStorage } from "@casfa/storage-indexeddb";
+import { createIndexedDBStorage, createPendingKeyStore } from "@casfa/storage-indexeddb";
 import { blake3 } from "@noble/hashes/blake3";
 import { getClient } from "./client.ts";
 
@@ -221,6 +221,7 @@ export function getStorage(): Promise<CachedStorageProvider> {
           },
           onKeySync: handleKeySync,
           getChildKeys,
+          pendingKeyStore: createPendingKeyStore(),
         },
       });
     })();
