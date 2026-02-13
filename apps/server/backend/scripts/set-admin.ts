@@ -19,14 +19,14 @@
  *   # Revoke admin (set to unauthorized)
  *   bun run backend/scripts/set-admin.ts --revoke <user-id>
  *
- *   # Migrate UUID format to user:base32 format
+ *   # Migrate UUID format to usr_ format
  *   bun run backend/scripts/set-admin.ts --migrate
  *   bun run backend/scripts/set-admin.ts --migrate --aws
  *
  * User ID Format:
  *   Accepts both UUID format (340804d8-50d1-7022-08cc-c93a7198cc99)
- *   and user:base32 format (user:A6JCHNMFWRT90AXMYWHJ8HKS90).
- *   UUIDs are automatically converted to user:base32 format.
+ *   and usr_ format (usr_A6JCHNMFWRT90AXMYWHJ8HKS90).
+ *   UUIDs are automatically converted to usr_ format.
  *
  * Environment:
  *   TOKENS_TABLE - DynamoDB table name (default: cas-tokens)
@@ -78,12 +78,12 @@ if (!listOnly && !migrate && !userIdInput) {
   console.error("  bun run backend/scripts/set-admin.ts --list              # List admins");
   console.error("  bun run backend/scripts/set-admin.ts --revoke <user-id>  # Revoke admin");
   console.error(
-    "  bun run backend/scripts/set-admin.ts --migrate           # Migrate UUIDs to user:base32"
+    "  bun run backend/scripts/set-admin.ts --migrate           # Migrate UUIDs to usr_ format"
   );
   console.error("");
   console.error("User ID can be:");
   console.error("  - UUID format: 340804d8-50d1-7022-08cc-c93a7198cc99");
-  console.error("  - User ID format: user:A6JCHNMFWRT90AXMYWHJ8HKS90");
+  console.error("  - User ID format: usr_A6JCHNMFWRT90AXMYWHJ8HKS90");
   process.exit(1);
 }
 

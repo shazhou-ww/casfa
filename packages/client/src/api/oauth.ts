@@ -104,12 +104,15 @@ export const getMe = async (
 
 /**
  * Convert token response to stored user token.
+ *
+ * Prefers idToken over accessToken for Bearer auth because
+ * Cognito access tokens do not contain email/name claims.
  */
 export const tokenResponseToStoredUserToken = (
   response: TokenResponse,
   userId: string
 ): StoredUserToken => ({
-  accessToken: response.accessToken,
+  accessToken: response.idToken ?? response.accessToken,
   refreshToken: response.refreshToken,
   userId,
   expiresAt: Date.now() + response.expiresIn * 1000,
