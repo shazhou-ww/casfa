@@ -26,7 +26,6 @@ import {
   Warning as WarningIcon,
 } from "@mui/icons-material";
 import {
-  Badge,
   Box,
   CircularProgress,
   Collapse,
@@ -265,16 +264,30 @@ function SyncIndicator({ appClient }: { appClient: AppClient | null }) {
             borderColor: "divider",
           }}
         >
-          {pendingCount > 0 ? (
-            <Badge badgeContent={pendingCount} color="primary" max={99}>
-              {icon}
-            </Badge>
-          ) : (
-            icon
-          )}
+          {icon}
           <Typography variant="caption" color={labelColor} sx={{ flex: 1, fontWeight: 500 }}>
             {label}
           </Typography>
+          {pendingCount > 0 && (
+            <Typography
+              variant="caption"
+              sx={{
+                bgcolor: "primary.main",
+                color: "primary.contrastText",
+                borderRadius: "10px",
+                px: 0.75,
+                py: 0,
+                fontSize: "0.7rem",
+                fontWeight: 600,
+                lineHeight: "18px",
+                minWidth: 18,
+                textAlign: "center",
+                flexShrink: 0,
+              }}
+            >
+              {pendingCount > 99 ? "99+" : pendingCount}
+            </Typography>
+          )}
           {hasError && (
             <Tooltip title="Retry now">
               <IconButton
