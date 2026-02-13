@@ -60,8 +60,8 @@ function broadcast(msg: unknown): void {
 let client: CasfaClient | null = null;
 
 // ── SyncCoordinator ──
-// Storage flush is a no-op in SW — the main thread owns CachedStorage.
-// Layer 1 flush is triggered by the main thread before scheduleCommit.
+// Storage sync is a no-op in SW — the main thread runs syncTree (CachedStorage)
+// inside scheduleCommit before posting the commit message to the SW.
 const noopFlushStorage = { flush: async () => {}, syncTree: async () => {} };
 
 const syncCoordinator = createSyncCoordinator({

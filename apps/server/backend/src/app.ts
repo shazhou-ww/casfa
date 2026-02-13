@@ -253,6 +253,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     usageDb,
     depotsDb,
     scopeSetNodesDb,
+    nodeLimit: config.server.nodeLimit,
     maxFileSize: config.server.nodeLimit,
   });
   const filesystem = createFilesystemController({ fsService });
