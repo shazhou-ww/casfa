@@ -92,12 +92,19 @@ export type PreviewRenderProps = {
 // Tree Types (Iter 3)
 // ============================================================================
 
+/** Node type for tree sidebar */
+export type TreeNodeType = "depot-root" | "depot" | "directory";
+
 /** A node in the directory tree sidebar */
 export type TreeNode = {
-  /** Full path relative to depot root */
+  /** Full path key ("" for root, "depot:<id>" for depots, "depot:<id>/<dir>" for dirs) */
   path: string;
   /** Display name */
   name: string;
+  /** Node type — defaults to "directory" when omitted */
+  type?: TreeNodeType;
+  /** Depot ID (set on "depot" and "directory" nodes within a depot) */
+  depotId?: string;
   /** Child nodes — null means not yet loaded */
   children: TreeNode[] | null;
   /** Whether the node is currently expanded in the UI */
@@ -435,6 +442,9 @@ export type ExplorerTextKey =
   // Tree sidebar (Iter 3)
   | "sidebar.collapse"
   | "sidebar.expand"
+  // Tree — depot integration
+  | "tree.depots"
+  | "tree.selectDepot"
   // Clipboard (Iter 4)
   | "clipboard.copied"
   | "clipboard.cut"

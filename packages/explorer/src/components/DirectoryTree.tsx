@@ -1,19 +1,35 @@
 /**
- * <DirectoryTree /> - Tree sidebar showing folder hierarchy.
- * (Iter 3)
+ * <DirectoryTree /> - Tree sidebar showing depot + folder hierarchy.
  *
- * Only displays directories. Nodes are lazily loaded on expand.
+ * Top-level nodes are depots. Expanding a depot selects it and loads
+ * its directory tree as children. Only one depot may be expanded at a
+ * time (the previously-expanded depot auto-collapses).
  */
 
+import AddIcon from "@mui/icons-material/Add";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FolderIcon from "@mui/icons-material/Folder";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import MenuOpenIcon from "@mui/icons-material/MenuOpen";
-import { Box, CircularProgress, IconButton, Tooltip, Typography } from "@mui/material";
-import { useCallback, useEffect } from "react";
+import StorageIcon from "@mui/icons-material/Storage";
+import {
+  Box,
+  CircularProgress,
+  IconButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
+  Tooltip,
+  Typography,
+} from "@mui/material";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import type { TreeNode } from "../types.ts";
+import { CreateDepotDialog } from "./CreateDepotDialog.tsx";
+import { DeleteDepotDialog } from "./DeleteDepotDialog.tsx";
 
 type DirectoryTreeProps = {
   onNavigate?: (path: string) => void;
@@ -25,38 +41,92 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
   const expandTreeNode = useExplorerStore((s) => s.expandTreeNode);
   const collapseTreeNode = useExplorerStore((s) => s.collapseTreeNode);
   const currentPath = useExplorerStore((s) => s.currentPath);
+  const depotId = useExplorerStore((s) => s.depotId);
   const navigate = useExplorerStore((s) => s.navigate);
+  const loadDepots = useExplorerStore((s) => s.loadDepots);
   const sidebarCollapsed = useExplorerStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useExplorerStore((s) => s.toggleSidebar);
+  const permissions = useExplorerStore((s) => s.permissions);
+  const depotsLoading = useExplorerStore((s) => s.depotsLoading);
 
-  // Load root tree node on mount
+  // ── Depot management dialogs ──
+  const [createOpen, setCreateOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ depotId: string; name: string } | null>(null);
+
+  // ── Context menu for depot nodes ──
+  const [contextMenu, setContextMenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+    depotId: string;
+    depotName: string;
+  } | null>(null);
+
+  // ── Auto-expand initial depot ──
+  const initialDepotIdRef = useRef(depotId);
+  const autoExpandDone = useRef(false);
+
+  // Load depot list on mount
   useEffect(() => {
-    const root = treeNodes.get("");
-    if (!root) {
-      expandTreeNode("");
+    loadDepots();
+  }, [loadDepots]);
+
+  // Auto-expand initially provided depot (from URL prop)
+  useEffect(() => {
+    const targetDepotId = initialDepotIdRef.current;
+    if (autoExpandDone.current || !targetDepotId) return;
+    const depotKey = `depot:${targetDepotId}`;
+    const depotNode = treeNodes.get(depotKey);
+    if (depotNode && !depotNode.isExpanded && !depotNode.isLoading) {
+      autoExpandDone.current = true;
+      expandTreeNode(depotKey);
     }
   }, [treeNodes, expandTreeNode]);
 
-  // Auto-expand ancestors of the current path
+  // Auto-expand ancestors of the current path within the active depot
   useEffect(() => {
-    if (!currentPath) return;
+    if (!depotId || !currentPath) return;
+    const depotKey = `depot:${depotId}`;
     const parts = currentPath.split("/");
-    let accumulated = "";
-    for (let i = 0; i < parts.length; i++) {
-      accumulated = i === 0 ? parts[i]! : `${accumulated}/${parts[i]}`;
+    let accumulated = depotKey;
+    for (const part of parts) {
+      accumulated = `${accumulated}/${part}`;
       const node = treeNodes.get(accumulated);
       if (node && !node.isExpanded && node.children === null) {
         expandTreeNode(accumulated);
       }
     }
-  }, [currentPath, treeNodes, expandTreeNode]);
+  }, [depotId, currentPath, treeNodes, expandTreeNode]);
+
+  // Compute active tree key
+  const activeTreeKey = depotId
+    ? currentPath
+      ? `depot:${depotId}/${currentPath}`
+      : `depot:${depotId}`
+    : "";
 
   const handleNodeClick = useCallback(
-    (path: string) => {
-      navigate(path);
-      onNavigate?.(path);
+    (node: TreeNode) => {
+      if (node.type === "depot") {
+        if (!node.isExpanded) {
+          expandTreeNode(node.path);
+        } else {
+          // Already expanded — navigate to depot root
+          navigate("");
+          onNavigate?.("");
+        }
+        return;
+      }
+      // Directory node: extract relative path and navigate
+      if (node.depotId) {
+        const prefix = `depot:${node.depotId}/`;
+        const relativePath = node.path.startsWith(prefix)
+          ? node.path.substring(prefix.length)
+          : node.path;
+        navigate(relativePath);
+        onNavigate?.(relativePath);
+      }
     },
-    [navigate, onNavigate]
+    [expandTreeNode, navigate, onNavigate]
   );
 
   const handleToggle = useCallback(
@@ -69,6 +139,32 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
     },
     [expandTreeNode, collapseTreeNode]
   );
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, node: TreeNode) => {
+      if (node.type !== "depot" || !node.depotId || !permissions.canManageDepot) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setContextMenu({
+        mouseX: e.clientX,
+        mouseY: e.clientY,
+        depotId: node.depotId,
+        depotName: node.name,
+      });
+    },
+    [permissions.canManageDepot]
+  );
+
+  const handleContextMenuClose = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  const handleDeleteFromMenu = useCallback(() => {
+    if (contextMenu) {
+      setDeleteTarget({ depotId: contextMenu.depotId, name: contextMenu.depotName });
+    }
+    setContextMenu(null);
+  }, [contextMenu]);
 
   if (sidebarCollapsed) {
     return (
@@ -120,34 +216,79 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
         }}
       >
         <Typography variant="caption" fontWeight={600} noWrap>
-          Explorer
+          {t("tree.depots")}
         </Typography>
-        <Tooltip title={t("sidebar.collapse")}>
-          <IconButton size="small" onClick={toggleSidebar}>
-            <MenuOpenIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+          {permissions.canManageDepot && (
+            <Tooltip title={t("depot.create")}>
+              <IconButton size="small" onClick={() => setCreateOpen(true)}>
+                <AddIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          <Tooltip title={t("sidebar.collapse")}>
+            <IconButton size="small" onClick={toggleSidebar}>
+              <MenuOpenIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
 
       {/* Tree content */}
       <Box sx={{ flex: 1, overflow: "auto", py: 0.5 }}>
+        {depotsLoading && !rootNode?.children?.length && (
+          <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
+            <CircularProgress size={20} />
+          </Box>
+        )}
         {rootNode?.children?.map((child) => (
           <TreeNodeItem
             key={child.path}
             node={child}
             depth={0}
-            currentPath={currentPath}
+            activeTreeKey={activeTreeKey}
             treeNodes={treeNodes}
             onToggle={handleToggle}
             onClick={handleNodeClick}
+            onContextMenu={handleContextMenu}
           />
         ))}
-        {rootNode?.isLoading && (
-          <Box sx={{ display: "flex", justifyContent: "center", py: 1 }}>
-            <CircularProgress size={16} />
+        {!depotsLoading && rootNode?.children?.length === 0 && (
+          <Box sx={{ textAlign: "center", py: 2, px: 1 }}>
+            <Typography variant="caption" color="text.secondary">
+              {t("depot.empty")}
+            </Typography>
           </Box>
         )}
       </Box>
+
+      {/* Context menu for depot nodes */}
+      <Menu
+        open={!!contextMenu}
+        onClose={handleContextMenuClose}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined
+        }
+      >
+        <MenuItem onClick={handleDeleteFromMenu}>
+          <ListItemIcon>
+            <DeleteOutlineIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          <ListItemText>{t("depot.delete")}</ListItemText>
+        </MenuItem>
+      </Menu>
+
+      {/* Create depot dialog */}
+      <CreateDepotDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+
+      {/* Delete depot dialog */}
+      <DeleteDepotDialog
+        open={!!deleteTarget}
+        depotId={deleteTarget?.depotId ?? null}
+        depotName={deleteTarget?.name ?? null}
+        onClose={() => setDeleteTarget(null)}
+      />
     </Box>
   );
 }
@@ -157,28 +298,31 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
 type TreeNodeItemProps = {
   node: TreeNode;
   depth: number;
-  currentPath: string;
+  activeTreeKey: string;
   treeNodes: Map<string, TreeNode>;
   onToggle: (node: TreeNode) => void;
-  onClick: (path: string) => void;
+  onClick: (node: TreeNode) => void;
+  onContextMenu: (e: React.MouseEvent, node: TreeNode) => void;
 };
 
 function TreeNodeItem({
   node,
   depth,
-  currentPath,
+  activeTreeKey,
   treeNodes,
   onToggle,
   onClick,
+  onContextMenu,
 }: TreeNodeItemProps) {
-  const isActive = currentPath === node.path;
-  // Use latest node data from the map (may have been updated since parent rendered)
   const latestNode = treeNodes.get(node.path) ?? node;
+  const isActive = activeTreeKey === latestNode.path;
+  const isDepot = latestNode.type === "depot";
 
   return (
     <>
       <Box
-        onClick={() => onClick(latestNode.path)}
+        onClick={() => onClick(latestNode)}
+        onContextMenu={(e) => onContextMenu(e, latestNode)}
         sx={{
           display: "flex",
           alignItems: "center",
@@ -217,15 +361,21 @@ function TreeNodeItem({
           )}
         </Box>
 
-        {/* Folder icon */}
-        {latestNode.isExpanded ? (
+        {/* Icon */}
+        {isDepot ? (
+          <StorageIcon sx={{ fontSize: 16, color: "text.secondary", mr: 0.5, flexShrink: 0 }} />
+        ) : latestNode.isExpanded ? (
           <FolderOpenIcon sx={{ fontSize: 16, color: "primary.main", mr: 0.5, flexShrink: 0 }} />
         ) : (
           <FolderIcon sx={{ fontSize: 16, color: "primary.main", mr: 0.5, flexShrink: 0 }} />
         )}
 
         {/* Name */}
-        <Typography variant="body2" noWrap sx={{ fontSize: "0.8125rem" }}>
+        <Typography
+          variant="body2"
+          noWrap
+          sx={{ fontSize: "0.8125rem", fontWeight: isDepot ? 500 : undefined }}
+        >
           {latestNode.name}
         </Typography>
       </Box>
@@ -237,10 +387,11 @@ function TreeNodeItem({
             key={child.path}
             node={child}
             depth={depth + 1}
-            currentPath={currentPath}
+            activeTreeKey={activeTreeKey}
             treeNodes={treeNodes}
             onToggle={onToggle}
             onClick={onClick}
+            onContextMenu={onContextMenu}
           />
         ))}
     </>

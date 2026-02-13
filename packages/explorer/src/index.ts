@@ -11,7 +11,10 @@ export { CasfaExplorer } from "./components/CasfaExplorer.tsx";
 export { ConfirmDialog } from "./components/ConfirmDialog.tsx";
 export { ConflictDialog } from "./components/ConflictDialog.tsx";
 export { ContextMenu } from "./components/ContextMenu.tsx";
+export { CreateDepotDialog } from "./components/CreateDepotDialog.tsx";
 export { CreateFolderDialog } from "./components/CreateFolderDialog.tsx";
+export { DeleteDepotDialog } from "./components/DeleteDepotDialog.tsx";
+/** @deprecated Use the tree sidebar instead. */
 export { DepotSelector } from "./components/DepotSelector.tsx";
 export { DetailPanel } from "./components/DetailPanel.tsx";
 export { DirectoryTree } from "./components/DirectoryTree.tsx";

@@ -22,7 +22,7 @@ import { computeSizeFlagByte, encodeCB32, validateNodeStructure } from "@casfa/c
 import type { PopContext } from "@casfa/proof";
 import { type CachedStorageProvider, createCachedStorage } from "@casfa/storage-cached";
 import { createHttpStorage } from "@casfa/storage-http";
-import { createIndexedDBStorage, createPendingKeyStore } from "@casfa/storage-indexeddb";
+import { createIndexedDBStorage } from "@casfa/storage-indexeddb";
 import { blake3 } from "@noble/hashes/blake3";
 import { getClient } from "./client.ts";
 
@@ -146,7 +146,6 @@ export function pushSyncLog(label: string, status: SyncLogEntry["status"] = "don
 // ============================================================================
 
 let storagePromise: Promise<CachedStorageProvider> | null = null;
-let flushInProgress = false;
 
 /**
  * Get or initialize the cached CAS StorageProvider singleton.
@@ -190,20 +189,18 @@ export function getStorage(): Promise<CachedStorageProvider> {
         cache: indexedDBStorage,
         remote: httpStorage,
         writeBack: {
-          debounceMs: 2000,
           onSyncStart: async () => {
-            if (!flushInProgress) clearSyncLogInternal();
+            clearSyncLogInternal();
             // Refresh token bytes before each sync cycle
             const at = await client.getAccessToken();
             cachedTokenBytes = at?.tokenBytes ?? null;
             setSyncing(true);
           },
           onSyncEnd: () => {
-            if (!flushInProgress) setSyncing(false);
+            setSyncing(false);
           },
           onKeySync: handleKeySync,
           getChildKeys,
-          pendingKeyStore: createPendingKeyStore(),
         },
       });
     })();
@@ -212,32 +209,20 @@ export function getStorage(): Promise<CachedStorageProvider> {
 }
 
 /**
- * Flush all pending CAS node writes to the remote.
- * Call this before committing a new root pointer to the server.
+ * @deprecated No-op — CAS node sync is now tree-walk based via syncTree().
+ * Kept for backward compatibility.
  */
 export async function flushStorage(): Promise<void> {
-  if (!storagePromise) return;
-  const storage = await storagePromise;
-  flushInProgress = true;
-  setSyncing(true);
-  try {
-    await storage.flush();
-  } finally {
-    flushInProgress = false;
-    setSyncing(false);
-  }
+  // No-op: sync is now driven by SyncManager.syncTree() per-depot.
 }
 
 /**
  * Reset the storage singleton (e.g., after logout).
- * Flushes Layer 1 (CAS nodes) before clearing.
- * Layer 2 (depot commits) is now handled by AppClient.dispose/logout.
+ * Layer 2 (depot commits) is handled by AppClient.dispose/logout.
  */
 export async function resetStorage(): Promise<void> {
-  // Layer 1: flush pending CAS nodes
   if (storagePromise) {
     const storage = await storagePromise;
-    await storage.flush();
     storage.dispose();
   }
   storagePromise = null;

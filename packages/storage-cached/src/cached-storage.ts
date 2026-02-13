@@ -123,23 +123,30 @@ export type CachedStorageConfig = {
  */
 export type CachedStorageProvider = StorageProvider & {
   /**
-   * Force-sync all pending writes to remote.
-   * Resolves when all pending keys have been synced (or failed).
-   * In write-through mode this is a no-op.
+   * @deprecated Use `syncTree(rootKey)` instead.
+   * No-op in the current implementation — kept for backward compatibility.
    */
   flush: () => Promise<void>;
   /**
-   * Clean up internal timers. Does NOT flush pending writes.
-   * Call `flush()` first if you need to ensure all data is synced.
+   * Sync a CAS tree rooted at `rootKey` to the remote backend.
+   *
+   * Walks the tree starting from `rootKey`, batch-checks which nodes already
+   * exist on the remote, and only uploads missing/unowned nodes.
+   *
+   * **Pruning**: If a node is already "owned" on the remote, its entire subtree
+   * is skipped — in a Merkle/CAS tree, an existing parent implies all
+   * descendants also exist.
+   *
+   * Requires `writeBack.getChildKeys` to be set.
+   *
+   * @param rootKey — CB32 storage key of the tree root
+   */
+  syncTree: (rootKey: string) => Promise<void>;
+  /**
+   * Clean up internal resources.
    */
   dispose: () => void;
 };
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-const DEFAULT_DEBOUNCE_MS = 100;
 
 // ============================================================================
 // Topological Sort
@@ -271,296 +278,26 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
         await remote.put(key, value);
       },
       flush: async () => {},
+      syncTree: async () => {},
       dispose: () => {},
     };
   }
 
   // --------------------------------------------------------------------------
   // Write-back mode
+  //
+  // put() writes only to local cache — no pending-key tracking.
+  // syncTree(rootKey) walks the Merkle tree from the given root, batch-checks
+  // against the remote, prunes already-owned subtrees, and uploads only the
+  // missing / unowned nodes in topological (children-first) order.
   // --------------------------------------------------------------------------
 
   const {
-    debounceMs = DEFAULT_DEBOUNCE_MS,
     onSyncStart,
     onSyncEnd,
     onKeySync,
     getChildKeys,
-    pendingKeyStore,
   } = writeBack;
-
-  const pendingKeys = new Set<string>();
-  let syncTimer: ReturnType<typeof setTimeout> | null = null;
-  let activeSyncPromise: Promise<void> | null = null;
-
-  // -- PendingKeyStore micro-batch persistence --
-  let addBatch: string[] = [];
-  let addScheduled = false;
-  let persistPromise: Promise<void> = Promise.resolve();
-
-  function persistPendingKey(key: string): void {
-    if (!pendingKeyStore) return;
-    addBatch.push(key);
-    if (!addScheduled) {
-      addScheduled = true;
-      queueMicrotask(() => {
-        const batch = addBatch;
-        addBatch = [];
-        addScheduled = false;
-        persistPromise = pendingKeyStore.add(batch).catch((err) => {
-          console.error("[CachedStorage] Failed to persist pending keys:", err);
-        });
-      });
-    }
-  }
-
-  // -- Load persisted pending keys on init --
-  let initPromise: Promise<void> | null = null;
-  if (pendingKeyStore) {
-    initPromise = pendingKeyStore
-      .load()
-      .then((keys) => {
-        for (const key of keys) {
-          pendingKeys.add(key);
-        }
-        if (pendingKeys.size > 0) {
-          scheduleSync();
-        }
-      })
-      .catch((err) => {
-        console.error("[CachedStorage] Failed to load persisted pending keys:", err);
-      });
-  }
-
-  /**
-   * Run a single sync cycle: read from cache, topologically sort,
-   * then sync to remote (children before parents).
-   *
-   * When the remote supports `checkMany` + `claim`:
-   *   1. Single batch check for all pending keys
-   *   2. `put` for missing nodes (upload bytes)
-   *   3. `claim` for unowned nodes (PoP only, no bytes re-uploaded)
-   *   4. Skip owned nodes
-   *
-   * Without these methods, falls back to individual `put()` calls
-   * that rely on the remote implementation to handle claim internally.
-   */
-  const runSync = async (): Promise<void> => {
-    if (pendingKeys.size === 0) return;
-
-    // Snapshot & clear — new puts during sync accumulate for next batch
-    const keys = [...pendingKeys];
-    pendingKeys.clear();
-
-    const synced: string[] = [];
-    const skipped: string[] = [];
-    const failed: Array<{ key: string; error: unknown }> = [];
-
-    await onSyncStart?.();
-
-    // 1. Read all pending data from cache
-    const entries: Array<{ key: string; value: Uint8Array }> = [];
-    for (const key of keys) {
-      const data = await cache.get(key);
-      if (!data) {
-        const err = new Error(`Pending key missing from cache: ${key}`);
-        onKeySync?.(key, "error", err);
-        failed.push({ key, error: err });
-        continue;
-      }
-      entries.push({ key, value: data });
-    }
-
-    // 2. Topological sort (children first) if getChildKeys is provided
-    const levels = getChildKeys ? topoSortLevels(entries, getChildKeys) : [entries]; // no dependency info → single level (all parallel)
-
-    // 3. Sync — level by level, children before parents
-    if (remote.checkMany) {
-      // ---- Batch check + explicit put / claim / skip ----
-      const allKeys = entries.map((e) => e.key);
-
-      // 3a. Discover external children — referenced by entries but NOT in pending set.
-      //     These may be unowned on the remote and need claiming before parents can be PUT.
-      const entryKeySet = new Set(allKeys);
-      const externalChildKeys: string[] = [];
-      if (getChildKeys) {
-        for (const entry of entries) {
-          for (const childKey of getChildKeys(entry.value)) {
-            if (!entryKeySet.has(childKey) && !externalChildKeys.includes(childKey)) {
-              externalChildKeys.push(childKey);
-            }
-          }
-        }
-      }
-
-      // 3b. Batch check: all pending keys + external children in a single call
-      const checkKeys = [...allKeys, ...externalChildKeys];
-      const status = await remote.checkMany(checkKeys);
-      const missingSet = new Set(status.missing);
-      const unownedSet = new Set(status.unowned);
-
-      // Owned keys → skip immediately (only for pending entries, not external children)
-      for (const key of status.owned) {
-        if (entryKeySet.has(key)) {
-          skipped.push(key);
-        }
-      }
-
-      // 3c. Claim all unowned external children first (they must be owned before
-      //     any parent node referencing them can be PUT)
-      if (externalChildKeys.length > 0 && remote.claim) {
-        const unownedExternal = externalChildKeys.filter((k) => unownedSet.has(k));
-        for (const childKey of unownedExternal) {
-          try {
-            // Read child bytes from cache (needed for PoP computation)
-            const childData = await cache.get(childKey);
-            if (!childData) {
-              // Not in cache — fetch from remote, then claim
-              const fetched = await remote.get(childKey);
-              if (fetched) {
-                await remote.claim(childKey, fetched);
-              }
-            } else {
-              await remote.claim(childKey, childData);
-            }
-          } catch (_err) {
-            // External child claim failure is not fatal for the sync result
-            // — the parent put will fail with CHILD_NOT_AUTHORIZED and be retried
-          }
-        }
-      }
-
-      // 3d. Process each level: claim unowned entries first, then put missing entries.
-      //     Two-phase within each level prevents race conditions where a parent's
-      //     PUT arrives at the server before its child's CLAIM completes.
-      for (const level of levels) {
-        const unownedEntries = level.filter((e) => unownedSet.has(e.key));
-        const missingEntries = level.filter((e) => missingSet.has(e.key));
-
-        // Phase 1: claim all unowned entries in this level
-        if (unownedEntries.length > 0) {
-          const claimResults = await Promise.allSettled(
-            unownedEntries.map(async (entry) => {
-              onKeySync?.(entry.key, "uploading");
-              try {
-                if (remote.claim) {
-                  await remote.claim(entry.key, entry.value);
-                } else {
-                  await remote.put(entry.key, entry.value);
-                }
-                onKeySync?.(entry.key, "done");
-                return entry.key;
-              } catch (err) {
-                onKeySync?.(entry.key, "error", err);
-                throw err;
-              }
-            })
-          );
-
-          for (const [i, result] of claimResults.entries()) {
-            if (result.status === "fulfilled") {
-              synced.push(result.value);
-            } else {
-              const key = unownedEntries[i]!.key;
-              failed.push({ key, error: result.reason });
-              pendingKeys.add(key);
-            }
-          }
-        }
-
-        // Phase 2: put all missing entries (children are now owned)
-        if (missingEntries.length > 0) {
-          const putResults = await Promise.allSettled(
-            missingEntries.map(async (entry) => {
-              onKeySync?.(entry.key, "uploading");
-              try {
-                await remote.put(entry.key, entry.value);
-                onKeySync?.(entry.key, "done");
-                return entry.key;
-              } catch (err) {
-                onKeySync?.(entry.key, "error", err);
-                throw err;
-              }
-            })
-          );
-
-          for (const [i, result] of putResults.entries()) {
-            if (result.status === "fulfilled") {
-              synced.push(result.value);
-            } else {
-              const key = missingEntries[i]!.key;
-              failed.push({ key, error: result.reason });
-              pendingKeys.add(key);
-            }
-          }
-        }
-      }
-    } else {
-      // ---- Fallback: individual put() calls (remote handles claim internally) ----
-      for (const level of levels) {
-        const results = await Promise.allSettled(
-          level.map(async (entry) => {
-            onKeySync?.(entry.key, "uploading");
-            try {
-              await remote.put(entry.key, entry.value);
-              onKeySync?.(entry.key, "done");
-            } catch (err) {
-              onKeySync?.(entry.key, "error", err);
-              throw err;
-            }
-            return entry.key;
-          })
-        );
-
-        for (const [i, result] of results.entries()) {
-          if (result.status === "fulfilled") {
-            synced.push(result.value);
-          } else {
-            const key = level[i]!.key;
-            failed.push({ key, error: result.reason });
-            pendingKeys.add(key);
-          }
-        }
-      }
-    }
-
-    // Persist removal of synced + skipped keys
-    if (pendingKeyStore) {
-      const keysToRemove = [...synced, ...skipped];
-      if (keysToRemove.length > 0) {
-        pendingKeyStore.remove(keysToRemove).catch((err) => {
-          console.error("[CachedStorage] Failed to remove persisted pending keys:", err);
-        });
-      }
-    }
-
-    onSyncEnd?.({ synced, skipped, failed });
-  };
-
-  /**
-   * Trigger a sync cycle, guarding against concurrent runs.
-   */
-  const triggerSync = (): void => {
-    if (activeSyncPromise || pendingKeys.size === 0) return;
-
-    activeSyncPromise = runSync().finally(() => {
-      activeSyncPromise = null;
-      // If more keys arrived during sync, schedule another cycle
-      if (pendingKeys.size > 0) {
-        scheduleSync();
-      }
-    });
-  };
-
-  /**
-   * Schedule a debounced sync.
-   */
-  const scheduleSync = (): void => {
-    if (syncTimer !== null) clearTimeout(syncTimer);
-    syncTimer = setTimeout(() => {
-      syncTimer = null;
-      triggerSync();
-    }, debounceMs);
-  };
 
   return {
     get,
@@ -568,48 +305,167 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
 
     async put(key: string, value: Uint8Array): Promise<void> {
       await cache.put(key, value);
-      pendingKeys.add(key);
-      persistPendingKey(key);
-      scheduleSync();
     },
 
-    async flush(): Promise<void> {
-      // Wait for init (persisted key load) to complete
-      if (initPromise) await initPromise;
+    /** @deprecated No-op — use `syncTree(rootKey)` instead. */
+    async flush(): Promise<void> {},
 
-      // Wait for any pending persist micro-batch to complete
-      await persistPromise;
-
-      // Cancel scheduled timer
-      if (syncTimer !== null) {
-        clearTimeout(syncTimer);
-        syncTimer = null;
+    async syncTree(rootKey: string): Promise<void> {
+      if (!getChildKeys) {
+        throw new Error("syncTree requires writeBack.getChildKeys to be configured");
       }
 
-      // Wait for any in-progress sync
-      if (activeSyncPromise) await activeSyncPromise;
+      await onSyncStart?.();
 
-      // Sync remaining pending keys (loop in case failures re-queue)
-      let maxRetries = 3;
-      while (pendingKeys.size > 0 && maxRetries-- > 0) {
-        await runSync();
+      const synced: string[] = [];
+      const skipped: string[] = [];
+      const failed: Array<{ key: string; error: unknown }> = [];
+
+      try {
+        // ── Phase 1: Walk tree, batch-check, prune — collect nodes to upload ──
+        const toUpload = new Map<string, Uint8Array>();
+        const toClaimKeys = new Set<string>();
+        const visited = new Set<string>();
+
+        let frontier = [rootKey];
+
+        while (frontier.length > 0) {
+          // Deduplicate and filter already-visited keys
+          const unique = [...new Set(frontier)].filter((k) => !visited.has(k));
+          if (unique.length === 0) break;
+          for (const k of unique) visited.add(k);
+
+          // Batch check against remote
+          let statusMap: Map<string, "owned" | "unowned" | "missing">;
+          if (remote.checkMany) {
+            const status = await remote.checkMany(unique);
+            statusMap = new Map<string, "owned" | "unowned" | "missing">();
+            for (const k of status.owned) statusMap.set(k, "owned");
+            for (const k of status.unowned) statusMap.set(k, "unowned");
+            for (const k of status.missing) statusMap.set(k, "missing");
+          } else {
+            // Fallback: individual has() checks
+            statusMap = new Map();
+            for (const k of unique) {
+              const exists = await remote.has(k);
+              statusMap.set(k, exists ? "owned" : "missing");
+            }
+          }
+
+          const nextFrontier: string[] = [];
+
+          for (const key of unique) {
+            const status = statusMap.get(key) ?? "missing";
+
+            if (status === "owned") {
+              // Already on remote and owned → prune entire subtree
+              skipped.push(key);
+              continue;
+            }
+
+            // Need to process this node — read from cache
+            const data = await cache.get(key);
+            if (!data) {
+              // Not in local cache — assumed to be on remote already
+              skipped.push(key);
+              continue;
+            }
+
+            if (status === "missing") {
+              toUpload.set(key, data);
+            } else {
+              // unowned — claim instead of upload
+              toClaimKeys.add(key);
+              toUpload.set(key, data);
+            }
+
+            // Expand children for next frontier
+            const children = getChildKeys(data);
+            for (const child of children) {
+              if (!visited.has(child)) {
+                nextFrontier.push(child);
+              }
+            }
+          }
+
+          frontier = nextFrontier;
+        }
+
+        if (toUpload.size === 0) return; // nothing to sync
+
+        // ── Phase 2: Upload / claim in topological order (children first) ──
+        const entries = [...toUpload.entries()].map(([key, value]) => ({ key, value }));
+        const levels = topoSortLevels(entries, getChildKeys);
+
+        for (const level of levels) {
+          // Phase A: claim unowned entries
+          const claimEntries = level.filter((e) => toClaimKeys.has(e.key));
+          if (claimEntries.length > 0) {
+            const results = await Promise.allSettled(
+              claimEntries.map(async (entry) => {
+                onKeySync?.(entry.key, "uploading");
+                try {
+                  if (remote.claim) {
+                    await remote.claim(entry.key, entry.value);
+                  } else {
+                    await remote.put(entry.key, entry.value);
+                  }
+                  onKeySync?.(entry.key, "done");
+                  return entry.key;
+                } catch (err) {
+                  onKeySync?.(entry.key, "error", err);
+                  throw err;
+                }
+              }),
+            );
+            for (const [i, result] of results.entries()) {
+              if (result.status === "fulfilled") {
+                synced.push(result.value);
+              } else {
+                failed.push({ key: claimEntries[i]!.key, error: result.reason });
+              }
+            }
+          }
+
+          // Phase B: put missing entries (children already claimed/uploaded)
+          const putEntries = level.filter((e) => !toClaimKeys.has(e.key));
+          if (putEntries.length > 0) {
+            const results = await Promise.allSettled(
+              putEntries.map(async (entry) => {
+                onKeySync?.(entry.key, "uploading");
+                try {
+                  await remote.put(entry.key, entry.value);
+                  onKeySync?.(entry.key, "done");
+                  return entry.key;
+                } catch (err) {
+                  onKeySync?.(entry.key, "error", err);
+                  throw err;
+                }
+              }),
+            );
+            for (const [i, result] of results.entries()) {
+              if (result.status === "fulfilled") {
+                synced.push(result.value);
+              } else {
+                failed.push({ key: putEntries[i]!.key, error: result.reason });
+              }
+            }
+          }
+        }
+      } finally {
+        onSyncEnd?.({ synced, skipped, failed });
       }
 
-      // If keys still remain after retries, throw so callers don't
-      // proceed assuming data is on the remote
-      if (pendingKeys.size > 0) {
-        const remaining = [...pendingKeys];
+      if (failed.length > 0) {
         throw new Error(
-          `Failed to sync ${remaining.length} keys after retries: ${remaining.slice(0, 5).join(", ")}`
+          `syncTree: failed to sync ${failed.length} nodes: ${failed
+            .slice(0, 5)
+            .map((f) => f.key)
+            .join(", ")}`,
         );
       }
     },
 
-    dispose(): void {
-      if (syncTimer !== null) {
-        clearTimeout(syncTimer);
-        syncTimer = null;
-      }
-    },
+    dispose(): void {},
   };
 };

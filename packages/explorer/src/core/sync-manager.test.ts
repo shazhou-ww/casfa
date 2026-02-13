@@ -5,10 +5,10 @@
  * to verify:
  * - enqueue: basic, merge semantics (targetRoot updated, lastKnownServerRoot stays)
  * - debounce: multiple puts collapse into one sync
- * - sync cycle: flush Layer 1 → get depot → conflict detect → commit → remove
+ * - sync cycle: syncTree Layer 1 → get depot → conflict detect → commit → remove
  * - conflict detection: LWW-overwrite + event emission
- * - flush failure: abort sync, schedule retry
- * - retry: exponential backoff, max retry count
+ * - syncTree failure: permanent fail (local throw, not retryable)
+ * - retry: only network errors (TypeError) retry with exponential backoff
  * - recover: load from store, trigger sync
  * - flushNow: immediate sync (no debounce)
  * - dispose: cancel timers, ignore enqueue
@@ -60,16 +60,19 @@ function createMemoryQueueStore(): SyncQueueStore & {
 // ── Mock FlushableStorage ──
 
 function createMockStorage(opts?: {
-  flushFn?: () => Promise<void>;
-}): FlushableStorage & { flushCount: number } {
-  let flushCount = 0;
+  syncTreeFn?: (rootKey: string) => Promise<void>;
+}): FlushableStorage & { syncTreeCalls: string[] } {
+  const syncTreeCalls: string[] = [];
   return {
-    get flushCount() {
-      return flushCount;
+    get syncTreeCalls() {
+      return syncTreeCalls;
     },
     async flush() {
-      flushCount++;
-      if (opts?.flushFn) await opts.flushFn();
+      // no-op (deprecated)
+    },
+    async syncTree(rootKey: string) {
+      syncTreeCalls.push(rootKey);
+      if (opts?.syncTreeFn) await opts.syncTreeFn(rootKey);
     },
   };
 }
@@ -152,7 +155,7 @@ describe("createSyncManager", () => {
     it("should add entry to queue store", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
-      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootA" }]]);
       const client = createMockClient({ depots });
 
       const mgr = createSyncManager({
@@ -162,15 +165,15 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
 
       // Give microtask for async upsert
       await wait(5);
 
       expect(store.entries.size).toBe(1);
       const entry = store.entries.get("d1")!;
-      expect(entry.targetRoot).toBe("rootB");
-      expect(entry.lastKnownServerRoot).toBe("rootA");
+      expect(entry.targetRoot).toBe("nod_rootB");
+      expect(entry.lastKnownServerRoot).toBe("nod_rootA");
       expect(entry.retryCount).toBe(0);
       expect(mgr.getPendingCount()).toBe(1);
 
@@ -189,17 +192,17 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(5);
-      mgr.enqueue("d1", "rootC", "rootB");
+      mgr.enqueue("d1", "nod_rootC", "nod_rootB");
       await wait(5);
 
       expect(store.entries.size).toBe(1);
       const entry = store.entries.get("d1")!;
       // targetRoot should be latest
-      expect(entry.targetRoot).toBe("rootC");
+      expect(entry.targetRoot).toBe("nod_rootC");
       // lastKnownServerRoot should stay from first enqueue
-      expect(entry.lastKnownServerRoot).toBe("rootA");
+      expect(entry.lastKnownServerRoot).toBe("nod_rootA");
 
       mgr.dispose();
     });
@@ -216,13 +219,13 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
-      mgr.enqueue("d2", "rootX", "rootW");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
+      mgr.enqueue("d2", "nod_rootX", "nod_rootW");
       await wait(5);
 
       expect(store.entries.size).toBe(2);
-      expect(store.entries.get("d1")!.targetRoot).toBe("rootB");
-      expect(store.entries.get("d2")!.targetRoot).toBe("rootX");
+      expect(store.entries.get("d1")!.targetRoot).toBe("nod_rootB");
+      expect(store.entries.get("d2")!.targetRoot).toBe("nod_rootX");
 
       mgr.dispose();
     });
@@ -240,7 +243,7 @@ describe("createSyncManager", () => {
       });
 
       mgr.dispose();
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(5);
 
       expect(store.entries.size).toBe(0);
@@ -256,7 +259,7 @@ describe("createSyncManager", () => {
     it("should sync after debounce interval", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
-      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootA" }]]);
       const client = createMockClient({ depots });
 
       const mgr = createSyncManager({
@@ -266,16 +269,16 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
 
       // Not synced yet
-      expect(depots.get("d1")!.root).toBe("rootA");
+      expect(depots.get("d1")!.root).toBe("nod_rootA");
 
       // Wait for debounce + buffer
       await wait(DEBOUNCE + 100);
 
       // Should be committed
-      expect(depots.get("d1")!.root).toBe("rootB");
+      expect(depots.get("d1")!.root).toBe("nod_rootB");
       // Queue should be empty
       expect(store.entries.size).toBe(0);
       expect(mgr.getPendingCount()).toBe(0);
@@ -286,7 +289,7 @@ describe("createSyncManager", () => {
     it("should merge rapid enqueues into one commit", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
-      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootA" }]]);
       const commitCalls: string[] = [];
       const client = createMockClient({
         depots,
@@ -308,27 +311,28 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
-      mgr.enqueue("d1", "rootC", "rootA");
-      mgr.enqueue("d1", "rootD", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
+      mgr.enqueue("d1", "nod_rootC", "nod_rootA");
+      mgr.enqueue("d1", "nod_rootD", "nod_rootA");
 
       await wait(DEBOUNCE + 100);
 
       // Only one commit with the latest root
-      expect(commitCalls).toEqual(["rootD"]);
-      expect(depots.get("d1")!.root).toBe("rootD");
+      expect(commitCalls).toEqual(["nod_rootD"]);
+      expect(depots.get("d1")!.root).toBe("nod_rootD");
 
       mgr.dispose();
     });
 
-    it("should call storage.flush() before commit", async () => {
+    it("should call storage.syncTree() before commit", async () => {
       const events: string[] = [];
       const storage: FlushableStorage = {
-        async flush() {
-          events.push("flush");
+        async flush() {},
+        async syncTree(_rootKey: string) {
+          events.push("syncTree");
         },
       };
-      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootA" }]]);
       const client = createMockClient({
         depots,
         commitFn: async (depotId, params) => {
@@ -350,10 +354,10 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
 
-      expect(events).toEqual(["flush", "commit"]);
+      expect(events).toEqual(["syncTree", "commit"]);
 
       mgr.dispose();
     });
@@ -367,7 +371,7 @@ describe("createSyncManager", () => {
     it("should transition idle → syncing → idle on success", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
-      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootA" }]]);
       const client = createMockClient({ depots });
       const states: SyncState[] = [];
 
@@ -379,7 +383,7 @@ describe("createSyncManager", () => {
       });
 
       mgr.onStateChange((s) => states.push(s));
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
 
       await wait(DEBOUNCE + 100);
 
@@ -389,15 +393,16 @@ describe("createSyncManager", () => {
       mgr.dispose();
     });
 
-    it("should notify state=error when flush fails", async () => {
+    it("should notify state=error when syncTree fails (permanent)", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage({
-        flushFn: async () => {
-          throw new Error("flush failed");
+        syncTreeFn: async () => {
+          throw new Error("syncTree failed");
         },
       });
       const client = createMockClient();
       const states: SyncState[] = [];
+      const errors: SyncErrorEvent[] = [];
 
       const mgr = createSyncManager({
         storage,
@@ -407,11 +412,17 @@ describe("createSyncManager", () => {
       });
 
       mgr.onStateChange((s) => states.push(s));
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.onError((e) => errors.push(e));
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
 
       await wait(DEBOUNCE + 100);
 
-      expect(states).toContain("error");
+      // syncTree failure is a local throw → permanent fail, entry removed
+      expect(store.entries.has("d1")).toBe(false);
+      expect(mgr.getPendingCount()).toBe(0);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.permanent).toBe(true);
+      expect(errors[0]!.error.code).toBe("sync_error");
 
       mgr.dispose();
     });
@@ -419,7 +430,7 @@ describe("createSyncManager", () => {
     it("should unsubscribe onStateChange correctly", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
-      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootA" }]]);
       const client = createMockClient({ depots });
       const states: SyncState[] = [];
 
@@ -433,7 +444,7 @@ describe("createSyncManager", () => {
       const unsub = mgr.onStateChange((s) => states.push(s));
       unsub();
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
 
       // Only the initial notification before unsub
@@ -452,7 +463,7 @@ describe("createSyncManager", () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
       // Server root was changed by another client: rootA → rootX
-      const depots = new Map([["d1", { depotId: "d1", root: "rootX" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootX" }]]);
       const client = createMockClient({ depots });
       const conflicts: ConflictEvent[] = [];
 
@@ -465,18 +476,18 @@ describe("createSyncManager", () => {
 
       mgr.onConflict((e) => conflicts.push(e));
       // Client thinks server is at rootA, but it's actually at rootX
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
 
       await wait(DEBOUNCE + 100);
 
       expect(conflicts).toHaveLength(1);
       expect(conflicts[0]!.depotId).toBe("d1");
-      expect(conflicts[0]!.localRoot).toBe("rootB");
-      expect(conflicts[0]!.serverRoot).toBe("rootX");
+      expect(conflicts[0]!.localRoot).toBe("nod_rootB");
+      expect(conflicts[0]!.serverRoot).toBe("nod_rootX");
       expect(conflicts[0]!.resolution).toBe("lww-overwrite");
 
       // Should still commit (LWW)
-      expect(depots.get("d1")!.root).toBe("rootB");
+      expect(depots.get("d1")!.root).toBe("nod_rootB");
 
       mgr.dispose();
     });
@@ -484,7 +495,7 @@ describe("createSyncManager", () => {
     it("should NOT emit conflict when server root matches lastKnownServerRoot", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
-      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootA" }]]);
       const client = createMockClient({ depots });
       const conflicts: ConflictEvent[] = [];
 
@@ -496,7 +507,7 @@ describe("createSyncManager", () => {
       });
 
       mgr.onConflict((e) => conflicts.push(e));
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
 
       await wait(DEBOUNCE + 100);
 
@@ -508,7 +519,7 @@ describe("createSyncManager", () => {
     it("should NOT emit conflict when lastKnownServerRoot is null", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
-      const depots = new Map([["d1", { depotId: "d1", root: "rootX" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootX" }]]);
       const client = createMockClient({ depots });
       const conflicts: ConflictEvent[] = [];
 
@@ -520,13 +531,13 @@ describe("createSyncManager", () => {
       });
 
       mgr.onConflict((e) => conflicts.push(e));
-      mgr.enqueue("d1", "rootB", null);
+      mgr.enqueue("d1", "nod_rootB", null);
 
       await wait(DEBOUNCE + 100);
 
       expect(conflicts).toHaveLength(0);
       // Should still commit
-      expect(depots.get("d1")!.root).toBe("rootB");
+      expect(depots.get("d1")!.root).toBe("nod_rootB");
 
       mgr.dispose();
     });
@@ -535,7 +546,7 @@ describe("createSyncManager", () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
       // Server already has rootB — no need to commit
-      const depots = new Map([["d1", { depotId: "d1", root: "rootB" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootB" }]]);
       const commitCalls: string[] = [];
       const client = createMockClient({
         depots,
@@ -556,7 +567,7 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
 
       // No commit needed — server already at target
@@ -568,19 +579,20 @@ describe("createSyncManager", () => {
   });
 
   // --------------------------------------------------------------------------
-  // flush failure
+  // syncTree failure
   // --------------------------------------------------------------------------
 
-  describe("flush failure (Layer 1)", () => {
-    it("should set error state and NOT commit when flush fails", async () => {
+  describe("syncTree failure (Layer 1)", () => {
+    it("should permanently fail and NOT commit when syncTree fails", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage({
-        flushFn: async () => {
+        syncTreeFn: async () => {
           throw new Error("network error");
         },
       });
-      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootA" }]]);
       const commitCalls: string[] = [];
+      const errors: SyncErrorEvent[] = [];
       const client = createMockClient({
         depots,
         commitFn: async (_depotId, params) => {
@@ -600,14 +612,19 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.onError((e) => errors.push(e));
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
 
-      // Should NOT have committed (flush failed)
+      // Should NOT have committed (syncTree failed)
       expect(commitCalls).toHaveLength(0);
-      expect(mgr.getState()).toBe("error");
-      // Entry should still be in queue
-      expect(mgr.getPendingCount()).toBe(1);
+      // Entry should be REMOVED (permanent failure — local throw)
+      expect(store.entries.has("d1")).toBe(false);
+      expect(mgr.getPendingCount()).toBe(0);
+      // Should emit permanent error
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.permanent).toBe(true);
+      expect(errors[0]!.error.code).toBe("sync_error");
 
       mgr.dispose();
     });
@@ -629,7 +646,7 @@ describe("createSyncManager", () => {
           ok: true,
           data: {
             depotId,
-            root: "rootA",
+            root: "nod_rootA",
             title: null,
             maxHistory: 10,
             history: [],
@@ -648,7 +665,7 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
 
       // Dispose to stop retries before checking
@@ -660,15 +677,59 @@ describe("createSyncManager", () => {
       expect(entry!.retryCount).toBeGreaterThanOrEqual(1);
     });
 
-    it("should retry on 5xx server error (retryable)", async () => {
+    it("should permanently fail on non-fetch TypeError (e.g. X is not a function)", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
+      const errors: SyncErrorEvent[] = [];
+      const client = createMockClient({
+        commitFn: async () => {
+          throw new TypeError("client.depots.commit is not a function");
+        },
+        getFn: async (depotId) => ({
+          ok: true,
+          data: {
+            depotId,
+            root: "nod_rootA",
+            title: null,
+            maxHistory: 10,
+            history: [],
+            creatorIssuerId: "t",
+            createdAt: 0,
+            updatedAt: 0,
+          },
+          status: 200,
+        }),
+      });
+
+      const mgr = createSyncManager({
+        storage,
+        client,
+        queueStore: store,
+        debounceMs: DEBOUNCE,
+      });
+
+      mgr.onError((e) => errors.push(e));
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
+      await wait(DEBOUNCE + 100);
+      mgr.dispose();
+
+      // Non-fetch TypeError should be permanent, not retryable
+      expect(store.entries.has("d1")).toBe(false);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.permanent).toBe(true);
+      expect(errors[0]!.error.code).toBe("sync_error");
+    });
+
+    it("should permanently fail on 5xx server error (not retryable)", async () => {
+      const store = createMemoryQueueStore();
+      const storage = createMockStorage();
+      const errors: SyncErrorEvent[] = [];
       const client = createMockClient({
         getFn: async (depotId) => ({
           ok: true,
           data: {
             depotId,
-            root: "rootA",
+            root: "nod_rootA",
             title: null,
             maxHistory: 10,
             history: [],
@@ -691,19 +752,23 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.onError((e) => errors.push(e));
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
       mgr.dispose();
 
-      // Should retry — entry still in queue with incremented retryCount
-      const entry = store.entries.get("d1");
-      expect(entry).toBeDefined();
-      expect(entry!.retryCount).toBeGreaterThanOrEqual(1);
+      // Should be permanently failed — entry removed
+      expect(store.entries.has("d1")).toBe(false);
+      expect(mgr.getPendingCount()).toBe(0);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.permanent).toBe(true);
+      expect(errors[0]!.error.code).toBe("internal_error");
     });
 
-    it("should retry on 429 rate-limit error (retryable)", async () => {
+    it("should permanently fail on 429 rate-limit error (not retryable)", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
+      const errors: SyncErrorEvent[] = [];
       const client = createMockClient({
         getFn: async () => ({
           ok: false,
@@ -718,13 +783,17 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.onError((e) => errors.push(e));
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
       mgr.dispose();
 
-      const entry = store.entries.get("d1");
-      expect(entry).toBeDefined();
-      expect(entry!.retryCount).toBeGreaterThanOrEqual(1);
+      // Should be permanently failed — entry removed
+      expect(store.entries.has("d1")).toBe(false);
+      expect(mgr.getPendingCount()).toBe(0);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.permanent).toBe(true);
+      expect(errors[0]!.error.code).toBe("rate_limited");
     });
 
     it("should give up after MAX_RETRY_COUNT (10) and remove entry", async () => {
@@ -732,8 +801,8 @@ describe("createSyncManager", () => {
       // Pre-populate with an entry at max retries
       store.entries.set("d1", {
         depotId: "d1",
-        targetRoot: "rootB",
-        lastKnownServerRoot: "rootA",
+        targetRoot: "nod_rootB",
+        lastKnownServerRoot: "nod_rootA",
         createdAt: 0,
         updatedAt: 0,
         retryCount: 10,
@@ -746,7 +815,7 @@ describe("createSyncManager", () => {
           ok: true,
           data: {
             depotId,
-            root: "rootA",
+            root: "nod_rootA",
             title: null,
             maxHistory: 10,
             history: [],
@@ -804,15 +873,15 @@ describe("createSyncManager", () => {
       // Pre-populate as if from previous session
       store.entries.set("d1", {
         depotId: "d1",
-        targetRoot: "rootB",
-        lastKnownServerRoot: "rootA",
+        targetRoot: "nod_rootB",
+        lastKnownServerRoot: "nod_rootA",
         createdAt: 1000,
         updatedAt: 1000,
         retryCount: 0,
       });
 
       const storage = createMockStorage();
-      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootA" }]]);
       const client = createMockClient({ depots });
       const states: SyncState[] = [];
 
@@ -828,7 +897,7 @@ describe("createSyncManager", () => {
       await wait(DEBOUNCE + 100);
 
       // Should have synced
-      expect(depots.get("d1")!.root).toBe("rootB");
+      expect(depots.get("d1")!.root).toBe("nod_rootB");
       expect(store.entries.size).toBe(0);
       expect(states).toContain("recovering");
       expect(states).toContain("syncing");
@@ -868,7 +937,7 @@ describe("createSyncManager", () => {
     it("should sync immediately without waiting for debounce", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
-      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootA" }]]);
       const client = createMockClient({ depots });
 
       const mgr = createSyncManager({
@@ -878,11 +947,11 @@ describe("createSyncManager", () => {
         debounceMs: 10_000, // very long debounce
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await mgr.flushNow();
 
       // Should be committed immediately
-      expect(depots.get("d1")!.root).toBe("rootB");
+      expect(depots.get("d1")!.root).toBe("nod_rootB");
       expect(store.entries.size).toBe(0);
       expect(mgr.getState()).toBe("idle");
 
@@ -903,7 +972,7 @@ describe("createSyncManager", () => {
 
       // Should not throw
       await mgr.flushNow();
-      expect(storage.flushCount).toBe(0);
+      expect(storage.syncTreeCalls).toHaveLength(0);
 
       mgr.dispose();
     });
@@ -917,7 +986,7 @@ describe("createSyncManager", () => {
     it("should cancel pending debounce timer", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
-      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootA" }]]);
       const commitCalls: string[] = [];
       const client = createMockClient({
         depots,
@@ -939,7 +1008,7 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       mgr.dispose();
 
       // Wait past debounce
@@ -947,7 +1016,7 @@ describe("createSyncManager", () => {
 
       // Should NOT have committed (timer was cancelled)
       expect(commitCalls).toHaveLength(0);
-      expect(depots.get("d1")!.root).toBe("rootA");
+      expect(depots.get("d1")!.root).toBe("nod_rootA");
     });
 
     it("should ignore enqueue after dispose", async () => {
@@ -963,7 +1032,7 @@ describe("createSyncManager", () => {
       });
 
       mgr.dispose();
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
 
       expect(mgr.getPendingCount()).toBe(0);
     });
@@ -977,7 +1046,7 @@ describe("createSyncManager", () => {
     it("should unsubscribe correctly", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
-      const depots = new Map([["d1", { depotId: "d1", root: "rootX" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootX" }]]);
       const client = createMockClient({ depots });
       const conflicts: ConflictEvent[] = [];
 
@@ -991,7 +1060,7 @@ describe("createSyncManager", () => {
       const unsub = mgr.onConflict((e) => conflicts.push(e));
       unsub();
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
 
       // Should not have received conflict (unsubscribed)
@@ -1015,7 +1084,7 @@ describe("createSyncManager", () => {
           ok: true,
           data: {
             depotId,
-            root: "rootA",
+            root: "nod_rootA",
             title: null,
             maxHistory: 10,
             history: [],
@@ -1039,7 +1108,7 @@ describe("createSyncManager", () => {
       });
 
       mgr.onError((e) => errors.push(e));
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
       mgr.dispose();
 
@@ -1071,7 +1140,7 @@ describe("createSyncManager", () => {
       });
 
       mgr.onError((e) => errors.push(e));
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
       mgr.dispose();
 
@@ -1084,7 +1153,7 @@ describe("createSyncManager", () => {
       expect(errors[0]!.error.code).toBe("not_found");
     });
 
-    it("should retry when commit returns ok:false with 5xx (transient)", async () => {
+    it("should permanently fail when commit returns ok:false with 5xx", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
       const errors: SyncErrorEvent[] = [];
@@ -1093,7 +1162,7 @@ describe("createSyncManager", () => {
           ok: true,
           data: {
             depotId,
-            root: "rootA",
+            root: "nod_rootA",
             title: null,
             maxHistory: 10,
             history: [],
@@ -1117,21 +1186,22 @@ describe("createSyncManager", () => {
       });
 
       mgr.onError((e) => errors.push(e));
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
       mgr.dispose();
 
-      // Should still be in queue (retryable)
-      const entry = store.entries.get("d1");
-      expect(entry).toBeDefined();
-      expect(entry!.retryCount).toBeGreaterThanOrEqual(1);
-      // No permanent error emitted
-      expect(errors).toHaveLength(0);
+      // Should be permanently failed — entry removed
+      expect(store.entries.has("d1")).toBe(false);
+      expect(mgr.getPendingCount()).toBe(0);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.permanent).toBe(true);
+      expect(errors[0]!.error.code).toBe("gateway_timeout");
     });
 
-    it("should retry when error has no status (unknown network-like failure)", async () => {
+    it("should permanently fail when get returns ok:false with no status", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
+      const errors: SyncErrorEvent[] = [];
       const client = createMockClient({
         getFn: async () => ({
           ok: false,
@@ -1146,14 +1216,17 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.onError((e) => errors.push(e));
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
       mgr.dispose();
 
-      // No status → treated as retryable
-      const entry = store.entries.get("d1");
-      expect(entry).toBeDefined();
-      expect(entry!.retryCount).toBeGreaterThanOrEqual(1);
+      // No status → permanent failure (not network error)
+      expect(store.entries.has("d1")).toBe(false);
+      expect(mgr.getPendingCount()).toBe(0);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.permanent).toBe(true);
+      expect(errors[0]!.error.code).toBe("unknown");
     });
   });
 
@@ -1166,8 +1239,8 @@ describe("createSyncManager", () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
       const depots = new Map([
-        ["d1", { depotId: "d1", root: "rootA" }],
-        ["d2", { depotId: "d2", root: "rootX" }],
+        ["d1", { depotId: "d1", root: "nod_rootA" }],
+        ["d2", { depotId: "d2", root: "nod_rootX" }],
       ]);
       const client = createMockClient({ depots });
 
@@ -1178,16 +1251,16 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
-      mgr.enqueue("d2", "rootY", "rootX");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
+      mgr.enqueue("d2", "nod_rootY", "nod_rootX");
 
       await wait(DEBOUNCE + 100);
 
-      expect(depots.get("d1")!.root).toBe("rootB");
-      expect(depots.get("d2")!.root).toBe("rootY");
+      expect(depots.get("d1")!.root).toBe("nod_rootB");
+      expect(depots.get("d2")!.root).toBe("nod_rootY");
       expect(store.entries.size).toBe(0);
-      // Only one flush call (shared Layer 1)
-      expect(storage.flushCount).toBe(1);
+      // syncTree called once per depot entry
+      expect(storage.syncTreeCalls).toHaveLength(2);
 
       mgr.dispose();
     });
@@ -1226,8 +1299,8 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
-      expect(mgr.getPendingRoot("d1")).toBe("rootB");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
+      expect(mgr.getPendingRoot("d1")).toBe("nod_rootB");
       mgr.dispose();
     });
 
@@ -1243,16 +1316,16 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
-      mgr.enqueue("d1", "rootC", "rootB");
-      expect(mgr.getPendingRoot("d1")).toBe("rootC");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
+      mgr.enqueue("d1", "nod_rootC", "nod_rootB");
+      expect(mgr.getPendingRoot("d1")).toBe("nod_rootC");
       mgr.dispose();
     });
 
     it("should return null after successful sync", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
-      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootA" }]]);
       const client = createMockClient({ depots });
 
       const mgr = createSyncManager({
@@ -1262,7 +1335,7 @@ describe("createSyncManager", () => {
         debounceMs: DEBOUNCE,
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
 
       expect(mgr.getPendingRoot("d1")).toBeNull();
@@ -1273,8 +1346,8 @@ describe("createSyncManager", () => {
       const store = createMemoryQueueStore();
       store.entries.set("d1", {
         depotId: "d1",
-        targetRoot: "rootB",
-        lastKnownServerRoot: "rootA",
+        targetRoot: "nod_rootB",
+        lastKnownServerRoot: "nod_rootA",
         createdAt: Date.now(),
         updatedAt: Date.now(),
         retryCount: 0,
@@ -1294,7 +1367,7 @@ describe("createSyncManager", () => {
 
       await mgr.recover();
       // After recover, entry is in memQueue
-      expect(mgr.getPendingRoot("d1")).toBe("rootB");
+      expect(mgr.getPendingRoot("d1")).toBe("nod_rootB");
       mgr.dispose();
     });
   });
@@ -1307,7 +1380,7 @@ describe("createSyncManager", () => {
     it("should emit commit event on successful commit", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
-      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootA" }]]);
       const client = createMockClient({ depots });
 
       const mgr = createSyncManager({
@@ -1322,12 +1395,12 @@ describe("createSyncManager", () => {
         commits.push(event);
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
 
       expect(commits).toHaveLength(1);
       expect(commits[0]!.depotId).toBe("d1");
-      expect(commits[0]!.committedRoot).toBe("rootB");
+      expect(commits[0]!.committedRoot).toBe("nod_rootB");
       mgr.dispose();
     });
 
@@ -1335,7 +1408,7 @@ describe("createSyncManager", () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
       // Server already has rootB
-      const depots = new Map([["d1", { depotId: "d1", root: "rootB" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootB" }]]);
       const client = createMockClient({ depots });
 
       const mgr = createSyncManager({
@@ -1350,19 +1423,19 @@ describe("createSyncManager", () => {
         commits.push(event);
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
 
       expect(commits).toHaveLength(1);
       expect(commits[0]!.depotId).toBe("d1");
-      expect(commits[0]!.committedRoot).toBe("rootB");
+      expect(commits[0]!.committedRoot).toBe("nod_rootB");
       mgr.dispose();
     });
 
     it("should support unsubscribe", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
-      const depots = new Map([["d1", { depotId: "d1", root: "rootA" }]]);
+      const depots = new Map([["d1", { depotId: "d1", root: "nod_rootA" }]]);
       const client = createMockClient({ depots });
 
       const mgr = createSyncManager({
@@ -1379,7 +1452,7 @@ describe("createSyncManager", () => {
 
       unsub();
 
-      mgr.enqueue("d1", "rootB", "rootA");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
 
       expect(commits).toHaveLength(0);
@@ -1390,8 +1463,8 @@ describe("createSyncManager", () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage();
       const depots = new Map([
-        ["d1", { depotId: "d1", root: "rootA" }],
-        ["d2", { depotId: "d2", root: "rootX" }],
+        ["d1", { depotId: "d1", root: "nod_rootA" }],
+        ["d2", { depotId: "d2", root: "nod_rootX" }],
       ]);
       const client = createMockClient({ depots });
 
@@ -1407,8 +1480,8 @@ describe("createSyncManager", () => {
         commits.push(event);
       });
 
-      mgr.enqueue("d1", "rootB", "rootA");
-      mgr.enqueue("d2", "rootY", "rootX");
+      mgr.enqueue("d1", "nod_rootB", "nod_rootA");
+      mgr.enqueue("d2", "nod_rootY", "nod_rootX");
       await wait(DEBOUNCE + 100);
 
       expect(commits).toHaveLength(2);

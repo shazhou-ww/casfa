@@ -93,6 +93,9 @@ const messages: Record<ExplorerTextKey, string> = {
   // Tree sidebar (Iter 3)
   "sidebar.collapse": "Collapse sidebar",
   "sidebar.expand": "Expand sidebar",
+  // Tree — depot integration
+  "tree.depots": "Depots",
+  "tree.selectDepot": "Select a depot to browse files",
   // Clipboard (Iter 4)
   "clipboard.copied": "{count} item(s) copied",
   "clipboard.cut": "{count} item(s) cut",

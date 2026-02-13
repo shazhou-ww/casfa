@@ -254,9 +254,95 @@ describe("createCachedStorage", () => {
 // ============================================================================
 
 describe("createCachedStorage (write-back)", () => {
-  const DEBOUNCE = 20;
+  // Helper to create spy storage with checkMany/claim support
+  type CheckableRemote = StorageProvider & {
+    calls: Call[];
+    store: Map<string, Uint8Array>;
+    checkMany: (keys: string[]) => Promise<{
+      missing: string[];
+      unowned: string[];
+      owned: string[];
+    }>;
+    claim: (key: string, value: Uint8Array) => Promise<void>;
+  };
 
-  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  function createCheckableRemote(
+    initial: Map<string, Uint8Array> = new Map(),
+    opts?: {
+      /** Keys that exist but are not owned by the caller */
+      unownedKeys?: Set<string>;
+    },
+  ): CheckableRemote {
+    const store = new Map(initial);
+    const unownedKeys = opts?.unownedKeys ?? new Set<string>();
+    const calls: Call[] = [];
+
+    return {
+      calls,
+      store,
+      async get(key) {
+        calls.push({ method: "get", args: [key] });
+        return store.get(key) ?? null;
+      },
+      async has(key) {
+        calls.push({ method: "has", args: [key] });
+        return store.has(key);
+      },
+      async put(key, value) {
+        calls.push({ method: "put", args: [key, value] });
+        store.set(key, value);
+      },
+      async checkMany(keys: string[]) {
+        calls.push({ method: "checkMany", args: [keys] });
+        const missing: string[] = [];
+        const unowned: string[] = [];
+        const owned: string[] = [];
+        for (const k of keys) {
+          if (!store.has(k)) {
+            missing.push(k);
+          } else if (unownedKeys.has(k)) {
+            unowned.push(k);
+          } else {
+            owned.push(k);
+          }
+        }
+        return { missing, unowned, owned };
+      },
+      async claim(key, value) {
+        calls.push({ method: "claim", args: [key, value] });
+        unownedKeys.delete(key);
+      },
+    };
+  }
+
+  // Simple encoder: a "node" is [childCount, ...childKeyBytes]
+  // Each child key is 26 bytes (CB32 key length)
+  const CB32_LEN = 26;
+  function encodeNode(childKeys: string[]): Uint8Array {
+    const buf = new Uint8Array(1 + childKeys.length * CB32_LEN);
+    buf[0] = childKeys.length;
+    for (let i = 0; i < childKeys.length; i++) {
+      const bytes = new TextEncoder().encode(childKeys[i]!);
+      buf.set(bytes.slice(0, CB32_LEN), 1 + i * CB32_LEN);
+    }
+    return buf;
+  }
+  function getChildKeys(value: Uint8Array): string[] {
+    const count = value[0]!;
+    const keys: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const start = 1 + i * CB32_LEN;
+      const slice = value.slice(start, start + CB32_LEN);
+      keys.push(new TextDecoder().decode(slice));
+    }
+    return keys;
+  }
+
+  // Stable CB32-like keys for test nodes
+  const ROOT = "AAAAAAAAAAAAAAAAAAAAAAAAA0";
+  const CHILD_A = "BBBBBBBBBBBBBBBBBBBBBBBBBB";
+  const CHILD_B = "CCCCCCCCCCCCCCCCCCCCCCCCCC";
+  const LEAF_1 = "DDDDDDDDDDDDDDDDDDDDDDDDDD";
 
   describe("put", () => {
     it("should write to cache immediately but not to remote", async () => {
@@ -266,7 +352,7 @@ describe("createCachedStorage (write-back)", () => {
       const storage = createCachedStorage({
         cache,
         remote,
-        writeBack: { debounceMs: DEBOUNCE },
+        writeBack: {},
       });
 
       await storage.put(KEY, DATA);
@@ -282,19 +368,18 @@ describe("createCachedStorage (write-back)", () => {
 
     it("should return immediately without waiting for remote", async () => {
       const cache = createSpyStorage();
-      // Remote put that takes a long time
       const remote: StorageProvider = {
         get: async () => null,
         has: async () => false,
         put: async () => {
-          await wait(500);
+          await new Promise((r) => setTimeout(r, 500));
         },
       };
 
       const storage = createCachedStorage({
         cache,
         remote,
-        writeBack: { debounceMs: DEBOUNCE },
+        writeBack: {},
       });
 
       const start = Date.now();
@@ -308,104 +393,238 @@ describe("createCachedStorage (write-back)", () => {
     });
   });
 
-  describe("debounced sync", () => {
-    it("should sync to remote after debounce interval", async () => {
+  describe("flush", () => {
+    it("should be a no-op (use syncTree instead)", async () => {
       const cache = createSpyStorage();
       const remote = createSpyStorage();
 
       const storage = createCachedStorage({
         cache,
         remote,
-        writeBack: { debounceMs: DEBOUNCE },
+        writeBack: {},
       });
 
       await storage.put(KEY, DATA);
+      await storage.flush(); // no-op
 
-      // Not synced yet
+      // Remote should NOT have the data (flush is no-op)
       expect(remote.store.has(KEY)).toBe(false);
-
-      // Wait for debounce + some buffer
-      await wait(DEBOUNCE + 50);
-
-      // Now it should be synced
-      expect(remote.store.get(KEY)).toEqual(DATA);
-
-      storage.dispose();
-    });
-
-    it("should batch multiple puts into one sync cycle", async () => {
-      const cache = createSpyStorage();
-      const remote = createSpyStorage();
-      const syncEvents: string[] = [];
-
-      const storage = createCachedStorage({
-        cache,
-        remote,
-        writeBack: {
-          debounceMs: DEBOUNCE,
-          onSyncStart: () => {
-            syncEvents.push("start");
-          },
-          onSyncEnd: () => {
-            syncEvents.push("end");
-          },
-        },
-      });
-
-      const key2 = "ZYXWVUTSRQPONMLKJIHGFEDCB0";
-      const data2 = new Uint8Array([5, 6, 7, 8]);
-
-      await storage.put(KEY, DATA);
-      await storage.put(key2, data2);
-
-      await wait(DEBOUNCE + 50);
-
-      // Both should be synced
-      expect(remote.store.get(KEY)).toEqual(DATA);
-      expect(remote.store.get(key2)).toEqual(data2);
-
-      // Only one sync cycle
-      expect(syncEvents).toEqual(["start", "end"]);
-
-      storage.dispose();
-    });
-
-    it("should sync keys already on remote (remote.put handles dedup)", async () => {
-      const cache = createSpyStorage();
-      const remote = createSpyStorage(new Map([[KEY, DATA]]));
-      let lastResult: SyncResult | null = null;
-
-      const storage = createCachedStorage({
-        cache,
-        remote,
-        writeBack: {
-          debounceMs: DEBOUNCE,
-          onSyncEnd: (result) => {
-            lastResult = result;
-          },
-        },
-      });
-
-      // Put a key that remote already has — remote.put() is still called
-      // (the remote itself handles dedup via its internal check)
-      await storage.put(KEY, DATA);
-      await wait(DEBOUNCE + 50);
-
-      expect(lastResult).not.toBeNull();
-      expect(lastResult!.synced).toEqual([KEY]);
-      expect(lastResult!.failed).toHaveLength(0);
-
-      // remote.put IS called (no separate has-check in runSync)
-      expect(remote.calls.filter((c) => c.method === "put")).toHaveLength(1);
 
       storage.dispose();
     });
   });
 
-  describe("sync callbacks", () => {
-    it("should call onSyncStart and onSyncEnd", async () => {
+  describe("syncTree", () => {
+    it("should throw if getChildKeys is not configured", async () => {
       const cache = createSpyStorage();
-      const remote = createSpyStorage();
+      const remote = createCheckableRemote();
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: {},
+      });
+
+      await expect(storage.syncTree(ROOT)).rejects.toThrow(/getChildKeys/);
+
+      storage.dispose();
+    });
+
+    it("should upload a single leaf node (no children)", async () => {
+      const leafData = encodeNode([]);
+      const cache = createSpyStorage(new Map([[ROOT, leafData]]));
+      const remote = createCheckableRemote();
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { getChildKeys },
+      });
+
+      await storage.syncTree(ROOT);
+
+      expect(remote.store.get(ROOT)).toEqual(leafData);
+      const putCalls = remote.calls.filter((c) => c.method === "put");
+      expect(putCalls).toHaveLength(1);
+
+      storage.dispose();
+    });
+
+    it("should upload parent and children in topological order (children first)", async () => {
+      const rootData = encodeNode([CHILD_A, CHILD_B]);
+      const childAData = encodeNode([]);
+      const childBData = encodeNode([]);
+
+      const cache = createSpyStorage(
+        new Map([
+          [ROOT, rootData],
+          [CHILD_A, childAData],
+          [CHILD_B, childBData],
+        ]),
+      );
+      const remote = createCheckableRemote();
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { getChildKeys },
+      });
+
+      await storage.syncTree(ROOT);
+
+      // All three should be uploaded
+      expect(remote.store.has(ROOT)).toBe(true);
+      expect(remote.store.has(CHILD_A)).toBe(true);
+      expect(remote.store.has(CHILD_B)).toBe(true);
+
+      // Children should be put BEFORE parent (topological order)
+      const putKeys = remote.calls
+        .filter((c) => c.method === "put")
+        .map((c) => c.args[0]);
+      const rootIdx = putKeys.indexOf(ROOT);
+      const childAIdx = putKeys.indexOf(CHILD_A);
+      const childBIdx = putKeys.indexOf(CHILD_B);
+      expect(childAIdx).toBeLessThan(rootIdx);
+      expect(childBIdx).toBeLessThan(rootIdx);
+
+      storage.dispose();
+    });
+
+    it("should prune owned subtrees (skip already-owned nodes and their children)", async () => {
+      // Tree: ROOT → [CHILD_A, CHILD_B]
+      //   CHILD_A → [LEAF_1]   (CHILD_A already owned on remote → skip subtree)
+      //   CHILD_B → []          (missing → upload)
+      const childAData = encodeNode([LEAF_1]);
+      const childBData = encodeNode([]);
+      const leaf1Data = encodeNode([]);
+      const rootData = encodeNode([CHILD_A, CHILD_B]);
+
+      const cache = createSpyStorage(
+        new Map([
+          [ROOT, rootData],
+          [CHILD_A, childAData],
+          [CHILD_B, childBData],
+          [LEAF_1, leaf1Data],
+        ]),
+      );
+      // remote already has CHILD_A (owned) — so LEAF_1 should NOT be checked or uploaded
+      const remote = createCheckableRemote(new Map([[CHILD_A, childAData]]));
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { getChildKeys },
+      });
+
+      await storage.syncTree(ROOT);
+
+      // ROOT and CHILD_B should be uploaded
+      expect(remote.store.has(ROOT)).toBe(true);
+      expect(remote.store.has(CHILD_B)).toBe(true);
+
+      // LEAF_1 should NOT be uploaded (pruned because CHILD_A is owned)
+      const putKeys = remote.calls
+        .filter((c) => c.method === "put")
+        .map((c) => c.args[0]);
+      expect(putKeys).not.toContain(LEAF_1);
+
+      // LEAF_1 should NOT even be checked (not in any checkMany call)
+      const allCheckedKeys = remote.calls
+        .filter((c) => c.method === "checkMany")
+        .flatMap((c) => c.args[0] as string[]);
+      expect(allCheckedKeys).not.toContain(LEAF_1);
+
+      storage.dispose();
+    });
+
+    it("should be a no-op if root is already owned on remote", async () => {
+      const rootData = encodeNode([CHILD_A]);
+      const childAData = encodeNode([]);
+
+      const cache = createSpyStorage(
+        new Map([
+          [ROOT, rootData],
+          [CHILD_A, childAData],
+        ]),
+      );
+      const remote = createCheckableRemote(
+        new Map([
+          [ROOT, rootData],
+          [CHILD_A, childAData],
+        ]),
+      );
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { getChildKeys },
+      });
+
+      await storage.syncTree(ROOT);
+
+      // No puts — everything already owned
+      const putCalls = remote.calls.filter((c) => c.method === "put");
+      expect(putCalls).toHaveLength(0);
+
+      storage.dispose();
+    });
+
+    it("should claim unowned nodes instead of uploading", async () => {
+      const rootData = encodeNode([]);
+
+      const cache = createSpyStorage(new Map([[ROOT, rootData]]));
+      const remote = createCheckableRemote(
+        new Map([[ROOT, rootData]]),
+        { unownedKeys: new Set([ROOT]) },
+      );
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { getChildKeys },
+      });
+
+      await storage.syncTree(ROOT);
+
+      // Should have called claim, not put
+      const claimCalls = remote.calls.filter((c) => c.method === "claim");
+      const putCalls = remote.calls.filter((c) => c.method === "put");
+      expect(claimCalls).toHaveLength(1);
+      expect(putCalls).toHaveLength(0);
+
+      storage.dispose();
+    });
+
+    it("should skip nodes not in local cache (assumed already on remote)", async () => {
+      // ROOT references CHILD_A, but CHILD_A is not in cache
+      const rootData = encodeNode([CHILD_A]);
+      const cache = createSpyStorage(new Map([[ROOT, rootData]]));
+      const remote = createCheckableRemote();
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: { getChildKeys },
+      });
+
+      await storage.syncTree(ROOT);
+
+      // ROOT should be uploaded
+      expect(remote.store.has(ROOT)).toBe(true);
+      // No put for CHILD_A (not in cache)
+      const putKeys = remote.calls
+        .filter((c) => c.method === "put")
+        .map((c) => c.args[0]);
+      expect(putKeys).not.toContain(CHILD_A);
+
+      storage.dispose();
+    });
+
+    it("should call onSyncStart and onSyncEnd callbacks", async () => {
+      const leafData = encodeNode([]);
+      const cache = createSpyStorage(new Map([[ROOT, leafData]]));
+      const remote = createCheckableRemote();
+
       const events: string[] = [];
       let capturedResult: SyncResult | null = null;
 
@@ -413,7 +632,7 @@ describe("createCachedStorage (write-back)", () => {
         cache,
         remote,
         writeBack: {
-          debounceMs: DEBOUNCE,
+          getChildKeys,
           onSyncStart: () => {
             events.push("start");
           },
@@ -424,206 +643,159 @@ describe("createCachedStorage (write-back)", () => {
         },
       });
 
-      await storage.put(KEY, DATA);
-      await wait(DEBOUNCE + 50);
+      await storage.syncTree(ROOT);
 
       expect(events).toEqual(["start", "end"]);
-      expect(capturedResult!.synced).toEqual([KEY]);
+      expect(capturedResult!.synced).toEqual([ROOT]);
       expect(capturedResult!.skipped).toHaveLength(0);
       expect(capturedResult!.failed).toHaveLength(0);
 
       storage.dispose();
     });
 
-    it("should report failed uploads in SyncResult", async () => {
-      const cache = createSpyStorage();
-      const failKey = "FAILFAILFAILFAILFAILFAILFA";
-      const remote: StorageProvider & { calls: Call[] } = {
-        calls: [],
-        get: async () => null,
-        has: async (key) => {
-          remote.calls.push({ method: "has", args: [key] });
-          return false;
+    it("should call onKeySync for each uploaded node", async () => {
+      const rootData = encodeNode([CHILD_A]);
+      const childAData = encodeNode([]);
+
+      const cache = createSpyStorage(
+        new Map([
+          [ROOT, rootData],
+          [CHILD_A, childAData],
+        ]),
+      );
+      const remote = createCheckableRemote();
+
+      const keySyncCalls: Array<[string, string]> = [];
+
+      const storage = createCachedStorage({
+        cache,
+        remote,
+        writeBack: {
+          getChildKeys,
+          onKeySync: (key, status) => {
+            keySyncCalls.push([key, status]);
+          },
         },
-        put: async (key) => {
-          remote.calls.push({ method: "put", args: [key] });
-          if (key === failKey) throw new Error("upload failed");
-        },
+      });
+
+      await storage.syncTree(ROOT);
+
+      // Both keys should get "uploading" then "done"
+      const childUpload = keySyncCalls.filter(([k]) => k === CHILD_A);
+      expect(childUpload).toEqual([
+        [CHILD_A, "uploading"],
+        [CHILD_A, "done"],
+      ]);
+      const rootUpload = keySyncCalls.filter(([k]) => k === ROOT);
+      expect(rootUpload).toEqual([
+        [ROOT, "uploading"],
+        [ROOT, "done"],
+      ]);
+
+      storage.dispose();
+    });
+
+    it("should throw and report failures in SyncResult", async () => {
+      const leafData = encodeNode([]);
+      const cache = createSpyStorage(new Map([[ROOT, leafData]]));
+      const remote = createCheckableRemote();
+      // Override put to fail
+      remote.put = async (key) => {
+        remote.calls.push({ method: "put", args: [key] });
+        throw new Error("upload failed");
       };
+
       const results: SyncResult[] = [];
 
       const storage = createCachedStorage({
         cache,
         remote,
         writeBack: {
-          debounceMs: DEBOUNCE,
+          getChildKeys,
           onSyncEnd: (result) => {
             results.push(result);
           },
         },
       });
 
-      await storage.put(KEY, DATA);
-      await storage.put(failKey, new Uint8Array([9, 9]));
-      // flush retries then throws because failKey keeps failing
-      await expect(storage.flush()).rejects.toThrow(/Failed to sync 1 keys/);
+      await expect(storage.syncTree(ROOT)).rejects.toThrow(/syncTree: failed to sync/);
 
-      // First sync result: KEY succeeded, failKey failed
-      expect(results.length).toBeGreaterThanOrEqual(1);
-      const firstResult = results[0]!;
-      expect(firstResult.synced).toEqual([KEY]);
-      expect(firstResult.failed).toHaveLength(1);
-      expect(firstResult.failed[0]!.key).toBe(failKey);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.failed).toHaveLength(1);
+      expect(results[0]!.failed[0]!.key).toBe(ROOT);
 
       storage.dispose();
     });
-  });
 
-  describe("flush", () => {
-    it("should force immediate sync without waiting for debounce", async () => {
-      const cache = createSpyStorage();
+    it("should fall back to individual has() when checkMany is not available", async () => {
+      const leafData = encodeNode([]);
+      const cache = createSpyStorage(new Map([[ROOT, leafData]]));
+      // Plain remote without checkMany
       const remote = createSpyStorage();
 
       const storage = createCachedStorage({
         cache,
         remote,
-        writeBack: { debounceMs: 5000 }, // very long debounce
+        writeBack: { getChildKeys },
       });
 
-      await storage.put(KEY, DATA);
+      await storage.syncTree(ROOT);
 
-      // Not synced yet (debounce is 5s)
-      expect(remote.store.has(KEY)).toBe(false);
-
-      // Flush forces immediate sync
-      await storage.flush();
-
-      expect(remote.store.get(KEY)).toEqual(DATA);
-
-      storage.dispose();
-    });
-
-    it("should be a no-op when nothing is pending", async () => {
-      const cache = createSpyStorage();
-      const remote = createSpyStorage();
-
-      const storage = createCachedStorage({
-        cache,
-        remote,
-        writeBack: { debounceMs: DEBOUNCE },
-      });
-
-      // Flush with nothing pending should not throw
-      await storage.flush();
-
-      expect(remote.calls).toHaveLength(0);
-
-      storage.dispose();
-    });
-
-    it("should wait for in-progress sync to complete", async () => {
-      const cache = createSpyStorage();
-      const syncOrder: string[] = [];
-      const gate: { resolve: (() => void) | null } = { resolve: null };
-      let firstPutBlocked = false;
-
-      const remote: StorageProvider = {
-        get: async () => null,
-        has: async () => false,
-        put: async (key, _value) => {
-          if (!firstPutBlocked) {
-            // Block the first put
-            firstPutBlocked = true;
-            syncOrder.push(`put:${key}:start`);
-            await new Promise<void>((resolve) => {
-              gate.resolve = resolve;
-            });
-            syncOrder.push(`put:${key}:end`);
-          } else {
-            syncOrder.push(`put:${key}`);
-          }
-        },
-      };
-
-      const storage = createCachedStorage({
-        cache,
-        remote,
-        writeBack: { debounceMs: 5 },
-      });
-
-      await storage.put(KEY, DATA);
-
-      // Wait for debounce to trigger sync (put will block)
-      await wait(15);
-
-      // Sync is in progress (blocked on first put)
-      expect(syncOrder).toEqual([`put:${KEY}:start`]);
-
-      // Unblock the first put
-      gate.resolve?.();
-      await wait(5);
-
-      expect(syncOrder).toContain(`put:${KEY}:end`);
+      // Should have called has() as fallback, then put()
+      expect(remote.calls.filter((c) => c.method === "has")).toHaveLength(1);
+      expect(remote.store.get(ROOT)).toEqual(leafData);
 
       storage.dispose();
     });
   });
 
   describe("dispose", () => {
-    it("should cancel pending debounced sync", async () => {
+    it("should not throw when called", () => {
       const cache = createSpyStorage();
       const remote = createSpyStorage();
 
       const storage = createCachedStorage({
         cache,
         remote,
-        writeBack: { debounceMs: DEBOUNCE },
+        writeBack: {},
       });
 
-      await storage.put(KEY, DATA);
-      storage.dispose();
-
-      // Wait past the debounce
-      await wait(DEBOUNCE + 50);
-
-      // Remote should NOT have the data (timer was cancelled)
-      expect(remote.store.has(KEY)).toBe(false);
+      expect(() => storage.dispose()).not.toThrow();
     });
   });
 
   describe("integration", () => {
-    it("should serve put data from cache before sync completes", async () => {
+    it("should serve put data from cache before syncTree", async () => {
       const cache = createSpyStorage();
       const remote = createSpyStorage();
 
       const storage = createCachedStorage({
         cache,
         remote,
-        writeBack: { debounceMs: 5000 },
+        writeBack: {},
       });
 
       await storage.put(KEY, DATA);
 
-      // Get returns cached data even though remote sync hasn't happened
+      // Get returns cached data even though syncTree hasn't been called
       const result = await storage.get(KEY);
       expect(result).toEqual(DATA);
 
       storage.dispose();
     });
 
-    it("should report has=true for pending keys via cache", async () => {
+    it("should report has=true for cached keys", async () => {
       const cache = createSpyStorage();
       const remote = createSpyStorage();
 
       const storage = createCachedStorage({
         cache,
         remote,
-        writeBack: { debounceMs: 5000 },
+        writeBack: {},
       });
 
       await storage.put(KEY, DATA);
 
-      // has returns true from cache even before remote sync
       expect(await storage.has(KEY)).toBe(true);
 
       storage.dispose();
@@ -640,174 +812,6 @@ describe("createCachedStorage (write-back)", () => {
       storage.dispose(); // no-op
 
       expect(remote.store.get(KEY)).toEqual(DATA);
-    });
-  });
-});
-
-// ============================================================================
-// Tests — PendingKeyStore integration
-// ============================================================================
-
-describe("createCachedStorage (write-back + PendingKeyStore)", () => {
-  const DEBOUNCE = 30;
-  const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
-  // In-memory PendingKeyStore for testing
-  function createSpyPendingKeyStore() {
-    const keys = new Set<string>();
-    const addCalls: string[][] = [];
-    const removeCalls: string[][] = [];
-    return {
-      keys,
-      addCalls,
-      removeCalls,
-      async load() {
-        return [...keys];
-      },
-      async add(newKeys: string[]) {
-        addCalls.push(newKeys);
-        for (const k of newKeys) keys.add(k);
-      },
-      async remove(removeKeys: string[]) {
-        removeCalls.push(removeKeys);
-        for (const k of removeKeys) keys.delete(k);
-      },
-    };
-  }
-
-  describe("put persistence", () => {
-    it("should persist pending keys via pendingKeyStore.add()", async () => {
-      const cache = createSpyStorage();
-      const remote = createSpyStorage();
-      const pks = createSpyPendingKeyStore();
-
-      const storage = createCachedStorage({
-        cache,
-        remote,
-        writeBack: { debounceMs: DEBOUNCE, pendingKeyStore: pks },
-      });
-
-      await storage.put(KEY, DATA);
-
-      // Micro-batch: wait for queueMicrotask to fire
-      await wait(5);
-
-      expect(pks.addCalls.length).toBeGreaterThanOrEqual(1);
-      // The key should have been persisted
-      expect(pks.keys.has(KEY)).toBe(true);
-
-      storage.dispose();
-    });
-
-    it("should batch multiple puts in same microtask", async () => {
-      const cache = createSpyStorage();
-      const remote = createSpyStorage();
-      const pks = createSpyPendingKeyStore();
-
-      const KEY2 = "ZYXWVUTSRQPONMLKJIHGFEDCB0";
-      const DATA2 = new Uint8Array([5, 6, 7, 8]);
-
-      const storage = createCachedStorage({
-        cache,
-        remote,
-        writeBack: { debounceMs: DEBOUNCE, pendingKeyStore: pks },
-      });
-
-      // Two puts — may batch if within same microtask, or separate
-      await storage.put(KEY, DATA);
-      await storage.put(KEY2, DATA2);
-
-      await wait(5);
-
-      // Both keys should have been persisted (possibly in 1 or 2 calls)
-      expect(pks.keys.has(KEY)).toBe(true);
-      expect(pks.keys.has(KEY2)).toBe(true);
-      // Verify all persisted keys are accounted for
-      const allPersistedKeys = pks.addCalls.flat();
-      expect(allPersistedKeys).toContain(KEY);
-      expect(allPersistedKeys).toContain(KEY2);
-
-      storage.dispose();
-    });
-  });
-
-  describe("sync removal", () => {
-    it("should remove synced keys from pendingKeyStore after successful sync", async () => {
-      const cache = createSpyStorage();
-      const remote = createSpyStorage();
-      const pks = createSpyPendingKeyStore();
-
-      const storage = createCachedStorage({
-        cache,
-        remote,
-        writeBack: { debounceMs: DEBOUNCE, pendingKeyStore: pks },
-      });
-
-      await storage.put(KEY, DATA);
-      await wait(5);
-
-      // Key is persisted
-      expect(pks.keys.has(KEY)).toBe(true);
-
-      // Flush triggers sync
-      await storage.flush();
-
-      // Key should be removed from store after sync
-      expect(pks.removeCalls.length).toBeGreaterThanOrEqual(1);
-      expect(pks.keys.has(KEY)).toBe(false);
-
-      storage.dispose();
-    });
-  });
-
-  describe("init load", () => {
-    it("should load persisted keys on init and trigger sync", async () => {
-      const cache = createSpyStorage(new Map([[KEY, DATA]]));
-      const remote = createSpyStorage();
-
-      // Pre-populate pending keys as if from previous session
-      const pks = createSpyPendingKeyStore();
-      pks.keys.add(KEY);
-
-      const storage = createCachedStorage({
-        cache,
-        remote,
-        writeBack: { debounceMs: DEBOUNCE, pendingKeyStore: pks },
-      });
-
-      // Wait for init + debounce + sync
-      await wait(DEBOUNCE + 100);
-
-      // Key should have been synced to remote
-      expect(remote.store.get(KEY)).toEqual(DATA);
-      // And removed from pending store
-      expect(pks.keys.has(KEY)).toBe(false);
-
-      storage.dispose();
-    });
-  });
-
-  describe("flush awaits persistence", () => {
-    it("should await pendingKeyStore persistence before flushing", async () => {
-      const cache = createSpyStorage();
-      const remote = createSpyStorage();
-      const pks = createSpyPendingKeyStore();
-
-      const storage = createCachedStorage({
-        cache,
-        remote,
-        writeBack: { debounceMs: 10_000, pendingKeyStore: pks },
-      });
-
-      await storage.put(KEY, DATA);
-      // Don't wait for microtask — call flush immediately
-      await storage.flush();
-
-      // Persistence should have completed before flush ran
-      expect(pks.keys.has(KEY)).toBe(false); // removed after sync
-      expect(remote.store.get(KEY)).toEqual(DATA);
-
-      storage.dispose();
     });
   });
 });

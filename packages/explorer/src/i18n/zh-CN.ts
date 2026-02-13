@@ -93,6 +93,9 @@ const messages: Record<ExplorerTextKey, string> = {
   // 侧边栏 (Iter 3)
   "sidebar.collapse": "折叠侧边栏",
   "sidebar.expand": "展开侧边栏",
+  // 树 — Depot 集成
+  "tree.depots": "Depots",
+  "tree.selectDepot": "选择一个 Depot 以浏览文件",
   // 剪贴板 (Iter 4)
   "clipboard.copied": "已复制 {count} 个项目",
   "clipboard.cut": "已剪切 {count} 个项目",
