@@ -31,9 +31,7 @@ export type TokenDeps = {
 // Factory
 // ============================================================================
 
-export const createTokenMethods = ({
-  refreshManager,
-}: TokenDeps): TokenMethods => {
+export const createTokenMethods = ({ refreshManager }: TokenDeps): TokenMethods => {
   return {
     refresh: async () => {
       try {

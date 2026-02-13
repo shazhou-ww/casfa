@@ -16,10 +16,7 @@ interface PeriodicSyncEvent extends ExtendableEvent {
   readonly tag: string;
 }
 interface PeriodicSyncManager {
-  register(
-    tag: string,
-    options?: { minInterval: number },
-  ): Promise<void>;
+  register(tag: string, options?: { minInterval: number }): Promise<void>;
   unregister(tag: string): Promise<void>;
   getTags(): Promise<string[]>;
 }
@@ -43,22 +40,14 @@ declare global {
  * SyncCoordinator manages Layer 2 depot commits + Background Sync.
  */
 
-import {
-  createClient,
-  type CasfaClient,
-  type TokenStorageProvider,
-} from "@casfa/client";
-import {
-  createMessageHandler,
-  createIndexedDBTokenStorage,
-} from "@casfa/client-sw";
+import { type CasfaClient, createClient, type TokenStorageProvider } from "@casfa/client";
 import type { ConnectAckMessage } from "@casfa/client-bridge";
+import { createIndexedDBTokenStorage, createMessageHandler } from "@casfa/client-sw";
 import { createSyncCoordinator } from "@casfa/explorer/core/sync-coordinator";
 import { createSyncQueueStore } from "../lib/sync-queue-store.ts";
 
 const BASE_URL = self.location.origin;
-const tokenStorage: TokenStorageProvider =
-  createIndexedDBTokenStorage("root");
+const tokenStorage: TokenStorageProvider = createIndexedDBTokenStorage("root");
 
 // ── Broadcast helper ──
 function broadcast(msg: unknown): void {
@@ -126,7 +115,7 @@ self.addEventListener("activate", (event) => {
           // Permission denied or API not available — ignore
         }
       }
-    })(),
+    })()
   );
 });
 

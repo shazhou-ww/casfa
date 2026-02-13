@@ -23,9 +23,7 @@ import type { RPCMessage, RPCResponse } from "./types.ts";
  * The message is augmented with a unique `id` before sending.
  * A matching `rpc-response` with the same `id` resolves the Promise.
  */
-export type RPCFn<TMsg extends RPCMessage = RPCMessage> = (
-  msg: TMsg,
-) => Promise<unknown>;
+export type RPCFn<TMsg extends RPCMessage = RPCMessage> = (msg: TMsg) => Promise<unknown>;
 
 /** Options for createRPC. */
 export type CreateRPCOptions = {
@@ -75,7 +73,7 @@ export function extractTransferables(args: unknown[]): Transferable[] {
  */
 export function createRPC<TMsg extends RPCMessage = RPCMessage>(
   port: MessagePort,
-  options: CreateRPCOptions = {},
+  options: CreateRPCOptions = {}
 ): RPCFn<TMsg> {
   const { timeoutMs = 30_000 } = options;
 
@@ -114,9 +112,7 @@ export function createRPC<TMsg extends RPCMessage = RPCMessage>(
       pending.set(id, { resolve, reject, timer });
 
       const transferables =
-        "args" in msg && Array.isArray(msg.args)
-          ? extractTransferables(msg.args)
-          : [];
+        "args" in msg && Array.isArray(msg.args) ? extractTransferables(msg.args) : [];
 
       port.postMessage({ ...msg, id }, transferables);
     });

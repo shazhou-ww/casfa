@@ -3,11 +3,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import type {
-  StoredAccessToken,
-  StoredUserToken,
-} from "../types/tokens.ts";
-import { emptyTokenState } from "../types/tokens.ts";
+import type { StoredAccessToken, StoredUserToken } from "../types/tokens.ts";
 import {
   DEFAULT_EXPIRY_BUFFER_MS,
   isStoredAccessTokenValid,
@@ -27,7 +23,6 @@ const createUserToken = (overrides: Partial<StoredUserToken> = {}): StoredUserTo
   expiresAt: Date.now() + 3600_000, // 1 hour from now
   ...overrides,
 });
-
 
 const createAccessToken = (overrides: Partial<StoredAccessToken> = {}): StoredAccessToken => ({
   tokenBase64: "base64-access-token",
@@ -161,5 +156,3 @@ describe("isStoredAccessTokenValid", () => {
     expect(isStoredAccessTokenValid(at, 60_000)).toBe(false);
   });
 });
-
-

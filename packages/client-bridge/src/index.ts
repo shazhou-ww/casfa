@@ -10,14 +10,7 @@
  * @packageDocumentation
  */
 
-export type {
-  AppClient,
-  AppClientConfig,
-  ConflictEvent,
-  SyncCommitEvent,
-  SyncErrorEvent,
-  SyncState,
-} from "./types.ts";
+export { createAppClient, createDirectClient } from "./factory.ts";
 
 export type {
   BroadcastMessage,
@@ -29,5 +22,11 @@ export type {
   ScheduleCommitMessage,
   SetUserTokenMessage,
 } from "./messages.ts";
-
-export { createAppClient, createDirectClient } from "./factory.ts";
+export type {
+  AppClient,
+  AppClientConfig,
+  ConflictEvent,
+  SyncCommitEvent,
+  SyncErrorEvent,
+  SyncState,
+} from "./types.ts";

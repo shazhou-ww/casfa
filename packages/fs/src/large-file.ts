@@ -15,14 +15,12 @@ import {
   type CasContext,
   DEFAULT_NODE_LIMIT,
   getNodeKind,
-  hashToKey,
   openFileStream,
   readFile,
-  writeFile,
   type WriteResult,
+  writeFile,
 } from "@casfa/core";
 
-import { hashToStorageKey } from "./helpers.ts";
 import type { FsContext } from "./types.ts";
 
 // ============================================================================

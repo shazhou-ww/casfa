@@ -271,7 +271,7 @@ describe("createCachedStorage (write-back)", () => {
     opts?: {
       /** Keys that exist but are not owned by the caller */
       unownedKeys?: Set<string>;
-    },
+    }
   ): CheckableRemote {
     const store = new Map(initial);
     const unownedKeys = opts?.unownedKeys ?? new Set<string>();
@@ -460,7 +460,7 @@ describe("createCachedStorage (write-back)", () => {
           [ROOT, rootData],
           [CHILD_A, childAData],
           [CHILD_B, childBData],
-        ]),
+        ])
       );
       const remote = createCheckableRemote();
 
@@ -478,9 +478,7 @@ describe("createCachedStorage (write-back)", () => {
       expect(remote.store.has(CHILD_B)).toBe(true);
 
       // Children should be put BEFORE parent (topological order)
-      const putKeys = remote.calls
-        .filter((c) => c.method === "put")
-        .map((c) => c.args[0]);
+      const putKeys = remote.calls.filter((c) => c.method === "put").map((c) => c.args[0]);
       const rootIdx = putKeys.indexOf(ROOT);
       const childAIdx = putKeys.indexOf(CHILD_A);
       const childBIdx = putKeys.indexOf(CHILD_B);
@@ -505,7 +503,7 @@ describe("createCachedStorage (write-back)", () => {
           [CHILD_A, childAData],
           [CHILD_B, childBData],
           [LEAF_1, leaf1Data],
-        ]),
+        ])
       );
       // remote already has CHILD_A (owned) — so LEAF_1 should NOT be checked or uploaded
       const remote = createCheckableRemote(new Map([[CHILD_A, childAData]]));
@@ -523,9 +521,7 @@ describe("createCachedStorage (write-back)", () => {
       expect(remote.store.has(CHILD_B)).toBe(true);
 
       // LEAF_1 should NOT be uploaded (pruned because CHILD_A is owned)
-      const putKeys = remote.calls
-        .filter((c) => c.method === "put")
-        .map((c) => c.args[0]);
+      const putKeys = remote.calls.filter((c) => c.method === "put").map((c) => c.args[0]);
       expect(putKeys).not.toContain(LEAF_1);
 
       // LEAF_1 should NOT even be checked (not in any checkMany call)
@@ -545,13 +541,13 @@ describe("createCachedStorage (write-back)", () => {
         new Map([
           [ROOT, rootData],
           [CHILD_A, childAData],
-        ]),
+        ])
       );
       const remote = createCheckableRemote(
         new Map([
           [ROOT, rootData],
           [CHILD_A, childAData],
-        ]),
+        ])
       );
 
       const storage = createCachedStorage({
@@ -573,10 +569,9 @@ describe("createCachedStorage (write-back)", () => {
       const rootData = encodeNode([]);
 
       const cache = createSpyStorage(new Map([[ROOT, rootData]]));
-      const remote = createCheckableRemote(
-        new Map([[ROOT, rootData]]),
-        { unownedKeys: new Set([ROOT]) },
-      );
+      const remote = createCheckableRemote(new Map([[ROOT, rootData]]), {
+        unownedKeys: new Set([ROOT]),
+      });
 
       const storage = createCachedStorage({
         cache,
@@ -612,9 +607,7 @@ describe("createCachedStorage (write-back)", () => {
       // ROOT should be uploaded
       expect(remote.store.has(ROOT)).toBe(true);
       // No put for CHILD_A (not in cache)
-      const putKeys = remote.calls
-        .filter((c) => c.method === "put")
-        .map((c) => c.args[0]);
+      const putKeys = remote.calls.filter((c) => c.method === "put").map((c) => c.args[0]);
       expect(putKeys).not.toContain(CHILD_A);
 
       storage.dispose();
@@ -661,7 +654,7 @@ describe("createCachedStorage (write-back)", () => {
         new Map([
           [ROOT, rootData],
           [CHILD_A, childAData],
-        ]),
+        ])
       );
       const remote = createCheckableRemote();
 

@@ -119,7 +119,7 @@ export function ExplorerShell(props: ExplorerShellProps) {
       props.onDepotChange?.(depotId);
     }
     prevDepotIdRef.current = depotId;
-  }, [depotId, props.onDepotChange]);
+  }, [depotId, props.onDepotChange, props]);
 
   // ── Context menu handlers ──
   const handleContextMenu = useCallback((e: React.MouseEvent, item: ExplorerItem | null) => {

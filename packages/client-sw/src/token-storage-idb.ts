@@ -53,9 +53,7 @@ function getDB(): Promise<IDBDatabase> {
  *
  * @param key - The IDB key for storing the token state (typically "root").
  */
-export function createIndexedDBTokenStorage(
-  key: string,
-): TokenStorageProvider {
+export function createIndexedDBTokenStorage(key: string): TokenStorageProvider {
   return {
     async load(): Promise<TokenState | null> {
       const db = await getDB();

@@ -185,15 +185,15 @@ describe("Realm API", () => {
       expect(response.status).toBe(200);
     });
 
-    it("should reject User JWT authentication (Realm API requires Access Token)", async () => {
+    it("should accept User JWT authentication (Access Token middleware supports JWT for root delegate)", async () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Note: The actual route is /:realmId (not /:realmId/info)
-      // User JWT should be rejected for realm API
+      // User JWT is accepted — accessTokenMiddleware resolves JWT to root delegate
       const response = await ctx.helpers.authRequest(token, "GET", `/api/realm/${realm}`);
 
-      expect(response.status).toBe(401); // Invalid token format for realm API
+      expect(response.status).toBe(200);
     });
   });
 });

@@ -198,10 +198,7 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
 
   /** Check if an error is a network error (fetch throws TypeError). */
   function isNetworkError(err: unknown): boolean {
-    return (
-      err instanceof TypeError &&
-      /fetch|network/i.test((err as TypeError).message)
-    );
+    return err instanceof TypeError && /fetch|network/i.test((err as TypeError).message);
   }
 
   function setState(s: SyncState): void {
@@ -268,7 +265,7 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
   /** Permanent failure — remove from queue and emit error. */
   function failPermanently(
     entry: DepotSyncEntry,
-    error: { code: string; message: string; status?: number },
+    error: { code: string; message: string; status?: number }
   ): void {
     memQueue.delete(entry.depotId);
     queueStore.remove(entry.depotId).catch(() => {});
@@ -301,7 +298,7 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
 
       if (entry.retryCount >= MAX_RETRY_COUNT) {
         console.error(
-          `[SyncManager] depot ${entry.depotId} exceeded max retries (${MAX_RETRY_COUNT}), giving up`,
+          `[SyncManager] depot ${entry.depotId} exceeded max retries (${MAX_RETRY_COUNT}), giving up`
         );
         failPermanently(entry, {
           code: "max_retries",
@@ -348,7 +345,10 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
           root: entry.targetRoot,
         });
         if (!commitResult.ok) {
-          console.error(`[SyncManager] depots.commit failed for ${entry.depotId}:`, commitResult.error);
+          console.error(
+            `[SyncManager] depots.commit failed for ${entry.depotId}:`,
+            commitResult.error
+          );
           failPermanently(entry, commitResult.error);
           continue;
         }
@@ -362,7 +362,7 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
           // Network failure (fetch TypeError) — retry with backoff
           console.warn(
             `[SyncManager] network error for depot ${entry.depotId} (retry #${entry.retryCount + 1}):`,
-            err,
+            err
           );
           bumpRetry(entry);
         } else {

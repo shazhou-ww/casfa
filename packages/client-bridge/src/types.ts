@@ -40,11 +40,7 @@ export type AppClient = CasfaClient & {
   // ── Sync ──
 
   /** Enqueue a depot root for background commit. */
-  scheduleCommit(
-    depotId: string,
-    newRoot: string,
-    lastKnownServerRoot: string | null,
-  ): void;
+  scheduleCommit(depotId: string, newRoot: string, lastKnownServerRoot: string | null): void;
 
   /** Get the pending (uncommitted) target root for a depot, or null. */
   getPendingRoot(depotId: string): Promise<string | null>;

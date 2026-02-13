@@ -8,16 +8,11 @@
  * This is the Phase 1 / fallback implementation — no Service Worker.
  */
 
-import { type CasfaClient, createClient } from "@casfa/client";
-import {
-  type SyncManager,
-  createSyncManager,
-} from "@casfa/explorer/core/sync-manager";
+import { createClient } from "@casfa/client";
+import { createSyncManager, type SyncManager } from "@casfa/explorer/core/sync-manager";
 import type { AppClient, AppClientConfig } from "./types.ts";
 
-export async function createDirectClient(
-  config: AppClientConfig,
-): Promise<AppClient> {
+export async function createDirectClient(config: AppClientConfig): Promise<AppClient> {
   // ── Create initial CasfaClient ──
   let client = await createClient({
     baseUrl: config.baseUrl,
@@ -42,7 +37,9 @@ export async function createDirectClient(
 
   function notifyPendingCount(): void {
     const count = syncManager?.getPendingCount() ?? 0;
-    syncListeners.pendingCount.forEach((fn) => fn(count));
+    syncListeners.pendingCount.forEach((fn) => {
+      fn(count);
+    });
   }
 
   function initSyncManager(): void {
@@ -58,16 +55,24 @@ export async function createDirectClient(
     });
     // Wire events → AppClient listeners
     syncManager.onStateChange((s) =>
-      syncListeners.syncState.forEach((fn) => fn(s)),
+      syncListeners.syncState.forEach((fn) => {
+        fn(s);
+      })
     );
     syncManager.onConflict((e) =>
-      syncListeners.conflict.forEach((fn) => fn(e)),
+      syncListeners.conflict.forEach((fn) => {
+        fn(e);
+      })
     );
     syncManager.onError((e) =>
-      syncListeners.syncError.forEach((fn) => fn(e)),
+      syncListeners.syncError.forEach((fn) => {
+        fn(e);
+      })
     );
     syncManager.onCommit((e) =>
-      syncListeners.commit.forEach((fn) => fn(e)),
+      syncListeners.commit.forEach((fn) => {
+        fn(e);
+      })
     );
     // Fire pending count after each state change (enqueue/commit/recover)
     syncManager.onStateChange(() => notifyPendingCount());
@@ -140,7 +145,9 @@ export async function createDirectClient(
     // ── AppClient: sync ──
     scheduleCommit(depotId, newRoot, lastKnownServerRoot) {
       if (!syncManager) {
-        throw new Error("SyncManager not initialized — call setUserToken first or provide storage + queueStore");
+        throw new Error(
+          "SyncManager not initialized — call setUserToken first or provide storage + queueStore"
+        );
       }
       syncManager.enqueue(depotId, newRoot, lastKnownServerRoot);
       notifyPendingCount();

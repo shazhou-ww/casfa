@@ -6,11 +6,7 @@
  * lifecycle, and delegates sync operations to SyncCoordinator.
  */
 
-import {
-  createClient,
-  type CasfaClient,
-  type TokenStorageProvider,
-} from "@casfa/client";
+import { type CasfaClient, createClient, type TokenStorageProvider } from "@casfa/client";
 import type { BroadcastMessage, PortMessage } from "@casfa/client-bridge";
 import { respond, respondError } from "@casfa/port-rpc";
 
@@ -42,14 +38,7 @@ export type MessageHandlerDeps = {
 // Whitelists for RPC security
 // ============================================================================
 
-const ALLOWED_NAMESPACES = new Set([
-  "oauth",
-  "tokens",
-  "delegates",
-  "depots",
-  "fs",
-  "nodes",
-]);
+const ALLOWED_NAMESPACES = new Set(["oauth", "tokens", "delegates", "depots", "fs", "nodes"]);
 
 const ALLOWED_TOP_LEVEL = new Set([
   "getState",
@@ -71,10 +60,7 @@ const ALLOWED_TOP_LEVEL = new Set([
  * ```
  */
 export function createMessageHandler(deps: MessageHandlerDeps) {
-  return async function handleMessage(
-    msg: PortMessage,
-    port: MessagePort,
-  ): Promise<void> {
+  return async function handleMessage(msg: PortMessage, port: MessagePort): Promise<void> {
     switch (msg.type) {
       // ── Auth: set-user-token ──
       case "set-user-token": {
@@ -83,8 +69,7 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
             baseUrl: deps.baseUrl,
             realm: msg.userId,
             tokenStorage: deps.tokenStorage,
-            onAuthRequired: () =>
-              deps.broadcast({ type: "auth-required" }),
+            onAuthRequired: () => deps.broadcast({ type: "auth-required" }),
           });
           deps.setClient(newClient);
           deps.syncCoordinator.setClient(newClient);
@@ -115,18 +100,14 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
           }
 
           const target =
-            msg.target === "client"
-              ? client
-              : (client as Record<string, unknown>)[msg.target];
+            msg.target === "client" ? client : (client as Record<string, unknown>)[msg.target];
           const fn =
             msg.target === "client"
               ? (client as Record<string, unknown>)[msg.method]
               : (target as Record<string, unknown>)[msg.method];
 
           if (typeof fn !== "function") {
-            throw new Error(
-              `Not a function: ${msg.target}.${msg.method}`,
-            );
+            throw new Error(`Not a function: ${msg.target}.${msg.method}`);
           }
 
           const result = await fn.apply(target, msg.args);
@@ -141,9 +122,7 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
             "data" in result &&
             result.data instanceof Uint8Array
           ) {
-            transferables.push(
-              (result.data as Uint8Array).buffer as ArrayBuffer,
-            );
+            transferables.push((result.data as Uint8Array).buffer as ArrayBuffer);
           }
 
           respond(port, msg.id, result, transferables);
@@ -155,20 +134,12 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
 
       // ── Sync: fire-and-forget ──
       case "schedule-commit":
-        deps.syncCoordinator.enqueue(
-          msg.depotId,
-          msg.targetRoot,
-          msg.lastKnownServerRoot,
-        );
+        deps.syncCoordinator.enqueue(msg.depotId, msg.targetRoot, msg.lastKnownServerRoot);
         break;
 
       // ── Sync: RPC ──
       case "get-pending-root":
-        respond(
-          port,
-          msg.id,
-          deps.syncCoordinator.getPendingRoot(msg.depotId),
-        );
+        respond(port, msg.id, deps.syncCoordinator.getPendingRoot(msg.depotId));
         break;
 
       case "flush-now": {

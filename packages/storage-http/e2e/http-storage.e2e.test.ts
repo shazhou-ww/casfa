@@ -11,11 +11,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import {
-  type CasfaClient,
-  createClient,
-  type TokenState,
-} from "@casfa/client";
+import { type CasfaClient, createClient, type TokenState } from "@casfa/client";
 import { computeSizeFlagByte, encodeFileNode, type KeyProvider } from "@casfa/core";
 import type { PopContext } from "@casfa/proof";
 import { hashToNodeKey, nodeKeyToStorageKey } from "@casfa/protocol";
@@ -77,7 +73,7 @@ async function createTestClient(
   client: CasfaClient;
   realm: string;
 }> {
-  const { canUpload = true, canManageDepot = true } = options;
+  const _options = options;
   const userUuid = uniqueId();
   const { token, realm, userId } = await ctx.helpers.createTestUser(userUuid, "authorized");
 

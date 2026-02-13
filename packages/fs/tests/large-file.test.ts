@@ -7,11 +7,17 @@
  */
 
 import { beforeEach, describe, expect, it } from "bun:test";
-import { blake3 } from "@noble/hashes/blake3";
-import { FILEINFO_SIZE, HEADER_SIZE, type KeyProvider, type StorageProvider } from "@casfa/core";
-import { encodeDictNode } from "@casfa/core";
-import { computeSizeFlagByte, hashToKey } from "@casfa/core";
+import {
+  computeSizeFlagByte,
+  encodeDictNode,
+  FILEINFO_SIZE,
+  HEADER_SIZE,
+  hashToKey,
+  type KeyProvider,
+  type StorageProvider,
+} from "@casfa/core";
 import { storageKeyToNodeKey } from "@casfa/protocol";
+import { blake3 } from "@noble/hashes/blake3";
 
 import { createFsService, type FsContext, isFsError } from "../src/index.ts";
 
@@ -135,7 +141,13 @@ describe("Large File Support", () => {
       const dataSize = SINGLE_NODE_CAPACITY + 100;
       const data = makeTestData(dataSize);
 
-      const result = await fs.write(rootKey, "large.bin", undefined, data, "application/octet-stream");
+      const result = await fs.write(
+        rootKey,
+        "large.bin",
+        undefined,
+        data,
+        "application/octet-stream"
+      );
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
@@ -180,13 +192,7 @@ describe("Large File Support", () => {
       const dataSize = SINGLE_NODE_CAPACITY + 200;
       const data = makeTestData(dataSize);
 
-      const writeResult = await fs.write(
-        rootKey,
-        "multi.bin",
-        undefined,
-        data,
-        "image/png"
-      );
+      const writeResult = await fs.write(rootKey, "multi.bin", undefined, data, "image/png");
       expect(isFsError(writeResult)).toBe(false);
       if (isFsError(writeResult)) return;
 
@@ -214,7 +220,13 @@ describe("Large File Support", () => {
       const rootKey = await createEmptyRoot(storage, keyProvider);
       const data = makeTestData(200);
 
-      const result = await fs.write(rootKey, "too-big.bin", undefined, data, "application/octet-stream");
+      const result = await fs.write(
+        rootKey,
+        "too-big.bin",
+        undefined,
+        data,
+        "application/octet-stream"
+      );
       expect(isFsError(result)).toBe(true);
       if (!isFsError(result)) return;
 
@@ -246,7 +258,13 @@ describe("Large File Support", () => {
       const dataSize = SINGLE_NODE_CAPACITY * 5;
       const data = makeTestData(dataSize);
 
-      const result = await fs.write(rootKey, "huge.bin", undefined, data, "application/octet-stream");
+      const result = await fs.write(
+        rootKey,
+        "huge.bin",
+        undefined,
+        data,
+        "application/octet-stream"
+      );
       expect(isFsError(result)).toBe(false);
     });
   });
@@ -383,7 +401,13 @@ describe("Large File Support", () => {
       const dataSize = SINGLE_NODE_CAPACITY * 3;
       const data = makeTestData(dataSize);
 
-      const result = await fs.write(rootKey, "tracked.bin", undefined, data, "application/octet-stream");
+      const result = await fs.write(
+        rootKey,
+        "tracked.bin",
+        undefined,
+        data,
+        "application/octet-stream"
+      );
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 

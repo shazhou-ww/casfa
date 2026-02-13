@@ -5,16 +5,16 @@
  * of the RPC client, handler, and namespace proxy.
  */
 
-import { describe, expect, it, beforeEach } from "bun:test";
+import { describe, expect, it } from "bun:test";
+import type { RPCResponse } from "./index.ts";
 import {
-  createRPC,
   createNamespaceProxy,
-  respond,
-  respondError,
+  createRPC,
   dispatchNamespaceRPC,
   extractTransferables,
+  respond,
+  respondError,
 } from "./index.ts";
-import type { RPCFn, RPCResponse, NamespaceRPCRequest } from "./index.ts";
 
 // ============================================================================
 // Helpers
@@ -46,16 +46,18 @@ function echoHandler(port: MessagePort) {
 /**
  * Wire a handler that dispatches namespace-method RPCs to a target object.
  */
-function namespaceHandler(
-  port: MessagePort,
-  namespaces: Record<string, unknown>,
-) {
+function namespaceHandler(port: MessagePort, namespaces: Record<string, unknown>) {
   port.onmessage = async (e) => {
     const msg = e.data;
     if (msg?.type === "rpc" && msg.id != null) {
       const target = namespaces[msg.target];
       if (!target) {
-        respondError(port, msg.id, "unknown_namespace", new Error(`Unknown namespace: ${msg.target}`));
+        respondError(
+          port,
+          msg.id,
+          "unknown_namespace",
+          new Error(`Unknown namespace: ${msg.target}`)
+        );
         return;
       }
       await dispatchNamespaceRPC({

@@ -113,17 +113,11 @@ export type BroadcastMessage =
 // ============================================================================
 
 /** Distributive Omit — applies Omit to each member of a union separately. */
-type DistributiveOmit<T, K extends keyof never> = T extends unknown
-  ? Omit<T, K>
-  : never;
+type DistributiveOmit<T, K extends keyof never> = T extends unknown ? Omit<T, K> : never;
 
 /** All port messages from main thread that expect an RPC response. */
 export type RPCCallable = DistributiveOmit<
-  | SetUserTokenMessage
-  | RPCRequest
-  | GetPendingRootMessage
-  | FlushNowMessage
-  | LogoutMessage,
+  SetUserTokenMessage | RPCRequest | GetPendingRootMessage | FlushNowMessage | LogoutMessage,
   "id"
 >;
 

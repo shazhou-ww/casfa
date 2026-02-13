@@ -26,14 +26,10 @@ import type { RPCFn } from "./rpc.ts";
  * // → rpc({ type: "rpc", target: "math", method: "add", args: [1, 2] })
  * ```
  */
-export function createNamespaceProxy<T extends object>(
-  rpc: RPCFn,
-  namespace: string,
-): T {
+export function createNamespaceProxy<T extends object>(rpc: RPCFn, namespace: string): T {
   return new Proxy({} as T, {
     get(_, method: string) {
-      return (...args: unknown[]) =>
-        rpc({ type: "rpc", target: namespace, method, args });
+      return (...args: unknown[]) => rpc({ type: "rpc", target: namespace, method, args });
     },
   });
 }
