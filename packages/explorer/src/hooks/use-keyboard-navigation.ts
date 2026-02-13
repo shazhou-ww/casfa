@@ -79,8 +79,8 @@ export function useKeyboardNavigation(opts?: UseKeyboardNavigationOpts) {
         return;
       }
 
-      // Alt+Up or Backspace → go up
-      if ((e.altKey && e.key === "ArrowUp") || e.key === "Backspace") {
+      // Alt+Up or Backspace → go up (Backspace only when nothing selected)
+      if ((e.altKey && e.key === "ArrowUp") || (e.key === "Backspace" && selectedItems.length === 0)) {
         if (canGoUp()) {
           e.preventDefault();
           goUp();
@@ -181,8 +181,8 @@ export function useKeyboardNavigation(opts?: UseKeyboardNavigationOpts) {
 
       // ── Item operations ──
 
-      // Delete → delete selected
-      if (e.key === "Delete" && permissions.canUpload && selectedItems.length > 0) {
+      // Delete or Backspace → delete selected
+      if ((e.key === "Delete" || e.key === "Backspace") && permissions.canUpload && selectedItems.length > 0) {
         e.preventDefault();
         openDialog("delete", selectedItems[0]);
         return;

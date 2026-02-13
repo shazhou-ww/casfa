@@ -26,7 +26,6 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { hasChildDirs } from "../core/dir-children-cache.ts";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import type { TreeNode } from "../types.ts";
 import { CreateDepotDialog } from "./CreateDepotDialog.tsx";
@@ -49,11 +48,7 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
   const toggleSidebar = useExplorerStore((s) => s.toggleSidebar);
   const permissions = useExplorerStore((s) => s.permissions);
   const depotsLoading = useExplorerStore((s) => s.depotsLoading);
-  // Re-render tree when content finishes loading — the dir-children
-  // cache is populated during navigate/refresh/loadMore, and isLoading
-  // flips to false only after that, so this triggers a re-render with
-  // up-to-date leaf indicators.
-  const _isLoading = useExplorerStore((s) => s.isLoading);
+
 
   // ── Depot management dialogs ──
   const [createOpen, setCreateOpen] = useState(false);
@@ -326,8 +321,6 @@ function TreeNodeItem({
   const latestNode = treeNodes.get(node.path) ?? node;
   const isActive = activeTreeKey === latestNode.path;
   const isDepot = latestNode.type === "depot";
-  // Hide expand toggle for leaf directories (no child dirs per LRU cache)
-  const isLeaf = !isDepot && latestNode.nodeKey != null && hasChildDirs(latestNode.nodeKey) === false;
 
   return (
     <>
@@ -352,7 +345,6 @@ function TreeNodeItem({
         <Box
           component="span"
           onClick={(e) => {
-            if (isLeaf) return;
             e.stopPropagation();
             onToggle(latestNode);
           }}
@@ -366,8 +358,6 @@ function TreeNodeItem({
         >
           {latestNode.isLoading ? (
             <CircularProgress size={12} />
-          ) : isLeaf ? (
-            <Box sx={{ width: 16 }} />
           ) : latestNode.isExpanded ? (
             <ExpandMoreIcon sx={{ fontSize: 16 }} />
           ) : (
