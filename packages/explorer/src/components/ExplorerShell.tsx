@@ -187,6 +187,35 @@ export function ExplorerShell(props: ExplorerShellProps) {
     pasteItems(currentPath);
   }, [pasteItems, currentPath]);
 
+  // ── Download handler ──
+  const localFs = useExplorerStore((s) => s.localFs);
+  const handleDownload = useCallback(
+    async (item: ExplorerItem) => {
+      if (!depotRoot || item.isDirectory) return;
+      try {
+        const result = await localFs.read(depotRoot, item.path);
+        if ("code" in result) {
+          setError({ type: "unknown", message: t("error.unknown") });
+          return;
+        }
+        const blob = new Blob([result.data as BlobPart], {
+          type: result.contentType || "application/octet-stream",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = item.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch {
+        setError({ type: "unknown", message: t("error.unknown") });
+      }
+    },
+    [depotRoot, localFs, setError, t]
+  );
+
   // ── Delete confirmation handler ──
   const handleDeleteConfirm = useCallback(async () => {
     const itemsToDelete =
@@ -398,6 +427,7 @@ export function ExplorerShell(props: ExplorerShellProps) {
           onCut={handleContextMenuCut}
           onPaste={handleContextMenuPaste}
           canPaste={!!clipboard}
+          onDownload={handleDownload}
         />
       )}
 

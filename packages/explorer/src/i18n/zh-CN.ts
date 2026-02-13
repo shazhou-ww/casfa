@@ -62,13 +62,13 @@ const messages: Record<ExplorerTextKey, string> = {
   "upload.error": "上传失败",
   "upload.cancel": "取消",
   "upload.retry": "重试",
-  "upload.fileTooLarge": "「{name}」文件过大（最大 4 MB），已跳过",
+  "upload.fileTooLarge": "「{name}」文件过大，已跳过",
   // 错误
   "error.network": "网络错误，请检查连接。",
   "error.authExpired": "会话已过期，请重新登录。",
   "error.permissionDenied": "权限不足。",
   "error.notFound": "未找到。",
-  "error.fileTooLarge": "文件过大（最大 4 MB）。",
+  "error.fileTooLarge": "文件过大。",
   "error.nameConflict": "已存在同名文件或文件夹。",
   "error.unknown": "发生未知错误。",
   // 权限

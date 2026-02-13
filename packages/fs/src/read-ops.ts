@@ -1,15 +1,16 @@
 /**
  * @casfa/fs — Read Operations
  *
- * Read-only filesystem operations: stat, read, ls.
+ * Read-only filesystem operations: stat, read, readStream, ls.
  * Depends only on TreeOps (which depends only on FsContext).
  */
 
 import type { FsLsChild, FsLsResponse, FsStatResponse } from "@casfa/protocol";
 import { storageKeyToNodeKey } from "@casfa/protocol";
 import { hashToStorageKey } from "./helpers.ts";
+import { readLargeFile, streamLargeFile } from "./large-file.ts";
 import type { TreeOps } from "./tree-ops.ts";
-import { type FsError, fsError } from "./types.ts";
+import { type FsContext, type FsError, fsError } from "./types.ts";
 
 // ============================================================================
 // Read Operations Factory
@@ -17,7 +18,7 @@ import { type FsError, fsError } from "./types.ts";
 
 export type ReadOps = ReturnType<typeof createReadOps>;
 
-export const createReadOps = (tree: TreeOps) => {
+export const createReadOps = (ctx: FsContext, tree: TreeOps) => {
   /**
    * stat — Get file / directory metadata.
    */
@@ -63,7 +64,14 @@ export const createReadOps = (tree: TreeOps) => {
   };
 
   /**
-   * read — Read single-block file content.
+   * read — Read file content (supports both single-block and multi-block files).
+   *
+   * For single-block files, returns the data directly from the node.
+   * For multi-block files (B-Tree), reassembles the full content via
+   * `@casfa/core`'s `readFile` traversal.
+   *
+   * Note: For very large files, prefer `readStream` to avoid loading the
+   * entire file into memory.
    */
   const read = async (
     rootNodeKey: string,
@@ -84,18 +92,73 @@ export const createReadOps = (tree: TreeOps) => {
     if (node.kind !== "file") {
       return fsError("NOT_A_FILE", 400, "Target is not a file node");
     }
+
+    const contentType = node.fileInfo?.contentType ?? "application/octet-stream";
+    const fileSize = node.fileInfo?.fileSize ?? node.data?.length ?? 0;
+
     if (node.children && node.children.length > 0) {
-      return fsError(
-        "FILE_TOO_LARGE",
-        400,
-        "File has successor nodes (multi-block). Use the Node API to read."
-      );
+      // Multi-block file — reassemble via B-Tree traversal
+      const fullData = await readLargeFile(ctx, hash);
+      if (!fullData) {
+        return fsError("READ_FAILED", 500, "Failed to read multi-block file data");
+      }
+      return {
+        data: fullData,
+        contentType,
+        size: fileSize,
+        key: storageKeyToNodeKey(hash),
+      };
     }
 
+    // Single-block file — return data directly
     return {
       data: node.data ?? new Uint8Array(0),
-      contentType: node.fileInfo?.contentType ?? "application/octet-stream",
-      size: node.fileInfo?.fileSize ?? node.data?.length ?? 0,
+      contentType,
+      size: fileSize,
+      key: storageKeyToNodeKey(hash),
+    };
+  };
+
+  /**
+   * readStream — Read file content as a ReadableStream.
+   *
+   * Works for both single-block and multi-block files. For large files,
+   * this is more memory-efficient than `read` as it streams data
+   * chunk-by-chunk without loading the entire file into memory.
+   */
+  const readStream = async (
+    rootNodeKey: string,
+    pathStr?: string,
+    indexPathStr?: string
+  ): Promise<
+    { stream: ReadableStream<Uint8Array>; contentType: string; size: number; key: string } | FsError
+  > => {
+    const rootKey = await tree.resolveNodeKey(rootNodeKey);
+    if (typeof rootKey === "object") return rootKey;
+
+    const resolved = await tree.resolvePath(rootKey, pathStr, indexPathStr);
+    if ("code" in resolved) return resolved;
+
+    const { hash, node } = resolved;
+
+    if (node.kind === "dict") {
+      return fsError("NOT_A_FILE", 400, "Target is a directory, not a file");
+    }
+    if (node.kind !== "file") {
+      return fsError("NOT_A_FILE", 400, "Target is not a file node");
+    }
+
+    const contentType = node.fileInfo?.contentType ?? "application/octet-stream";
+    const fileSize = node.fileInfo?.fileSize ?? node.data?.length ?? 0;
+
+    // Use streamLargeFile for both single-block and multi-block —
+    // it handles both transparently via B-Tree DFS traversal.
+    const stream = streamLargeFile(ctx, hash);
+
+    return {
+      stream,
+      contentType,
+      size: fileSize,
       key: storageKeyToNodeKey(hash),
     };
   };
@@ -165,5 +228,5 @@ export const createReadOps = (tree: TreeOps) => {
     };
   };
 
-  return { stat, read, ls };
+  return { stat, read, readStream, ls };
 };

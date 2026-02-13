@@ -28,4 +28,8 @@ export type FsServiceDeps = {
   usageDb: UsageDb;
   depotsDb: DepotsDb;
   scopeSetNodesDb: ScopeSetNodesDb;
+  /** B-Tree node size limit (default: core's DEFAULT_NODE_LIMIT = 1MB) */
+  nodeLimit?: number;
+  /** Max file size for write operations (default: no limit) */
+  maxFileSize?: number;
 };
