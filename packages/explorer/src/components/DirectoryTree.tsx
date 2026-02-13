@@ -67,41 +67,44 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
     depotName: string;
   } | null>(null);
 
-  // ── Auto-expand initial depot ──
-  const initialDepotIdRef = useRef(depotId);
-  const autoExpandDone = useRef(false);
+  // ── Auto-expand path in tree ──
+  // Track which path we've finished expanding — prevents fighting manual collapse.
+  const expandedForRef = useRef<string | null>(null);
 
   // Load depot list on mount
   useEffect(() => {
     loadDepots();
   }, [loadDepots]);
 
-  // Auto-expand initially provided depot (from URL prop)
+  // When depotId or currentPath changes, expand all nodes along the path.
+  // expandTreeNode is async (loads children), so we await each level in order.
+  // expandedForRef prevents re-expanding after manual collapse.
   useEffect(() => {
-    const targetDepotId = initialDepotIdRef.current;
-    if (autoExpandDone.current || !targetDepotId) return;
-    const depotKey = `depot:${targetDepotId}`;
-    const depotNode = treeNodes.get(depotKey);
-    if (depotNode && !depotNode.isExpanded && !depotNode.isLoading) {
-      autoExpandDone.current = true;
-      expandTreeNode(depotKey);
-    }
-  }, [treeNodes, expandTreeNode]);
+    if (!depotId) return;
+    const pathKey = `${depotId}:${currentPath}`;
+    if (expandedForRef.current === pathKey) return;
 
-  // Auto-expand ancestors of the current path within the active depot
-  useEffect(() => {
-    if (!depotId || !currentPath) return;
+    let cancelled = false;
     const depotKey = `depot:${depotId}`;
-    const parts = currentPath.split("/");
-    let accumulated = depotKey;
-    for (const part of parts) {
-      accumulated = `${accumulated}/${part}`;
-      const node = treeNodes.get(accumulated);
-      if (node && !node.isExpanded && node.children === null) {
-        expandTreeNode(accumulated);
+    const keys = [depotKey];
+    if (currentPath) {
+      let acc = depotKey;
+      for (const part of currentPath.split("/")) {
+        acc = `${acc}/${part}`;
+        keys.push(acc);
       }
     }
-  }, [depotId, currentPath, treeNodes, expandTreeNode]);
+
+    (async () => {
+      for (const key of keys) {
+        if (cancelled) return;
+        await expandTreeNode(key);
+      }
+      if (!cancelled) expandedForRef.current = pathKey;
+    })();
+
+    return () => { cancelled = true; };
+  }, [depotId, currentPath, expandTreeNode]);
 
   // Compute active tree key
   const activeTreeKey = depotId
