@@ -64,6 +64,7 @@ import type { OAuthController } from "./controllers/oauth.ts";
 import type { RealmController } from "./controllers/realm.ts";
 import type { RefreshController } from "./controllers/refresh.ts";
 import type { McpController } from "./mcp/handler.ts";
+import type { OAuthAuthController } from "./controllers/oauth-auth.ts";
 import type { Env } from "./types.ts";
 
 // ============================================================================
@@ -82,6 +83,7 @@ export type RouterDeps = {
   depots: DepotsController;
   filesystem: FilesystemController;
   mcp: McpController;
+  oauthAuth: OAuthAuthController;
   delegates: DelegatesController;
   claim: ClaimController;
   refreshToken: RefreshController;
@@ -153,6 +155,15 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   app.get("/api/info", deps.info.getInfo);
 
   // ============================================================================
+  // OAuth Authorization Server Metadata (RFC 8414)
+  // ============================================================================
+
+  app.get(
+    "/.well-known/oauth-authorization-server/api/auth",
+    deps.oauthAuth.getMetadata,
+  );
+
+  // ============================================================================
   // OAuth Routes
   // ============================================================================
 
@@ -199,6 +210,17 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   // ============================================================================
   // Auth Routes
   // ============================================================================
+
+  // OAuth authorize (GET = consent page data, POST = approve consent)
+  app.get("/api/auth/authorize", deps.oauthAuth.authorize);
+  app.post(
+    "/api/auth/authorize",
+    deps.jwtAuthMiddleware,
+    deps.oauthAuth.approveAuthorization,
+  );
+
+  // OAuth token endpoint (authorization_code + refresh_token grants)
+  app.post("/api/auth/token", deps.oauthAuth.token);
 
   // Token refresh (RT → new RT + AT, rotation, child delegates only)
   app.post("/api/auth/refresh", deps.refreshToken.refresh);

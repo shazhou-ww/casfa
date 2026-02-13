@@ -22,6 +22,7 @@ import {
   createFilesystemController,
   createHealthController,
   createInfoController,
+  createOAuthAuthController,
   createOAuthController,
   createRealmController,
   createRefreshController,
@@ -105,6 +106,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     serveStaticFallbackMiddleware,
   } = deps;
   const {
+    authCodesDb,
     delegatesDb,
     scopeSetNodesDb,
     ownershipV2Db,
@@ -214,6 +216,11 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   const mcp = createMcpController({
     depotsDb,
   });
+  const oauthAuth = createOAuthAuthController({
+    serverConfig: config.server,
+    authCodesDb,
+    delegatesDb,
+  });
 
   // New delegate model controllers
   const delegates = createDelegatesController({
@@ -271,6 +278,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     claim,
     refreshToken,
     mcp,
+    oauthAuth,
     jwtAuthMiddleware,
     authorizedUserMiddleware,
     accessTokenMiddleware,

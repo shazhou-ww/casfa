@@ -37,4 +37,9 @@ export {
 export { createHealthController, type HealthController } from "./health.ts";
 export { createInfoController, type InfoController, type InfoControllerDeps } from "./info.ts";
 export { createOAuthController, type OAuthController } from "./oauth.ts";
+export {
+  createOAuthAuthController,
+  type OAuthAuthController,
+  type OAuthAuthControllerDeps,
+} from "./oauth-auth.ts";
 export { createRealmController, type RealmController } from "./realm.ts";
