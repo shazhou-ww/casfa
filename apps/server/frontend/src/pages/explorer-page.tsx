@@ -119,7 +119,6 @@ export function ExplorerPage() {
   return (
     <Box display="flex" flexDirection="column" height="100%">
       <CasfaExplorer
-        key={depotId ?? "__no_depot__"}
         client={appClient}
         storage={storage}
         keyProvider={keyProv}

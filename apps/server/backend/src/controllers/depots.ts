@@ -165,32 +165,32 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
       // Convert node key to CB32 storage key for storage/ownership lookups
       const storageKey = nodeKeyToStorageKey(newRoot);
 
-      // Check if new root exists in storage
-      const exists = await storage.has(storageKey);
-      if (!exists) {
-        return c.json({ error: "Root node does not exist" }, 400);
-      }
+      // Well-known nodes (e.g. empty dict) are virtual & universally owned — skip all checks
+      if (!isWellKnownNode(storageKey)) {
+        // Check if new root exists in storage
+        const exists = await storage.has(storageKey);
+        if (!exists) {
+          return c.json({ error: "Root node does not exist" }, 400);
+        }
 
-      // Ownership verification: root must be owned by current delegate's chain
-      // Well-known nodes (e.g. empty dict) are universally owned — skip check
-      const delegateChain = auth.issuerChain;
-      let rootAuthorized = isWellKnownNode(storageKey);
-      if (!rootAuthorized) {
+        // Ownership verification: root must be owned by current delegate's chain
+        const delegateChain = auth.issuerChain;
+        let rootAuthorized = false;
         for (const id of delegateChain) {
           if (await ownershipV2Db.hasOwnership(storageKey, id)) {
             rootAuthorized = true;
             break;
           }
         }
-      }
-      if (!rootAuthorized) {
-        return c.json(
-          {
-            error: "ROOT_NOT_AUTHORIZED",
-            message: "Not authorized to set this node as depot root. Upload the node first.",
-          },
-          403
-        );
+        if (!rootAuthorized) {
+          return c.json(
+            {
+              error: "ROOT_NOT_AUTHORIZED",
+              message: "Not authorized to set this node as depot root. Upload the node first.",
+            },
+            403
+          );
+        }
       }
 
       // Store root as node key format (node:XXXX) in the depot

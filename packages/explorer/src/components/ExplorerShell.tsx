@@ -1,16 +1,19 @@
 /**
- * <ExplorerShell /> - Layout shell that switches between
- * DepotSelector and the file browser views.
+ * <ExplorerShell /> - Layout shell with tree sidebar (depot + directory)
+ * and file browser views.
  *
+ * The tree sidebar always shows depots as top-level nodes.
+ * Expanding a depot selects it and loads its directory tree.
+ * Only one depot may be expanded at a time.
  * Iter 2: Integrates upload overlay, upload progress, context menu,
  * dialogs, and error snackbar.
  * Iter 3: Adds tree sidebar, resizable splitter, grid view, keyboard navigation.
  * Iter 4: Adds clipboard, DnD, enhanced keyboard, detail/preview panels, conflict dialog.
  */
 
-import { Box } from "@mui/material";
+import { Box, CircularProgress, Typography } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useExplorerStore } from "../hooks/use-explorer-context.ts";
+import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import { useKeyboardNavigation } from "../hooks/use-keyboard-navigation.ts";
 import { useUpload } from "../hooks/use-upload.ts";
 import type {
@@ -27,7 +30,6 @@ import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { ConflictDialog } from "./ConflictDialog.tsx";
 import { ContextMenu } from "./ContextMenu.tsx";
 import { CreateFolderDialog } from "./CreateFolderDialog.tsx";
-import { DepotSelector } from "./DepotSelector.tsx";
 import { DetailPanel } from "./DetailPanel.tsx";
 import { DirectoryTree } from "./DirectoryTree.tsx";
 import { ErrorSnackbar } from "./ErrorSnackbar.tsx";
@@ -55,6 +57,7 @@ type ExplorerShellProps = {
 };
 
 export function ExplorerShell(props: ExplorerShellProps) {
+  const t = useExplorerT();
   const depotId = useExplorerStore((s) => s.depotId);
   const depotRoot = useExplorerStore((s) => s.depotRoot);
   const selectDepot = useExplorerStore((s) => s.selectDepot);
@@ -102,11 +105,21 @@ export function ExplorerShell(props: ExplorerShellProps) {
     props.onSelect?.(selectedItems);
   }, [selectedItems, props]);
 
+  // ── Auto-select depot when provided via props but root not loaded ──
   useEffect(() => {
     if (depotId && !depotRoot) {
       selectDepot(depotId);
     }
   }, [depotId, depotRoot, selectDepot]);
+
+  // ── Fire onDepotChange when the active depot changes (driven by tree) ──
+  const prevDepotIdRef = useRef<string | null>(depotId);
+  useEffect(() => {
+    if (depotId && depotId !== prevDepotIdRef.current) {
+      props.onDepotChange?.(depotId);
+    }
+    prevDepotIdRef.current = depotId;
+  }, [depotId, props.onDepotChange]);
 
   // ── Context menu handlers ──
   const handleContextMenu = useCallback((e: React.MouseEvent, item: ExplorerItem | null) => {
@@ -246,21 +259,6 @@ export function ExplorerShell(props: ExplorerShellProps) {
     [kbHandler]
   );
 
-  if (!depotId) {
-    return (
-      <DepotSelector
-        onSelect={(id) => {
-          selectDepot(id);
-          props.onDepotChange?.(id);
-        }}
-      />
-    );
-  }
-
-  if (!depotRoot) {
-    return null;
-  }
-
   // Determine delete message
   const deleteItemCount =
     selectedItems.length > 1 ? selectedItems.length : dialogState.targetItem ? 1 : 0;
@@ -313,20 +311,23 @@ export function ExplorerShell(props: ExplorerShellProps) {
         position: "relative",
       }}
       tabIndex={0}
-      onKeyDown={handleKeyDown}
+      onKeyDown={depotRoot ? handleKeyDown : undefined}
     >
-      <ExplorerToolbar
-        renderBreadcrumb={props.renderBreadcrumb}
-        onUpload={uploadFiles}
-        onNewFolder={handleContextMenuNewFolder}
-        onNavigate={props.onNavigate}
-        extraToolbarItems={props.extraToolbarItems}
-        fileInputRef={toolbarFileInputRef}
-      />
+      {/* Toolbar — only when a depot is active */}
+      {depotRoot && (
+        <ExplorerToolbar
+          renderBreadcrumb={props.renderBreadcrumb}
+          onUpload={uploadFiles}
+          onNewFolder={handleContextMenuNewFolder}
+          onNavigate={props.onNavigate}
+          extraToolbarItems={props.extraToolbarItems}
+          fileInputRef={toolbarFileInputRef}
+        />
+      )}
 
       {/* Main body: sidebar + splitter + content + detail */}
       <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        {/* Directory tree sidebar */}
+        {/* Directory tree sidebar (always visible) */}
         <Box
           sx={{
             width: sidebarCollapsed ? 36 : sidebarWidth,
@@ -343,34 +344,62 @@ export function ExplorerShell(props: ExplorerShellProps) {
 
         {/* Main content area */}
         <Box sx={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <UploadOverlay onDrop={uploadFiles} canUpload={permissions.canUpload}>
-            <Box sx={{ flex: 1, overflow: "auto" }}>{renderBody()}</Box>
-          </UploadOverlay>
+          {!depotId ? (
+            /* No depot selected — empty state */
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+              }}
+            >
+              <Typography color="text.secondary">{t("tree.selectDepot")}</Typography>
+            </Box>
+          ) : !depotRoot ? (
+            /* Depot selected but root not yet loaded */
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+              }}
+            >
+              <CircularProgress size={28} />
+            </Box>
+          ) : (
+            <UploadOverlay onDrop={uploadFiles} canUpload={permissions.canUpload}>
+              <Box sx={{ flex: 1, overflow: "auto" }}>{renderBody()}</Box>
+            </UploadOverlay>
+          )}
         </Box>
 
         {/* Detail panel (Iter 4) */}
-        {detailPanelOpen && <DetailPanel />}
+        {detailPanelOpen && depotRoot && <DetailPanel />}
       </Box>
 
-      <StatusBar />
+      {depotRoot && <StatusBar />}
 
-      {/* Context menu (Iter 4: clipboard items enabled) */}
-      <ContextMenu
-        anchorPosition={contextMenuPos}
-        onClose={handleContextMenuClose}
-        targetItem={contextMenuItem}
-        extraItems={props.extraContextMenuItems}
-        onOpen={handleContextMenuOpen}
-        onRename={handleContextMenuRename}
-        onDelete={handleContextMenuDelete}
-        onNewFolder={handleContextMenuNewFolder}
-        onUpload={handleContextMenuUpload}
-        onRefresh={handleContextMenuRefresh}
-        onCopy={handleContextMenuCopy}
-        onCut={handleContextMenuCut}
-        onPaste={handleContextMenuPaste}
-        canPaste={!!clipboard}
-      />
+      {/* Context menu (Iter 4: clipboard items enabled) — only when depot is active */}
+      {depotRoot && (
+        <ContextMenu
+          anchorPosition={contextMenuPos}
+          onClose={handleContextMenuClose}
+          targetItem={contextMenuItem}
+          extraItems={props.extraContextMenuItems}
+          onOpen={handleContextMenuOpen}
+          onRename={handleContextMenuRename}
+          onDelete={handleContextMenuDelete}
+          onNewFolder={handleContextMenuNewFolder}
+          onUpload={handleContextMenuUpload}
+          onRefresh={handleContextMenuRefresh}
+          onCopy={handleContextMenuCopy}
+          onCut={handleContextMenuCut}
+          onPaste={handleContextMenuPaste}
+          canPaste={!!clipboard}
+        />
+      )}
 
       {/* Hidden file inputs for upload */}
       <input

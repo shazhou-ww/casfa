@@ -13,18 +13,27 @@
  */
 
 import type { CasfaClient } from "@casfa/client";
+import { nodeKeyToStorageKey } from "@casfa/protocol";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 /**
- * Minimal interface for Layer 1 storage — only needs flush().
+ * Minimal interface for Layer 1 storage.
  * Matches CachedStorageProvider from @casfa/storage-cached
  * without requiring the dependency.
  */
 export type FlushableStorage = {
+  /** @deprecated No-op — use syncTree instead. */
   flush(): Promise<void>;
+  /**
+   * Walk a CAS tree from `rootKey`, batch-check against remote,
+   * prune already-owned subtrees, and upload only missing nodes.
+   *
+   * @param rootKey — CB32 storage key of the tree root
+   */
+  syncTree(rootKey: string): Promise<void>;
 };
 
 /**
@@ -92,7 +101,7 @@ export type SyncCommitEvent = {
 };
 
 export type SyncManagerConfig = {
-  /** Layer 1: storage with flush() — used to sync CAS nodes before committing */
+  /** Layer 1: storage with syncTree() — used to sync CAS nodes before committing */
   storage: FlushableStorage;
   /** Depot API client */
   client: CasfaClient;
@@ -187,15 +196,12 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
 
   // -- Helpers --
 
-  /**
-   * Determine whether a server error response is retryable.
-   * Only transient failures (429 rate-limit, 5xx server errors) warrant retry.
-   * Client errors (4xx except 429) are permanent — the request itself is wrong.
-   * When status is undefined we treat it as retryable (unknown failure).
-   */
-  function isRetryableStatus(status: number | undefined): boolean {
-    if (status === undefined) return true;
-    return status === 429 || status >= 500;
+  /** Check if an error is a network error (fetch throws TypeError). */
+  function isNetworkError(err: unknown): boolean {
+    return (
+      err instanceof TypeError &&
+      /fetch|network/i.test((err as TypeError).message)
+    );
   }
 
   function setState(s: SyncState): void {
@@ -248,7 +254,7 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
     }, delay);
   }
 
-  /** Increment retryCount for a transient failure (network error or 5xx/429). */
+  /** Increment retryCount for a transient network failure. */
   function bumpRetry(entry: DepotSyncEntry): void {
     const updated: DepotSyncEntry = {
       ...entry,
@@ -257,6 +263,16 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
     };
     memQueue.set(entry.depotId, updated);
     queueStore.upsert(updated).catch(() => {});
+  }
+
+  /** Permanent failure — remove from queue and emit error. */
+  function failPermanently(
+    entry: DepotSyncEntry,
+    error: { code: string; message: string; status?: number },
+  ): void {
+    memQueue.delete(entry.depotId);
+    queueStore.remove(entry.depotId).catch(() => {});
+    emitError({ depotId: entry.depotId, targetRoot: entry.targetRoot, error, permanent: true });
   }
 
   function triggerSync(): void {
@@ -277,19 +293,7 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
 
     setState("syncing");
 
-    // ── Layer 1: flush all pending CAS nodes ──
-    // flush() is global and idempotent. If it fails, we must NOT commit
-    // because the server would get a tree pointer referencing missing nodes.
-    try {
-      await storage.flush();
-    } catch (err) {
-      console.error("[SyncManager] flush failed, aborting sync cycle:", err);
-      setState("error");
-      scheduleRetry(5_000);
-      return;
-    }
-
-    // ── Layer 2: commit each depot ──
+    // ── Layer 2: sync tree + commit each depot ──
     const entries = [...memQueue.values()];
 
     for (const entry of entries) {
@@ -297,37 +301,25 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
 
       if (entry.retryCount >= MAX_RETRY_COUNT) {
         console.error(
-          `[SyncManager] depot ${entry.depotId} exceeded max retries (${MAX_RETRY_COUNT}), giving up`
+          `[SyncManager] depot ${entry.depotId} exceeded max retries (${MAX_RETRY_COUNT}), giving up`,
         );
-        memQueue.delete(entry.depotId);
-        await queueStore.remove(entry.depotId);
-        emitError({
-          depotId: entry.depotId,
-          targetRoot: entry.targetRoot,
-          error: { code: "max_retries", message: `Exceeded ${MAX_RETRY_COUNT} retries` },
-          permanent: true,
+        failPermanently(entry, {
+          code: "max_retries",
+          message: `Exceeded ${MAX_RETRY_COUNT} retries`,
         });
         continue;
       }
 
       try {
-        // Check current server state
+        // Layer 1: sync this depot's tree — walk from root, upload missing nodes
+        const storageKey = nodeKeyToStorageKey(entry.targetRoot);
+        await storage.syncTree(storageKey);
+
+        // Layer 2: commit — check current server state
         const result = await client.depots.get(entry.depotId);
         if (!result.ok) {
-          if (isRetryableStatus(result.error.status)) {
-            // Transient — retry later
-            bumpRetry(entry);
-          } else {
-            // Permanent server error — give up
-            memQueue.delete(entry.depotId);
-            await queueStore.remove(entry.depotId);
-            emitError({
-              depotId: entry.depotId,
-              targetRoot: entry.targetRoot,
-              error: result.error,
-              permanent: true,
-            });
-          }
+          console.error(`[SyncManager] depots.get failed for ${entry.depotId}:`, result.error);
+          failPermanently(entry, result.error);
           continue;
         }
 
@@ -356,20 +348,8 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
           root: entry.targetRoot,
         });
         if (!commitResult.ok) {
-          if (isRetryableStatus(commitResult.error.status)) {
-            // Transient — retry later
-            bumpRetry(entry);
-          } else {
-            // Permanent server error — give up
-            memQueue.delete(entry.depotId);
-            await queueStore.remove(entry.depotId);
-            emitError({
-              depotId: entry.depotId,
-              targetRoot: entry.targetRoot,
-              error: commitResult.error,
-              permanent: true,
-            });
-          }
+          console.error(`[SyncManager] depots.commit failed for ${entry.depotId}:`, commitResult.error);
+          failPermanently(entry, commitResult.error);
           continue;
         }
 
@@ -377,9 +357,22 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
         memQueue.delete(entry.depotId);
         await queueStore.remove(entry.depotId);
         emitCommit({ depotId: entry.depotId, committedRoot: entry.targetRoot });
-      } catch (_err) {
-        // Network error (fetch threw) — always retry
-        bumpRetry(entry);
+      } catch (err) {
+        if (isNetworkError(err)) {
+          // Network failure (fetch TypeError) — retry with backoff
+          console.warn(
+            `[SyncManager] network error for depot ${entry.depotId} (retry #${entry.retryCount + 1}):`,
+            err,
+          );
+          bumpRetry(entry);
+        } else {
+          // Local error (syncTree failure, etc.) — permanent
+          console.error(`[SyncManager] sync failed for depot ${entry.depotId}:`, err);
+          failPermanently(entry, {
+            code: "sync_error",
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
     }
 
@@ -428,12 +421,13 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
       const now = Date.now();
 
       if (existing) {
-        // Merge: only update targetRoot + updatedAt.
+        // Merge: update targetRoot + updatedAt, reset retryCount.
         // lastKnownServerRoot stays from first enqueue.
         const merged: DepotSyncEntry = {
           ...existing,
           targetRoot: newRoot,
           updatedAt: now,
+          retryCount: 0,
         };
         memQueue.set(depotId, merged);
         queueStore.upsert(merged).catch(() => {});

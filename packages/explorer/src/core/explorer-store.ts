@@ -374,7 +374,55 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
       try {
         const result = await client.depots.list({ limit: 100 });
         if (result.ok) {
-          set({ depots: result.data.depots, depotsLoading: false });
+          const depots = result.data.depots;
+          set({ depots, depotsLoading: false });
+
+          // Rebuild depot tree nodes
+          const treeNodes = new Map(get().treeNodes);
+          const depotChildren: TreeNode[] = depots.map((d) => {
+            const key = `depot:${d.depotId}`;
+            const existing = treeNodes.get(key);
+            if (existing) {
+              // Preserve expand state, update name
+              return { ...existing, name: d.title || d.depotId };
+            }
+            return {
+              path: key,
+              name: d.title || d.depotId,
+              type: "depot" as const,
+              depotId: d.depotId,
+              children: null,
+              isExpanded: false,
+              isLoading: false,
+            };
+          });
+
+          // Update root node
+          treeNodes.set("", {
+            path: "",
+            name: "Depots",
+            type: "depot-root" as const,
+            children: depotChildren,
+            isExpanded: true,
+            isLoading: false,
+          });
+
+          // Update individual depot entries
+          for (const child of depotChildren) {
+            treeNodes.set(child.path, child);
+          }
+
+          // Clean up removed depots and their subtrees
+          const validDepotKeys = new Set(depotChildren.map((c) => c.path));
+          for (const key of [...treeNodes.keys()]) {
+            if (key === "" || !key.startsWith("depot:")) continue;
+            const depotKey = key.includes("/") ? key.substring(0, key.indexOf("/")) : key;
+            if (!validDepotKeys.has(depotKey)) {
+              treeNodes.delete(key);
+            }
+          }
+
+          set({ treeNodes });
         } else {
           set({ depotsLoading: false });
         }
@@ -541,11 +589,15 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           diffCurrentDir(localFs, depotRoot, serverRoot, currentPath, get, set);
         }
         // Also refresh tree node cache for current path
-        const treeNodes = new Map(get().treeNodes);
-        const node = treeNodes.get(currentPath);
-        if (node?.isExpanded) {
-          // Re-expand to refresh children
-          await get().expandTreeNode(currentPath);
+        const { depotId: refreshDepotId } = get();
+        if (refreshDepotId) {
+          const treeKey = currentPath
+            ? `depot:${refreshDepotId}/${currentPath}`
+            : `depot:${refreshDepotId}`;
+          const treeNode = get().treeNodes.get(treeKey);
+          if (treeNode?.isExpanded) {
+            await get().expandTreeNode(treeKey);
+          }
         }
       } catch {
         set({ isLoading: false });
@@ -675,38 +727,138 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
     // ── Tree sidebar (Iter 3) ──
     expandTreeNode: async (path: string) => {
-      const { localFs, depotRoot, treeNodes } = get();
+      const { treeNodes } = get();
+      const node = treeNodes.get(path);
+
+      // ── Depot node: select depot + load root directories ──
+      if (node?.type === "depot" && node.depotId) {
+        const depotIdToSelect = node.depotId;
+
+        // Auto-collapse any other expanded depot and remove its subtree
+        const newMap = new Map(treeNodes);
+        for (const [key, n] of newMap) {
+          if (n.type === "depot" && n.isExpanded && key !== path) {
+            newMap.set(key, { ...n, isExpanded: false, children: null });
+            for (const subKey of [...newMap.keys()]) {
+              if (subKey.startsWith(`${key}/`)) newMap.delete(subKey);
+            }
+          }
+        }
+
+        // Mark this depot as expanded + loading
+        newMap.set(path, { ...node, isExpanded: true, isLoading: true });
+        set({ treeNodes: newMap });
+
+        // Select the depot if not already selected or root not loaded
+        if (get().depotId !== depotIdToSelect || !get().depotRoot) {
+          await get().selectDepot(depotIdToSelect);
+        }
+
+        // Load root directories for the tree
+        const { localFs, depotRoot } = get();
+        if (!depotRoot) {
+          const errMap = new Map(get().treeNodes);
+          const n = errMap.get(path);
+          if (n) errMap.set(path, { ...n, isLoading: false });
+          set({ treeNodes: errMap });
+          return;
+        }
+
+        try {
+          const result = await localFs.ls(depotRoot, undefined, undefined, LS_PAGE_SIZE);
+          if (isFsError(result)) {
+            const errMap = new Map(get().treeNodes);
+            const n = errMap.get(path);
+            if (n) errMap.set(path, { ...n, isLoading: false });
+            set({ treeNodes: errMap });
+            return;
+          }
+          const children: TreeNode[] = result.children
+            .filter((c) => c.type === "dir")
+            .map((c) => {
+              const childPath = `${path}/${c.name}`;
+              const prev = get().treeNodes.get(childPath);
+              return (
+                prev ?? {
+                  path: childPath,
+                  name: c.name,
+                  type: "directory" as const,
+                  depotId: depotIdToSelect,
+                  children: null,
+                  isExpanded: false,
+                  isLoading: false,
+                }
+              );
+            });
+          const doneMap = new Map(get().treeNodes);
+          const doneNode = doneMap.get(path);
+          if (doneNode) doneMap.set(path, { ...doneNode, children, isLoading: false });
+          set({ treeNodes: doneMap });
+        } catch {
+          const errMap = new Map(get().treeNodes);
+          const n = errMap.get(path);
+          if (n) errMap.set(path, { ...n, isLoading: false });
+          set({ treeNodes: errMap });
+        }
+        return;
+      }
+
+      // ── Directory node (within an expanded depot) ──
+      const { localFs, depotRoot } = get();
       if (!depotRoot) return;
+
+      // Extract relative path — tree key format: "depot:<id>/<relativePath>"
+      let relativePath = path;
+      let nodeDepotId: string | undefined;
+      const depotPrefixMatch = path.match(/^depot:([^/]+)\/(.+)$/);
+      if (depotPrefixMatch) {
+        nodeDepotId = depotPrefixMatch[1];
+        relativePath = depotPrefixMatch[2]!;
+      }
 
       const newMap = new Map(treeNodes);
       const existing = newMap.get(path);
       if (existing) {
         newMap.set(path, { ...existing, isExpanded: true, isLoading: true });
       } else {
-        const name = path ? path.split("/").pop()! : "root";
-        newMap.set(path, { path, name, children: null, isExpanded: true, isLoading: true });
+        const name = relativePath ? relativePath.split("/").pop()! : "root";
+        newMap.set(path, {
+          path,
+          name,
+          type: "directory" as const,
+          depotId: nodeDepotId,
+          children: null,
+          isExpanded: true,
+          isLoading: true,
+        });
       }
       set({ treeNodes: newMap });
 
       try {
-        const result = await localFs.ls(depotRoot, path || undefined, undefined, LS_PAGE_SIZE);
+        const result = await localFs.ls(
+          depotRoot,
+          relativePath || undefined,
+          undefined,
+          LS_PAGE_SIZE
+        );
         if (isFsError(result)) {
           const errMap = new Map(get().treeNodes);
-          const node = errMap.get(path);
-          if (node) errMap.set(path, { ...node, isLoading: false });
+          const n = errMap.get(path);
+          if (n) errMap.set(path, { ...n, isLoading: false });
           set({ treeNodes: errMap });
           return;
         }
         const children: TreeNode[] = result.children
           .filter((c) => c.type === "dir")
           .map((c) => {
-            const childPath = path ? `${path}/${c.name}` : c.name;
-            // Preserve existing expanded state if previously loaded
+            const childPath = `${path}/${c.name}`;
             const prev = get().treeNodes.get(childPath);
             return (
               prev ?? {
                 path: childPath,
                 name: c.name,
+                type: "directory" as const,
+                depotId: nodeDepotId ?? node?.depotId,
                 children: null,
                 isExpanded: false,
                 isLoading: false,
@@ -714,13 +866,13 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
             );
           });
         const doneMap = new Map(get().treeNodes);
-        const node = doneMap.get(path);
-        if (node) doneMap.set(path, { ...node, children, isLoading: false });
+        const n = doneMap.get(path);
+        if (n) doneMap.set(path, { ...n, children, isLoading: false });
         set({ treeNodes: doneMap });
       } catch {
         const errMap = new Map(get().treeNodes);
-        const node = errMap.get(path);
-        if (node) errMap.set(path, { ...node, isLoading: false });
+        const n = errMap.get(path);
+        if (n) errMap.set(path, { ...n, isLoading: false });
         set({ treeNodes: errMap });
       }
     },
