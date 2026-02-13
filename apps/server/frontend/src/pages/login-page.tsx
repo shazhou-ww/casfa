@@ -1,4 +1,5 @@
 import GoogleIcon from "@mui/icons-material/Google";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import MicrosoftIcon from "@mui/icons-material/Window";
 import {
   Alert,
@@ -11,8 +12,7 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import { useEffect, useState } from "react";
-import { getClient } from "../lib/client.ts";
+import { useCallback, useEffect, useState } from "react";
 
 type CognitoConfig = {
   domain: string;
@@ -24,28 +24,29 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const client = await getClient();
-        const result = await client.oauth.getConfig();
-        if (cancelled) return;
-        if (result.ok) {
-          setConfig({ domain: result.data.domain, clientId: result.data.clientId });
-        } else {
-          setError("Failed to load OAuth configuration.");
-        }
-      } catch {
-        if (!cancelled) setError("Failed to connect to server.");
-      } finally {
-        if (!cancelled) setLoading(false);
+  const loadConfig = useCallback(async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      // Direct fetch — bypass AppClient/SW since this is a public endpoint
+      // and the SW may not have a CasfaClient yet (user is not authenticated).
+      const res = await fetch("/api/oauth/config");
+      if (res.ok) {
+        const data = await res.json();
+        setConfig({ domain: data.domain, clientId: data.clientId });
+      } else {
+        setError("Failed to load OAuth configuration.");
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    } catch {
+      setError("Failed to connect to server.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadConfig();
+  }, [loadConfig]);
 
   const redirectUri = `${window.location.origin}/oauth/callback`;
 
@@ -87,7 +88,20 @@ export function LoginPage() {
           </Typography>
 
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
+            <Alert
+              severity="error"
+              sx={{ mb: 2 }}
+              action={
+                <Button
+                  color="inherit"
+                  size="small"
+                  startIcon={<RefreshIcon />}
+                  onClick={loadConfig}
+                >
+                  Retry
+                </Button>
+              }
+            >
               {error}
             </Alert>
           )}
@@ -122,11 +136,11 @@ export function LoginPage() {
                 Continue with Microsoft
               </Button>
             </Stack>
-          ) : (
+          ) : !error ? (
             <Alert severity="warning">
               OAuth is not configured on this server. Please set Cognito environment variables.
             </Alert>
-          )}
+          ) : null}
         </CardContent>
       </Card>
     </Box>
