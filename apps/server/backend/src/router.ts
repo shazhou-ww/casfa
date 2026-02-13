@@ -194,7 +194,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   // MCP Route
   // ============================================================================
 
-  app.post("/api/mcp", deps.jwtAuthMiddleware, deps.authorizedUserMiddleware, deps.mcp.handle);
+  app.post("/api/mcp", deps.accessTokenMiddleware, deps.mcp.handle);
 
   // ============================================================================
   // Auth Routes

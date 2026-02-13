@@ -212,9 +212,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     ownershipV2Db,
   });
   const mcp = createMcpController({
-    ownershipV2Db,
-    storage,
-    serverConfig: config.server,
+    depotsDb,
   });
 
   // New delegate model controllers
