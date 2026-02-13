@@ -48,6 +48,8 @@
         "@aws-sdk/client-s3": "^3.975.0",
         "@aws-sdk/lib-dynamodb": "^3.975.0",
         "@casfa/client": "workspace:*",
+        "@casfa/client-bridge": "workspace:*",
+        "@casfa/client-sw": "workspace:*",
         "@casfa/core": "workspace:*",
         "@casfa/delegate": "workspace:*",
         "@casfa/delegate-token": "workspace:*",
@@ -136,6 +138,7 @@
       "peerDependencies": {
         "@casfa/client": "workspace:*",
         "@casfa/explorer": "workspace:*",
+        "@casfa/port-rpc": "workspace:*",
       },
       "optionalPeers": [
         "@casfa/explorer",
@@ -149,6 +152,7 @@
       },
       "peerDependencies": {
         "@casfa/client": "workspace:*",
+        "@casfa/port-rpc": "workspace:*",
       },
     },
     "packages/core": {
@@ -212,6 +216,13 @@
       },
       "devDependencies": {
         "typescript": "^5.7.2",
+      },
+    },
+    "packages/port-rpc": {
+      "name": "@casfa/port-rpc",
+      "version": "0.1.0",
+      "devDependencies": {
+        "typescript": "^5.8.0",
       },
     },
     "packages/proof": {
@@ -473,6 +484,8 @@
     "@casfa/explorer": ["@casfa/explorer@workspace:packages/explorer"],
 
     "@casfa/fs": ["@casfa/fs@workspace:packages/fs"],
+
+    "@casfa/port-rpc": ["@casfa/port-rpc@workspace:packages/port-rpc"],
 
     "@casfa/proof": ["@casfa/proof@workspace:packages/proof"],
 

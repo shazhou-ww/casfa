@@ -20,9 +20,8 @@ import type {
   TokenMethods,
   TokenState,
 } from "@casfa/client";
-import type { BroadcastMessage, ConnectAckMessage } from "./_messages.ts";
-import { createNamespaceProxy } from "./_proxy.ts";
-import { createRPC } from "./_rpc.ts";
+import type { BroadcastMessage, ConnectAckMessage } from "./messages.ts";
+import { createNamespaceProxy, createRPC } from "@casfa/port-rpc";
 import type {
   AppClient,
   AppClientConfig,
@@ -92,7 +91,7 @@ export async function createSWClient(
   const ack = await ackPromise;
 
   // ── 3. RPC layer (all subsequent port messages go through here) ──
-  const rpc = createRPC(port1, timeoutMs);
+  const rpc = createRPC(port1, { timeoutMs });
 
   // ── 4. Cached sync properties ──
   // getState() and getServerInfo() are synchronous on CasfaClient.

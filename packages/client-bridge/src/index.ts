@@ -28,6 +28,6 @@ export type {
   RPCResponse,
   ScheduleCommitMessage,
   SetUserTokenMessage,
-} from "./_messages.ts";
+} from "./messages.ts";
 
 export { createAppClient, createDirectClient } from "./factory.ts";
