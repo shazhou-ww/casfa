@@ -1,17 +1,15 @@
 /**
  * MCP (Model Context Protocol) Handler
  *
- * This controller is accessed by JWT-authenticated users (typically AI agents)
- * to interact with the CAS system via the MCP protocol.
+ * v0.1 — Minimal implementation with list_depots for OAuth verification.
+ *
+ * Supports both JWT and Delegate AT authentication via accessTokenMiddleware.
+ * The auth context provides `realm` which scopes all data access.
  */
 
-import { isWellKnownNode } from "@casfa/core";
-import type { StorageProvider } from "@casfa/storage-core";
 import type { Context } from "hono";
-import { z } from "zod";
-import type { ServerConfig } from "../config.ts";
-import type { OwnershipV2Db } from "../db/ownership-v2.ts";
-import type { Env, JwtAuthContext } from "../types.ts";
+import type { DepotsDb } from "../db/depots.ts";
+import type { AccessTokenAuthContext, Env } from "../types.ts";
 import { MCP_TOOLS } from "./tools.ts";
 
 // ============================================================================
@@ -40,16 +38,6 @@ type McpResponse = {
 const MCP_PARSE_ERROR = -32700;
 const MCP_INVALID_REQUEST = -32600;
 const MCP_METHOD_NOT_FOUND = -32601;
-const MCP_INVALID_PARAMS = -32602;
-const _MCP_INTERNAL_ERROR = -32603;
-
-// ============================================================================
-// Schemas
-// ============================================================================
-
-const ReadBlobSchema = z.object({
-  key: z.string(),
-});
 
 // ============================================================================
 // Response Helpers
@@ -65,7 +53,7 @@ const mcpError = (
   id: string | number,
   code: number,
   message: string,
-  data?: unknown
+  data?: unknown,
 ): McpResponse => ({
   jsonrpc: "2.0",
   id,
@@ -77,9 +65,7 @@ const mcpError = (
 // ============================================================================
 
 export type McpHandlerDeps = {
-  ownershipV2Db: OwnershipV2Db;
-  storage: StorageProvider;
-  serverConfig: ServerConfig;
+  depotsDb: DepotsDb;
 };
 
 export type McpController = {
@@ -87,13 +73,13 @@ export type McpController = {
 };
 
 export const createMcpController = (deps: McpHandlerDeps): McpController => {
-  const { ownershipV2Db, storage } = deps;
+  const { depotsDb } = deps;
 
   const handleInitialize = (id: string | number): McpResponse => {
     return mcpSuccess(id, {
       protocolVersion: "2024-11-05",
       capabilities: { tools: {} },
-      serverInfo: { name: "cas-mcp", version: "0.2.0" },
+      serverInfo: { name: "casfa-mcp", version: "0.1.0" },
     });
   };
 
@@ -101,37 +87,24 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
     return mcpSuccess(id, { tools: MCP_TOOLS });
   };
 
-  const handleRead = async (id: string | number, args: unknown): Promise<McpResponse> => {
-    const parsed = ReadBlobSchema.safeParse(args);
-    if (!parsed.success) {
-      return mcpError(id, MCP_INVALID_PARAMS, "Invalid parameters", parsed.error.issues);
-    }
-
-    // Check ownership (well-known nodes are universally accessible)
-    const hasAccess =
-      isWellKnownNode(parsed.data.key) || (await ownershipV2Db.hasAnyOwnership(parsed.data.key));
-    if (!hasAccess) {
-      return mcpError(id, MCP_INVALID_PARAMS, "Node not found or not accessible");
-    }
-
-    // Get content
-    const bytes = await storage.get(parsed.data.key);
-    if (!bytes) {
-      return mcpError(id, MCP_INVALID_PARAMS, "Node not found in storage");
-    }
-
-    const content = Buffer.from(bytes).toString("base64");
+  const handleListDepots = async (
+    id: string | number,
+    auth: AccessTokenAuthContext,
+  ): Promise<McpResponse> => {
+    const result = await depotsDb.list(auth.realm);
+    const depots = result.depots.map((d) => ({
+      depotId: d.depotId,
+      title: d.title,
+      root: d.root,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+    }));
 
     return mcpSuccess(id, {
       content: [
         {
           type: "text",
-          text: JSON.stringify({
-            key: parsed.data.key,
-            contentType: "application/octet-stream",
-            size: bytes.length,
-            content,
-          }),
+          text: JSON.stringify(depots),
         },
       ],
     });
@@ -140,15 +113,15 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
   const handleToolsCall = async (
     id: string | number,
     params: { name: string; arguments?: unknown } | undefined,
-    auth: JwtAuthContext
+    auth: AccessTokenAuthContext,
   ): Promise<McpResponse> => {
     if (!params?.name) {
-      return mcpError(id, MCP_INVALID_PARAMS, "Missing tool name");
+      return mcpError(id, MCP_METHOD_NOT_FOUND, "Missing tool name");
     }
 
     switch (params.name) {
-      case "cas_read":
-        return handleRead(id, params.arguments);
+      case "list_depots":
+        return handleListDepots(id, auth);
       default:
         return mcpError(id, MCP_METHOD_NOT_FOUND, `Unknown tool: ${params.name}`);
     }
@@ -156,23 +129,18 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
 
   return {
     handle: async (c) => {
-      const auth = c.get("auth");
-
-      // MCP requires JWT authentication
-      if (auth.type !== "jwt") {
-        return c.json({ error: "JWT authentication required for MCP access" }, 403);
-      }
+      const auth = c.get("auth") as AccessTokenAuthContext;
 
       // Parse request
       let request: McpRequest;
       try {
         request = await c.req.json();
       } catch {
-        return c.json([mcpError(0, MCP_PARSE_ERROR, "Parse error")]);
+        return c.json(mcpError(0, MCP_PARSE_ERROR, "Parse error"));
       }
 
       if (request.jsonrpc !== "2.0" || !request.method) {
-        return c.json([mcpError(request.id ?? 0, MCP_INVALID_REQUEST, "Invalid request")]);
+        return c.json(mcpError(request.id ?? 0, MCP_INVALID_REQUEST, "Invalid request"));
       }
 
       // Route to handler
@@ -189,14 +157,14 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
           response = await handleToolsCall(
             request.id,
             request.params as { name: string; arguments?: unknown },
-            auth
+            auth,
           );
           break;
         default:
           response = mcpError(
             request.id,
             MCP_METHOD_NOT_FOUND,
-            `Method not found: ${request.method}`
+            `Method not found: ${request.method}`,
           );
       }
 

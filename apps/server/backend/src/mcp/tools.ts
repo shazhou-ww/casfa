@@ -1,20 +1,18 @@
 /**
  * MCP Tool Definitions
+ *
+ * v0.1 — Minimal verification: list_depots only
  */
 
 export const MCP_TOOLS = [
   {
-    name: "cas_read",
-    description: "Read a blob from CAS by its hex key. Returns the blob content as base64.",
+    name: "list_depots",
+    description:
+      "List all depots in the authenticated user's realm. Returns depot IDs, titles, root node keys, and timestamps.",
     inputSchema: {
-      type: "object",
-      properties: {
-        key: {
-          type: "string",
-          description: "The CAS node hex key",
-        },
-      },
-      required: ["key"],
+      type: "object" as const,
+      properties: {},
+      required: [] as string[],
     },
   },
 ] as const;
