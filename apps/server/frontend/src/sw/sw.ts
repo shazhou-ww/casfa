@@ -62,7 +62,7 @@ let client: CasfaClient | null = null;
 // ── SyncCoordinator ──
 // Storage flush is a no-op in SW — the main thread owns CachedStorage.
 // Layer 1 flush is triggered by the main thread before scheduleCommit.
-const noopFlushStorage = { flush: async () => {} };
+const noopFlushStorage = { flush: async () => {}, syncTree: async () => {} };
 
 const syncCoordinator = createSyncCoordinator({
   storage: noopFlushStorage,
@@ -104,6 +104,20 @@ self.addEventListener("activate", (event) => {
         client = recovered;
         syncCoordinator.setClient(recovered);
         await syncCoordinator.recover();
+      } else {
+        // Create a base client so public endpoints (oauth.getConfig, etc.)
+        // work via RPC even before the user is authenticated.
+        try {
+          client = await createClient({
+            baseUrl: BASE_URL,
+            realm: "",
+            tokenStorage,
+            onAuthRequired: () => broadcast({ type: "auth-required" }),
+          });
+        } catch {
+          // Server may be unreachable — client stays null.
+          // The connect handler will retry lazily.
+        }
       }
       // Register Periodic Background Sync (progressive enhancement)
       if (self.registration.periodicSync) {
@@ -147,20 +161,38 @@ self.addEventListener("message", (event) => {
     const port = event.ports[0];
     if (!port) return;
 
-    // Send connect-ack with current state
-    const ack: ConnectAckMessage = {
-      type: "connect-ack",
-      authenticated: client !== null,
-      tokenState: client?.getState() ?? null,
-      serverInfo: client?.getServerInfo() ?? null,
-      syncState: syncCoordinator.getState(),
-      pendingCount: syncCoordinator.getPendingCount(),
-    };
-    port.postMessage(ack);
+    // Ensure a client exists (lazy init if SW was restarted after idle-kill)
+    const ready = client
+      ? Promise.resolve()
+      : createClient({
+          baseUrl: BASE_URL,
+          realm: "",
+          tokenStorage,
+          onAuthRequired: () => broadcast({ type: "auth-required" }),
+        })
+          .then((c) => {
+            client = c;
+          })
+          .catch(() => {});
 
-    // Wire up message handler for this port
-    port.onmessage = (e) => handleMessage(e.data, port);
-    port.start();
+    event.waitUntil(
+      ready.then(() => {
+        // Send connect-ack with current state
+        const ack: ConnectAckMessage = {
+          type: "connect-ack",
+          authenticated: client !== null && client.getState().user !== null,
+          tokenState: client?.getState() ?? null,
+          serverInfo: client?.getServerInfo() ?? null,
+          syncState: syncCoordinator.getState(),
+          pendingCount: syncCoordinator.getPendingCount(),
+        };
+        port.postMessage(ack);
+
+        // Wire up message handler for this port
+        port.onmessage = (e) => handleMessage(e.data, port);
+        port.start();
+      })
+    );
   }
 });
 

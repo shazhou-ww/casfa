@@ -9,16 +9,7 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import LogoutIcon from "@mui/icons-material/Logout";
 import StorageIcon from "@mui/icons-material/Storage";
-import {
-  AppBar,
-  Box,
-  Button,
-  Menu,
-  MenuItem,
-  Snackbar,
-  Toolbar,
-  Typography,
-} from "@mui/material";
+import { AppBar, Box, Button, Menu, MenuItem, Snackbar, Toolbar, Typography } from "@mui/material";
 import { useCallback, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { useAuthStore } from "../stores/auth-store.ts";

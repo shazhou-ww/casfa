@@ -1,7 +1,7 @@
 import { Alert, Box, CircularProgress, Typography } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { getClient, reinitClient } from "../lib/client.ts";
+import { getClient } from "../lib/client.ts";
 
 export function OAuthCallbackPage() {
   const [searchParams] = useSearchParams();
@@ -30,14 +30,20 @@ export function OAuthCallbackPage() {
       }
 
       try {
+        // Use the AppClient so tokens are persisted through the correct
+        // store (IndexedDB in SW mode, localStorage in direct mode).
+        // The SW now always has a base client, so RPC calls work even
+        // before authentication.
         const redirectUri = `${window.location.origin}/oauth/callback`;
         const client = await getClient();
         const result = await client.oauth.exchangeCode(code, redirectUri);
 
         if (result.ok) {
-          // Reset client so it re-initializes with the correct realm (userId)
-          // The token state is persisted in localStorage, so it survives the reinit
-          reinitClient();
+          // Re-create the internal CasfaClient with realm = userId.
+          // In SW mode this sends "set-user-token" RPC so the SW's
+          // client gets the correct realm for /api/realm/:realm/* calls.
+          // In direct mode this re-creates the main-thread client.
+          await client.setUserToken(result.data.userId);
           navigate("/", { replace: true });
         } else {
           setError(result.error.message || "Token exchange failed.");
