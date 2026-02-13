@@ -7,6 +7,8 @@
 
 import type { AppConfig } from "./config.ts";
 import {
+  type AuthCodesDb,
+  createAuthCodesDb,
   createDelegatesDb,
   createDepotsDb,
   createOwnershipV2Db,
@@ -29,6 +31,7 @@ import { createLocalUsersDb, type LocalUsersDb } from "./db/local-users.ts";
 // ============================================================================
 
 export type DbInstances = {
+  authCodesDb: AuthCodesDb;
   delegatesDb: DelegatesDb;
   scopeSetNodesDb: ScopeSetNodesDb;
   ownershipV2Db: OwnershipV2Db;
@@ -47,6 +50,7 @@ export type DbInstances = {
  * Create all database instances based on configuration
  */
 export const createDbInstances = (config: AppConfig): DbInstances => ({
+  authCodesDb: createAuthCodesDb({ tableName: config.db.tokensTable }),
   delegatesDb: createDelegatesDb({ tableName: config.db.tokensTable }),
   scopeSetNodesDb: createScopeSetNodesDb({ tableName: config.db.tokensTable }),
   ownershipV2Db: createOwnershipV2Db({ tableName: config.db.tokensTable }),

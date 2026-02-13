@@ -9,6 +9,12 @@
 // ============================================================================
 
 export { createDocClient, createDynamoClient, resetClient } from "./client.ts";
+export {
+  type AuthCodesDb,
+  type AuthorizationCode,
+  createAuthCodesDb,
+  type GrantedPermissions,
+} from "./auth-codes.ts";
 export { createDelegatesDb, type DelegatesDb } from "./delegates.ts";
 export {
   createOwnershipV2Db,
