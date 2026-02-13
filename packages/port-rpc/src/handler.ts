@@ -11,7 +11,6 @@
  * @packageDocumentation
  */
 
-import { extractTransferables } from "./rpc.ts";
 import type { RPCError, RPCResponse } from "./types.ts";
 
 // ============================================================================
@@ -30,7 +29,7 @@ export function respond(
   port: MessagePort,
   id: number,
   result: unknown,
-  transfers?: Transferable[],
+  transfers?: Transferable[]
 ): void {
   const msg: RPCResponse = { type: "rpc-response", id, result };
   if (transfers && transfers.length > 0) {
@@ -48,12 +47,7 @@ export function respond(
  * @param code Machine-readable error code
  * @param err  Error (or anything with a `.message`)
  */
-export function respondError(
-  port: MessagePort,
-  id: number,
-  code: string,
-  err: unknown,
-): void {
+export function respondError(port: MessagePort, id: number, code: string, err: unknown): void {
   const error: RPCError = {
     code,
     message: err instanceof Error ? err.message : String(err),
@@ -99,10 +93,7 @@ function defaultExtractResultTransferables(result: unknown): Transferable[] {
     "data" in result &&
     (result as Record<string, unknown>).data instanceof Uint8Array
   ) {
-    return [
-      ((result as Record<string, unknown>).data as Uint8Array)
-        .buffer as ArrayBuffer,
-    ];
+    return [((result as Record<string, unknown>).data as Uint8Array).buffer as ArrayBuffer];
   }
   return [];
 }
@@ -127,9 +118,7 @@ function defaultExtractResultTransferables(result: unknown): Transferable[] {
  * }
  * ```
  */
-export async function dispatchNamespaceRPC(
-  opts: DispatchOptions,
-): Promise<void> {
+export async function dispatchNamespaceRPC(opts: DispatchOptions): Promise<void> {
   const {
     target,
     method,
@@ -147,6 +136,7 @@ export async function dispatchNamespaceRPC(
       throw new Error(`Not a function: ${method}`);
     }
 
+    // biome-ignore lint/complexity/noBannedTypes: RPC handler must call arbitrary methods on target
     const result = await (fn as Function).apply(target, args);
     const transferables = extractResultTransferables(result);
     respond(port, id, result, transferables);

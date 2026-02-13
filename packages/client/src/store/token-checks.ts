@@ -55,5 +55,3 @@ export const isStoredAccessTokenValid = (
 ): boolean => {
   return isTokenValid(accessToken, bufferMs);
 };
-
-

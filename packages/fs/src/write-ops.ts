@@ -10,7 +10,14 @@
  * are accepted without authorization (suitable for local-only usage).
  */
 
-import { encodeDictNode, encodeFileNode, DEFAULT_NODE_LIMIT, FILEINFO_SIZE, HEADER_SIZE, HASH_SIZE, keyToHash } from "@casfa/core";
+import {
+  DEFAULT_NODE_LIMIT,
+  encodeDictNode,
+  encodeFileNode,
+  FILEINFO_SIZE,
+  HEADER_SIZE,
+  keyToHash,
+} from "@casfa/core";
 import {
   FS_MAX_REWRITE_ENTRIES,
   type FsCpResponse,
@@ -244,13 +251,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
       };
     }
 
-    const result = await tree.insertChild(
-      parentPath,
-      parentHash,
-      parentNode,
-      fileName,
-      fileHash
-    );
+    const result = await tree.insertChild(parentPath, parentHash, parentNode, fileName, fileHash);
     if (typeof result === "object" && "code" in result) return result;
 
     return {

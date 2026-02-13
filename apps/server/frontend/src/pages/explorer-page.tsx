@@ -7,13 +7,9 @@
  * - Shows a clickable sync indicator — expand to see per-key progress.
  */
 
-import type { StorageProvider } from "@casfa/core";
-import {
-  CasfaExplorer,
-  type ExplorerStoreApi,
-  type SyncState,
-} from "@casfa/explorer";
 import type { AppClient } from "@casfa/client-bridge";
+import type { StorageProvider } from "@casfa/core";
+import { CasfaExplorer, type ExplorerStoreApi, type SyncState } from "@casfa/explorer";
 import {
   CheckCircle,
   CloudDone,
@@ -312,11 +308,7 @@ function SyncIndicator({ appClient }: { appClient: AppClient | null }) {
                 }}
                 disabled={retrying}
               >
-                {retrying ? (
-                  <CircularProgress size={14} />
-                ) : (
-                  <ReplayIcon fontSize="small" />
-                )}
+                {retrying ? <CircularProgress size={14} /> : <ReplayIcon fontSize="small" />}
               </IconButton>
             </Tooltip>
           )}

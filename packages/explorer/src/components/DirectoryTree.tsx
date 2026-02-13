@@ -49,7 +49,6 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
   const permissions = useExplorerStore((s) => s.permissions);
   const depotsLoading = useExplorerStore((s) => s.depotsLoading);
 
-
   // ── Depot management dialogs ──
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ depotId: string; name: string } | null>(null);
@@ -98,7 +97,9 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
       if (!cancelled) expandedForRef.current = pathKey;
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [depotId, currentPath, expandTreeNode]);
 
   // Compute active tree key

@@ -292,12 +292,7 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
   // missing / unowned nodes in topological (children-first) order.
   // --------------------------------------------------------------------------
 
-  const {
-    onSyncStart,
-    onSyncEnd,
-    onKeySync,
-    getChildKeys,
-  } = writeBack;
+  const { onSyncStart, onSyncEnd, onKeySync, getChildKeys } = writeBack;
 
   return {
     get,
@@ -416,7 +411,7 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
                   onKeySync?.(entry.key, "error", err);
                   throw err;
                 }
-              }),
+              })
             );
             for (const [i, result] of results.entries()) {
               if (result.status === "fulfilled") {
@@ -441,7 +436,7 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
                   onKeySync?.(entry.key, "error", err);
                   throw err;
                 }
-              }),
+              })
             );
             for (const [i, result] of results.entries()) {
               if (result.status === "fulfilled") {
@@ -461,7 +456,7 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
           `syncTree: failed to sync ${failed.length} nodes: ${failed
             .slice(0, 5)
             .map((f) => f.key)
-            .join(", ")}`,
+            .join(", ")}`
         );
       }
     },

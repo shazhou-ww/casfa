@@ -21,17 +21,17 @@
  * - Valid AT → sets correct AccessTokenAuthContext
  */
 
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import type { Delegate } from "@casfa/delegate";
 import { encodeAccessToken } from "@casfa/delegate-token";
-import {
-  createAccessTokenMiddleware,
-  type AccessTokenMiddlewareDeps,
-} from "../../src/middleware/access-token-auth.ts";
 import type { DelegatesDb } from "../../src/db/delegates.ts";
 import type { UserRolesDb } from "../../src/db/user-roles.ts";
+import {
+  type AccessTokenMiddlewareDeps,
+  createAccessTokenMiddleware,
+} from "../../src/middleware/access-token-auth.ts";
 import type { JwtVerifier } from "../../src/middleware/jwt-auth.ts";
-import { computeTokenHash, bytesToDelegateId } from "../../src/util/delegate-token-utils.ts";
+import { computeTokenHash } from "../../src/util/delegate-token-utils.ts";
 import { fromCrockfordBase32 } from "../../src/util/encoding.ts";
 
 // ============================================================================
@@ -126,7 +126,10 @@ function createMockUserRolesDb(overrides?: Partial<UserRolesDb>): UserRolesDb {
 }
 
 function createMockJwtVerifier(
-  result: { userId: string; exp?: number } | null = { userId: TEST_USER_ID, exp: Math.floor(Date.now() / 1000) + 3600 }
+  result: { userId: string; exp?: number } | null = {
+    userId: TEST_USER_ID,
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  }
 ): JwtVerifier {
   return mock(async () => result);
 }
@@ -136,7 +139,7 @@ function createMockJwtVerifier(
  */
 function createMockContext(authHeader?: string) {
   const responseData: { body?: unknown; status?: number } = {};
-  let authValue: unknown = undefined;
+  let authValue: unknown;
 
   const context = {
     req: {
@@ -216,7 +219,9 @@ describe("AccessTokenMiddleware", () => {
     it("returns 401 when JWT verification fails (invalid signature)", async () => {
       const deps: AccessTokenMiddlewareDeps = {
         delegatesDb: createMockDelegatesDb(),
-        jwtVerifier: mock(async () => { throw new Error("signature mismatch"); }),
+        jwtVerifier: mock(async () => {
+          throw new Error("signature mismatch");
+        }),
         userRolesDb: createMockUserRolesDb(),
       };
       const middleware = createAccessTokenMiddleware(deps);
@@ -349,13 +354,16 @@ describe("AccessTokenMiddleware", () => {
       await middleware(c as any, next);
 
       expect(next).toHaveBeenCalledTimes(1);
-      expect(c.set).toHaveBeenCalledWith("auth", expect.objectContaining({
-        type: "access",
-        delegateId: ROOT_DELEGATE_ID,
-        realm: TEST_REALM,
-        canUpload: true,
-        canManageDepot: true,
-      }));
+      expect(c.set).toHaveBeenCalledWith(
+        "auth",
+        expect.objectContaining({
+          type: "access",
+          delegateId: ROOT_DELEGATE_ID,
+          realm: TEST_REALM,
+          canUpload: true,
+          canManageDepot: true,
+        })
+      );
 
       // Verify tokenBytes is empty (JWT has no binary token)
       const authCall = (c.set as ReturnType<typeof mock>).mock.calls.find(
@@ -414,9 +422,7 @@ describe("AccessTokenMiddleware", () => {
       const at = makeAccessToken();
       const deps: AccessTokenMiddlewareDeps = {
         delegatesDb: createMockDelegatesDb({
-          get: mock(async () =>
-            makeChildDelegate({ isRevoked: true, revokedAt: Date.now() })
-          ),
+          get: mock(async () => makeChildDelegate({ isRevoked: true, revokedAt: Date.now() })),
         }),
         jwtVerifier: createMockJwtVerifier(),
         userRolesDb: createMockUserRolesDb(),
@@ -461,9 +467,7 @@ describe("AccessTokenMiddleware", () => {
       const at = makeAccessToken();
       const deps: AccessTokenMiddlewareDeps = {
         delegatesDb: createMockDelegatesDb({
-          get: mock(async () =>
-            makeChildDelegate({ currentAtHash: "wrong_hash_value" })
-          ),
+          get: mock(async () => makeChildDelegate({ currentAtHash: "wrong_hash_value" })),
         }),
         jwtVerifier: createMockJwtVerifier(),
         userRolesDb: createMockUserRolesDb(),

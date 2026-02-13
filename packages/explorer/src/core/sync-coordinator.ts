@@ -43,11 +43,7 @@ export type SyncBroadcastMessage =
 
 export type SyncCoordinator = {
   /** Enqueue a depot root for background commit. */
-  enqueue(
-    depotId: string,
-    targetRoot: string,
-    lastKnownServerRoot: string | null,
-  ): void;
+  enqueue(depotId: string, targetRoot: string, lastKnownServerRoot: string | null): void;
 
   /** Force-flush all pending sync. */
   flushNow(): Promise<void>;
@@ -101,15 +97,8 @@ const MAX_RETRY_DELAY = 60_000;
 // Factory
 // ============================================================================
 
-export function createSyncCoordinator(
-  config: SyncCoordinatorConfig,
-): SyncCoordinator {
-  const {
-    storage,
-    queueStore,
-    broadcast,
-    debounceMs = DEFAULT_DEBOUNCE_MS,
-  } = config;
+export function createSyncCoordinator(config: SyncCoordinatorConfig): SyncCoordinator {
+  const { storage, queueStore, broadcast, debounceMs = DEFAULT_DEBOUNCE_MS } = config;
 
   // -- State --
   let state: SyncState = "idle";
@@ -127,10 +116,7 @@ export function createSyncCoordinator(
 
   /** Check if an error is a network error (fetch throws TypeError). */
   function isNetworkError(err: unknown): boolean {
-    return (
-      err instanceof TypeError &&
-      /fetch|network/i.test((err as TypeError).message)
-    );
+    return err instanceof TypeError && /fetch|network/i.test((err as TypeError).message);
   }
 
   function setState(s: SyncState): void {
@@ -182,7 +168,7 @@ export function createSyncCoordinator(
   /** Permanent failure — remove from queue and broadcast error. */
   function failPermanently(
     entry: DepotSyncEntry,
-    error: { code: string; message: string; status?: number },
+    error: { code: string; message: string; status?: number }
   ): void {
     memQueue.delete(entry.depotId);
     queueStore.remove(entry.depotId).catch(() => {});
@@ -222,7 +208,7 @@ export function createSyncCoordinator(
 
       if (entry.retryCount >= MAX_RETRY_COUNT) {
         console.error(
-          `[SyncCoordinator] depot ${entry.depotId} exceeded max retries (${MAX_RETRY_COUNT}), giving up`,
+          `[SyncCoordinator] depot ${entry.depotId} exceeded max retries (${MAX_RETRY_COUNT}), giving up`
         );
         failPermanently(entry, {
           code: "max_retries",
@@ -261,10 +247,7 @@ export function createSyncCoordinator(
         }
 
         // Conflict detection
-        if (
-          entry.lastKnownServerRoot !== null &&
-          serverRoot !== entry.lastKnownServerRoot
-        ) {
+        if (entry.lastKnownServerRoot !== null && serverRoot !== entry.lastKnownServerRoot) {
           broadcast({
             type: "conflict",
             payload: {
@@ -281,7 +264,10 @@ export function createSyncCoordinator(
           root: entry.targetRoot,
         });
         if (!commitResult.ok) {
-          console.error(`[SyncCoordinator] depots.commit failed for ${entry.depotId}:`, commitResult.error);
+          console.error(
+            `[SyncCoordinator] depots.commit failed for ${entry.depotId}:`,
+            commitResult.error
+          );
           failPermanently(entry, commitResult.error);
           continue;
         }
@@ -301,7 +287,7 @@ export function createSyncCoordinator(
           // Network failure (fetch TypeError) — retry with backoff
           console.warn(
             `[SyncCoordinator] network error for depot ${entry.depotId} (retry #${entry.retryCount + 1}):`,
-            err,
+            err
           );
           bumpRetry(entry);
         } else {
@@ -319,13 +305,8 @@ export function createSyncCoordinator(
 
     if (memQueue.size > 0) {
       setState("error");
-      const maxRetry = Math.max(
-        ...[...memQueue.values()].map((e) => e.retryCount),
-      );
-      const baseDelay = Math.min(
-        MIN_RETRY_DELAY * 2 ** maxRetry,
-        MAX_RETRY_DELAY,
-      );
+      const maxRetry = Math.max(...[...memQueue.values()].map((e) => e.retryCount));
+      const baseDelay = Math.min(MIN_RETRY_DELAY * 2 ** maxRetry, MAX_RETRY_DELAY);
       const jitter = baseDelay * (0.5 + Math.random());
       scheduleRetry(jitter);
     } else {
@@ -336,11 +317,7 @@ export function createSyncCoordinator(
   // -- Public API --
 
   return {
-    enqueue(
-      depotId: string,
-      targetRoot: string,
-      lastKnownServerRoot: string | null,
-    ): void {
+    enqueue(depotId: string, targetRoot: string, lastKnownServerRoot: string | null): void {
       const existing = memQueue.get(depotId);
       const now = Date.now();
 

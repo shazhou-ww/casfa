@@ -20,8 +20,8 @@ import type {
   TokenMethods,
   TokenState,
 } from "@casfa/client";
-import type { BroadcastMessage, ConnectAckMessage } from "./messages.ts";
 import { createNamespaceProxy, createRPC } from "@casfa/port-rpc";
+import type { BroadcastMessage, ConnectAckMessage } from "./messages.ts";
 import type {
   AppClient,
   AppClientConfig,
@@ -34,9 +34,7 @@ import type {
 /**
  * Wait for a ServiceWorkerRegistration to have an active worker.
  */
-async function waitForActive(
-  reg: ServiceWorkerRegistration,
-): Promise<ServiceWorker> {
+async function waitForActive(reg: ServiceWorkerRegistration): Promise<ServiceWorker> {
   if (reg.active) return reg.active;
   const sw = reg.installing ?? reg.waiting;
   if (!sw) throw new Error("No service worker in registration");
@@ -54,9 +52,7 @@ async function waitForActive(
   });
 }
 
-export async function createSWClient(
-  config: AppClientConfig,
-): Promise<AppClient> {
+export async function createSWClient(config: AppClientConfig): Promise<AppClient> {
   const timeoutMs = config.rpcTimeoutMs ?? 30_000;
 
   // ── 1. Register SW and wait for activation ──
@@ -100,8 +96,7 @@ export async function createSWClient(
     user: null,
     rootDelegate: null,
   };
-  let cachedServerInfo: ReturnType<CasfaClient["getServerInfo"]> =
-    ack.serverInfo;
+  let cachedServerInfo: ReturnType<CasfaClient["getServerInfo"]> = ack.serverInfo;
   let cachedSyncState: SyncState = ack.syncState ?? "idle";
   let cachedPendingCount: number = ack.pendingCount ?? 0;
 
@@ -120,20 +115,30 @@ export async function createSWClient(
     switch (msg.type) {
       case "sync-state":
         cachedSyncState = msg.payload;
-        listeners.syncState.forEach((fn) => fn(msg.payload));
+        listeners.syncState.forEach((fn) => {
+          fn(msg.payload);
+        });
         break;
       case "conflict":
-        listeners.conflict.forEach((fn) => fn(msg.payload));
+        listeners.conflict.forEach((fn) => {
+          fn(msg.payload);
+        });
         break;
       case "sync-error":
-        listeners.syncError.forEach((fn) => fn(msg.payload));
+        listeners.syncError.forEach((fn) => {
+          fn(msg.payload);
+        });
         break;
       case "commit":
-        listeners.commit.forEach((fn) => fn(msg.payload));
+        listeners.commit.forEach((fn) => {
+          fn(msg.payload);
+        });
         break;
       case "pending-count":
         cachedPendingCount = msg.payload;
-        listeners.pendingCount.forEach((fn) => fn(msg.payload));
+        listeners.pendingCount.forEach((fn) => {
+          fn(msg.payload);
+        });
         break;
       case "auth-required":
         config.onAuthRequired?.();

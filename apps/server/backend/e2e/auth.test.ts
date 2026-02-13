@@ -110,11 +110,7 @@ describe("Authentication", () => {
       await ctx.db.userRolesDb.setRole(userIdBase32, "unauthorized");
 
       // JWT on realm endpoint should be rejected for unauthorized users
-      const response = await ctx.helpers.accessRequest(
-        token,
-        "GET",
-        `/api/realm/${realm}/usage`
-      );
+      const response = await ctx.helpers.accessRequest(token, "GET", `/api/realm/${realm}/usage`);
 
       expect([401, 403]).toContain(response.status);
     });
@@ -126,11 +122,7 @@ describe("Authentication", () => {
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // First JWT request should auto-create root delegate via middleware
-      const response = await ctx.helpers.accessRequest(
-        token,
-        "GET",
-        `/api/realm/${realm}/usage`
-      );
+      const response = await ctx.helpers.accessRequest(token, "GET", `/api/realm/${realm}/usage`);
 
       expect(response.status).toBe(200);
     });
@@ -202,11 +194,7 @@ describe("Authentication", () => {
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // JWT request should auto-create root delegate and succeed
-      const response = await ctx.helpers.accessRequest(
-        token,
-        "GET",
-        `/api/realm/${realm}/usage`
-      );
+      const response = await ctx.helpers.accessRequest(token, "GET", `/api/realm/${realm}/usage`);
 
       expect(response.status).toBe(200);
     });
@@ -295,11 +283,7 @@ describe("Authentication", () => {
       await ctx.db.userRolesDb.setRole(userIdBase32, "unauthorized");
 
       // Attempt to access realm endpoint with JWT
-      const response = await ctx.helpers.accessRequest(
-        token,
-        "GET",
-        `/api/realm/${realm}/usage`
-      );
+      const response = await ctx.helpers.accessRequest(token, "GET", `/api/realm/${realm}/usage`);
 
       expect(response.status).toBe(403);
       const body = (await response.json()) as any;
@@ -311,11 +295,7 @@ describe("Authentication", () => {
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // First JWT request — root delegate should be auto-created
-      const response = await ctx.helpers.accessRequest(
-        token,
-        "GET",
-        `/api/realm/${realm}/usage`
-      );
+      const response = await ctx.helpers.accessRequest(token, "GET", `/api/realm/${realm}/usage`);
 
       expect(response.status).toBe(200);
     });
@@ -333,11 +313,7 @@ describe("Authentication", () => {
         await ctx.db.delegatesDb.revoke(rootDelegate.delegateId, "test");
       }
 
-      const response = await ctx.helpers.accessRequest(
-        token,
-        "GET",
-        `/api/realm/${realm}/usage`
-      );
+      const response = await ctx.helpers.accessRequest(token, "GET", `/api/realm/${realm}/usage`);
 
       expect(response.status).toBe(401);
       const body = (await response.json()) as any;
@@ -358,11 +334,7 @@ describe("Authentication", () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      const response = await ctx.helpers.accessRequest(
-        token,
-        "GET",
-        `/api/realm/${realm}/usage`
-      );
+      const response = await ctx.helpers.accessRequest(token, "GET", `/api/realm/${realm}/usage`);
 
       expect(response.status).toBe(200);
     });

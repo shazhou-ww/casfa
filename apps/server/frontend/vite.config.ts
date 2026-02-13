@@ -19,8 +19,7 @@ export default defineConfig({
         sw: resolve(__dirname, "src/sw/sw.ts"),
       },
       output: {
-        entryFileNames: (chunk) =>
-          chunk.name === "sw" ? "sw.js" : "assets/[name]-[hash].js",
+        entryFileNames: (chunk) => (chunk.name === "sw" ? "sw.js" : "assets/[name]-[hash].js"),
       },
     },
   },

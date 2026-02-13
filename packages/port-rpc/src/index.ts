@@ -43,24 +43,23 @@
  * @packageDocumentation
  */
 
-// ── Caller side ──
-export { createRPC, extractTransferables } from "./rpc.ts";
-export type { RPCFn, CreateRPCOptions } from "./rpc.ts";
-
-export { createNamespaceProxy } from "./proxy.ts";
-
+export type { DispatchOptions } from "./handler.ts";
 // ── Handler side ──
 export {
+  dispatchNamespaceRPC,
   respond,
   respondError,
-  dispatchNamespaceRPC,
 } from "./handler.ts";
-export type { DispatchOptions } from "./handler.ts";
+
+export { createNamespaceProxy } from "./proxy.ts";
+export type { CreateRPCOptions, RPCFn } from "./rpc.ts";
+// ── Caller side ──
+export { createRPC, extractTransferables } from "./rpc.ts";
 
 // ── Wire types ──
 export type {
-  RPCResponse,
+  NamespaceRPCRequest,
   RPCError,
   RPCMessage,
-  NamespaceRPCRequest,
+  RPCResponse,
 } from "./types.ts";

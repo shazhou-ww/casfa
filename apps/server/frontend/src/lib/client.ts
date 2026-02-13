@@ -78,9 +78,7 @@ export function getAppClient(): Promise<AppClient> {
         }
       }
 
-      const create = import.meta.env.DEV
-        ? createDirectClient
-        : createAppClientFactory;
+      const create = import.meta.env.DEV ? createDirectClient : createAppClientFactory;
 
       return create({
         baseUrl: "",
