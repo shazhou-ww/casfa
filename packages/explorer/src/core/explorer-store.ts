@@ -746,22 +746,15 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
       const { treeNodes } = get();
       const node = treeNodes.get(path);
 
+      // Already expanded with loaded children — nothing to do
+      if (node?.isExpanded && node.children !== null && !node.isLoading) return;
+
       // ── Depot node: select depot + load root directories ──
       if (node?.type === "depot" && node.depotId) {
         const depotIdToSelect = node.depotId;
 
-        // Auto-collapse any other expanded depot and remove its subtree
-        const newMap = new Map(treeNodes);
-        for (const [key, n] of newMap) {
-          if (n.type === "depot" && n.isExpanded && key !== path) {
-            newMap.set(key, { ...n, isExpanded: false, children: null });
-            for (const subKey of [...newMap.keys()]) {
-              if (subKey.startsWith(`${key}/`)) newMap.delete(subKey);
-            }
-          }
-        }
-
         // Mark this depot as expanded + loading
+        const newMap = new Map(treeNodes);
         newMap.set(path, { ...node, isExpanded: true, isLoading: true });
         set({ treeNodes: newMap });
 
@@ -891,7 +884,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           });
         const doneMap = new Map(get().treeNodes);
         const n = doneMap.get(path);
-        if (n) doneMap.set(path, { ...n, children, isLoading: false });
+        if (n) doneMap.set(path, { ...n, children, nodeKey: result.key, isLoading: false });
         set({ treeNodes: doneMap });
       } catch {
         const errMap = new Map(get().treeNodes);
