@@ -317,10 +317,14 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
   // Build local @casfa/fs service — all tree operations (read & write) run locally.
   // Nodes are fetched/stored via CachedStorage (IndexedDB + HTTP).
   // After write operations, the new root is committed to the server via depot API.
+  // Use server-reported maxNodeSize as nodeLimit for B-Tree splitting,
+  // so block sizes match what the server expects.
+  const serverNodeLimit = opts.client.getServerInfo()?.limits.maxNodeSize;
   const localFs: FsService = createFsService({
     ctx: {
       storage: opts.storage,
       key: opts.key,
+      ...(serverNodeLimit ? { nodeLimit: serverNodeLimit } : {}),
     },
   });
 

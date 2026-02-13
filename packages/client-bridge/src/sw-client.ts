@@ -21,6 +21,7 @@ import type {
   TokenState,
 } from "@casfa/client";
 import { createNamespaceProxy, createRPC } from "@casfa/port-rpc";
+import { nodeKeyToStorageKey } from "@casfa/protocol";
 import type { BroadcastMessage, ConnectAckMessage } from "./messages.ts";
 import type {
   AppClient,
@@ -226,13 +227,27 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
 
     // ── AppClient: sync ──
     scheduleCommit(depotId, newRoot, lastKnownServerRoot) {
-      // Fire-and-forget to SW (no RPC id, no response)
-      port1.postMessage({
-        type: "schedule-commit",
-        depotId,
-        targetRoot: newRoot,
-        lastKnownServerRoot,
-      });
+      const postCommit = () => {
+        port1.postMessage({
+          type: "schedule-commit",
+          depotId,
+          targetRoot: newRoot,
+          lastKnownServerRoot,
+        });
+      };
+
+      // Layer 1: sync CAS nodes from main-thread cache → server
+      if (config.storage?.syncTree) {
+        const storageKey = nodeKeyToStorageKey(newRoot);
+        config.storage
+          .syncTree(storageKey)
+          .then(postCommit)
+          .catch((err) => {
+            console.error("[casfa] Layer 1 syncTree failed, skipping commit:", err);
+          });
+      } else {
+        postCommit();
+      }
     },
 
     async getPendingRoot(depotId) {

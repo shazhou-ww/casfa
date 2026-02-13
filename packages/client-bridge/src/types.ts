@@ -70,8 +70,9 @@ export type AppClient = CasfaClient & {
 /**
  * Configuration for creating an AppClient.
  *
- * `storage` and `queueStore` are required for direct mode (main-thread sync).
- * In SW mode they are ignored — the SW creates its own internally.
+ * `storage` is used in both direct mode (main-thread sync) and SW mode
+ * (Layer 1 syncTree runs on main thread before enqueuing commit in SW).
+ * `queueStore` is only used in direct mode.
  */
 export type AppClientConfig = {
   /** API base URL (usually "" for same-origin). */
@@ -88,7 +89,7 @@ export type AppClientConfig = {
 
   // ── Sync (direct mode) ──
 
-  /** Layer 1 storage with flush() — used to sync CAS nodes before committing. */
+  /** Layer 1 storage with syncTree() — syncs CAS nodes to remote before committing. */
   storage?: FlushableStorage;
 
   /** Persistent depot sync queue store. */
