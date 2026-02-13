@@ -11,11 +11,8 @@ import {
   type CasfaClient,
   type TokenStorageProvider,
 } from "@casfa/client";
-import type {
-  BroadcastMessage,
-  PortMessage,
-  RPCResponse,
-} from "@casfa/client-bridge";
+import type { BroadcastMessage, PortMessage } from "@casfa/client-bridge";
+import { respond, respondError } from "@casfa/port-rpc";
 
 // ============================================================================
 // Types
@@ -149,10 +146,7 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
             );
           }
 
-          port.postMessage(
-            { type: "rpc-response", id: msg.id, result } satisfies RPCResponse,
-            transferables,
-          );
+          respond(port, msg.id, result, transferables);
         } catch (err) {
           respondError(port, msg.id, "rpc_error", err);
         }
@@ -200,29 +194,4 @@ export function createMessageHandler(deps: MessageHandlerDeps) {
       }
     }
   };
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-function respond(port: MessagePort, id: number, result: unknown): void {
-  port.postMessage({
-    type: "rpc-response",
-    id,
-    result,
-  } satisfies RPCResponse);
-}
-
-function respondError(
-  port: MessagePort,
-  id: number,
-  code: string,
-  err: unknown,
-): void {
-  port.postMessage({
-    type: "rpc-response",
-    id,
-    error: { code, message: (err as Error).message },
-  } satisfies RPCResponse);
 }

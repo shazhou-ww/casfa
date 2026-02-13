@@ -1,7 +1,7 @@
 {
-  "name": "@casfa/client-bridge",
+  "name": "@casfa/port-rpc",
   "version": "0.1.0",
-  "description": "Unified AppClient — CasfaClient + sync + auth, with SW/direct modes",
+  "description": "Type-safe request/response RPC over MessagePort with timeout, Transferable auto-extraction, and namespace proxying",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -26,16 +26,6 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {},
-  "peerDependencies": {
-    "@casfa/client": "workspace:*",
-    "@casfa/explorer": "workspace:*",
-    "@casfa/port-rpc": "workspace:*"
-  },
-  "peerDependenciesMeta": {
-    "@casfa/explorer": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "typescript": "^5.8.0"
   }

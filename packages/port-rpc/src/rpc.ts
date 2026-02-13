@@ -1,33 +1,61 @@
 /**
- * @casfa/client-bridge — RPC client
+ * @casfa/port-rpc — RPC client
  *
  * Creates a stateful RPC function over a MessagePort. Matches responses
- * by auto-incrementing id. Handles timeout and automatic Transferable
+ * by auto-incrementing `id`. Handles timeout and automatic Transferable
  * extraction for Uint8Array / ArrayBuffer args.
  *
- * Internal module.
+ * Business-agnostic — works with any message type that has a `type` field.
+ *
+ * @packageDocumentation
  */
 
-import type { RPCCallable, RPCResponse } from "./_messages.ts";
+import type { RPCMessage, RPCResponse } from "./types.ts";
 
-/** Function type returned by createRPC. */
-export type RPCFn = (msg: RPCCallable) => Promise<unknown>;
+// ============================================================================
+// Types
+// ============================================================================
+
+/**
+ * A function that sends an RPC message over a MessagePort and returns
+ * a Promise that resolves with the response result.
+ *
+ * The message is augmented with a unique `id` before sending.
+ * A matching `rpc-response` with the same `id` resolves the Promise.
+ */
+export type RPCFn<TMsg extends RPCMessage = RPCMessage> = (
+  msg: TMsg,
+) => Promise<unknown>;
+
+/** Options for createRPC. */
+export type CreateRPCOptions = {
+  /** Timeout in milliseconds. Default: 30_000 (30s). */
+  timeoutMs?: number;
+};
+
+// ============================================================================
+// Transferable extraction
+// ============================================================================
 
 /**
  * Extract Transferable objects from RPC args.
  * After transfer, the source ArrayBuffer is detached (length → 0).
  */
-function extractTransferables(args: unknown[]): Transferable[] {
+export function extractTransferables(args: unknown[]): Transferable[] {
   const transferables: Transferable[] = [];
   for (const arg of args) {
     if (arg instanceof ArrayBuffer) {
       transferables.push(arg);
     } else if (arg instanceof Uint8Array) {
-      transferables.push(arg.buffer);
+      transferables.push(arg.buffer as ArrayBuffer);
     }
   }
   return transferables;
 }
+
+// ============================================================================
+// RPC client factory
+// ============================================================================
 
 /**
  * Create an RPC client over a MessagePort.
@@ -35,11 +63,22 @@ function extractTransferables(args: unknown[]): Transferable[] {
  * Every message sent through the returned function gets a unique `id`.
  * The Promise resolves/rejects when a matching `rpc-response` arrives,
  * or rejects on timeout.
+ *
+ * @example
+ * ```ts
+ * const port = channel.port1;
+ * port.start();
+ * const rpc = createRPC(port);
+ *
+ * const result = await rpc({ type: "greet", name: "world" });
+ * ```
  */
-export function createRPC(
+export function createRPC<TMsg extends RPCMessage = RPCMessage>(
   port: MessagePort,
-  timeoutMs = 30_000,
-): RPCFn {
+  options: CreateRPCOptions = {},
+): RPCFn<TMsg> {
+  const { timeoutMs = 30_000 } = options;
+
   let nextId = 0;
   const pending = new Map<
     number,
@@ -64,7 +103,7 @@ export function createRPC(
     }
   });
 
-  return function rpc(msg: RPCCallable): Promise<unknown> {
+  return function rpc(msg: TMsg): Promise<unknown> {
     return new Promise((resolve, reject) => {
       const id = ++nextId;
       const timer = setTimeout(() => {

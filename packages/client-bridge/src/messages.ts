@@ -14,6 +14,9 @@ import type {
   SyncErrorEvent,
   SyncState,
 } from "@casfa/explorer/core/sync-manager";
+import type { RPCResponse } from "@casfa/port-rpc";
+
+export type { RPCResponse };
 
 // ============================================================================
 // Main → SW — via navigator.serviceWorker.controller.postMessage
@@ -81,14 +84,6 @@ export type ScheduleCommitMessage = {
 // ============================================================================
 // SW → Main — via MessagePort (responses)
 // ============================================================================
-
-/** Response to any RPC-style message (matched by `id`). */
-export type RPCResponse = {
-  type: "rpc-response";
-  id: number;
-  result?: unknown;
-  error?: { code: string; message: string };
-};
 
 /** Response to ConnectMessage — initial state snapshot. */
 export type ConnectAckMessage = {
