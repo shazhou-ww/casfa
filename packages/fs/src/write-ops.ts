@@ -10,9 +10,8 @@
  * are accepted without authorization (suitable for local-only usage).
  */
 
-import { encodeDictNode, encodeFileNode } from "@casfa/core";
+import { encodeDictNode, encodeFileNode, DEFAULT_NODE_LIMIT, FILEINFO_SIZE, HEADER_SIZE, HASH_SIZE, keyToHash } from "@casfa/core";
 import {
-  FS_MAX_NODE_SIZE,
   FS_MAX_REWRITE_ENTRIES,
   type FsCpResponse,
   type FsMkdirResponse,
@@ -26,6 +25,7 @@ import {
 } from "@casfa/protocol";
 
 import { findChildByName, hashToStorageKey, parsePath, storageKeyToHash } from "./helpers.ts";
+import { writeLargeFile } from "./large-file.ts";
 import type { TreeOps } from "./tree-ops.ts";
 import { type FsContext, type FsError, fsError } from "./types.ts";
 
@@ -49,7 +49,12 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
   const { key: keyProvider, storage } = ctx;
 
   /**
-   * write — Create or overwrite a single-block file.
+   * write — Create or overwrite a file.
+   *
+   * Small files (fitting in a single node) use the fast path with
+   * `encodeFileNode`. Large files are automatically split into a B-Tree
+   * via `@casfa/core`'s `writeFile`, with each node tracked through the
+   * `onNodeStored` hook.
    */
   const write = async (
     rootNodeKey: string,
@@ -58,25 +63,45 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
     fileContent: Uint8Array,
     contentType: string
   ): Promise<FsWriteResponse | FsError> => {
-    if (fileContent.length > FS_MAX_NODE_SIZE) {
-      return fsError("FILE_TOO_LARGE", 413, "File exceeds maxNodeSize (4MB). Use the Node API.");
+    // Optional file size cap (e.g. server Lambda payload limit)
+    if (ctx.maxFileSize && fileContent.length > ctx.maxFileSize) {
+      return fsError(
+        "FILE_TOO_LARGE",
+        413,
+        `File size ${fileContent.length} exceeds limit (${ctx.maxFileSize}).`
+      );
     }
 
     const rootKey = await tree.resolveNodeKey(rootNodeKey);
     if (typeof rootKey === "object") return rootKey;
 
-    // Encode file node
-    const fileEncoded = await encodeFileNode(
-      { data: fileContent, contentType, fileSize: fileContent.length },
-      keyProvider
-    );
+    // Determine if the file fits in a single node.
+    // Single-node capacity = nodeLimit - HEADER_SIZE - FILEINFO_SIZE
+    const nodeLimit = ctx.nodeLimit ?? DEFAULT_NODE_LIMIT;
+    const singleNodeCapacity = nodeLimit - HEADER_SIZE - FILEINFO_SIZE;
 
-    const fileKey = await tree.storeNode(
-      fileEncoded.bytes,
-      fileEncoded.hash,
-      "file",
-      fileContent.length
-    );
+    let fileHash: Uint8Array;
+    let fileKey: string;
+
+    if (fileContent.length <= singleNodeCapacity) {
+      // --- Fast path: single-block file ---
+      const fileEncoded = await encodeFileNode(
+        { data: fileContent, contentType, fileSize: fileContent.length },
+        keyProvider
+      );
+      fileKey = await tree.storeNode(
+        fileEncoded.bytes,
+        fileEncoded.hash,
+        "file",
+        fileContent.length
+      );
+      fileHash = fileEncoded.hash;
+    } else {
+      // --- Large file: B-Tree splitting via @casfa/core ---
+      const result = await writeLargeFile(ctx, fileContent, contentType);
+      fileKey = result.key;
+      fileHash = keyToHash(result.key);
+    }
 
     // ---------- indexPath-only overwrite ----------
     if (indexPathStr && !pathStr) {
@@ -94,7 +119,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
         return fsError("INVALID_PATH", 400, "Cannot replace root node");
       }
 
-      const newRootKey = await tree.rebuildMerklePath(resolved.parentPath, fileEncoded.hash);
+      const newRootKey = await tree.rebuildMerklePath(resolved.parentPath, fileHash);
 
       return {
         newRoot: storageKeyToNodeKey(newRootKey),
@@ -140,7 +165,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
         }
 
         const newChildren = [...(rootNode.children ?? [])];
-        newChildren[existing.index] = fileEncoded.hash;
+        newChildren[existing.index] = fileHash;
 
         const newRootEncoded = await encodeDictNode(
           { children: newChildren, childNames: rootNode.childNames ?? [] },
@@ -166,7 +191,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
       }
 
       // Insert new
-      const result = await tree.insertChild([], rootKey, rootNode, fileName, fileEncoded.hash);
+      const result = await tree.insertChild([], rootKey, rootNode, fileName, fileHash);
       if (typeof result === "object" && "code" in result) return result;
 
       return {
@@ -198,7 +223,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
       }
 
       const newChildren = [...(parentNode.children ?? [])];
-      newChildren[existing.index] = fileEncoded.hash;
+      newChildren[existing.index] = fileHash;
 
       const newParentEncoded = await encodeDictNode(
         { children: newChildren, childNames: parentNode.childNames ?? [] },
@@ -224,7 +249,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
       parentHash,
       parentNode,
       fileName,
-      fileEncoded.hash
+      fileHash
     );
     if (typeof result === "object" && "code" in result) return result;
 

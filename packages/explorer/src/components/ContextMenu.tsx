@@ -3,7 +3,7 @@
  *
  * Three variants: file, folder, and blank-area.
  * Write operations are hidden when canUpload is false.
- * Cut/Copy/Paste/Download/CAS URI are shown as disabled (Iter 4).
+ * Cut/Copy/Paste/CAS URI are shown as disabled (Iter 4).
  */
 
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
@@ -40,6 +40,8 @@ type ContextMenuProps = {
   onCut?: () => void;
   onPaste?: () => void;
   canPaste?: boolean;
+  /** Download callback */
+  onDownload?: (item: ExplorerItem) => void;
 };
 
 export function ContextMenu({
@@ -57,6 +59,7 @@ export function ContextMenu({
   onCut,
   onPaste,
   canPaste = false,
+  onDownload,
 }: ContextMenuProps) {
   const t = useExplorerT();
   const selectedItems = useExplorerStore((s) => s.selectedItems);
@@ -229,8 +232,8 @@ export function ContextMenu({
             key: "download",
             label: t("menu.download"),
             icon: <DownloadIcon fontSize="small" />,
-            onClick: () => {},
-            disabled: true, // Iter 4
+            onClick: () => onDownload?.(targetItem),
+            disabled: false,
             hidden: false,
             dividerAfter: true,
           },
@@ -312,6 +315,7 @@ export function ContextMenu({
     onCopy,
     onCut,
     onPaste,
+    onDownload,
   ]);
 
   return (

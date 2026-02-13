@@ -62,13 +62,13 @@ const messages: Record<ExplorerTextKey, string> = {
   "upload.error": "Upload failed",
   "upload.cancel": "Cancel",
   "upload.retry": "Retry",
-  "upload.fileTooLarge": '"{name}" is too large (max 4 MB), skipped',
+  "upload.fileTooLarge": '"{name}" is too large, skipped',
   // Errors
   "error.network": "Network error. Please check your connection.",
   "error.authExpired": "Session expired. Please log in again.",
   "error.permissionDenied": "Permission denied.",
   "error.notFound": "Not found.",
-  "error.fileTooLarge": "File is too large (max 4 MB).",
+  "error.fileTooLarge": "File is too large.",
   "error.nameConflict": "A file or folder with this name already exists.",
   "error.unknown": "An unexpected error occurred.",
   // Permission

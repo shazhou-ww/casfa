@@ -25,6 +25,22 @@ export type FsContext = {
   key: KeyProvider;
 
   /**
+   * Maximum single-node (block) size in bytes.
+   * Used by B-Tree splitting when writing large files.
+   * Typically populated from server info `limits.maxNodeSize`.
+   * Defaults to `DEFAULT_NODE_LIMIT` (1 MB) from `@casfa/core`.
+   */
+  nodeLimit?: number;
+
+  /**
+   * Optional upper bound on file size in bytes.
+   * When set, `write()` will reject files exceeding this limit.
+   * Useful for server-side enforcement (e.g. Lambda payload limit).
+   * Defaults to unlimited (no cap).
+   */
+  maxFileSize?: number;
+
+  /**
    * Called after a new node is stored via `storage.put`.
    * The server implementation uses this to update ownership / refcount / usage.
    * Browser implementations can leave this undefined (no-op).
@@ -46,7 +62,7 @@ export type NodeStoredInfo = {
   storageKey: string;
   bytes: Uint8Array;
   hash: Uint8Array;
-  kind: "dict" | "file";
+  kind: "dict" | "file" | "successor";
   logicalSize: number;
 };
 

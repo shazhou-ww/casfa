@@ -243,6 +243,7 @@ function createTestService() {
     usageDb,
     depotsDb,
     scopeSetNodesDb,
+    maxFileSize: 4 * 1024 * 1024, // 4MB — server Lambda payload limit
   };
 
   const service = createFsService(deps);

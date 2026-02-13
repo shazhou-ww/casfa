@@ -1,16 +1,15 @@
 /**
  * Upload logic hook — manages the upload queue lifecycle.
  *
- * Validates file sizes, enqueues files, and processes them sequentially.
+ * Validates permissions, enqueues files, and processes them sequentially.
+ * File size limits are enforced by the @casfa/fs layer (FsContext.maxFileSize)
+ * rather than a client-side hard cap.
  */
 
 import { isFsError } from "@casfa/fs";
 import { useCallback, useEffect, useRef } from "react";
 import type { ExplorerError } from "../types.ts";
 import { useExplorerStore } from "./use-explorer-context.ts";
-
-/** Maximum single file size: 4 MB */
-const MAX_FILE_SIZE = 4 * 1024 * 1024;
 
 type UseUploadOpts = {
   onError?: (error: ExplorerError) => void;
@@ -35,8 +34,8 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
   const isProcessingRef = useRef(false);
 
   /**
-   * Validate and enqueue files for upload.
-   * Files exceeding MAX_FILE_SIZE are skipped with an error.
+   * Validate permissions and enqueue files for upload.
+   * File size limits are enforced by the fs layer during write.
    */
   const uploadFiles = useCallback(
     (files: File[]) => {
@@ -47,21 +46,8 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
         return;
       }
 
-      const validFiles: File[] = [];
-      for (const file of files) {
-        if (file.size > MAX_FILE_SIZE) {
-          const err: ExplorerError = {
-            type: "file_too_large",
-            message: `"${file.name}" is too large (max 4 MB)`,
-          };
-          setError(err);
-          onError?.(err);
-        } else {
-          validFiles.push(file);
-        }
-      }
-      if (validFiles.length > 0) {
-        addToUploadQueue(validFiles);
+      if (files.length > 0) {
+        addToUploadQueue(files);
       }
     },
     [addToUploadQueue, setError, onError, permissions.canUpload]
@@ -111,7 +97,12 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
             error: result.message,
           });
           const explorerErr: ExplorerError = {
-            type: result.status === 403 ? "permission_denied" : "unknown",
+            type:
+              result.code === "FILE_TOO_LARGE"
+                ? "file_too_large"
+                : result.status === 403
+                  ? "permission_denied"
+                  : "unknown",
             message: result.message,
           };
           onError?.(explorerErr);
