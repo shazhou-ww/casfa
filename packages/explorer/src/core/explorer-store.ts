@@ -9,6 +9,7 @@ import type { CasfaClient } from "@casfa/client";
 import type { KeyProvider, StorageProvider } from "@casfa/core";
 import { createFsService, type FsService, isFsError } from "@casfa/fs";
 import type { DepotListItem, FsLsChild } from "@casfa/protocol";
+import { updateFromLsResult } from "./dir-children-cache.ts";
 import { createStore } from "zustand/vanilla";
 import type {
   ClipboardData,
@@ -534,6 +535,9 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           set({ isLoading: false });
           return;
         }
+        // Populate dir-children LRU cache
+        updateFromLsResult(result.key, result.children, result.nextCursor === null);
+
         const items = result.children.map((c) => toExplorerItem(c, path));
         set({
           items,
@@ -575,6 +579,9 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           set({ isLoading: false });
           return;
         }
+        // Populate dir-children LRU cache
+        updateFromLsResult(result.key, result.children, result.nextCursor === null);
+
         const items = result.children.map((c) => toExplorerItem(c, currentPath));
         set({
           items,
@@ -623,6 +630,9 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           set({ isLoading: false });
           return;
         }
+        // Populate dir-children LRU cache (partial page — cannot assert false for parent)
+        updateFromLsResult(result.key, result.children, false);
+
         const newItems = result.children.map((c) => toExplorerItem(c, currentPath));
         set({
           items: [...items, ...newItems],
@@ -662,6 +672,9 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           set({ isLoading: false });
           return;
         }
+        // Populate dir-children LRU cache
+        updateFromLsResult(result.key, result.children, result.nextCursor === null);
+
         const items = result.children.map((c) => toExplorerItem(c, path));
         set({
           items,
@@ -698,6 +711,9 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           set({ isLoading: false });
           return;
         }
+        // Populate dir-children LRU cache
+        updateFromLsResult(result.key, result.children, result.nextCursor === null);
+
         const items = result.children.map((c) => toExplorerItem(c, path));
         set({
           items,
@@ -773,6 +789,9 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
             set({ treeNodes: errMap });
             return;
           }
+          // Populate dir-children LRU cache
+          updateFromLsResult(result.key, result.children, result.nextCursor === null);
+
           const children: TreeNode[] = result.children
             .filter((c) => c.type === "dir")
             .map((c) => {
@@ -784,6 +803,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
                   name: c.name,
                   type: "directory" as const,
                   depotId: depotIdToSelect,
+                  nodeKey: c.key,
                   children: null,
                   isExpanded: false,
                   isLoading: false,
@@ -848,6 +868,9 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           set({ treeNodes: errMap });
           return;
         }
+        // Populate dir-children LRU cache
+        updateFromLsResult(result.key, result.children, result.nextCursor === null);
+
         const children: TreeNode[] = result.children
           .filter((c) => c.type === "dir")
           .map((c) => {
@@ -859,6 +882,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
                 name: c.name,
                 type: "directory" as const,
                 depotId: nodeDepotId ?? node?.depotId,
+                nodeKey: c.key,
                 children: null,
                 isExpanded: false,
                 isLoading: false,

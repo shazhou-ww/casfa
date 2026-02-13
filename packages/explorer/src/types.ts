@@ -107,6 +107,8 @@ export type TreeNode = {
   depotId?: string;
   /** Child nodes — null means not yet loaded */
   children: TreeNode[] | null;
+  /** CAS node key of this directory (used for dir-children-cache lookup) */
+  nodeKey?: string;
   /** Whether the node is currently expanded in the UI */
   isExpanded: boolean;
   /** Whether children are currently being loaded */
