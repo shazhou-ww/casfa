@@ -41,6 +41,7 @@ export type RefreshManagerConfig = {
 
 type RefreshResponse = {
   accessToken: string;
+  idToken?: string;
   refreshToken?: string;
   expiresIn: number;
 };
@@ -101,7 +102,7 @@ export const createRefreshManager = (config: RefreshManagerConfig): RefreshManag
     }
 
     const newUserToken: StoredUserToken = {
-      accessToken: result.accessToken,
+      accessToken: result.idToken ?? result.accessToken,
       refreshToken: result.refreshToken ?? userToken.refreshToken,
       userId: userToken.userId,
       expiresAt: Date.now() + result.expiresIn * 1000,
