@@ -107,8 +107,6 @@ export type TreeNode = {
   depotId?: string;
   /** Child nodes — null means not yet loaded */
   children: TreeNode[] | null;
-  /** CAS node key of this directory (used for dir-children-cache lookup) */
-  nodeKey?: string;
   /** Whether the node is currently expanded in the UI */
   isExpanded: boolean;
   /** Whether children are currently being loaded */
@@ -315,8 +313,10 @@ export type CasfaExplorerProps = {
    * Return the pending (uncommitted) root for a depot, or null if none.
    * Used after page refresh to display local data instead of stale server root,
    * and to diff against server root to mark pending items.
+   *
+   * May return a Promise (e.g. when querying the Service Worker via RPC).
    */
-  getSyncPendingRoot?: (depotId: string) => string | null;
+  getSyncPendingRoot?: (depotId: string) => string | null | Promise<string | null>;
 
   // ── Event callbacks ──
   onNavigate?: (path: string) => void;

@@ -99,9 +99,21 @@ export function ExplorerPage() {
     [appClient]
   );
 
-  const getSyncPendingRoot = useCallback((dId: string): string | null => {
-    return pendingRootsRef.current.get(dId) ?? null;
-  }, []);
+  const getSyncPendingRoot = useCallback(
+    async (dId: string): Promise<string | null> => {
+      // First check in-memory cache (populated during this session)
+      const cached = pendingRootsRef.current.get(dId);
+      if (cached) return cached;
+      // Fall through to AppClient — reads from SyncManager's recovered queue
+      // (IndexedDB-backed, survives page refresh)
+      const recovered = await appClient?.getPendingRoot(dId);
+      if (recovered) {
+        pendingRootsRef.current.set(dId, recovered);
+      }
+      return recovered ?? null;
+    },
+    [appClient]
+  );
 
   const onStoreReady = useCallback((store: ExplorerStoreApi) => {
     explorerStoreRef.current = store;
@@ -314,7 +326,7 @@ function SyncIndicator({ appClient }: { appClient: AppClient | null }) {
             </Tooltip>
           )}
           {(log.length > 0 || hasError) && (
-            <IconButton size="small" tabIndex={-1} sx={{ p: 0 }}>
+            <IconButton size="small" tabIndex={-1} sx={{ p: 0, ml: 0.25, flexShrink: 0 }}>
               {expanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
             </IconButton>
           )}

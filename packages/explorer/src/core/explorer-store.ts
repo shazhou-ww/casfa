@@ -9,7 +9,6 @@ import type { CasfaClient } from "@casfa/client";
 import type { KeyProvider, StorageProvider } from "@casfa/core";
 import { createFsService, type FsService, isFsError } from "@casfa/fs";
 import type { DepotListItem, FsLsChild } from "@casfa/protocol";
-import { updateFromLsResult } from "./dir-children-cache.ts";
 import { createStore } from "zustand/vanilla";
 import type {
   ClipboardData,
@@ -304,7 +303,7 @@ export type CreateExplorerStoreOpts = {
    * Return the pending (uncommitted) root for a depot, or null.
    * Used after refresh to display local data instead of stale server root.
    */
-  getSyncPendingRoot?: (depotId: string) => string | null;
+  getSyncPendingRoot?: (depotId: string) => string | null | Promise<string | null>;
 };
 
 const LS_PAGE_SIZE = 200;
@@ -439,7 +438,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
       if (result.ok) {
         const serverRoot = result.data.root;
         // Check if SyncManager has a pending root that hasn't been committed yet
-        const pendingRoot = opts.getSyncPendingRoot?.(depotId) ?? null;
+        const pendingRoot = (await opts.getSyncPendingRoot?.(depotId)) ?? null;
         const effectiveRoot = pendingRoot ?? serverRoot;
         set({
           depotId,
@@ -535,9 +534,6 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           set({ isLoading: false });
           return;
         }
-        // Populate dir-children LRU cache
-        updateFromLsResult(result.key, result.children, result.nextCursor === null);
-
         const items = result.children.map((c) => toExplorerItem(c, path));
         set({
           items,
@@ -579,9 +575,6 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           set({ isLoading: false });
           return;
         }
-        // Populate dir-children LRU cache
-        updateFromLsResult(result.key, result.children, result.nextCursor === null);
-
         const items = result.children.map((c) => toExplorerItem(c, currentPath));
         set({
           items,
@@ -598,12 +591,33 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
         // Also refresh tree node cache for current path
         const { depotId: refreshDepotId } = get();
         if (refreshDepotId) {
-          const treeKey = currentPath
-            ? `depot:${refreshDepotId}/${currentPath}`
-            : `depot:${refreshDepotId}`;
-          const treeNode = get().treeNodes.get(treeKey);
-          if (treeNode?.isExpanded) {
-            await get().expandTreeNode(treeKey);
+          // Invalidate children of expanded tree nodes along the path so
+          // expandTreeNode will re-fetch them with the (possibly new) depotRoot.
+          const keysToRefresh: string[] = [];
+          const depotKey = `depot:${refreshDepotId}`;
+          keysToRefresh.push(depotKey);
+          if (currentPath) {
+            let acc = depotKey;
+            for (const part of currentPath.split("/")) {
+              acc = `${acc}/${part}`;
+              keysToRefresh.push(acc);
+            }
+          }
+          const invalidateMap = new Map(get().treeNodes);
+          for (const key of keysToRefresh) {
+            const n = invalidateMap.get(key);
+            if (n?.isExpanded && n.children !== null) {
+              invalidateMap.set(key, { ...n, children: null });
+            }
+          }
+          set({ treeNodes: invalidateMap });
+
+          // Re-expand each invalidated node in order (root → leaf)
+          for (const key of keysToRefresh) {
+            const n = get().treeNodes.get(key);
+            if (n?.isExpanded) {
+              await get().expandTreeNode(key);
+            }
           }
         }
       } catch {
@@ -630,9 +644,6 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           set({ isLoading: false });
           return;
         }
-        // Populate dir-children LRU cache (partial page — cannot assert false for parent)
-        updateFromLsResult(result.key, result.children, false);
-
         const newItems = result.children.map((c) => toExplorerItem(c, currentPath));
         set({
           items: [...items, ...newItems],
@@ -672,9 +683,6 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           set({ isLoading: false });
           return;
         }
-        // Populate dir-children LRU cache
-        updateFromLsResult(result.key, result.children, result.nextCursor === null);
-
         const items = result.children.map((c) => toExplorerItem(c, path));
         set({
           items,
@@ -711,9 +719,6 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           set({ isLoading: false });
           return;
         }
-        // Populate dir-children LRU cache
-        updateFromLsResult(result.key, result.children, result.nextCursor === null);
-
         const items = result.children.map((c) => toExplorerItem(c, path));
         set({
           items,
@@ -782,9 +787,6 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
             set({ treeNodes: errMap });
             return;
           }
-          // Populate dir-children LRU cache
-          updateFromLsResult(result.key, result.children, result.nextCursor === null);
-
           const children: TreeNode[] = result.children
             .filter((c) => c.type === "dir")
             .map((c) => {
@@ -796,7 +798,6 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
                   name: c.name,
                   type: "directory" as const,
                   depotId: depotIdToSelect,
-                  nodeKey: c.key,
                   children: null,
                   isExpanded: false,
                   isLoading: false,
@@ -861,9 +862,6 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           set({ treeNodes: errMap });
           return;
         }
-        // Populate dir-children LRU cache
-        updateFromLsResult(result.key, result.children, result.nextCursor === null);
-
         const children: TreeNode[] = result.children
           .filter((c) => c.type === "dir")
           .map((c) => {
@@ -875,7 +873,6 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
                 name: c.name,
                 type: "directory" as const,
                 depotId: nodeDepotId ?? node?.depotId,
-                nodeKey: c.key,
                 children: null,
                 isExpanded: false,
                 isLoading: false,
@@ -884,7 +881,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           });
         const doneMap = new Map(get().treeNodes);
         const n = doneMap.get(path);
-        if (n) doneMap.set(path, { ...n, children, nodeKey: result.key, isLoading: false });
+        if (n) doneMap.set(path, { ...n, children, isLoading: false });
         set({ treeNodes: doneMap });
       } catch {
         const errMap = new Map(get().treeNodes);
