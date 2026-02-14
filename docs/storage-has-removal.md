@@ -131,6 +131,135 @@ const createCachedStorage = (cache: StorageProvider, remote: StorageProvider) =>
 
 5. **`storage-cached` 回归简单串联** — 不需要独立 `has` 逻辑，变成纯粹的 cache → remote 组合
 
+## `storage-cached` 架构简化：拆分缓存与同步
+
+### 现状问题
+
+当前 `storage-cached`（467 行）混合了两个正交职责：
+
+1. **缓存装饰器**（~50 行）— `cache → remote` 的透明串联（`get` 读穿、`put` 写穿/写回）
+2. **CAS 树同步引擎**（~250 行）— `syncTree`（BFS 树遍历）、`topoSortLevels`（Kahn 拓扑排序）、`checkMany`/`claim` 三态分发、`WriteBackConfig` 生命周期钩子、`PendingKeyStore` 持久化
+
+同步引擎了解 CAS 树结构（parent→children）、服务端 ownership 模型（owned/unowned/missing）、PoP claim 协议——这些都不是"缓存"的职责。缓存装饰器应该是一个通用的、不了解 CAS 语义的 StorageProvider 组合器。
+
+### 目标架构
+
+| 模块 | 职责 | 代码量 |
+|---|---|---|
+| `storage-cached` | 纯缓存装饰器：`(cache, remote) → StorageProvider` | ~20 行 |
+| `storage-http` 增强层 | 缓冲 put → 拓扑排序 → 批量 checkMany → claim/put 分发 | ~200 行 |
+
+### `storage-cached`：纯缓存装饰器
+
+```typescript
+const createCachedStorage = (cache: StorageProvider, remote: StorageProvider): StorageProvider => ({
+  async get(key) {
+    const cached = await cache.get(key);
+    if (cached) return cached;
+    const data = await remote.get(key);
+    if (data) await cache.put(key, data);
+    return data;
+  },
+  async put(key, value) {
+    await cache.put(key, value);
+    await remote.put(key, value);
+  },
+});
+```
+
+不知道 CAS、HTTP、claim、树结构。纯粹的两层 StorageProvider 串联。
+
+### `storage-http` 增强：缓冲式批量同步
+
+将同步逻辑下沉到 HTTP 层，作为 `HttpStorageProvider` 的增强包装。HTTP 层天然了解 `checkMany`/`claim` 协议，同步逻辑放在这里最合适：
+
+```typescript
+type BufferedHttpStorageConfig = {
+  /** 从 node bytes 中提取子节点 key，用于构建依赖图 */
+  getChildKeys: (value: Uint8Array) => string[];
+  /** 缓冲区 flush 前的 debounce 间隔 (ms) */
+  debounceMs?: number;
+  /** 生命周期钩子 */
+  onSyncStart?: () => void | Promise<void>;
+  onSyncEnd?: (result: SyncResult) => void;
+  onKeySync?: (key: string, status: "uploading" | "done" | "error", error?: unknown) => void;
+};
+
+const createBufferedHttpStorage = (
+  http: HttpStorageProvider,
+  config: BufferedHttpStorageConfig,
+): StorageProvider & { flush: () => Promise<void> } => {
+  const buffer = new Map<string, Uint8Array>();
+
+  return {
+    get: (key) => http.get(key),
+
+    async put(key, value) {
+      buffer.set(key, value);   // 缓冲，不立即发送
+      scheduleFlush();          // debounce 后触发 flush
+    },
+
+    async flush() {
+      const entries = [...buffer.entries()].map(([key, value]) => ({ key, value }));
+      buffer.clear();
+      if (entries.length === 0) return;
+
+      await config.onSyncStart?.();
+
+      // 1. 拓扑排序：children-first
+      const levels = topoSortLevels(entries, config.getChildKeys);
+
+      // 2. 按层级批量 checkMany
+      for (const level of levels) {
+        const keys = level.map((e) => e.key);
+        const status = await http.checkMany(keys);
+
+        // 3. 分发：missing → put, unowned → claim, owned → skip
+        for (const entry of level) {
+          if (status.owned.includes(entry.key)) continue;
+          if (status.unowned.includes(entry.key)) {
+            await http.claim(entry.key, entry.value);
+          } else {
+            await http.put(entry.key, entry.value);
+          }
+        }
+      }
+
+      config.onSyncEnd?.({ synced, skipped, failed });
+    },
+  };
+};
+```
+
+### 使用方组合
+
+```typescript
+// 之前（storage-cached 承担所有职责）
+const storage = createCachedStorage({
+  cache: indexedDB,
+  remote: httpStorage,
+  writeBack: { getChildKeys, onSyncStart, onSyncEnd, onKeySync },
+});
+await storage.syncTree(rootKey);   // 从根遍历整棵树
+
+// 之后（职责分离）
+const http = createHttpStorage({ client, getTokenBytes, popContext });
+const buffered = createBufferedHttpStorage(http, { getChildKeys, debounceMs: 100, ... });
+const storage = createCachedStorage(indexedDB, buffered);
+// storage.put(key, value)
+//   → indexedDB.put(key, value)      ← 本地缓存
+//   → buffered.put(key, value)       ← 缓冲，不立即发送
+//   → debounce 后 → flush()
+//     → topoSort → checkMany → claim/put
+```
+
+### 优势
+
+1. **缓冲比树遍历更精确** — 当前 `syncTree` 从 root 遍历整棵树，发现哪些节点需要上传。缓冲方式只处理实际 `put()` 过的节点——CAS 的不可变性保证旧节点已在远端，无需重新遍历
+2. **同步逻辑与 HTTP 协议同层** — `checkMany`/`claim` 是 `HttpStorageProvider` 的原生能力，放在同一层消除了 `storage-cached` 对 remote 类型的 duck-typing（`remote.checkMany?`、`remote.claim?`）
+3. **`storage-cached` 可复用** — 纯缓存装饰器可用于任何 StorageProvider 组合（memory + FS、IndexedDB + S3 等），不绑定 HTTP 语义
+4. **`syncTree(rootKey)` API 消失** — 不再需要调用方手动触发同步和传入 rootKey，put 后自动 debounce flush
+
 ## 风险
 
 1. **向后兼容** — 所有 StorageProvider 实现和消费方都需要同步修改
@@ -159,7 +288,19 @@ type StorageProvider = {
 - `storage-s3`：同上
 - 其他 storage 实现删除 `has`
 
-### Phase 3：从接口中移除 `has`
+### Phase 3：`storage-cached` 拆分
+
+- `storage-cached` 瘦身为纯缓存装饰器（删除 ~400 行，剩 ~20 行）
+- 删除 `syncTree`、`topoSortLevels`、`WriteBackConfig`、`PendingKeyStore`、`CachedStorageProvider` 等类型
+- 导出简单的 `createCachedStorage(cache, remote) → StorageProvider`
+
+### Phase 4：`storage-http` 增强
+
+- 将 `topoSortLevels` 迁入 `storage-http`
+- 新增 `createBufferedHttpStorage(http, config)` — 缓冲 put + 批量 checkMany/claim 分发
+- 前端消费方（`apps/server/frontend/src/lib/storage.ts`）改为组合 `createCachedStorage(indexedDB, bufferedHttp)`
+
+### Phase 5：从接口中移除 `has`
 
 - 删除 `StorageProvider.has` 属性
 - 删除所有相关测试
@@ -171,7 +312,10 @@ type StorageProvider = {
 
 ## 待讨论
 
-- [ ] `storage-cached` 的 `sync` 路径不用 `has` 后，是否可以完全依赖 `checkMany`？
 - [ ] `controller.ts` 公开的 `has` API 是否有外部消费方？
 - [ ] 是否需要分 major 版本？还是当前都是内部使用可以直接改？
 - [ ] `storage-fs` 内部去重用简单 `existsSync` 还是保留 LRU？（`existsSync` 足够便宜，LRU 可能不值得维护）
+- [x] ~~`storage-cached` 的 `sync` 路径不用 `has` 后，是否可以完全依赖 `checkMany`？~~ → 同步逻辑整体迁移到 `storage-http` 增强层，`checkMany` 是其原生能力
+- [ ] `BufferedHttpStorage.flush()` 的触发时机：纯 debounce？还是保留手动 `flush()` 给调用方（如 depot sync 完成后强制 flush）？
+- [ ] `topoSortLevels` 放在哪个包？`storage-http` 导出？还是提到公共 utils？
+- [ ] 缓冲区的持久化（`PendingKeyStore`）是否仍需要？还是可以靠 IndexedDB cache 层在重启后重新 put？
