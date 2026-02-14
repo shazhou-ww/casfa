@@ -166,6 +166,22 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   );
 
   // ============================================================================
+  // OAuth Protected Resource Metadata (RFC 9728)
+  // SDK tries path-aware first: /.well-known/oauth-protected-resource/api/mcp
+  // then falls back to root: /.well-known/oauth-protected-resource
+  // We serve the same response on both.
+  // ============================================================================
+
+  app.get(
+    "/.well-known/oauth-protected-resource",
+    deps.oauthAuth.getProtectedResourceMetadata,
+  );
+  app.get(
+    "/.well-known/oauth-protected-resource/*",
+    deps.oauthAuth.getProtectedResourceMetadata,
+  );
+
+  // ============================================================================
   // OAuth Routes
   // ============================================================================
 
@@ -214,8 +230,6 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   // ============================================================================
 
   // OAuth authorize
-  // GET /api/auth/authorize → redirect to frontend /oauth/authorize
-  app.get("/api/auth/authorize", deps.oauthAuth.authorize);
   // GET /api/auth/authorize/info → validate params, return JSON for frontend
   app.get("/api/auth/authorize/info", deps.oauthAuth.authorizeInfo);
   // POST /api/auth/authorize → approve consent (JWT required)
@@ -369,7 +383,18 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
     app.use("*", deps.serveStaticMiddleware);
   }
   if (deps.serveStaticFallbackMiddleware) {
-    app.use("*", deps.serveStaticFallbackMiddleware);
+    // Wrap the SPA fallback so .well-known paths get a proper 404 instead of
+    // index.html.  MCP clients (e.g. VS Code) probe multiple .well-known URLs
+    // during RFC 8414 / RFC 9728 metadata discovery; returning 200 + HTML
+    // prevents them from falling back to the correct root discovery URL.
+    const spaFallback = deps.serveStaticFallbackMiddleware;
+    app.use("*", async (c, next) => {
+      if (c.req.path.startsWith("/.well-known/")) {
+        await next();
+        return;
+      }
+      return spaFallback(c, next);
+    });
   }
 
   // ============================================================================

@@ -6,7 +6,8 @@
  *
  * Endpoints:
  * - GET /.well-known/oauth-authorization-server — RFC 8414 metadata
- * - GET /api/auth/authorize — Validate params, return client info (JSON API)
+ * - GET /.well-known/oauth-protected-resource[/*] — RFC 9728 PRM
+ * - GET /api/auth/authorize/info — Validate params, return client info (JSON API)
  * - POST /api/auth/authorize — User approves authorization (requires JWT)
  * - POST /api/auth/token — Token endpoint (code exchange + refresh)
  * - POST /api/auth/register — Dynamic client registration (RFC 7591)
@@ -42,8 +43,8 @@ export type OAuthAuthControllerDeps = {
 export type OAuthAuthController = {
   /** GET /.well-known/oauth-authorization-server */
   getMetadata: (c: Context<Env>) => Response;
-  /** GET /api/auth/authorize — redirect to /oauth/authorize frontend page */
-  authorize: (c: Context<Env>) => Response;
+  /** GET /.well-known/oauth-protected-resource — RFC 9728 */
+  getProtectedResourceMetadata: (c: Context<Env>) => Response;
   /** GET /api/auth/authorize/info — validate params, return client info as JSON */
   authorizeInfo: (c: Context<Env>) => Promise<Response>;
   /** POST /api/auth/authorize — user approves, generates code and redirects */
@@ -171,17 +172,20 @@ export const createOAuthAuthController = (
   };
 
   // ──────────────────────────────────────────────────────────────────────────
-  // GET /api/auth/authorize — redirect to frontend /oauth/authorize
+  // Phase 0b: OAuth Protected Resource Metadata (RFC 9728)
   // ──────────────────────────────────────────────────────────────────────────
 
-  /**
-   * Redirect the browser to the frontend consent page.
-   * Preserves all OAuth query params. This is hit when VS Code (or other
-   * MCP clients) open the authorization URL — we just bounce to the SPA.
-   */
-  const authorize = (c: Context<Env>): Response => {
-    const qs = c.req.url.split("?")[1] ?? "";
-    return c.redirect(`/oauth/authorize${qs ? `?${qs}` : ""}`, 302);
+  const getProtectedResourceMetadata = (c: Context<Env>): Response => {
+    const host = c.req.header("Host");
+    const proto = c.req.header("X-Forwarded-Proto") ?? "http";
+    const baseUrl = host ? `${proto}://${host}` : serverConfig.baseUrl;
+
+    return c.json({
+      resource: `${baseUrl}/api/mcp`,
+      authorization_servers: [baseUrl],
+      scopes_supported: ["cas:read", "cas:write", "depot:manage"],
+      bearer_methods_supported: ["header"],
+    });
   };
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -645,7 +649,7 @@ export const createOAuthAuthController = (
     );
   };
 
-  return { getMetadata, authorize, authorizeInfo, approveAuthorization, token, register };
+  return { getMetadata, getProtectedResourceMetadata, authorizeInfo, approveAuthorization, token, register };
 };
 
 // ============================================================================
