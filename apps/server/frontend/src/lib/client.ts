@@ -17,7 +17,7 @@ import {
   createAppClient as createAppClientFactory,
   createDirectClient,
 } from "@casfa/client-bridge";
-import { flushStorage, getStorage } from "./storage.ts";
+import { flushBufferedStorage } from "./storage.ts";
 import { createSyncQueueStore } from "./sync-queue-store.ts";
 
 const TOKEN_STORAGE_KEY = "casfa_tokens";
@@ -87,13 +87,9 @@ export function getAppClient(): Promise<AppClient> {
         onAuthRequired: () => {
           window.location.href = "/login";
         },
-        // Direct-mode sync: proxy that lazily resolves the real CachedStorageProvider
+        // Layer 1 sync: flush buffered CAS nodes to remote before committing
         storage: {
-          flush: () => flushStorage(),
-          syncTree: async (rootKey: string) => {
-            const s = await getStorage();
-            return s.syncTree(rootKey);
-          },
+          flush: () => flushBufferedStorage(),
         },
         queueStore: createSyncQueueStore(),
       });
