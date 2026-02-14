@@ -6,9 +6,6 @@
  * Read path:
  *   cache.get → hit? return : remote.get → write-back to cache → return
  *
- * Has path:
- *   cache.has → true? return : remote.has
- *
  * Write path:
  *   Write-through (default):
  *     cache.put → remote.put
@@ -259,12 +256,6 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
     return data;
   };
 
-  const has = async (key: string): Promise<boolean> => {
-    const inCache = await cache.has(key);
-    if (inCache) return true;
-    return remote.has(key);
-  };
-
   // --------------------------------------------------------------------------
   // Write-through mode (no writeBack config)
   // --------------------------------------------------------------------------
@@ -272,7 +263,6 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
   if (!writeBack) {
     return {
       get,
-      has,
       async put(key: string, value: Uint8Array): Promise<void> {
         await cache.put(key, value);
         await remote.put(key, value);
@@ -296,7 +286,6 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
 
   return {
     get,
-    has,
 
     async put(key: string, value: Uint8Array): Promise<void> {
       await cache.put(key, value);
@@ -339,10 +328,10 @@ export const createCachedStorage = (config: CachedStorageConfig): CachedStorageP
             for (const k of status.unowned) statusMap.set(k, "unowned");
             for (const k of status.missing) statusMap.set(k, "missing");
           } else {
-            // Fallback: individual has() checks
+            // Fallback: individual get() checks (no checkMany support)
             statusMap = new Map();
             for (const k of unique) {
-              const exists = await remote.has(k);
+              const exists = (await remote.get(k)) !== null;
               statusMap.set(k, exists ? "owned" : "missing");
             }
           }

@@ -2,8 +2,8 @@
  * S3 Storage Provider for CAS
  *
  * Implements StorageProvider with:
- * - LRU cache for key existence checks
  * - S3 backend storage
+ * - Internal HeadObject check in put() to avoid redundant uploads
  */
 
 import {
@@ -13,7 +13,17 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import type { StorageProvider } from "@casfa/storage-core";
-import { createLRUCache, DEFAULT_CACHE_SIZE, toStoragePath } from "./storage-utils.ts";
+
+/**
+ * Create storage path from a CB32 storage key.
+ * Uses first 2 chars as subdirectory for better distribution.
+ *
+ * Example: 240B5PHBGEC2A705WTKKMVRS30 -> cas/v1/24/240B5PHBGEC2A705WTKKMVRS30
+ */
+const toStoragePath = (key: string, prefix: string): string => {
+  const subdir = key.slice(0, 2);
+  return `${prefix}${subdir}/${key}`;
+};
 
 /**
  * S3 Storage configuration
@@ -25,8 +35,6 @@ export type S3StorageConfig = {
   region?: string;
   /** Optional S3 client (for testing or custom config) */
   client?: S3Client;
-  /** LRU cache size for key existence (default: 10000) */
-  cacheSize?: number;
   /** Key prefix in S3 (default: "cas/v1/") */
   prefix?: string;
 };
@@ -38,36 +46,8 @@ export const createS3Storage = (config: S3StorageConfig): StorageProvider => {
   const client = config.client ?? new S3Client(config.region ? { region: config.region } : {});
   const bucket = config.bucket;
   const prefix = config.prefix ?? "cas/v1/";
-  const existsCache = createLRUCache<string, boolean>(config.cacheSize ?? DEFAULT_CACHE_SIZE);
 
   const toS3Key = (casKey: string): string => toStoragePath(casKey, prefix);
-
-  const has = async (key: string): Promise<boolean> => {
-    // Check cache first
-    const cached = existsCache.get(key);
-    if (cached !== undefined) {
-      return cached;
-    }
-
-    // Check S3
-    try {
-      await client.send(
-        new HeadObjectCommand({
-          Bucket: bucket,
-          Key: toS3Key(key),
-        })
-      );
-      existsCache.set(key, true);
-      return true;
-    } catch (error: unknown) {
-      const err = error as { name?: string; $metadata?: { httpStatusCode?: number } };
-      if (err.name === "NotFound" || err.$metadata?.httpStatusCode === 404) {
-        // Don't cache non-existence (it might be uploaded later)
-        return false;
-      }
-      throw error;
-    }
-  };
 
   const get = async (key: string): Promise<Uint8Array | null> => {
     try {
@@ -79,10 +59,6 @@ export const createS3Storage = (config: S3StorageConfig): StorageProvider => {
       );
 
       const bytes = await result.Body!.transformToByteArray();
-
-      // Mark as existing in cache
-      existsCache.set(key, true);
-
       return new Uint8Array(bytes);
     } catch (error: unknown) {
       const err = error as { name?: string; $metadata?: { httpStatusCode?: number } };
@@ -94,50 +70,35 @@ export const createS3Storage = (config: S3StorageConfig): StorageProvider => {
   };
 
   const put = async (key: string, value: Uint8Array): Promise<void> => {
-    // Check cache first (avoid redundant writes)
-    if (existsCache.get(key)) {
-      return;
-    }
+    const s3Key = toS3Key(key);
 
-    // Check if already exists in S3
-    const exists = await has(key);
-    if (exists) {
-      return;
+    // Internal optimization: HeadObject is cheaper than PutObject
+    try {
+      await client.send(
+        new HeadObjectCommand({
+          Bucket: bucket,
+          Key: s3Key,
+        })
+      );
+      return; // already exists
+    } catch (error: unknown) {
+      const err = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+      if (err.name !== "NotFound" && err.$metadata?.httpStatusCode !== 404) {
+        throw error; // unexpected error
+      }
+      // not found — proceed to upload
     }
 
     // Upload to S3
     await client.send(
       new PutObjectCommand({
         Bucket: bucket,
-        Key: toS3Key(key),
+        Key: s3Key,
         Body: value,
         ContentType: "application/octet-stream",
       })
     );
-
-    // Mark as existing
-    existsCache.set(key, true);
   };
 
-  return { has, get, put };
-};
-
-/**
- * Create S3 storage with cache control methods (for testing)
- */
-export const createS3StorageWithCache = (config: S3StorageConfig) => {
-  const client = config.client ?? new S3Client(config.region ? { region: config.region } : {});
-  const _bucket = config.bucket;
-  const prefix = config.prefix ?? "cas/v1/";
-  const existsCache = createLRUCache<string, boolean>(config.cacheSize ?? DEFAULT_CACHE_SIZE);
-
-  const _toS3Key = (casKey: string): string => toStoragePath(casKey, prefix);
-
-  const storage = createS3Storage({ ...config, client });
-
-  return {
-    ...storage,
-    clearCache: () => existsCache.clear(),
-    getCacheStats: () => ({ size: existsCache.size() }),
-  };
+  return { get, put };
 };

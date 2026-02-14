@@ -38,7 +38,6 @@ export const buildCasContext = (ctx: FsContext): CasContext => {
   const { storage, key, onNodeStored, nodeLimit } = ctx;
 
   const wrappedStorage = {
-    has: storage.has.bind(storage),
     get: storage.get.bind(storage),
     put: async (storageKey: string, bytes: Uint8Array): Promise<void> => {
       await storage.put(storageKey, bytes);

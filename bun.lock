@@ -284,7 +284,6 @@
       "version": "0.2.0",
       "dependencies": {
         "@casfa/storage-core": "workspace:*",
-        "quick-lru": "^7.0.0",
       },
       "devDependencies": {
         "typescript": "^5.7.2",
@@ -334,7 +333,6 @@
       "dependencies": {
         "@aws-sdk/client-s3": "^3.975.0",
         "@casfa/storage-core": "workspace:*",
-        "quick-lru": "^7.0.0",
       },
       "devDependencies": {
         "typescript": "^5.7.2",
@@ -1149,8 +1147,6 @@
     "quansync": ["quansync@0.2.11", "https://mirrors.tencent.com/npm/quansync/-/quansync-0.2.11.tgz", {}, "sha512-AifT7QEbW9Nri4tAwR5M/uzpBuqfZf+zwaEM/QkzEjj7NBuFD2rBuy0K3dE+8wltbezDV7JMA0WfnCPYRSYbXA=="],
 
     "queue-microtask": ["queue-microtask@1.2.3", "https://mirrors.tencent.com/npm/queue-microtask/-/queue-microtask-1.2.3.tgz", {}, "sha512-NuaNSa6flKT5JaSYQzJok04JzTL1CA6aGhv5rfLW3PgqA+M2ChpZQnAC8h8i4ZFkBS8X5RqkDBHA7r4hej3K9A=="],
-
-    "quick-lru": ["quick-lru@7.3.0", "https://mirrors.tencent.com/npm/quick-lru/-/quick-lru-7.3.0.tgz", {}, "sha512-k9lSsjl36EJdK7I06v7APZCbyGT2vMTsYSRX1Q2nbYmnkBqgUhRkAuzH08Ciotteu/PLJmIF2+tti7o3C/ts2g=="],
 
     "react": ["react@19.2.4", "", {}, "sha512-9nfp2hYpCwOjAN+8TZFGhtWEwgvWHXqESH8qT89AT/lWklpLON22Lc8pEtnpsZz7VmawabSU0gCjnj8aC0euHQ=="],
 

@@ -3,9 +3,8 @@
  *
  * Uses mock CasfaClient to verify the logic of:
  * - get: delegates to client.nodes.get
- * - has: calls check, returns true only when owned
  * - put: check → put (missing) / claim (unowned) / no-op (owned)
- * - check-result caching across has/put calls
+ * - check-result caching across put calls
  */
 
 import { describe, expect, it } from "bun:test";
@@ -146,57 +145,6 @@ describe("createHttpStorage", () => {
   });
 
   // ==========================================================================
-  // Tests — has
-  // ==========================================================================
-
-  describe("has", () => {
-    it("should return true when node is owned", async () => {
-      const { client } = createMockClient({
-        checkResult: {
-          ok: true,
-          data: { owned: [NOD_A], unowned: [], missing: [] },
-        },
-      });
-      const storage = createHttpStorage(makeConfig(client));
-
-      expect(await storage.has(KEY_A)).toBe(true);
-    });
-
-    it("should return false when node is unowned", async () => {
-      const { client } = createMockClient({
-        checkResult: {
-          ok: true,
-          data: { owned: [], unowned: [NOD_A], missing: [] },
-        },
-      });
-      const storage = createHttpStorage(makeConfig(client));
-
-      expect(await storage.has(KEY_A)).toBe(false);
-    });
-
-    it("should return false when node is missing", async () => {
-      const { client } = createMockClient({
-        checkResult: {
-          ok: true,
-          data: { owned: [], unowned: [], missing: [NOD_A] },
-        },
-      });
-      const storage = createHttpStorage(makeConfig(client));
-
-      expect(await storage.has(KEY_A)).toBe(false);
-    });
-
-    it("should throw when check fails", async () => {
-      const { client } = createMockClient({
-        checkResult: { ok: false, error: { message: "server down" } },
-      });
-      const storage = createHttpStorage(makeConfig(client));
-
-      await expect(storage.has(KEY_A)).rejects.toThrow("Failed to check node");
-    });
-  });
-
-  // ==========================================================================
   // Tests — put
   // ==========================================================================
 
@@ -308,7 +256,7 @@ describe("createHttpStorage", () => {
   // ==========================================================================
 
   describe("check cache", () => {
-    it("should not call check twice for same key (has → has)", async () => {
+    it("should not call check twice for same key (put → put)", async () => {
       const { client, calls } = createMockClient({
         checkResult: {
           ok: true,
@@ -317,34 +265,11 @@ describe("createHttpStorage", () => {
       });
       const storage = createHttpStorage(makeConfig(client));
 
-      await storage.has(KEY_A);
-      await storage.has(KEY_A);
-
-      const checkCalls = calls.filter((c) => c.method === "nodes.check");
-      expect(checkCalls).toHaveLength(1);
-    });
-
-    it("should reuse check result between has and put", async () => {
-      const { client, calls } = createMockClient({
-        checkResult: {
-          ok: true,
-          data: { owned: [], unowned: [], missing: [NOD_A] },
-        },
-      });
-      const storage = createHttpStorage(makeConfig(client));
-
-      // has first — caches "missing"
-      const hasResult = await storage.has(KEY_A);
-      expect(hasResult).toBe(false);
-
-      // put second — should use cached "missing", then do put
+      await storage.put(KEY_A, BYTES_A);
       await storage.put(KEY_A, BYTES_A);
 
       const checkCalls = calls.filter((c) => c.method === "nodes.check");
       expect(checkCalls).toHaveLength(1);
-
-      const putCalls = calls.filter((c) => c.method === "nodes.put");
-      expect(putCalls).toHaveLength(1);
     });
 
     it("should update cache to owned after successful put", async () => {
@@ -358,20 +283,16 @@ describe("createHttpStorage", () => {
 
       await storage.put(KEY_A, BYTES_A);
 
-      // Overwrite the check mock to return a different result, but
-      // it should NOT be called because the cache was updated to "owned"
-      // after the put above.
-
-      // has should return true now (from cache)
-      // We need to NOT reset the mock, the cache should handle it.
-      // Since put updated cache to "owned", has should be true without another check.
-      // The mock's checkResult still says missing, but cache overrides it.
-      const hasResult = await storage.has(KEY_A);
-      expect(hasResult).toBe(true);
+      // Second put should use cached "owned" — no new check or put call
+      await storage.put(KEY_A, BYTES_A);
 
       // Only 1 check call total
       const checkCalls = calls.filter((c) => c.method === "nodes.check");
       expect(checkCalls).toHaveLength(1);
+
+      // Only 1 put call total (from first put)
+      const putCalls = calls.filter((c) => c.method === "nodes.put");
+      expect(putCalls).toHaveLength(1);
     });
 
     it("should update cache to owned after successful claim", async () => {
@@ -384,9 +305,9 @@ describe("createHttpStorage", () => {
       const storage = createHttpStorage(makeConfig(client));
 
       await storage.put(KEY_A, BYTES_A);
-      const hasResult = await storage.has(KEY_A);
 
-      expect(hasResult).toBe(true);
+      // Second put should use cached "owned" — no new check or claim
+      await storage.put(KEY_A, BYTES_A);
 
       const checkCalls = calls.filter((c) => c.method === "nodes.check");
       expect(checkCalls).toHaveLength(1);
@@ -410,10 +331,10 @@ describe("createHttpStorage", () => {
 
       const storage = createHttpStorage(makeConfig(client));
 
-      expect(await storage.has(KEY_A)).toBe(true); // check call #1
-      expect(await storage.has(KEY_B)).toBe(false); // check call #2
-      expect(await storage.has(KEY_A)).toBe(true); // cached
-      expect(await storage.has(KEY_B)).toBe(false); // cached
+      await storage.put(KEY_A, BYTES_A); // check call #1 — owned, no-op
+      await storage.put(KEY_B, BYTES_A); // check call #2 — missing, upload
+      await storage.put(KEY_A, BYTES_A); // cached
+      await storage.put(KEY_B, BYTES_A); // cached (now owned after put)
 
       expect(checkCallCount).toBe(2);
     });

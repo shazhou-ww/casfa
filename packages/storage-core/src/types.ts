@@ -6,11 +6,6 @@
  */
 export type StorageProvider = {
   /**
-   * Check if a key exists in storage
-   */
-  has: (key: string) => Promise<boolean>;
-
-  /**
    * Get blob content by key
    * Returns null if not found
    */

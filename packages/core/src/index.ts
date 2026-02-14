@@ -34,7 +34,6 @@ export {
   getNode,
   getNodeLimit,
   getTree,
-  has,
   makeDict,
   openFileStream,
   putFileNode,

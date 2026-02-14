@@ -21,7 +21,6 @@ export const createMemoryStorage = (config: MemoryStorageConfig = {}): StoragePr
   const data = config.initialData ?? new Map<string, Uint8Array>();
 
   return {
-    has: async (key) => data.has(key),
     get: async (key) => data.get(key) ?? null,
     put: async (key, value) => {
       data.set(key, value);
@@ -36,7 +35,6 @@ export const createMemoryStorageWithInspection = (config: MemoryStorageConfig = 
   const data = config.initialData ?? new Map<string, Uint8Array>();
 
   const storage: StorageProvider = {
-    has: async (key) => data.has(key),
     get: async (key) => data.get(key) ?? null,
     put: async (key, value) => {
       data.set(key, value);

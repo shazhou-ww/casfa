@@ -387,13 +387,6 @@ export const openFileStream = (ctx: CasContext, key: string): ReadableStream<Uin
 };
 
 /**
- * Check if a key exists in storage
- */
-export const has = async (ctx: CasContext, key: string): Promise<boolean> => {
-  return ctx.storage.has(key);
-};
-
-/**
  * Get the node limit from context
  */
 export const getNodeLimit = (ctx: CasContext): number => {

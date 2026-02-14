@@ -168,7 +168,7 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
       // Well-known nodes (e.g. empty dict) are virtual & universally owned — skip all checks
       if (!isWellKnownNode(storageKey)) {
         // Check if new root exists in storage
-        const exists = await storage.has(storageKey);
+        const exists = (await storage.get(storageKey)) !== null;
         if (!exists) {
           return c.json({ error: "Root node does not exist" }, 400);
         }

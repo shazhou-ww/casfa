@@ -3,7 +3,6 @@
  *
  * Uses two in-memory StorageProviders (cache + remote) to verify:
  * - get: cache hit / cache miss + write-back / remote miss
- * - has: cache hit / fallback to remote
  * - put: write-through to both cache and remote
  * - cache write-back failures are silently ignored
  */
@@ -31,10 +30,6 @@ function createSpyStorage(
     async get(key) {
       calls.push({ method: "get", args: [key] });
       return store.get(key) ?? null;
-    },
-    async has(key) {
-      calls.push({ method: "has", args: [key] });
-      return store.has(key);
     },
     async put(key, value) {
       calls.push({ method: "put", args: [key, value] });
@@ -96,7 +91,6 @@ describe("createCachedStorage", () => {
     it("should silently ignore cache write-back failures", async () => {
       const cache: StorageProvider = {
         get: async () => null,
-        has: async () => false,
         put: async () => {
           throw new Error("quota exceeded");
         },
@@ -111,41 +105,6 @@ describe("createCachedStorage", () => {
 
       // Give fire-and-forget a tick to settle
       await new Promise((r) => setTimeout(r, 10));
-    });
-  });
-
-  // ==========================================================================
-  // Tests — has
-  // ==========================================================================
-
-  describe("has", () => {
-    it("should return true immediately on cache hit", async () => {
-      const cache = createSpyStorage(new Map([[KEY, DATA]]));
-      const remote = createSpyStorage();
-
-      const storage = createCachedStorage({ cache, remote });
-      expect(await storage.has(KEY)).toBe(true);
-      expect(remote.calls).toHaveLength(0);
-    });
-
-    it("should fall back to remote on cache miss", async () => {
-      const cache = createSpyStorage();
-      const remote = createSpyStorage(new Map([[KEY, DATA]]));
-
-      const storage = createCachedStorage({ cache, remote });
-      expect(await storage.has(KEY)).toBe(true);
-
-      // cache.has (miss) → remote.has (hit)
-      expect(cache.calls[0]).toEqual({ method: "has", args: [KEY] });
-      expect(remote.calls[0]).toEqual({ method: "has", args: [KEY] });
-    });
-
-    it("should return false when both miss", async () => {
-      const cache = createSpyStorage();
-      const remote = createSpyStorage();
-
-      const storage = createCachedStorage({ cache, remote });
-      expect(await storage.has(KEY)).toBe(false);
     });
   });
 
@@ -169,14 +128,12 @@ describe("createCachedStorage", () => {
       const order: string[] = [];
       const cache: StorageProvider = {
         get: async () => null,
-        has: async () => false,
         put: async () => {
           order.push("cache");
         },
       };
       const remote: StorageProvider = {
         get: async () => null,
-        has: async () => false,
         put: async () => {
           order.push("remote");
         },
@@ -192,7 +149,6 @@ describe("createCachedStorage", () => {
       const cache = createSpyStorage();
       const remote: StorageProvider = {
         get: async () => null,
-        has: async () => false,
         put: async () => {
           throw new Error("upload failed");
         },
@@ -284,10 +240,6 @@ describe("createCachedStorage (write-back)", () => {
         calls.push({ method: "get", args: [key] });
         return store.get(key) ?? null;
       },
-      async has(key) {
-        calls.push({ method: "has", args: [key] });
-        return store.has(key);
-      },
       async put(key, value) {
         calls.push({ method: "put", args: [key, value] });
         store.set(key, value);
@@ -370,7 +322,6 @@ describe("createCachedStorage (write-back)", () => {
       const cache = createSpyStorage();
       const remote: StorageProvider = {
         get: async () => null,
-        has: async () => false,
         put: async () => {
           await new Promise((r) => setTimeout(r, 500));
         },
@@ -777,7 +728,7 @@ describe("createCachedStorage (write-back)", () => {
       storage.dispose();
     });
 
-    it("should report has=true for cached keys", async () => {
+    it("should serve cached key via get after put", async () => {
       const cache = createSpyStorage();
       const remote = createSpyStorage();
 
@@ -789,7 +740,7 @@ describe("createCachedStorage (write-back)", () => {
 
       await storage.put(KEY, DATA);
 
-      expect(await storage.has(KEY)).toBe(true);
+      expect(await storage.get(KEY)).toEqual(DATA);
 
       storage.dispose();
     });

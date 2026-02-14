@@ -82,7 +82,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
         }
 
         // First check if the node physically exists in storage
-        const exists = await storage.has(storageKey);
+        const exists = (await storage.get(storageKey)) !== null;
         if (!exists) {
           missing.push(key);
           continue;
@@ -130,7 +130,9 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       // Full validation (use storageKey which is hex format)
       // existsChecker must handle well-known nodes which are virtual (never persisted to storage)
       const validationResult = await validateNode(bytes, storageKey, keyProvider, (childKey) =>
-        isWellKnownNode(childKey) ? Promise.resolve(true) : storage.has(childKey)
+        isWellKnownNode(childKey)
+          ? Promise.resolve(true)
+          : storage.get(childKey).then((v) => v !== null)
       );
 
       if (!validationResult.valid) {
