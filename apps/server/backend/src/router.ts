@@ -155,11 +155,13 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   app.get("/api/info", deps.info.getInfo);
 
   // ============================================================================
-  // OAuth Authorization Server Metadata (RFC 8414)
+  // OAuth Authorization Server Metadata (RFC 8414 + MCP 2025-03)
+  // MCP spec: authorization base URL = MCP server URL with path stripped
+  // So metadata is at /.well-known/oauth-authorization-server (no path suffix)
   // ============================================================================
 
   app.get(
-    "/.well-known/oauth-authorization-server/api/auth",
+    "/.well-known/oauth-authorization-server",
     deps.oauthAuth.getMetadata,
   );
 
@@ -211,8 +213,12 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   // Auth Routes
   // ============================================================================
 
-  // OAuth authorize (GET = consent page data, POST = approve consent)
+  // OAuth authorize
+  // GET /api/auth/authorize → redirect to frontend /oauth/authorize
   app.get("/api/auth/authorize", deps.oauthAuth.authorize);
+  // GET /api/auth/authorize/info → validate params, return JSON for frontend
+  app.get("/api/auth/authorize/info", deps.oauthAuth.authorizeInfo);
+  // POST /api/auth/authorize → approve consent (JWT required)
   app.post(
     "/api/auth/authorize",
     deps.jwtAuthMiddleware,
@@ -221,6 +227,9 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
 
   // OAuth token endpoint (authorization_code + refresh_token grants)
   app.post("/api/auth/token", deps.oauthAuth.token);
+
+  // OAuth dynamic client registration (RFC 7591)
+  app.post("/api/auth/register", deps.oauthAuth.register);
 
   // Token refresh (RT → new RT + AT, rotation, child delegates only)
   app.post("/api/auth/refresh", deps.refreshToken.refresh);

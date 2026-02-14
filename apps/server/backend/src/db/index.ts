@@ -23,6 +23,11 @@ export {
 } from "./ownership-v2.ts";
 export { createRefCountDb, type RefCountDb } from "./refcount.ts";
 export { createUserRolesDb, type UserRoleRecord, type UserRolesDb } from "./user-roles.ts";
+export {
+  createOAuthClientsDb,
+  type OAuthClientRecord,
+  type OAuthClientsDb,
+} from "./oauth-clients.ts";
 
 // ============================================================================
 // Token modules

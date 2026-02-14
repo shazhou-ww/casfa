@@ -108,6 +108,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   const {
     authCodesDb,
     delegatesDb,
+    oauthClientsDb,
     scopeSetNodesDb,
     ownershipV2Db,
     depotsDb,
@@ -220,6 +221,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     serverConfig: config.server,
     authCodesDb,
     delegatesDb,
+    oauthClientsDb,
   });
 
   // New delegate model controllers
