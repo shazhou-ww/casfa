@@ -30,6 +30,11 @@ export default defineConfig({
         target: "http://localhost:8801",
         changeOrigin: true,
       },
+      "/.well-known": {
+        target: "http://localhost:8801",
+        // Do NOT use changeOrigin here — preserve the original Host header
+        // so the backend can construct correct URLs for OAuth metadata
+      },
     },
   },
 });

@@ -3,6 +3,7 @@ import { AuthGuard } from "./components/auth-guard.tsx";
 import { Layout } from "./components/layout.tsx";
 import { ExplorerPage } from "./pages/explorer-page.tsx";
 import { LoginPage } from "./pages/login-page.tsx";
+import { OAuthAuthorizePage } from "./pages/oauth-authorize.tsx";
 import { OAuthCallbackPage } from "./pages/oauth-callback.tsx";
 
 export function App() {
@@ -11,6 +12,7 @@ export function App() {
       {/* Public routes */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
+      <Route path="/oauth/authorize" element={<OAuthAuthorizePage />} />
 
       {/* Protected routes — require authentication */}
       <Route element={<AuthGuard />}>

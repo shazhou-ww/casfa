@@ -5,10 +5,15 @@
  * Uses /api/auth/* routes (not /api/oauth/* which is Cognito proxy).
  *
  * Endpoints:
- * - GET /.well-known/oauth-authorization-server/api/auth — RFC 8414 metadata
- * - GET /api/auth/authorize — Authorization endpoint (validates params, shows consent page)
+ * - GET /.well-known/oauth-authorization-server — RFC 8414 metadata
+ * - GET /api/auth/authorize — Validate params, return client info (JSON API)
  * - POST /api/auth/authorize — User approves authorization (requires JWT)
  * - POST /api/auth/token — Token endpoint (code exchange + refresh)
+ * - POST /api/auth/register — Dynamic client registration (RFC 7591)
+ *
+ * The authorization_endpoint in metadata points to /oauth/authorize (frontend),
+ * not to the API. The frontend page calls GET /api/auth/authorize to validate
+ * params, then POSTs to approve.
  */
 
 import { createHash, randomBytes } from "node:crypto";
@@ -17,6 +22,7 @@ import type { Context } from "hono";
 import type { ServerConfig } from "../config.ts";
 import type { AuthCodesDb, GrantedPermissions } from "../db/auth-codes.ts";
 import type { DelegatesDb } from "../db/delegates.ts";
+import type { OAuthClientsDb } from "../db/oauth-clients.ts";
 import { RefreshError, refreshDelegateToken } from "../services/delegate-refresh.ts";
 import type { Env, JwtAuthContext } from "../types.ts";
 import { generateTokenPair } from "../util/delegate-token-utils.ts";
@@ -30,17 +36,22 @@ export type OAuthAuthControllerDeps = {
   serverConfig: ServerConfig;
   authCodesDb: AuthCodesDb;
   delegatesDb: DelegatesDb;
+  oauthClientsDb: OAuthClientsDb;
 };
 
 export type OAuthAuthController = {
-  /** GET /.well-known/oauth-authorization-server/api/auth */
+  /** GET /.well-known/oauth-authorization-server */
   getMetadata: (c: Context<Env>) => Response;
-  /** GET /api/auth/authorize — validate params, show consent page */
-  authorize: (c: Context<Env>) => Promise<Response>;
+  /** GET /api/auth/authorize — redirect to /oauth/authorize frontend page */
+  authorize: (c: Context<Env>) => Response;
+  /** GET /api/auth/authorize/info — validate params, return client info as JSON */
+  authorizeInfo: (c: Context<Env>) => Promise<Response>;
   /** POST /api/auth/authorize — user approves, generates code and redirects */
   approveAuthorization: (c: Context<Env>) => Promise<Response>;
   /** POST /api/auth/token — exchange code or refresh token */
   token: (c: Context<Env>) => Promise<Response>;
+  /** POST /api/auth/register — dynamic client registration (RFC 7591) */
+  register: (c: Context<Env>) => Promise<Response>;
 };
 
 // ============================================================================
@@ -53,11 +64,19 @@ const AUTH_CODE_TTL_MS = 10 * 60 * 1000;
 /** Default access token TTL: 1 hour */
 const DEFAULT_AT_TTL_SECONDS = 3600;
 
+type OAuthClient = {
+  clientId: string;
+  clientName: string;
+  redirectUris: string[];
+  grantTypes: string[];
+  tokenEndpointAuthMethod: "none";
+};
+
 /**
- * Known clients — hardcoded for Phase 5 option A.
- * Dynamic client registration (RFC 7591) can be added later.
+ * Hardcoded well-known clients.
+ * Dynamic clients are persisted in DynamoDB via oauthClientsDb.
  */
-const KNOWN_CLIENTS: Record<string, OAuthClient> = {
+const HARDCODED_CLIENTS: Record<string, OAuthClient> = {
   "vscode-casfa-mcp": {
     clientId: "vscode-casfa-mcp",
     clientName: "VS Code CASFA MCP",
@@ -67,16 +86,14 @@ const KNOWN_CLIENTS: Record<string, OAuthClient> = {
   },
 };
 
-type OAuthClient = {
-  clientId: string;
-  clientName: string;
-  redirectUris: string[];
-  grantTypes: string[];
-  tokenEndpointAuthMethod: "none";
-};
-
 /** Supported OAuth scopes */
 const VALID_SCOPES = new Set(["cas:read", "cas:write", "depot:manage"]);
+
+const SCOPE_DESCRIPTIONS: Record<string, string> = {
+  "cas:read": "Read content from your CAS storage",
+  "cas:write": "Upload and write content to your CAS storage",
+  "depot:manage": "Create and manage depots",
+};
 
 // ============================================================================
 // Controller Factory
@@ -85,19 +102,66 @@ const VALID_SCOPES = new Set(["cas:read", "cas:write", "depot:manage"]);
 export const createOAuthAuthController = (
   deps: OAuthAuthControllerDeps,
 ): OAuthAuthController => {
-  const { serverConfig, authCodesDb, delegatesDb } = deps;
+  const { serverConfig, authCodesDb, delegatesDb, oauthClientsDb } = deps;
+
+  /**
+   * Resolve a client by ID: check hardcoded first, then DynamoDB.
+   * For `dyn_` prefixed clients not yet in DB (e.g. registered before
+   * DynamoDB persistence was added), auto-accept with permissive defaults
+   * and persist for future lookups. This is safe because dynamic clients
+   * are always public (no client_secret) per MCP/OAuth 2.1 spec.
+   */
+  const resolveClient = async (clientId: string): Promise<OAuthClient | null> => {
+    const hardcoded = HARDCODED_CLIENTS[clientId];
+    if (hardcoded) return hardcoded;
+
+    const record = await oauthClientsDb.get(clientId);
+    if (record) {
+      return {
+        clientId: record.clientId,
+        clientName: record.clientName,
+        redirectUris: record.redirectUris,
+        grantTypes: record.grantTypes,
+        tokenEndpointAuthMethod: record.tokenEndpointAuthMethod,
+      };
+    }
+
+    // Auto-accept previously-registered dyn_ clients that aren't in DB yet
+    if (clientId.startsWith("dyn_")) {
+      const newClient: OAuthClient = {
+        clientId,
+        clientName: "MCP Client",
+        redirectUris: ["http://127.0.0.1:*", "http://localhost:*"],
+        grantTypes: ["authorization_code", "refresh_token"],
+        tokenEndpointAuthMethod: "none",
+      };
+      // Persist so next lookup is fast
+      await oauthClientsDb.put({
+        ...newClient,
+        createdAt: Date.now(),
+      });
+      return newClient;
+    }
+
+    return null;
+  };
 
   // ──────────────────────────────────────────────────────────────────────────
   // Phase 0: OAuth Authorization Server Metadata (RFC 8414)
   // ──────────────────────────────────────────────────────────────────────────
 
   const getMetadata = (c: Context<Env>): Response => {
-    const issuer = `${serverConfig.baseUrl}/api/auth`;
+    const host = c.req.header("Host");
+    const proto = c.req.header("X-Forwarded-Proto") ?? "http";
+    const baseUrl = host ? `${proto}://${host}` : serverConfig.baseUrl;
+    const issuer = `${baseUrl}/api/auth`;
+
     return c.json({
       issuer,
-      authorization_endpoint: `${serverConfig.baseUrl}/api/auth/authorize`,
-      token_endpoint: `${serverConfig.baseUrl}/api/auth/token`,
-      registration_endpoint: `${serverConfig.baseUrl}/api/auth/register`,
+      // Points to frontend route — browser opens this directly
+      authorization_endpoint: `${baseUrl}/oauth/authorize`,
+      token_endpoint: `${baseUrl}/api/auth/token`,
+      registration_endpoint: `${baseUrl}/api/auth/register`,
       token_endpoint_auth_methods_supported: ["none"],
       grant_types_supported: ["authorization_code", "refresh_token"],
       response_types_supported: ["code"],
@@ -107,18 +171,30 @@ export const createOAuthAuthController = (
   };
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Phase 1: GET /api/auth/authorize
+  // GET /api/auth/authorize — redirect to frontend /oauth/authorize
   // ──────────────────────────────────────────────────────────────────────────
 
   /**
-   * Validate OAuth authorize request params and return consent page data.
-   *
-   * The browser user must be authenticated (JWT in auth context).
-   * If they are, we return the consent page info as JSON so the frontend
-   * can render a confirmation UI. The frontend then POSTs to approve.
+   * Redirect the browser to the frontend consent page.
+   * Preserves all OAuth query params. This is hit when VS Code (or other
+   * MCP clients) open the authorization URL — we just bounce to the SPA.
    */
-  const authorize = async (c: Context<Env>): Promise<Response> => {
-    // Extract and validate all required OAuth params
+  const authorize = (c: Context<Env>): Response => {
+    const qs = c.req.url.split("?")[1] ?? "";
+    return c.redirect(`/oauth/authorize${qs ? `?${qs}` : ""}`, 302);
+  };
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // GET /api/auth/authorize/info — validate params, return client info JSON
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Validate all OAuth authorize params and return client info + scope
+   * descriptions as JSON. Called by the frontend /oauth/authorize page.
+   *
+   * No auth required — this is a public validation endpoint.
+   */
+  const authorizeInfo = async (c: Context<Env>): Promise<Response> => {
     const params = {
       responseType: c.req.query("response_type"),
       clientId: c.req.query("client_id"),
@@ -144,7 +220,7 @@ export const createOAuthAuthController = (
         400,
       );
     }
-    const client = KNOWN_CLIENTS[params.clientId];
+    const client = await resolveClient(params.clientId);
     if (!client) {
       return c.json(
         { error: "invalid_client", error_description: "Unknown client_id" },
@@ -204,13 +280,16 @@ export const createOAuthAuthController = (
       );
     }
 
-    // All params valid — return consent page data for the frontend
+    // All params valid — return client info + scope descriptions
     return c.json({
       client: {
         clientId: client.clientId,
         clientName: client.clientName,
       },
-      scopes,
+      scopes: scopes.map((s) => ({
+        name: s,
+        description: SCOPE_DESCRIPTIONS[s] || s,
+      })),
       state: params.state,
       redirectUri: params.redirectUri,
       codeChallenge: params.codeChallenge,
@@ -219,7 +298,7 @@ export const createOAuthAuthController = (
   };
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Phase 1: POST /api/auth/authorize — User approves authorization
+  // POST /api/auth/authorize — User approves authorization
   // ──────────────────────────────────────────────────────────────────────────
 
   /**
@@ -256,7 +335,7 @@ export const createOAuthAuthController = (
     };
 
     // Validate client
-    const client = KNOWN_CLIENTS[clientId];
+    const client = await resolveClient(clientId);
     if (!client) {
       return c.json({ error: "invalid_client", error_description: "Unknown client_id" }, 400);
     }
@@ -304,11 +383,10 @@ export const createOAuthAuthController = (
   };
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Phase 2: POST /api/auth/token
+  // POST /api/auth/token
   // ──────────────────────────────────────────────────────────────────────────
 
   const token = async (c: Context<Env>): Promise<Response> => {
-    // OAuth token endpoint uses application/x-www-form-urlencoded
     const contentType = c.req.header("Content-Type") ?? "";
     let params: Record<string, string>;
 
@@ -318,7 +396,6 @@ export const createOAuthAuthController = (
         Object.entries(formData).map(([k, v]) => [k, String(v)]),
       );
     } else if (contentType.includes("application/json")) {
-      // Also support JSON for convenience
       params = await c.req.json();
     } else {
       return c.json(
@@ -465,7 +542,6 @@ export const createOAuthAuthController = (
       );
     }
 
-    // Decode base64 RT → binary
     let tokenBytes: Uint8Array;
     try {
       tokenBytes = new Uint8Array(Buffer.from(refresh_token, "base64"));
@@ -476,7 +552,6 @@ export const createOAuthAuthController = (
       );
     }
 
-    // Delegate to shared refresh logic
     try {
       const result = await refreshDelegateToken(tokenBytes, { delegatesDb });
       return c.json({
@@ -496,7 +571,81 @@ export const createOAuthAuthController = (
     }
   };
 
-  return { getMetadata, authorize, approveAuthorization, token };
+  // ──────────────────────────────────────────────────────────────────────────
+  // POST /api/auth/register — Dynamic Client Registration (RFC 7591)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  const register = async (c: Context<Env>): Promise<Response> => {
+    const body = await c.req.json();
+    const {
+      client_name,
+      redirect_uris,
+      grant_types,
+    } = body as {
+      client_name?: string;
+      redirect_uris?: string[];
+      grant_types?: string[];
+    };
+
+    // Validate redirect_uris
+    if (!redirect_uris || redirect_uris.length === 0) {
+      return c.json(
+        { error: "invalid_client_metadata", error_description: "redirect_uris is required" },
+        400,
+      );
+    }
+
+    // Only allow localhost and https redirect URIs per MCP spec
+    for (const uri of redirect_uris) {
+      try {
+        const parsed = new URL(uri);
+        const isLocalhost = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
+        const isHttps = parsed.protocol === "https:";
+        if (!isLocalhost && !isHttps) {
+          return c.json(
+            {
+              error: "invalid_client_metadata",
+              error_description: `redirect_uri must be localhost or HTTPS: ${uri}`,
+            },
+            400,
+          );
+        }
+      } catch {
+        return c.json(
+          { error: "invalid_client_metadata", error_description: `Invalid redirect_uri: ${uri}` },
+          400,
+        );
+      }
+    }
+
+    // Generate a dynamic client ID
+    const clientId = `dyn_${randomBytes(16).toString("base64url")}`;
+    const now = Date.now();
+
+    // Persist to DynamoDB
+    await oauthClientsDb.put({
+      clientId,
+      clientName: client_name ?? "MCP Client",
+      redirectUris: redirect_uris,
+      grantTypes: grant_types ?? ["authorization_code", "refresh_token"],
+      tokenEndpointAuthMethod: "none",
+      createdAt: now,
+    });
+
+    return c.json(
+      {
+        client_id: clientId,
+        client_name: client_name ?? "MCP Client",
+        redirect_uris,
+        grant_types: grant_types ?? ["authorization_code", "refresh_token"],
+        token_endpoint_auth_method: "none",
+        client_id_issued_at: Math.floor(now / 1000),
+      },
+      201,
+    );
+  };
+
+  return { getMetadata, authorize, authorizeInfo, approveAuthorization, token, register };
 };
 
 // ============================================================================
@@ -510,11 +659,9 @@ export const createOAuthAuthController = (
 function isRedirectUriAllowed(uri: string, allowedPatterns: string[]): boolean {
   for (const pattern of allowedPatterns) {
     if (pattern === uri) return true;
-    // Support port wildcards: http://127.0.0.1:* matches http://127.0.0.1:12345/callback
     if (pattern.includes(":*")) {
       const prefix = pattern.split(":*")[0]!;
       if (uri.startsWith(`${prefix}:`)) {
-        // Make sure it's the port part that varies
         try {
           const parsed = new URL(uri);
           const patternParsed = new URL(pattern.replace(":*", ":0"));

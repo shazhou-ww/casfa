@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "casfa": {
+      "type": "http",
+      "url": "http://localhost:8901/api/mcp"
+    }
+  }
+}

@@ -11,6 +11,7 @@ import {
   createAuthCodesDb,
   createDelegatesDb,
   createDepotsDb,
+  createOAuthClientsDb,
   createOwnershipV2Db,
   createRefCountDb,
   createScopeSetNodesDb,
@@ -18,6 +19,7 @@ import {
   createUserRolesDb,
   type DelegatesDb,
   type DepotsDb,
+  type OAuthClientsDb,
   type OwnershipV2Db,
   type RefCountDb,
   type ScopeSetNodesDb,
@@ -33,6 +35,7 @@ import { createLocalUsersDb, type LocalUsersDb } from "./db/local-users.ts";
 export type DbInstances = {
   authCodesDb: AuthCodesDb;
   delegatesDb: DelegatesDb;
+  oauthClientsDb: OAuthClientsDb;
   scopeSetNodesDb: ScopeSetNodesDb;
   ownershipV2Db: OwnershipV2Db;
   depotsDb: DepotsDb;
@@ -52,6 +55,7 @@ export type DbInstances = {
 export const createDbInstances = (config: AppConfig): DbInstances => ({
   authCodesDb: createAuthCodesDb({ tableName: config.db.tokensTable }),
   delegatesDb: createDelegatesDb({ tableName: config.db.tokensTable }),
+  oauthClientsDb: createOAuthClientsDb({ tableName: config.db.tokensTable }),
   scopeSetNodesDb: createScopeSetNodesDb({ tableName: config.db.tokensTable }),
   ownershipV2Db: createOwnershipV2Db({ tableName: config.db.tokensTable }),
   depotsDb: createDepotsDb({ tableName: config.db.casRealmTable }),
