@@ -30,28 +30,6 @@ await storage.put('node:abcd1234...', data);
 
 // 检索数据
 const data = await storage.get('node:abcd1234...');
-
-// 检查是否存在
-const exists = await storage.has('node:abcd1234...');
-
-// 删除
-const deleted = await storage.delete('node:abcd1234...');
-```
-
-### 带 LRU 缓存
-
-```typescript
-import { createS3StorageWithCache } from '@casfa/storage-s3';
-
-const storage = createS3StorageWithCache({
-  bucket: 'my-cas-bucket',
-  region: 'us-east-1',
-  cacheSize: 1000,      // 缓存最大条目数
-  cacheMaxAge: 300000,  // 5 分钟 TTL
-});
-
-// 缓存减少 S3 API 调用，降低重复读取延迟
-const data = await storage.get('node:abcd1234...');
 ```
 
 ### 使用自定义 S3 客户端
@@ -121,8 +99,7 @@ interface S3StorageWithCacheConfig extends S3StorageConfig {
 
 ### 函数
 
-- `createS3Storage(config)` - 创建不带缓存的 S3 存储
-- `createS3StorageWithCache(config)` - 创建带 LRU 缓存的 S3 存储
+- `createS3Storage(config)` - 创建 S3 存储
 
 ### StorageProvider 接口
 
@@ -130,8 +107,6 @@ interface S3StorageWithCacheConfig extends S3StorageConfig {
 interface StorageProvider {
   get(key: string): Promise<Uint8Array | null>;
   put(key: string, data: Uint8Array): Promise<void>;
-  has(key: string): Promise<boolean>;
-  delete(key: string): Promise<boolean>;
 }
 ```
 

@@ -9,8 +9,20 @@
  * Uses the raw IndexedDB API (no external dependencies).
  */
 
-import type { PendingKeyStore } from "@casfa/storage-cached";
 import type { StorageProvider } from "@casfa/storage-core";
+
+/**
+ * Persistence interface for pending sync keys.
+ * Used by the sync engine to recover unsynced keys across page reloads.
+ */
+export type PendingKeyStore = {
+  /** Load all pending keys from persistent storage */
+  load(): Promise<string[]>;
+  /** Add keys to the pending set */
+  add(keys: string[]): Promise<void>;
+  /** Remove keys from the pending set */
+  remove(keys: string[]): Promise<void>;
+};
 
 // ============================================================================
 // Types
