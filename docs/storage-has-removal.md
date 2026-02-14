@@ -42,8 +42,8 @@ type StorageProvider = {
 // storage-fs 内部实现
 const put = async (key: string, value: Uint8Array): Promise<void> => {
   const filePath = toFilePath(key);
-  if (existsSync(filePath)) return;  // 内部优化：stat 比 write 便宜
-  writeFileSync(filePath, value);
+  if (await exists(filePath)) return;  // 内部优化：stat 比 write 便宜
+  await writeFile(filePath, value);
 };
 
 // storage-s3 内部实现
@@ -179,16 +179,26 @@ type BufferedHttpStorageConfig = {
   getChildKeys: (value: Uint8Array) => string[];
   /** 缓冲区 flush 前的 debounce 间隔 (ms) */
   debounceMs?: number;
+  /** 可选：持久化 pending keys（browser 用 IndexedDB，Node.js 用 FS 等） */
+  pendingKeyStore?: PendingKeyStore;
   /** 生命周期钩子 */
   onSyncStart?: () => void | Promise<void>;
   onSyncEnd?: (result: SyncResult) => void;
   onKeySync?: (key: string, status: "uploading" | "done" | "error", error?: unknown) => void;
 };
 
+/** 返回标准 StorageProvider + 控制方法 */
+type BufferedHttpStorageProvider = StorageProvider & {
+  /** 手动触发 flush（如 depot sync 完成后强制同步） */
+  flush: () => Promise<void>;
+  /** 清理资源（取消 debounce timer 等） */
+  dispose: () => void;
+};
+
 const createBufferedHttpStorage = (
   http: HttpStorageProvider,
   config: BufferedHttpStorageConfig,
-): StorageProvider & { flush: () => Promise<void> } => {
+): BufferedHttpStorageProvider => {
   const buffer = new Map<string, Uint8Array>();
 
   return {
@@ -244,13 +254,17 @@ await storage.syncTree(rootKey);   // 从根遍历整棵树
 
 // 之后（职责分离）
 const http = createHttpStorage({ client, getTokenBytes, popContext });
-const buffered = createBufferedHttpStorage(http, { getChildKeys, debounceMs: 100, ... });
+const buffered = createBufferedHttpStorage(http, {
+  getChildKeys, debounceMs: 100, pendingKeyStore: indexedDBPendingStore, ...
+});
 const storage = createCachedStorage(indexedDB, buffered);
 // storage.put(key, value)
 //   → indexedDB.put(key, value)      ← 本地缓存
 //   → buffered.put(key, value)       ← 缓冲，不立即发送
 //   → debounce 后 → flush()
 //     → topoSort → checkMany → claim/put
+// 也可手动触发：
+await buffered.flush();               // depot sync 完成后强制同步
 ```
 
 ### 优势
@@ -262,60 +276,46 @@ const storage = createCachedStorage(indexedDB, buffered);
 
 ## 风险
 
-1. **向后兼容** — 所有 StorageProvider 实现和消费方都需要同步修改
-2. **第三方消费方** — 如果外部代码依赖 `has` 方法，需要迁移指南
-3. **`put()` 内部去重仍是各实现的责任** — 需确保 `storage-fs` 和 `storage-s3` 保留内部检查逻辑（`existsSync` / `HeadObject`），只是不再通过公开的 `has` 和共享的 LRU
+1. **向后兼容** — 所有 StorageProvider 实现和消费方都需要同步修改。当前全部内部使用，无需分 major 版本，可直接改
+2. **`put()` 内部去重仍是各实现的责任** — 需确保 `storage-fs` 和 `storage-s3` 保留内部检查逻辑（async `exists` / `HeadObject`），只是不再通过公开的 `has` 和共享的 LRU
 
 ## 迁移计划
 
-### Phase 1：将 `has` 改为可选（向后兼容）
+全部内部使用，无需分 major 版本，一次性完成。
 
-```typescript
-type StorageProvider = {
-  get: (key: string) => Promise<Uint8Array | null>;
-  put: (key: string, value: Uint8Array) => Promise<void>;
-  /** @deprecated 将在下个 major 版本移除。使用 get() 返回 null 判断或上层 DB 查询。 */
-  has?: (key: string) => Promise<boolean>;
-};
-```
+### Phase 1：移除 `has` 接口 + 简化 storage 实现
 
-- 所有消费方使用 `storage.has?.()` 或 fallback `(await storage.get(key)) !== null`
-- 逐步将业务层的 `has` 调用迁移到 DB 查询
+- `StorageProvider` 接口删除 `has`，只留 `get` / `put`
+- `storage-fs`：删除 `has` + LRU + `storage-utils.ts`，`put()` 内部用 async `exists()` 去重（storage 本身是 async API，不需要 `existsSync`）
+- `storage-s3`：同上，`put()` 内部保留 `HeadObject` 去重
+- `storage-memory`/`storage-indexeddb`/`storage-http`：删除 `has` 方法
+- `core/controller.ts`：删除公开的 `has` 函数（已确认无外部调用方）及其从 `index.ts` 的导出
+- 业务层 `has` 调用全部迁移到 DB 查询或 `get() !== null`
 
-### Phase 2：从 storage 实现中移除 `has`
-
-- `storage-fs`：删除 `has` + LRU + `storage-utils.ts`
-- `storage-s3`：同上
-- 其他 storage 实现删除 `has`
-
-### Phase 3：`storage-cached` 拆分
+### Phase 2：`storage-cached` 拆分
 
 - `storage-cached` 瘦身为纯缓存装饰器（删除 ~400 行，剩 ~20 行）
 - 删除 `syncTree`、`topoSortLevels`、`WriteBackConfig`、`PendingKeyStore`、`CachedStorageProvider` 等类型
 - 导出简单的 `createCachedStorage(cache, remote) → StorageProvider`
 
-### Phase 4：`storage-http` 增强
+### Phase 3：`storage-http` 增强
 
-- 将 `topoSortLevels` 迁入 `storage-http`
-- 新增 `createBufferedHttpStorage(http, config)` — 缓冲 put + 批量 checkMany/claim 分发
+- 将 `topoSortLevels` 迁入 `storage-http`（暂无其他复用场景）
+- 新增 `createBufferedHttpStorage(http, config)` — 缓冲 put → 拓扑排序 → 批量 checkMany → claim/put 分发
+- `flush()` 既可通过构造参数控制自动触发（debounce），也作为返回对象上的方法供调用方手动触发
+- 缓冲区持久化通过可选的 `PendingKeyStore` provider 传入（browser 用 IndexedDB，Node.js 用 FS 等）
 - 前端消费方（`apps/server/frontend/src/lib/storage.ts`）改为组合 `createCachedStorage(indexedDB, bufferedHttp)`
-
-### Phase 5：从接口中移除 `has`
-
-- 删除 `StorageProvider.has` 属性
-- 删除所有相关测试
-- 更新文档
 
 ## 与 P0 #2 的关系
 
 如果执行此方案，**P0 #2（storage-utils.ts 重复）自动解决**——`storage-utils.ts` 整个删除，`LRUCache`、`createLRUCache`、`toStoragePath` 都不再需要。`toStoragePath` 是各 storage 内部的路径映射逻辑，内联到各自实现中即可（一行代码）。
 
-## 待讨论
+## 决策记录
 
-- [ ] `controller.ts` 公开的 `has` API 是否有外部消费方？
-- [ ] 是否需要分 major 版本？还是当前都是内部使用可以直接改？
-- [ ] `storage-fs` 内部去重用简单 `existsSync` 还是保留 LRU？（`existsSync` 足够便宜，LRU 可能不值得维护）
-- [x] ~~`storage-cached` 的 `sync` 路径不用 `has` 后，是否可以完全依赖 `checkMany`？~~ → 同步逻辑整体迁移到 `storage-http` 增强层，`checkMany` 是其原生能力
-- [ ] `BufferedHttpStorage.flush()` 的触发时机：纯 debounce？还是保留手动 `flush()` 给调用方（如 depot sync 完成后强制 flush）？
-- [ ] `topoSortLevels` 放在哪个包？`storage-http` 导出？还是提到公共 utils？
-- [ ] 缓冲区的持久化（`PendingKeyStore`）是否仍需要？还是可以靠 IndexedDB cache 层在重启后重新 put？
+- [x] ~~`controller.ts` 公开的 `has` API 是否有外部消费方？~~ → 已确认无外部调用方，可直接删除
+- [x] ~~是否需要分 major 版本？~~ → 不需要，全部内部使用，直接改
+- [x] ~~`storage-fs` 内部去重用 `existsSync` 还是保留 LRU？~~ → 用 async `exists()`（storage 是 async API），删除 LRU
+- [x] ~~`storage-cached` 的 `sync` 路径不用 `has` 后，是否完全依赖 `checkMany`？~~ → 同步逻辑整体迁移到 `storage-http` 增强层，`checkMany` 是其原生能力
+- [x] ~~`BufferedHttpStorage.flush()` 的触发时机~~ → 构造参数控制自动 debounce + 返回对象暴露 `flush()` 手动触发
+- [x] ~~`topoSortLevels` 放在哪个包？~~ → 暂放 `storage-http`，当前无其他复用场景
+- [x] ~~缓冲区的持久化~~ → 通过可选的 `PendingKeyStore` provider 传入（browser/Node.js 各自实现）
