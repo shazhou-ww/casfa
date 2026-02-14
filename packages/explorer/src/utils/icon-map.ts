@@ -99,7 +99,26 @@ export function getIconCategory(isDirectory: boolean, contentType?: string): Ico
 }
 
 /**
+ * Hex color for each icon category — designed to pop against a neutral B&W UI.
+ */
+export const ICON_COLORS: Record<IconCategory, string> = {
+  folder: "#f59e0b", // amber-500
+  image: "#8b5cf6", // violet-500
+  video: "#ef4444", // red-500
+  audio: "#06b6d4", // cyan-500
+  pdf: "#ef4444", // red-500
+  code: "#3b82f6", // blue-500
+  archive: "#f97316", // orange-500
+  spreadsheet: "#22c55e", // green-500
+  presentation: "#f97316", // orange-500
+  document: "#3b82f6", // blue-500
+  text: "#71717a", // zinc-500
+  file: "#a1a1aa", // zinc-400
+};
+
+/**
  * Get a color hint for the icon category (MUI palette key).
+ * @deprecated Use ICON_COLORS[category] for hex values instead.
  */
 export function getIconColor(
   category: IconCategory

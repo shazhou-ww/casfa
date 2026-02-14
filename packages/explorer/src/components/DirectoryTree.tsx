@@ -177,12 +177,14 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
         sx={{
           width: 36,
           minWidth: 36,
+          height: "100%",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           pt: 1,
           borderRight: 1,
           borderColor: "divider",
+          backgroundColor: "#fafafa",
         }}
       >
         <Tooltip title={t("sidebar.expand")} placement="right">
@@ -205,6 +207,7 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
         overflow: "hidden",
         borderRight: 1,
         borderColor: "divider",
+        backgroundColor: "#fafafa",
       }}
     >
       {/* Header */}
@@ -214,10 +217,9 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
           alignItems: "center",
           justifyContent: "space-between",
           px: 1,
-          py: 0.5,
+          height: 36,
           borderBottom: 1,
           borderColor: "divider",
-          minHeight: 36,
         }}
       >
         <Typography variant="caption" fontWeight={600} noWrap>
@@ -370,9 +372,9 @@ function TreeNodeItem({
         {isDepot ? (
           <StorageIcon sx={{ fontSize: 16, color: "text.secondary", mr: 0.5, flexShrink: 0 }} />
         ) : latestNode.isExpanded ? (
-          <FolderOpenIcon sx={{ fontSize: 16, color: "primary.main", mr: 0.5, flexShrink: 0 }} />
+          <FolderOpenIcon sx={{ fontSize: 16, color: "#f59e0b", mr: 0.5, flexShrink: 0 }} />
         ) : (
-          <FolderIcon sx={{ fontSize: 16, color: "primary.main", mr: 0.5, flexShrink: 0 }} />
+          <FolderIcon sx={{ fontSize: 16, color: "#f59e0b", mr: 0.5, flexShrink: 0 }} />
         )}
 
         {/* Name */}

@@ -88,7 +88,7 @@ export function UploadOverlay({ onDrop, canUpload, children }: UploadOverlayProp
           sx={{
             position: "absolute",
             inset: 0,
-            bgcolor: "rgba(25, 118, 210, 0.08)",
+            bgcolor: "action.hover",
             border: "2px dashed",
             borderColor: "primary.main",
             borderRadius: 1,
