@@ -40,7 +40,7 @@ function SingleItemDetail({ item, t }: { item: ExplorerItem; t: ReturnType<typeo
     <>
       <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
         {item.isDirectory ? (
-          <FolderIcon sx={{ fontSize: 56, color: "primary.main" }} />
+          <FolderIcon sx={{ fontSize: 56, color: "#f59e0b" }} />
         ) : (
           <InsertDriveFileIcon sx={{ fontSize: 56, color: "action.active" }} />
         )}
@@ -127,6 +127,7 @@ export function DetailPanel({ width = PANEL_WIDTH }: DetailPanelProps) {
           boxSizing: "border-box",
           borderLeft: 1,
           borderColor: "divider",
+          backgroundColor: "#fafafa",
         },
       }}
     >
@@ -136,10 +137,9 @@ export function DetailPanel({ width = PANEL_WIDTH }: DetailPanelProps) {
           alignItems: "center",
           justifyContent: "space-between",
           px: 1.5,
-          py: 0.5,
+          height: 36,
           borderBottom: 1,
           borderColor: "divider",
-          minHeight: 36,
         }}
       >
         <Typography variant="caption" fontWeight={600}>

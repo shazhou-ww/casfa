@@ -6,9 +6,15 @@
  *         uses store's getSortedItems() for filtered + sorted data.
  */
 
+import AudioFileIcon from "@mui/icons-material/AudioFile";
 import CloudSyncIcon from "@mui/icons-material/CloudSync";
+import CodeIcon from "@mui/icons-material/Code";
+import DescriptionIcon from "@mui/icons-material/Description";
 import FolderIcon from "@mui/icons-material/Folder";
+import ImageIcon from "@mui/icons-material/Image";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
+import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
+import VideoFileIcon from "@mui/icons-material/VideoFile";
 import {
   Box,
   Checkbox,
@@ -27,6 +33,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import { useHighlightMatch } from "../hooks/use-search.ts";
 import type { ExplorerItem, SortField } from "../types.ts";
+import { getIconCategory, ICON_COLORS } from "../utils/icon-map.ts";
 
 function formatFileSize(bytes: number | undefined): string {
   if (bytes === undefined || bytes === null) return "\u2014";
@@ -52,6 +59,33 @@ type FileListProps = {
   /** Paths of items currently cut to clipboard (shown at reduced opacity) */
   cutPaths?: Set<string> | null;
 };
+
+/** File-type-aware icon for list rows */
+function ListItemIcon({ item }: { item: ExplorerItem }) {
+  const category = getIconCategory(item.isDirectory, item.contentType);
+  const color = ICON_COLORS[category] ?? ICON_COLORS.file;
+  const sx = { color };
+  switch (category) {
+    case "folder":
+      return <FolderIcon fontSize="small" sx={sx} />;
+    case "image":
+      return <ImageIcon fontSize="small" sx={sx} />;
+    case "video":
+      return <VideoFileIcon fontSize="small" sx={sx} />;
+    case "audio":
+      return <AudioFileIcon fontSize="small" sx={sx} />;
+    case "pdf":
+      return <PictureAsPdfIcon fontSize="small" sx={sx} />;
+    case "code":
+      return <CodeIcon fontSize="small" sx={sx} />;
+    case "document":
+    case "spreadsheet":
+    case "presentation":
+      return <DescriptionIcon fontSize="small" sx={sx} />;
+    default:
+      return <InsertDriveFileIcon fontSize="small" sx={sx} />;
+  }
+}
 
 /** Inline name with search term highlighting */
 function HighlightedName({ name, searchTerm }: { name: string; searchTerm: string }) {
@@ -260,7 +294,7 @@ export function FileList({
     <TableContainer onContextMenu={handleBlankContextMenu}>
       <Table size="small" stickyHeader>
         <TableHead>
-          <TableRow>
+          <TableRow sx={{ "& th": { height: 36, py: 0, borderBottomColor: "divider" } }}>
             <TableCell padding="checkbox" sx={{ width: 42 }}>
               <Checkbox
                 size="small"
@@ -327,13 +361,7 @@ export function FileList({
                 <TableCell>
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                     <Box sx={{ position: "relative", display: "inline-flex" }}>
-                      {renderNodeIcon ? (
-                        renderNodeIcon(item)
-                      ) : item.isDirectory ? (
-                        <FolderIcon fontSize="small" color="primary" />
-                      ) : (
-                        <InsertDriveFileIcon fontSize="small" color="action" />
-                      )}
+                      {renderNodeIcon ? renderNodeIcon(item) : <ListItemIcon item={item} />}
                       {item.syncStatus === "pending" && (
                         <CloudSyncIcon
                           color="info"

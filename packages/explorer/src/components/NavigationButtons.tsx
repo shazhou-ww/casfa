@@ -27,21 +27,21 @@ export function NavigationButtons({ onNavigate }: NavigationButtonsProps) {
       <Tooltip title={t("nav.back")}>
         <span>
           <IconButton size="small" disabled={!canGoBack()} onClick={() => goBack()}>
-            <ArrowBackIcon fontSize="small" />
+            <ArrowBackIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </span>
       </Tooltip>
       <Tooltip title={t("nav.forward")}>
         <span>
           <IconButton size="small" disabled={!canGoForward()} onClick={() => goForward()}>
-            <ArrowForwardIcon fontSize="small" />
+            <ArrowForwardIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </span>
       </Tooltip>
       <Tooltip title={t("nav.up")}>
         <span>
           <IconButton size="small" disabled={!canGoUp()} onClick={() => goUp()}>
-            <ArrowUpwardIcon fontSize="small" />
+            <ArrowUpwardIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </span>
       </Tooltip>

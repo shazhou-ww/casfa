@@ -35,7 +35,7 @@ export function DragPreview({ items }: DragPreviewProps) {
         }}
       >
         {first.isDirectory ? (
-          <FolderIcon fontSize="small" color="primary" />
+          <FolderIcon fontSize="small" sx={{ color: "#f59e0b" }} />
         ) : (
           <InsertDriveFileIcon fontSize="small" color="action" />
         )}
