@@ -4,6 +4,7 @@
  * RFC 7636 - https://tools.ietf.org/html/rfc7636
  */
 
+import { base64urlEncode } from "@casfa/encoding";
 import type { PkceChallenge } from "./types.ts";
 
 /**
@@ -22,10 +23,7 @@ export function generateCodeVerifier(length = 64): string {
   crypto.getRandomValues(bytes);
 
   // Convert to URL-safe Base64
-  const base64 = btoa(String.fromCharCode(...bytes));
-  const urlSafe = base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-
-  return urlSafe.slice(0, length);
+  return base64urlEncode(bytes).slice(0, length);
 }
 
 /**
@@ -42,8 +40,7 @@ export async function generateCodeChallenge(verifier: string): Promise<string> {
   const hashArray = new Uint8Array(hashBuffer);
 
   // Convert to URL-safe Base64
-  const base64 = btoa(String.fromCharCode(...hashArray));
-  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  return base64urlEncode(hashArray);
 }
 
 /**
@@ -73,4 +70,13 @@ export async function generatePkceChallenge(verifierLength = 64): Promise<PkceCh
 export async function verifyPkceChallenge(verifier: string, challenge: string): Promise<boolean> {
   const computed = await generateCodeChallenge(verifier);
   return computed === challenge;
+}
+
+/**
+ * Generate a random state parameter for CSRF protection.
+ *
+ * @returns A UUID string suitable for the OAuth 2.0 `state` parameter
+ */
+export function generateState(): string {
+  return crypto.randomUUID();
 }

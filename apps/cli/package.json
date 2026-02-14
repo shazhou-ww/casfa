@@ -31,7 +31,9 @@
   },
   "dependencies": {
     "@casfa/client": "workspace:*",
+    "@casfa/client-auth-crypto": "workspace:*",
     "@casfa/core": "workspace:*",
+    "@casfa/encoding": "workspace:*",
     "@casfa/protocol": "workspace:*",
     "@noble/hashes": "^2.0.1",
     "chalk": "^5.3.0",
