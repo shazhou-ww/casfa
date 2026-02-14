@@ -20,7 +20,6 @@ type StorageProvider = {
 1. **`get` 已经隐含了 `has`** — `get()` 返回 `null` 等价于 `has() === false`
 2. **"某个 key 是否存在"是业务/索引层的问题**，不是存储层的问题。Server 端已有 DynamoDB 记录 ownership，client 端 `storage-cached` 已知本地有什么
 3. **`has` 导致 storage 实现承担了不属于它的缓存职责** — `storage-fs` 和 `storage-s3` 各自维护一份 LRU 存在性缓存，代码完全重复
-4. **`put()` 内部调用 `has()` 做去重是不必要的** — CAS 写入天然幂等（同 key 同内容），重复写入无害
 
 ## 目标接口
 
@@ -33,15 +32,70 @@ type StorageProvider = {
 
 两个方法，零歧义。Storage 回归最简单的存储职责。
 
+## 设计原则
+
+### `has` 从接口中移除，但 `put` 内部可自行优化
+
+`has` 不再是公开 API，但各 storage 实现**可在 `put()` 内部自行做存在性检查**来避免冗余写入——这是实现细节，不是接口契约：
+
+```typescript
+// storage-fs 内部实现
+const put = async (key: string, value: Uint8Array): Promise<void> => {
+  const filePath = toFilePath(key);
+  if (existsSync(filePath)) return;  // 内部优化：stat 比 write 便宜
+  writeFileSync(filePath, value);
+};
+
+// storage-s3 内部实现
+const put = async (key: string, value: Uint8Array): Promise<void> => {
+  try {
+    await s3.send(new HeadObjectCommand({ ... }));
+    return;  // 内部优化：HeadObject 比 PutObject 便宜
+  } catch { /* not found, proceed to put */ }
+  await s3.send(new PutObjectCommand({ ... }));
+};
+
+// storage-memory 内部实现 — Map.set 天然幂等，无需检查
+const put = async (key: string, value: Uint8Array): Promise<void> => {
+  data.set(key, value);
+};
+```
+
+**关键区别**：当前设计中 `has` 是接口的一部分，消费方可以（且确实在）调用它——导致了职责混乱。移除后，存在性判断**只在内部发生**（性能优化）或**交给上层**（业务逻辑）。
+
+### `storage-cached` 回归简单串联
+
+`storage-cached` 不再需要独立的 `has` 逻辑，变成纯粹的两层 StorageProvider 组合：
+
+```typescript
+const createCachedStorage = (cache: StorageProvider, remote: StorageProvider) => ({
+  async get(key: string): Promise<Uint8Array | null> {
+    const cached = await cache.get(key);
+    if (cached) return cached;
+    const data = await remote.get(key);
+    if (data) await cache.put(key, data);  // write-back to cache
+    return data;
+  },
+  async put(key: string, value: Uint8Array): Promise<void> {
+    await cache.put(key, value);
+    await remote.put(key, value);  // write-through（或 write-back 变体）
+  },
+});
+```
+
+每层的 `put` 内部各自处理去重（cache 层通常是 memory/IndexedDB 幂等写入，remote 层可以做 HeadObject 检查），`storage-cached` 自身不关心。
+
 ## 当前 `has()` 调用分析
 
 ### Storage 内部使用（6 处）
 
 | 位置 | 用途 | 移除后处理 |
 |---|---|---|
-| `storage-fs/put()` | 写入前检查 key 是否存在，跳过重复写 | 删除。CAS 幂等，重复写无害 |
-| `storage-s3/put()` | 同上（HeadObject 检查） | 删除。S3 PutObject 也是幂等的 |
-| `storage-cached/has()` | `cache.has → remote.has` 分层检查 | 改为 `cache.get` 返回 null = 不在本地 |
+| `storage-fs/has()` | 公开的存在性检查 API | 删除公开方法。`put()` 内部保留 `existsSync` 优化 |
+| `storage-fs/put()` | 写入前调用 `has()`，跳过重复写 | 改为直接 `existsSync(filePath)`，不经过 LRU |
+| `storage-s3/has()` | 公开的 HeadObject 检查 | 删除公开方法。`put()` 内部保留 HeadObject 优化 |
+| `storage-s3/put()` | 写入前调用 `has()`，跳过重复写 | 改为直接 HeadObject 检查，不经过 LRU |
+| `storage-cached/has()` | `cache.has → remote.has` 分层检查 | 删除。上层用 `get()` 返回 null 判断 |
 | `storage-cached/sync()` | fallback 逐 key 检查远端是否存在 | 用 `remote.checkMany`（已有）或尝试 put |
 
 ### 业务层使用（5 处）
@@ -64,26 +118,24 @@ type StorageProvider = {
 
 ## 收益
 
-1. **Storage 实现大幅简化**
-   - `storage-fs`：删除 LRU 缓存 + `has` 实现 + `put` 内 has 检查（~40 行）
-   - `storage-s3`：同上（~40 行）
-   - `storage-utils.ts`（两份副本）：**整个删除**（~56 行 × 2）
-   - `storage-memory`：删除 `has` 实现（~2 行）
-   - `storage-indexeddb`：删除 `has` 方法（~10 行）
-   - `storage-http`：删除 `has` 方法（~15 行）
+1. **接口精简** — `StorageProvider` 从 3 个方法降到 2 个，语义更清晰
 
-2. **消除 P0 #2 重复** — `storage-utils.ts` 不再需要，连同 `quick-lru` 依赖一起删除
+2. **消除 P0 #2 重复** — LRU 存在性缓存层不再需要，`storage-utils.ts`（两份副本）**整个删除**（~56 行 × 2），连同 `quick-lru` 依赖一起删除。`toStoragePath` 内联到各 storage 实现（一行代码）
 
-3. **职责清晰** — "存不存在"是业务/索引层的问题，存储层只管读写字节
+3. **Storage 实现简化**
+   - `storage-fs`：删除公开 `has` + LRU 缓存；`put` 内部保留简单的 `existsSync` 检查
+   - `storage-s3`：删除公开 `has` + LRU 缓存；`put` 内部保留 HeadObject 检查
+   - `storage-memory`/`storage-indexeddb`/`storage-http`：删除 `has` 方法
 
-4. **`storage-cached` 简化** — 不需要 `has` 分支，`sync` 逻辑更清晰
+4. **职责清晰** — "key 是否存在"的判断权回归业务/索引层（DB），存储层只管读写字节，`put` 内部的去重是实现优化而非接口契约
+
+5. **`storage-cached` 回归简单串联** — 不需要独立 `has` 逻辑，变成纯粹的 cache → remote 组合
 
 ## 风险
 
-1. **`put()` 性能退化** — 去掉存在性检查后，重复 key 写入会执行实际 IO（文件写入或 S3 PutObject）。需评估典型场景中重复 put 的比例
-2. **S3 成本** — 如果大量 PutObject 是重复的，成本比 HeadObject 高。但如果上层 DB 已做过 check 则不会到 storage 层
-3. **向后兼容** — 所有 StorageProvider 实现和消费方都需要同步修改
-4. **第三方消费方** — 如果外部代码依赖 `has` 方法，需要迁移指南
+1. **向后兼容** — 所有 StorageProvider 实现和消费方都需要同步修改
+2. **第三方消费方** — 如果外部代码依赖 `has` 方法，需要迁移指南
+3. **`put()` 内部去重仍是各实现的责任** — 需确保 `storage-fs` 和 `storage-s3` 保留内部检查逻辑（`existsSync` / `HeadObject`），只是不再通过公开的 `has` 和共享的 LRU
 
 ## 迁移计划
 
@@ -119,7 +171,7 @@ type StorageProvider = {
 
 ## 待讨论
 
-- [ ] `put()` 去掉存在性检查后，实际场景中重复 put 的比例有多高？需要 benchmark
 - [ ] `storage-cached` 的 `sync` 路径不用 `has` 后，是否可以完全依赖 `checkMany`？
 - [ ] `controller.ts` 公开的 `has` API 是否有外部消费方？
 - [ ] 是否需要分 major 版本？还是当前都是内部使用可以直接改？
+- [ ] `storage-fs` 内部去重用简单 `existsSync` 还是保留 LRU？（`existsSync` 足够便宜，LRU 可能不值得维护）
