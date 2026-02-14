@@ -5,12 +5,4 @@
  * CAS blocks are immutable, so cache entries never need invalidation.
  */
 
-export {
-  type CachedStorageConfig,
-  type CachedStorageProvider,
-  type CheckManyResult,
-  createCachedStorage,
-  type PendingKeyStore,
-  type SyncResult,
-  type WriteBackConfig,
-} from "./cached-storage.ts";
+export { createCachedStorage } from "./cached-storage.ts";

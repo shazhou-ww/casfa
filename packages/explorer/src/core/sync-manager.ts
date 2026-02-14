@@ -3,7 +3,7 @@
  *
  * Manages the depot commit queue: enqueue → debounce → flush (Layer 1) → commit.
  *
- * Layer 1 (CAS Node Sync) is fully idempotent and handled by CachedStorage.
+ * Layer 1 (CAS Node Sync) is fully idempotent and handled by BufferedHttpStorage.
  * Layer 2 (Depot Commit Sync) is stateful, has conflict risk, and is managed here.
  *
  * Persistence is injected via SyncQueueStore so the core logic is
@@ -13,27 +13,23 @@
  */
 
 import type { CasfaClient } from "@casfa/client";
-import { nodeKeyToStorageKey } from "@casfa/protocol";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 /**
- * Minimal interface for Layer 1 storage.
- * Matches CachedStorageProvider from @casfa/storage-cached
- * without requiring the dependency.
+ * Minimal interface for Layer 1 storage sync.
+ * Matches BufferedHttpStorageProvider from @casfa/storage-http.
  */
 export type FlushableStorage = {
-  /** @deprecated No-op — use syncTree instead. */
-  flush(): Promise<void>;
   /**
-   * Walk a CAS tree from `rootKey`, batch-check against remote,
-   * prune already-owned subtrees, and upload only missing nodes.
+   * Upload all buffered CAS nodes to the remote backend.
    *
-   * @param rootKey — CB32 storage key of the tree root
+   * Performs a full sync cycle: collect buffered entries → topological sort
+   * (children first) → batch checkMany → claim unowned / put missing nodes.
    */
-  syncTree(rootKey: string): Promise<void>;
+  flush(): Promise<void>;
 };
 
 /**
@@ -101,7 +97,7 @@ export type SyncCommitEvent = {
 };
 
 export type SyncManagerConfig = {
-  /** Layer 1: storage with syncTree() — used to sync CAS nodes before committing */
+  /** Layer 1: storage with flush() — used to sync buffered CAS nodes before committing */
   storage: FlushableStorage;
   /** Depot API client */
   client: CasfaClient;
@@ -308,9 +304,8 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
       }
 
       try {
-        // Layer 1: sync this depot's tree — walk from root, upload missing nodes
-        const storageKey = nodeKeyToStorageKey(entry.targetRoot);
-        await storage.syncTree(storageKey);
+        // Layer 1: flush all buffered CAS nodes to remote
+        await storage.flush();
 
         // Layer 2: commit — check current server state
         const result = await client.depots.get(entry.depotId);
@@ -366,7 +361,7 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
           );
           bumpRetry(entry);
         } else {
-          // Local error (syncTree failure, etc.) — permanent
+          // Local error (flush failure, etc.) — permanent
           console.error(`[SyncManager] sync failed for depot ${entry.depotId}:`, err);
           failPermanently(entry, {
             code: "sync_error",

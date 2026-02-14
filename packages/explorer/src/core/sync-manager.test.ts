@@ -5,9 +5,9 @@
  * to verify:
  * - enqueue: basic, merge semantics (targetRoot updated, lastKnownServerRoot stays)
  * - debounce: multiple puts collapse into one sync
- * - sync cycle: syncTree Layer 1 → get depot → conflict detect → commit → remove
+ * - sync cycle: flush Layer 1 → get depot → conflict detect → commit → remove
  * - conflict detection: LWW-overwrite + event emission
- * - syncTree failure: permanent fail (local throw, not retryable)
+ * - flush failure: permanent fail (local throw, not retryable)
  * - retry: only network errors (TypeError) retry with exponential backoff
  * - recover: load from store, trigger sync
  * - flushNow: immediate sync (no debounce)
@@ -60,19 +60,16 @@ function createMemoryQueueStore(): SyncQueueStore & {
 // ── Mock FlushableStorage ──
 
 function createMockStorage(opts?: {
-  syncTreeFn?: (rootKey: string) => Promise<void>;
-}): FlushableStorage & { syncTreeCalls: string[] } {
-  const syncTreeCalls: string[] = [];
+  flushFn?: () => Promise<void>;
+}): FlushableStorage & { flushCalls: number } {
+  let flushCalls = 0;
   return {
-    get syncTreeCalls() {
-      return syncTreeCalls;
+    get flushCalls() {
+      return flushCalls;
     },
     async flush() {
-      // no-op (deprecated)
-    },
-    async syncTree(rootKey: string) {
-      syncTreeCalls.push(rootKey);
-      if (opts?.syncTreeFn) await opts.syncTreeFn(rootKey);
+      flushCalls++;
+      if (opts?.flushFn) await opts.flushFn();
     },
   };
 }
@@ -324,12 +321,11 @@ describe("createSyncManager", () => {
       mgr.dispose();
     });
 
-    it("should call storage.syncTree() before commit", async () => {
+    it("should call storage.flush() before commit", async () => {
       const events: string[] = [];
       const storage: FlushableStorage = {
-        async flush() {},
-        async syncTree(_rootKey: string) {
-          events.push("syncTree");
+        async flush() {
+          events.push("flush");
         },
       };
       const depots = new Map([["d1", { depotId: "d1", root: "nod_rootA" }]]);
@@ -357,7 +353,7 @@ describe("createSyncManager", () => {
       mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
 
-      expect(events).toEqual(["syncTree", "commit"]);
+      expect(events).toEqual(["flush", "commit"]);
 
       mgr.dispose();
     });
@@ -393,11 +389,11 @@ describe("createSyncManager", () => {
       mgr.dispose();
     });
 
-    it("should notify state=error when syncTree fails (permanent)", async () => {
+    it("should notify state=error when flush fails (permanent)", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage({
-        syncTreeFn: async () => {
-          throw new Error("syncTree failed");
+        flushFn: async () => {
+          throw new Error("flush failed");
         },
       });
       const client = createMockClient();
@@ -417,7 +413,7 @@ describe("createSyncManager", () => {
 
       await wait(DEBOUNCE + 100);
 
-      // syncTree failure is a local throw → permanent fail, entry removed
+      // flush failure is a local throw → permanent fail, entry removed
       expect(store.entries.has("d1")).toBe(false);
       expect(mgr.getPendingCount()).toBe(0);
       expect(errors).toHaveLength(1);
@@ -579,14 +575,14 @@ describe("createSyncManager", () => {
   });
 
   // --------------------------------------------------------------------------
-  // syncTree failure
+  // flush failure
   // --------------------------------------------------------------------------
 
-  describe("syncTree failure (Layer 1)", () => {
-    it("should permanently fail and NOT commit when syncTree fails", async () => {
+  describe("flush failure (Layer 1)", () => {
+    it("should permanently fail and NOT commit when flush fails", async () => {
       const store = createMemoryQueueStore();
       const storage = createMockStorage({
-        syncTreeFn: async () => {
+        flushFn: async () => {
           throw new Error("network error");
         },
       });
@@ -616,7 +612,7 @@ describe("createSyncManager", () => {
       mgr.enqueue("d1", "nod_rootB", "nod_rootA");
       await wait(DEBOUNCE + 100);
 
-      // Should NOT have committed (syncTree failed)
+      // Should NOT have committed (flush failed)
       expect(commitCalls).toHaveLength(0);
       // Entry should be REMOVED (permanent failure — local throw)
       expect(store.entries.has("d1")).toBe(false);
@@ -972,7 +968,7 @@ describe("createSyncManager", () => {
 
       // Should not throw
       await mgr.flushNow();
-      expect(storage.syncTreeCalls).toHaveLength(0);
+      expect(storage.flushCalls).toBe(0);
 
       mgr.dispose();
     });
@@ -1259,8 +1255,8 @@ describe("createSyncManager", () => {
       expect(depots.get("d1")!.root).toBe("nod_rootB");
       expect(depots.get("d2")!.root).toBe("nod_rootY");
       expect(store.entries.size).toBe(0);
-      // syncTree called once per depot entry
-      expect(storage.syncTreeCalls).toHaveLength(2);
+      // flush called once per batch
+      expect(storage.flushCalls).toBe(2);
 
       mgr.dispose();
     });

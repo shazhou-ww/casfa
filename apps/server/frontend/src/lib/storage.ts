@@ -1,16 +1,13 @@
 /**
  * CAS StorageProvider + KeyProvider for the frontend.
  *
- * - StorageProvider: IndexedDB (local cache) + HTTP (remote backend) via CachedStorage.
- *   CAS nodes are immutable — once cached in IndexedDB, they never need
- *   invalidation. This dramatically reduces HTTP requests when browsing
- *   directories (parent/sibling nodes are served from cache on repeat visits).
+ * - StorageProvider: IndexedDB (local cache) + BufferedHTTP (deferred sync)
+ *   via CachedStorage. CAS nodes are immutable — once cached in IndexedDB,
+ *   they never need invalidation.
  *
- *   Write-back mode: put() writes to IndexedDB immediately and returns.
- *   Pending nodes are synced to the HTTP backend in debounced batches (2s).
- *   This makes write operations (mkdir, upload, rename, rm) feel instant.
- *   Before committing a new root pointer, call flushStorage() to ensure
- *   all referenced nodes are on the remote.
+ *   put() writes to IndexedDB immediately AND buffers in the HTTP sync layer.
+ *   Before committing a new root pointer, call flushBufferedStorage() to
+ *   ensure all referenced nodes are on the remote.
  *
  * - KeyProvider: BLAKE3s-128 via @noble/hashes (pure JS, browser-compatible).
  *   Required for write operations (mkdir, write, rm, mv) which encode new
@@ -20,8 +17,13 @@
 import type { KeyProvider } from "@casfa/core";
 import { computeSizeFlagByte, encodeCB32, validateNodeStructure } from "@casfa/core";
 import type { PopContext } from "@casfa/proof";
-import { type CachedStorageProvider, createCachedStorage } from "@casfa/storage-cached";
-import { createHttpStorage } from "@casfa/storage-http";
+import { createCachedStorage } from "@casfa/storage-cached";
+import type { StorageProvider } from "@casfa/storage-core";
+import {
+  type BufferedHttpStorageProvider,
+  createBufferedHttpStorage,
+  createHttpStorage,
+} from "@casfa/storage-http";
 import { createIndexedDBStorage } from "@casfa/storage-indexeddb";
 import { blake3 } from "@noble/hashes/blake3";
 import { getClient } from "./client.ts";
@@ -142,20 +144,22 @@ export function pushSyncLog(label: string, status: SyncLogEntry["status"] = "don
 }
 
 // ============================================================================
-// StorageProvider — CachedStorage (IndexedDB + HTTP, write-back)
+// StorageProvider — CachedStorage (IndexedDB + BufferedHTTP)
 // ============================================================================
 
-let storagePromise: Promise<CachedStorageProvider> | null = null;
+/** Module-level reference to the buffered HTTP layer (for flush/dispose) */
+let bufferedHttp: BufferedHttpStorageProvider | null = null;
+
+let storagePromise: Promise<StorageProvider> | null = null;
 
 /**
  * Get or initialize the cached CAS StorageProvider singleton.
  *
- * - IndexedDB: local cache with LRU eviction (50K entries ≈ 200MB)
- * - HTTP: reads individual CAS nodes via client.nodes.get()
- * - CachedStorage: write-back mode — put() writes to IndexedDB only,
- *   then syncs to HTTP in debounced 2s batches.
+ * - IndexedDB: local cache (CAS immutable — no invalidation needed)
+ * - BufferedHTTP: deferred sync — put() buffers, flush() uploads
+ * - CachedStorage: write-through — put() writes to IndexedDB + buffer
  */
-export function getStorage(): Promise<CachedStorageProvider> {
+export function getStorage(): Promise<StorageProvider> {
   if (!storagePromise) {
     storagePromise = (async () => {
       const client = await getClient();
@@ -185,35 +189,41 @@ export function getStorage(): Promise<CachedStorageProvider> {
 
       const indexedDBStorage = createIndexedDBStorage();
 
-      return createCachedStorage({
-        cache: indexedDBStorage,
-        remote: httpStorage,
-        writeBack: {
-          onSyncStart: async () => {
-            clearSyncLogInternal();
-            // Refresh token bytes before each sync cycle
-            const at = await client.getAccessToken();
-            cachedTokenBytes = at?.tokenBytes ?? null;
-            setSyncing(true);
-          },
-          onSyncEnd: () => {
-            setSyncing(false);
-          },
-          onKeySync: handleKeySync,
-          getChildKeys,
+      bufferedHttp = createBufferedHttpStorage(httpStorage, {
+        getChildKeys,
+        onSyncStart: async () => {
+          clearSyncLogInternal();
+          // Refresh token bytes before each sync cycle
+          const at = await client.getAccessToken();
+          cachedTokenBytes = at?.tokenBytes ?? null;
+          setSyncing(true);
         },
+        onSyncEnd: () => {
+          setSyncing(false);
+        },
+        onKeySync: handleKeySync,
       });
+
+      return createCachedStorage(indexedDBStorage, bufferedHttp);
     })();
   }
   return storagePromise;
 }
 
 /**
- * @deprecated No-op — CAS node sync is now tree-walk based via syncTree().
- * Kept for backward compatibility.
+ * Flush all buffered CAS nodes to the remote backend.
+ * Ensures all nodes referenced by a new root are uploaded before committing.
+ */
+export async function flushBufferedStorage(): Promise<void> {
+  await getStorage(); // ensure initialized
+  await bufferedHttp?.flush();
+}
+
+/**
+ * @deprecated Use flushBufferedStorage() instead.
  */
 export async function flushStorage(): Promise<void> {
-  // No-op: sync is now driven by SyncManager.syncTree() per-depot.
+  await flushBufferedStorage();
 }
 
 /**
@@ -221,9 +231,9 @@ export async function flushStorage(): Promise<void> {
  * Layer 2 (depot commits) is handled by AppClient.dispose/logout.
  */
 export async function resetStorage(): Promise<void> {
-  if (storagePromise) {
-    const storage = await storagePromise;
-    storage.dispose();
+  if (bufferedHttp) {
+    bufferedHttp.dispose();
+    bufferedHttp = null;
   }
   storagePromise = null;
 }

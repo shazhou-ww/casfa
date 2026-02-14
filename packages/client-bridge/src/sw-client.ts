@@ -21,7 +21,6 @@ import type {
   TokenState,
 } from "@casfa/client";
 import { createNamespaceProxy, createRPC } from "@casfa/port-rpc";
-import { nodeKeyToStorageKey } from "@casfa/protocol";
 import type { BroadcastMessage, ConnectAckMessage } from "./messages.ts";
 import type {
   AppClient,
@@ -236,14 +235,13 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
         });
       };
 
-      // Layer 1: sync CAS nodes from main-thread cache → server
-      if (config.storage?.syncTree) {
-        const storageKey = nodeKeyToStorageKey(newRoot);
+      // Layer 1: flush buffered CAS nodes from main-thread cache → server
+      if (config.storage) {
         config.storage
-          .syncTree(storageKey)
+          .flush()
           .then(postCommit)
           .catch((err) => {
-            console.error("[casfa] Layer 1 syncTree failed, skipping commit:", err);
+            console.error("[casfa] Layer 1 flush failed, skipping commit:", err);
           });
       } else {
         postCommit();

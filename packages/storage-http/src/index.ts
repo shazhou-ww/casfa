@@ -5,6 +5,13 @@
  */
 
 export {
+  type BufferedHttpStorageConfig,
+  type BufferedHttpStorageProvider,
+  createBufferedHttpStorage,
+  type SyncResult,
+  topoSortLevels,
+} from "./buffered-http-storage.ts";
+export {
   batchPut,
   type CheckManyResult,
   createHttpStorage,

@@ -18,7 +18,6 @@
  */
 
 import type { CasfaClient } from "@casfa/client";
-import { nodeKeyToStorageKey } from "@casfa/protocol";
 import type {
   ConflictEvent,
   DepotSyncEntry,
@@ -74,7 +73,7 @@ export type SyncCoordinator = {
 };
 
 export type SyncCoordinatorConfig = {
-  /** Layer 1 storage with syncTree(). */
+  /** Layer 1 storage with flush(). */
   storage: FlushableStorage;
   /** Persistent depot sync queue store. */
   queueStore: SyncQueueStore;
@@ -218,9 +217,8 @@ export function createSyncCoordinator(config: SyncCoordinatorConfig): SyncCoordi
       }
 
       try {
-        // Layer 1: sync this depot's tree — walk from root, upload missing nodes
-        const storageKey = nodeKeyToStorageKey(entry.targetRoot);
-        await storage.syncTree(storageKey);
+        // Layer 1: flush all buffered CAS nodes to remote
+        await storage.flush();
 
         // Layer 2: commit — check current server state
         const result = await client.depots.get(entry.depotId);
@@ -291,7 +289,7 @@ export function createSyncCoordinator(config: SyncCoordinatorConfig): SyncCoordi
           );
           bumpRetry(entry);
         } else {
-          // Local error (syncTree failure, etc.) — permanent
+          // Local error (flush failure, etc.) — permanent
           console.error(`[SyncCoordinator] sync failed for depot ${entry.depotId}:`, err);
           failPermanently(entry, {
             code: "sync_error",
