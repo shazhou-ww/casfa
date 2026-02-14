@@ -35,7 +35,7 @@ export class RefreshError extends Error {
   constructor(
     public readonly code: string,
     message: string,
-    public readonly statusCode: number = 401,
+    public readonly statusCode: number = 401
   ) {
     super(message);
     this.name = "RefreshError";
@@ -62,7 +62,7 @@ const DEFAULT_AT_TTL_SECONDS = 3600;
  */
 export async function refreshDelegateToken(
   rtBytes: Uint8Array,
-  deps: RefreshDeps,
+  deps: RefreshDeps
 ): Promise<RefreshResult> {
   const { delegatesDb } = deps;
 
@@ -73,12 +73,16 @@ export async function refreshDelegateToken(
   } catch (e) {
     throw new RefreshError(
       "INVALID_TOKEN_FORMAT",
-      e instanceof Error ? e.message : "Invalid token format",
+      e instanceof Error ? e.message : "Invalid token format"
     );
   }
 
   if (decoded.type !== "refresh") {
-    throw new RefreshError("NOT_REFRESH_TOKEN", "Expected a Refresh Token, got an Access Token", 400);
+    throw new RefreshError(
+      "NOT_REFRESH_TOKEN",
+      "Expected a Refresh Token, got an Access Token",
+      400
+    );
   }
 
   const delegateId = bytesToDelegateId(decoded.delegateId);
@@ -94,7 +98,7 @@ export async function refreshDelegateToken(
     throw new RefreshError(
       "ROOT_REFRESH_NOT_ALLOWED",
       "Root delegate uses JWT authentication directly",
-      400,
+      400
     );
   }
 
@@ -131,7 +135,7 @@ export async function refreshDelegateToken(
     throw new RefreshError(
       "TOKEN_INVALID",
       "Refresh token was already used (concurrent request)",
-      409,
+      409
     );
   }
 

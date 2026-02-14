@@ -8,14 +8,19 @@
 // Core exports
 // ============================================================================
 
-export { createDocClient, createDynamoClient, resetClient } from "./client.ts";
 export {
   type AuthCodesDb,
   type AuthorizationCode,
   createAuthCodesDb,
   type GrantedPermissions,
 } from "./auth-codes.ts";
+export { createDocClient, createDynamoClient, resetClient } from "./client.ts";
 export { createDelegatesDb, type DelegatesDb } from "./delegates.ts";
+export {
+  createOAuthClientsDb,
+  type OAuthClientRecord,
+  type OAuthClientsDb,
+} from "./oauth-clients.ts";
 export {
   createOwnershipV2Db,
   type OwnershipRecord,
@@ -23,11 +28,6 @@ export {
 } from "./ownership-v2.ts";
 export { createRefCountDb, type RefCountDb } from "./refcount.ts";
 export { createUserRolesDb, type UserRoleRecord, type UserRolesDb } from "./user-roles.ts";
-export {
-  createOAuthClientsDb,
-  type OAuthClientRecord,
-  type OAuthClientsDb,
-} from "./oauth-clients.ts";
 
 // ============================================================================
 // Token modules

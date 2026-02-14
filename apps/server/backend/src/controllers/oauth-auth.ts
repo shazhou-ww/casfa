@@ -100,9 +100,7 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
 // Controller Factory
 // ============================================================================
 
-export const createOAuthAuthController = (
-  deps: OAuthAuthControllerDeps,
-): OAuthAuthController => {
+export const createOAuthAuthController = (deps: OAuthAuthControllerDeps): OAuthAuthController => {
   const { serverConfig, authCodesDb, delegatesDb, oauthClientsDb } = deps;
 
   /**
@@ -213,45 +211,33 @@ export const createOAuthAuthController = (
     if (params.responseType !== "code") {
       return c.json(
         { error: "unsupported_response_type", error_description: "Only 'code' is supported" },
-        400,
+        400
       );
     }
 
     // Validate client_id
     if (!params.clientId) {
-      return c.json(
-        { error: "invalid_request", error_description: "Missing client_id" },
-        400,
-      );
+      return c.json({ error: "invalid_request", error_description: "Missing client_id" }, 400);
     }
     const client = await resolveClient(params.clientId);
     if (!client) {
-      return c.json(
-        { error: "invalid_client", error_description: "Unknown client_id" },
-        400,
-      );
+      return c.json({ error: "invalid_client", error_description: "Unknown client_id" }, 400);
     }
 
     // Validate redirect_uri
     if (!params.redirectUri) {
-      return c.json(
-        { error: "invalid_request", error_description: "Missing redirect_uri" },
-        400,
-      );
+      return c.json({ error: "invalid_request", error_description: "Missing redirect_uri" }, 400);
     }
     if (!isRedirectUriAllowed(params.redirectUri, client.redirectUris)) {
       return c.json(
         { error: "invalid_request", error_description: "redirect_uri not allowed for this client" },
-        400,
+        400
       );
     }
 
     // Validate scope
     if (!params.scope) {
-      return c.json(
-        { error: "invalid_request", error_description: "Missing scope" },
-        400,
-      );
+      return c.json({ error: "invalid_request", error_description: "Missing scope" }, 400);
     }
     const scopes = params.scope.split(" ").filter(Boolean);
     const invalidScopes = scopes.filter((s) => !VALID_SCOPES.has(s));
@@ -261,16 +247,13 @@ export const createOAuthAuthController = (
           error: "invalid_scope",
           error_description: `Unknown scopes: ${invalidScopes.join(", ")}`,
         },
-        400,
+        400
       );
     }
 
     // Validate state
     if (!params.state) {
-      return c.json(
-        { error: "invalid_request", error_description: "Missing state" },
-        400,
-      );
+      return c.json({ error: "invalid_request", error_description: "Missing state" }, 400);
     }
 
     // Validate PKCE
@@ -280,7 +263,7 @@ export const createOAuthAuthController = (
           error: "invalid_request",
           error_description: "PKCE required: code_challenge with method S256",
         },
-        400,
+        400
       );
     }
 
@@ -396,15 +379,13 @@ export const createOAuthAuthController = (
 
     if (contentType.includes("application/x-www-form-urlencoded")) {
       const formData = await c.req.parseBody();
-      params = Object.fromEntries(
-        Object.entries(formData).map(([k, v]) => [k, String(v)]),
-      );
+      params = Object.fromEntries(Object.entries(formData).map(([k, v]) => [k, String(v)]));
     } else if (contentType.includes("application/json")) {
       params = await c.req.json();
     } else {
       return c.json(
         { error: "invalid_request", error_description: "Unsupported Content-Type" },
-        400,
+        400
       );
     }
 
@@ -418,7 +399,7 @@ export const createOAuthAuthController = (
       default:
         return c.json(
           { error: "unsupported_grant_type", error_description: `Unsupported: ${grantType}` },
-          400,
+          400
         );
     }
   };
@@ -429,7 +410,7 @@ export const createOAuthAuthController = (
 
   const handleAuthorizationCodeGrant = async (
     c: Context<Env>,
-    params: Record<string, string>,
+    params: Record<string, string>
   ): Promise<Response> => {
     const { code, redirect_uri, client_id, code_verifier } = params;
 
@@ -437,9 +418,10 @@ export const createOAuthAuthController = (
       return c.json(
         {
           error: "invalid_request",
-          error_description: "Missing required parameters: code, redirect_uri, client_id, code_verifier",
+          error_description:
+            "Missing required parameters: code, redirect_uri, client_id, code_verifier",
         },
-        400,
+        400
       );
     }
 
@@ -447,40 +429,32 @@ export const createOAuthAuthController = (
     const authCode = await authCodesDb.consume(code);
     if (!authCode) {
       return c.json(
-        { error: "invalid_grant", error_description: "Invalid, expired, or already used authorization code" },
-        400,
+        {
+          error: "invalid_grant",
+          error_description: "Invalid, expired, or already used authorization code",
+        },
+        400
       );
     }
 
     // 2. Verify redirect_uri and client_id match
     if (authCode.redirectUri !== redirect_uri) {
-      return c.json(
-        { error: "invalid_grant", error_description: "redirect_uri mismatch" },
-        400,
-      );
+      return c.json({ error: "invalid_grant", error_description: "redirect_uri mismatch" }, 400);
     }
     if (authCode.clientId !== client_id) {
-      return c.json(
-        { error: "invalid_grant", error_description: "client_id mismatch" },
-        400,
-      );
+      return c.json({ error: "invalid_grant", error_description: "client_id mismatch" }, 400);
     }
 
     // 3. Verify PKCE: base64url(SHA256(code_verifier)) === code_challenge
-    const expectedChallenge = createHash("sha256")
-      .update(code_verifier)
-      .digest("base64url");
+    const expectedChallenge = createHash("sha256").update(code_verifier).digest("base64url");
     if (expectedChallenge !== authCode.codeChallenge) {
-      return c.json(
-        { error: "invalid_grant", error_description: "PKCE verification failed" },
-        400,
-      );
+      return c.json({ error: "invalid_grant", error_description: "PKCE verification failed" }, 400);
     }
 
     // 4. Create child delegate under user's root delegate
     const { delegate: rootDelegate } = await delegatesDb.getOrCreateRoot(
       authCode.realm,
-      generateDelegateId(),
+      generateDelegateId()
     );
 
     const newDelegateId = generateDelegateId();
@@ -535,15 +509,12 @@ export const createOAuthAuthController = (
 
   const handleRefreshTokenGrant = async (
     c: Context<Env>,
-    params: Record<string, string>,
+    params: Record<string, string>
   ): Promise<Response> => {
     const { refresh_token } = params;
 
     if (!refresh_token) {
-      return c.json(
-        { error: "invalid_request", error_description: "Missing refresh_token" },
-        400,
-      );
+      return c.json({ error: "invalid_request", error_description: "Missing refresh_token" }, 400);
     }
 
     let tokenBytes: Uint8Array;
@@ -552,7 +523,7 @@ export const createOAuthAuthController = (
     } catch {
       return c.json(
         { error: "invalid_grant", error_description: "Invalid refresh token format" },
-        400,
+        400
       );
     }
 
@@ -566,10 +537,7 @@ export const createOAuthAuthController = (
       });
     } catch (error) {
       if (error instanceof RefreshError) {
-        return c.json(
-          { error: "invalid_grant", error_description: error.message },
-          400,
-        );
+        return c.json({ error: "invalid_grant", error_description: error.message }, 400);
       }
       throw error;
     }
@@ -581,11 +549,7 @@ export const createOAuthAuthController = (
 
   const register = async (c: Context<Env>): Promise<Response> => {
     const body = await c.req.json();
-    const {
-      client_name,
-      redirect_uris,
-      grant_types,
-    } = body as {
+    const { client_name, redirect_uris, grant_types } = body as {
       client_name?: string;
       redirect_uris?: string[];
       grant_types?: string[];
@@ -595,7 +559,7 @@ export const createOAuthAuthController = (
     if (!redirect_uris || redirect_uris.length === 0) {
       return c.json(
         { error: "invalid_client_metadata", error_description: "redirect_uris is required" },
-        400,
+        400
       );
     }
 
@@ -611,13 +575,13 @@ export const createOAuthAuthController = (
               error: "invalid_client_metadata",
               error_description: `redirect_uri must be localhost or HTTPS: ${uri}`,
             },
-            400,
+            400
           );
         }
       } catch {
         return c.json(
           { error: "invalid_client_metadata", error_description: `Invalid redirect_uri: ${uri}` },
-          400,
+          400
         );
       }
     }
@@ -645,11 +609,18 @@ export const createOAuthAuthController = (
         token_endpoint_auth_method: "none",
         client_id_issued_at: Math.floor(now / 1000),
       },
-      201,
+      201
     );
   };
 
-  return { getMetadata, getProtectedResourceMetadata, authorizeInfo, approveAuthorization, token, register };
+  return {
+    getMetadata,
+    getProtectedResourceMetadata,
+    authorizeInfo,
+    approveAuthorization,
+    token,
+    register,
+  };
 };
 
 // ============================================================================

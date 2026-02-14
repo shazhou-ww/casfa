@@ -216,7 +216,14 @@ export function OAuthAuthorizePage() {
   // Loading
   if (state.kind === "loading" || state.kind === "approving") {
     return (
-      <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" minHeight="100vh" gap={2}>
+      <Box
+        display="flex"
+        flexDirection="column"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="100vh"
+        gap={2}
+      >
         <CircularProgress />
         <Typography variant="body2" color="text.secondary">
           {state.kind === "loading" ? "Validating authorization request…" : "Authorizing…"}
@@ -228,7 +235,13 @@ export function OAuthAuthorizePage() {
   // Error
   if (state.kind === "error") {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" bgcolor="grey.50">
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="100vh"
+        bgcolor="grey.50"
+      >
         <Card sx={{ maxWidth: 420, width: "100%", mx: 2 }}>
           <CardContent sx={{ p: 4 }}>
             <Typography variant="h5" textAlign="center" gutterBottom fontWeight={600}>
@@ -249,10 +262,22 @@ export function OAuthAuthorizePage() {
   // Not logged in
   if (state.kind === "not-logged-in") {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" bgcolor="grey.50">
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="100vh"
+        bgcolor="grey.50"
+      >
         <Card sx={{ maxWidth: 420, width: "100%", mx: 2 }}>
           <CardContent sx={{ p: 4 }}>
-            <Typography variant="h4" component="h1" textAlign="center" gutterBottom fontWeight={600}>
+            <Typography
+              variant="h4"
+              component="h1"
+              textAlign="center"
+              gutterBottom
+              fontWeight={600}
+            >
               CASFA
             </Typography>
             <Typography variant="body2" textAlign="center" color="text.secondary" mb={3}>
@@ -276,7 +301,14 @@ export function OAuthAuthorizePage() {
   // Approved (redirecting)
   if (state.kind === "approved") {
     return (
-      <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" minHeight="100vh" gap={2}>
+      <Box
+        display="flex"
+        flexDirection="column"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="100vh"
+        gap={2}
+      >
         <CheckCircleOutlineIcon sx={{ fontSize: 48, color: "success.main" }} />
         <Typography variant="h6" fontWeight={600}>
           Authorized!
@@ -291,7 +323,13 @@ export function OAuthAuthorizePage() {
   // Consent form
   const { info } = state;
   return (
-    <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" bgcolor="grey.50">
+    <Box
+      display="flex"
+      justifyContent="center"
+      alignItems="center"
+      minHeight="100vh"
+      bgcolor="grey.50"
+    >
       <Card sx={{ maxWidth: 460, width: "100%", mx: 2 }}>
         <CardContent sx={{ p: 4 }}>
           <Typography variant="h4" component="h1" textAlign="center" gutterBottom fontWeight={600}>
@@ -306,8 +344,8 @@ export function OAuthAuthorizePage() {
           <Box display="flex" alignItems="center" gap={1} mb={2}>
             <SecurityIcon color="primary" />
             <Typography variant="body1">
-              <strong>{info.client.clientName || info.client.clientId}</strong>
-              {" "}wants to access your CASFA account
+              <strong>{info.client.clientName || info.client.clientId}</strong> wants to access your
+              CASFA account
             </Typography>
           </Box>
 

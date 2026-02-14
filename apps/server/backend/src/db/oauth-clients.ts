@@ -5,8 +5,8 @@
  * Uses the shared tokensTable with PK = OAUTHCLIENT#{clientId}, SK = METADATA.
  */
 
-import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { createDocClient } from "./client.ts";
 
 // ============================================================================
@@ -54,7 +54,7 @@ export const createOAuthClientsDb = (config: OAuthClientsDbConfig): OAuthClients
           sk: SK,
           ...record,
         },
-      }),
+      })
     );
   };
 
@@ -63,7 +63,7 @@ export const createOAuthClientsDb = (config: OAuthClientsDbConfig): OAuthClients
       new GetCommand({
         TableName: tableName,
         Key: { pk: pk(clientId), sk: SK },
-      }),
+      })
     );
     if (!result.Item) return null;
     return {

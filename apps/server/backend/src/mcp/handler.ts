@@ -53,7 +53,7 @@ const mcpError = (
   id: string | number,
   code: number,
   message: string,
-  data?: unknown,
+  data?: unknown
 ): McpResponse => ({
   jsonrpc: "2.0",
   id,
@@ -89,7 +89,7 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
 
   const handleListDepots = async (
     id: string | number,
-    auth: AccessTokenAuthContext,
+    auth: AccessTokenAuthContext
   ): Promise<McpResponse> => {
     const result = await depotsDb.list(auth.realm);
     const depots = result.depots.map((d) => ({
@@ -113,7 +113,7 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
   const handleToolsCall = async (
     id: string | number,
     params: { name: string; arguments?: unknown } | undefined,
-    auth: AccessTokenAuthContext,
+    auth: AccessTokenAuthContext
   ): Promise<McpResponse> => {
     if (!params?.name) {
       return mcpError(id, MCP_METHOD_NOT_FOUND, "Missing tool name");
@@ -157,14 +157,14 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
           response = await handleToolsCall(
             request.id,
             request.params as { name: string; arguments?: unknown },
-            auth,
+            auth
           );
           break;
         default:
           response = mcpError(
             request.id,
             MCP_METHOD_NOT_FOUND,
-            `Method not found: ${request.method}`,
+            `Method not found: ${request.method}`
           );
       }
 

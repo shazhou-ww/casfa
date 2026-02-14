@@ -61,10 +61,10 @@ import type { HealthController } from "./controllers/health.ts";
 import type { InfoController } from "./controllers/info.ts";
 import type { LocalAuthController } from "./controllers/local-auth.ts";
 import type { OAuthController } from "./controllers/oauth.ts";
+import type { OAuthAuthController } from "./controllers/oauth-auth.ts";
 import type { RealmController } from "./controllers/realm.ts";
 import type { RefreshController } from "./controllers/refresh.ts";
 import type { McpController } from "./mcp/handler.ts";
-import type { OAuthAuthController } from "./controllers/oauth-auth.ts";
 import type { Env } from "./types.ts";
 
 // ============================================================================
@@ -160,10 +160,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   // So metadata is at /.well-known/oauth-authorization-server (no path suffix)
   // ============================================================================
 
-  app.get(
-    "/.well-known/oauth-authorization-server",
-    deps.oauthAuth.getMetadata,
-  );
+  app.get("/.well-known/oauth-authorization-server", deps.oauthAuth.getMetadata);
 
   // ============================================================================
   // OAuth Protected Resource Metadata (RFC 9728)
@@ -172,14 +169,8 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   // We serve the same response on both.
   // ============================================================================
 
-  app.get(
-    "/.well-known/oauth-protected-resource",
-    deps.oauthAuth.getProtectedResourceMetadata,
-  );
-  app.get(
-    "/.well-known/oauth-protected-resource/*",
-    deps.oauthAuth.getProtectedResourceMetadata,
-  );
+  app.get("/.well-known/oauth-protected-resource", deps.oauthAuth.getProtectedResourceMetadata);
+  app.get("/.well-known/oauth-protected-resource/*", deps.oauthAuth.getProtectedResourceMetadata);
 
   // ============================================================================
   // OAuth Routes
@@ -233,11 +224,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   // GET /api/auth/authorize/info → validate params, return JSON for frontend
   app.get("/api/auth/authorize/info", deps.oauthAuth.authorizeInfo);
   // POST /api/auth/authorize → approve consent (JWT required)
-  app.post(
-    "/api/auth/authorize",
-    deps.jwtAuthMiddleware,
-    deps.oauthAuth.approveAuthorization,
-  );
+  app.post("/api/auth/authorize", deps.jwtAuthMiddleware, deps.oauthAuth.approveAuthorization);
 
   // OAuth token endpoint (authorization_code + refresh_token grants)
   app.post("/api/auth/token", deps.oauthAuth.token);
