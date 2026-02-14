@@ -11,7 +11,7 @@
 
 ### P0 — 高优先级
 - [x] **1. Crockford Base32 编解码** — 已提取到 `@casfa/encoding`，`protocol`/`core`/`server` 已迁移（`6fab294`）
-- [ ] **2. storage-utils.ts 完全重复** — 待迁移到 `@casfa/storage-core`
+- [ ] **2. storage-utils.ts 完全重复** — 方案已变更：通过移除 `StorageProvider.has` 从根本上解决，详见 [storage-has-removal.md](storage-has-removal.md)
 
 ### P1 — 中优先级
 - [x] **3. formatSize() 字节格式化** — CLI/explorer 已迁移为 re-export from `@casfa/encoding`（`3f23bf0`）
@@ -21,7 +21,7 @@
 - [ ] **7. Prefixed ID↔Bytes 转换** — 待在 `@casfa/protocol` 添加泛型函数
 
 ### P2 — 低优先级
-- [ ] **8. Storage Provider LRU + Dedup 模式** — 待提取 `withExistsCache()` 到 `@casfa/storage-core`
+- [ ] **8. Storage Provider LRU + Dedup 模式** — 被 P0 #2 的新方案覆盖：移除 `has` 后 LRU/dedup 自然消失
 - [ ] **9. Result\<T, E\> 类型** — 待评估是否统一
 - [ ] **10. waitForDynamoDB 重试逻辑** — 待提取到脚本共享模块
 - [ ] **11. Blake3 哈希封装** — 待合并 server 内两个模块
