@@ -179,44 +179,6 @@ describe("storage-http E2E", () => {
   });
 
   // ==========================================================================
-  // has
-  // ==========================================================================
-
-  describe("has", () => {
-    it("should return false for a missing node", async () => {
-      const { storage } = await createStorageWithClient(ctx);
-
-      const fakeKey = "00000000000000000000000000";
-      expect(await storage.has(fakeKey)).toBe(false);
-    });
-
-    it("should return true for an owned node", async () => {
-      const { storage, client } = await createStorageWithClient(ctx);
-
-      const { nodeKey, storageKey, nodeBytes } = await encodeTestFile(`has-owned-${Date.now()}`);
-
-      // Upload (auto-owned by the uploader)
-      const putResult = await client.nodes.put(nodeKey, nodeBytes);
-      expect(putResult.ok).toBe(true);
-
-      // has should be true (owned)
-      expect(await storage.has(storageKey)).toBe(true);
-    });
-
-    it("should return false for an unowned node", async () => {
-      // Client1 uploads a node
-      const { client: client1 } = await createTestClient(ctx);
-      const { nodeKey, storageKey, nodeBytes } = await encodeTestFile(`has-unowned-${Date.now()}`);
-      const putResult = await client1.nodes.put(nodeKey, nodeBytes);
-      expect(putResult.ok).toBe(true);
-
-      // Client2 checks — node exists but is unowned by client2
-      const { storage: storage2 } = await createStorageWithClient(ctx);
-      expect(await storage2.has(storageKey)).toBe(false);
-    });
-  });
-
-  // ==========================================================================
   // put
   // ==========================================================================
 
@@ -300,31 +262,33 @@ describe("storage-http E2E", () => {
   // ==========================================================================
 
   describe("check cache integration", () => {
-    it("should cache check result so has after put is true", async () => {
+    it("should cache check result so second put is no-op", async () => {
       const { storage } = await createStorageWithClient(ctx);
 
       const { storageKey, nodeBytes } = await encodeTestFile(`cache-test-${Date.now()}`);
 
-      // put caches "owned" after upload
+      // First put uploads the node
       await storage.put(storageKey, nodeBytes);
 
-      // has should be true without another network call
-      expect(await storage.has(storageKey)).toBe(true);
+      // Second put should be a no-op (cached as owned)
+      await storage.put(storageKey, nodeBytes);
     });
 
-    it("should cache has result so put reuses it", async () => {
+    it("should upload on put after get misses", async () => {
       const { storage } = await createStorageWithClient(ctx);
 
-      const { storageKey, nodeBytes } = await encodeTestFile(`cache-has-put-${Date.now()}`);
+      const { storageKey, nodeBytes } = await encodeTestFile(`cache-get-put-${Date.now()}`);
 
-      // has → caches "missing"
-      expect(await storage.has(storageKey)).toBe(false);
+      // get returns null (missing)
+      const getResult = await storage.get(storageKey);
+      expect(getResult).toBeNull();
 
-      // put → should use cached "missing" and upload
+      // put should upload
       await storage.put(storageKey, nodeBytes);
 
-      // Subsequent has → cached "owned" (updated by put)
-      expect(await storage.has(storageKey)).toBe(true);
+      // Subsequent get should return data
+      const data = await storage.get(storageKey);
+      expect(data).toEqual(nodeBytes);
     });
   });
 });

@@ -165,12 +165,6 @@ export const createIndexedDBStorage = (
       return record.data;
     },
 
-    async has(key: string): Promise<boolean> {
-      const store = await getStore("readonly");
-      const count = await wrap(store.count(key));
-      return count > 0;
-    },
-
     async put(key: string, value: Uint8Array): Promise<void> {
       const store = await getStore("readwrite");
 

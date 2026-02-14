@@ -52,7 +52,6 @@ function createMemoryStorage(): StorageProvider & { data: Map<string, Uint8Array
   const data = new Map<string, Uint8Array>();
   return {
     data,
-    has: async (key: string) => data.has(key),
     get: async (key: string) => data.get(key) ?? null,
     put: async (key: string, value: Uint8Array) => {
       data.set(key, value);

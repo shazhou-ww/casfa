@@ -610,7 +610,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
           }
           const linkStorageKey = nodeKeyToStorageKey(linkKey);
 
-          const exists = await storage.has(linkStorageKey);
+          const exists = (await storage.get(linkStorageKey)) !== null;
           if (!exists) {
             return fsError("NODE_NOT_FOUND", 404, `Linked node not found: ${linkKey}`);
           }

@@ -6,10 +6,9 @@
  * happens internally.
  *
  * - `get(key)` → fetches raw node bytes via `client.nodes.get(nod_key)`
- * - `has(key)` → calls `check`, only returns true if **owned**
  * - `put(key, bytes)` → check → put (missing) / claim (unowned) / no-op (owned)
  *
- * Check results are cached per key so repeated `has`/`put` calls avoid
+ * Check results are cached per key so repeated `put` calls avoid
  * redundant network round-trips.
  *
  * @packageDocumentation
@@ -113,7 +112,6 @@ const checkOne = async (
  * Create an HTTP-backed StorageProvider.
  *
  * - `get(key)` → fetches raw node bytes via `client.nodes.get(nod_key)`
- * - `has(key)` → calls check API, only **owned** counts as "has"
  * - `put(key, bytes)` → check → put (missing) / claim (unowned) / no-op (owned)
  */
 export const createHttpStorage = (config: HttpStorageConfig): HttpStorageProvider => {
@@ -145,12 +143,6 @@ export const createHttpStorage = (config: HttpStorageConfig): HttpStorageProvide
         return result.data;
       }
       return null;
-    },
-
-    async has(key: string): Promise<boolean> {
-      const nodeKey = storageKeyToNodeKey(key);
-      const status = await checkOne(client, nodeKey, checkCache);
-      return status === "owned";
     },
 
     async put(key: string, value: Uint8Array): Promise<void> {
