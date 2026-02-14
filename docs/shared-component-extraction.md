@@ -14,9 +14,9 @@
 - [ ] **2. storage-utils.ts 完全重复** — 待迁移到 `@casfa/storage-core`
 
 ### P1 — 中优先级
-- [ ] **3. formatSize() 字节格式化** — `@casfa/encoding` 已包含实现，但 CLI/explorer 尚未迁移
-- [ ] **4. PKCE 实现** — CLI 侧待迁移至 `@casfa/client-auth-crypto`
-- [ ] **5. Base64URL 编解码** — `@casfa/encoding` 已包含实现，但消费端尚未迁移
+- [x] **3. formatSize() 字节格式化** — CLI/explorer 已迁移为 re-export from `@casfa/encoding`（`3f23bf0`）
+- [x] **4. PKCE 实现** — CLI `pkce.ts` 已删除，改为 import `@casfa/client-auth-crypto`（`3f23bf0`）
+- [x] **5. Base64URL 编解码** — `client-auth-crypto`/`server` 已迁移为 import from `@casfa/encoding`（`3f23bf0`）
 - [ ] **6. Hash↔Key 转换函数** — 基础 CB32 已统一，上层转换函数待收敛
 - [ ] **7. Prefixed ID↔Bytes 转换** — 待在 `@casfa/protocol` 添加泛型函数
 
@@ -32,6 +32,7 @@
 - [x] 消除 `core` ↔ `protocol` 循环依赖风险
 - [x] 更新构建链和 tsconfig paths
 - [x] 全部 21 个编码测试通过
+- [x] Base64URL/formatSize/PKCE 消费端迁移完成（`3f23bf0`）
 
 ---
 
@@ -39,17 +40,15 @@
 
 根据**投入产出比**和**依赖关系**，建议按以下顺序继续提取：
 
-### 第一批：低风险、高收益（利用已有 @casfa/encoding）
+### ~~第一批：低风险、高收益~~ ✅ 已完成（`3f23bf0`）
 
-| 序号 | 任务 | 工作量 | 说明 |
-|---|---|---|---|
-| ① | **P1 #5 — Base64URL 消费端迁移** | ~30 min | `@casfa/encoding` 已有 `base64urlEncode`/`base64urlDecode`，只需将 `client-auth-crypto/pkce.ts`、`cli/pkce.ts`、`server/jwt-verifier.ts` 的内联实现替换为 import |
-| ② | **P1 #3 — formatSize 消费端迁移** | ~20 min | `@casfa/encoding` 已有 `formatSize()`，替换 `cli/output.ts`、`cli/cache.ts`、`explorer/format-size.ts` 的本地实现 |
-| ③ | **P1 #4 — PKCE 合并** | ~30 min | CLI 的 `pkce.ts` 整份删掉，改为 `import { generateCodeVerifier, generateCodeChallenge } from "@casfa/client-auth-crypto"`，将 `generateState()` 添加到 `client-auth-crypto` 导出 |
+| 序号 | 任务 | 状态 |
+|---|---|---|
+| ① | **P1 #5 — Base64URL 消费端迁移** | ✅ |
+| ② | **P1 #3 — formatSize 消费端迁移** | ✅ |
+| ③ | **P1 #4 — PKCE 合并** | ✅ |
 
-**收益**：三个任务合计消除约 ~110 行重复代码，风险极低（纯 import 替换 + 删除死代码）。
-
-### 第二批：中等复杂度
+### 第二批：中等复杂度 ← 建议下一步
 
 | 序号 | 任务 | 工作量 | 说明 |
 |---|---|---|---|
@@ -68,7 +67,7 @@
 
 ### 推荐起点
 
-**建议从第一批 ①②③ 开始**——它们都是"函数已就位，只差替换 import"的工作，合起来一个小时内可完成，且能立即验证 `@casfa/encoding` 和 `@casfa/client-auth-crypto` 的公共包价值。完成后再做 ④ storage-utils 迁移（唯一剩余的 P0 项）。
+**建议从 ⑤ storage-utils 迁移开始**——它是唯一剩余的 P0 项，两个文件逾字节相同，风险低、收益明确。完成后再做 ⑥⑦ 收敛 ID 转换函数。
 
 ---
 
@@ -367,16 +366,16 @@ async function waitForDynamoDB(maxAttempts = N, delayMs = 1000) {
 |---|---|---|---|---|
 | **P0** | Crockford Base32 encode/decode | `@casfa/encoding` | ~180 行 (3 处) | ✅ 已完成 |
 | **P0** | `storage-utils.ts` (LRU + toStoragePath) | `@casfa/storage-core` | ~56 行 (2 处) | ⬜ 待做 |
-| **P1** | `formatSize()` 消费端迁移 | `@casfa/encoding`（已有实现） | ~35 行 (3 处) | 🔵 实现已就位 |
-| **P1** | PKCE 实现 | CLI 导入 `@casfa/client-auth-crypto` | ~60 行 (1 处) | ⬜ 待做 |
-| **P1** | Base64URL 消费端迁移 | `@casfa/encoding`（已有实现） | ~15 行 (3+ 处) | 🔵 实现已就位 |
+| **P1** | `formatSize()` 消费端迁移 | `@casfa/encoding`（已有实现） | ~35 行 (3 处) | ✅ 已完成 |
+| **P1** | PKCE 实现 | CLI 导入 `@casfa/client-auth-crypto` | ~60 行 (1 处) | ✅ 已完成 |
+| **P1** | Base64URL 消费端迁移 | `@casfa/encoding`（已有实现） | ~15 行 (3+ 处) | ✅ 已完成 |
 | **P1** | 泛型 `prefixedIdToBytes` / `bytesToPrefixedId` | `@casfa/protocol` | ~40 行 | ⬜ 待做 |
 | **P2** | `withExistsCache()` Storage 包装器 | `@casfa/storage-core` | ~60 行 (2 处) | ⬜ 待做 |
 | **P2** | `waitForDynamoDB` 脚本工具 | `apps/server/backend/scripts/shared/` | ~40 行 (4–5 处) | ⬜ 待做 |
 | **P2** | `Result<T, E>` 类型 | `@casfa/protocol` 或 `@casfa/result` | ~60 行 | ⬜ 待做 |
 | **P2** | Blake3 哈希封装合并 | server 内合并 | ~30 行 | ⬜ 待做 |
 
-**总计可消除约 ~580 行重复代码（已消除 ~180 行）。**
+**总计可消除约 ~580 行重复代码（已消除 ~290 行）。**
 
 ---
 
@@ -410,12 +409,7 @@ packages/encoding/
 
 ### 待迁移消费方
 
-| 包 | 可导入内容 | 当前状态 |
-|---|---|---|
-| `client-auth-crypto` | `base64urlEncode` | 内联 btoa+replace |
-| `cli` | `base64urlEncode`, `formatSize` | 本地实现 |
-| `explorer` | `formatSize` | 本地实现 |
-| `server/jwt-verifier.ts` | `base64urlDecode` | 本地函数 |
+无——所有识别的消费方均已迁移完成。
 
 ### 依赖关系（已实现）
 
@@ -423,10 +417,8 @@ packages/encoding/
 encoding (0 deps)
   ├── core
   ├── protocol
-  └── server/backend
-
-待接入：
-  ├── client-auth-crypto  (base64url)
-  ├── cli                 (base64url + formatSize)
-  └── explorer            (formatSize)
+  ├── client-auth-crypto
+  ├── server/backend
+  ├── cli (via @casfa/encoding)
+  └── explorer (via peerDeps)
 ```
