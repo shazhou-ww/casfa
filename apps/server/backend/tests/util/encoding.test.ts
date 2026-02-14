@@ -74,10 +74,17 @@ describe("Crockford Base32 Encoding", () => {
 
     it("should throw on invalid characters", () => {
       expect(() => fromCrockfordBase32("INVALID!")).toThrow();
-      expect(() => fromCrockfordBase32("ABC I DEF")).toThrow(); // I is not in Crockford
-      expect(() => fromCrockfordBase32("ABCLDEF")).toThrow(); // L is not in Crockford
-      expect(() => fromCrockfordBase32("ABCODEF")).toThrow(); // O is not in Crockford
+      expect(() => fromCrockfordBase32("ABC DEF")).toThrow(); // space is invalid
       expect(() => fromCrockfordBase32("ABCUDEF")).toThrow(); // U is not in Crockford
+    });
+
+    it("should handle confusable characters per Crockford spec", () => {
+      // Per the Crockford Base32 spec, I/L map to 1 and O maps to 0
+      const from1 = fromCrockfordBase32("1");
+      expect(fromCrockfordBase32("I")).toEqual(from1); // I → 1
+      expect(fromCrockfordBase32("L")).toEqual(from1); // L → 1
+      const from0 = fromCrockfordBase32("0");
+      expect(fromCrockfordBase32("O")).toEqual(from0); // O → 0
     });
 
     it("should roundtrip 16 bytes correctly", () => {

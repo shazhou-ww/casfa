@@ -24,6 +24,7 @@
       "@casfa/core": ["./packages/core/src/index.ts"],
       "@casfa/delegate": ["./packages/delegate/src/index.ts"],
       "@casfa/delegate-token": ["./packages/delegate-token/src/index.ts"],
+      "@casfa/encoding": ["./packages/encoding/src/index.ts"],
       "@casfa/proof": ["./packages/proof/src/index.ts"],
       "@casfa/protocol": ["./packages/protocol/src/index.ts"],
       "@casfa/storage-core": ["./packages/storage-core/src/index.ts"],
