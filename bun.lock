@@ -53,6 +53,7 @@
         "@casfa/core": "workspace:*",
         "@casfa/delegate": "workspace:*",
         "@casfa/delegate-token": "workspace:*",
+        "@casfa/encoding": "workspace:*",
         "@casfa/explorer": "workspace:*",
         "@casfa/fs": "workspace:*",
         "@casfa/proof": "workspace:*",
@@ -160,6 +161,7 @@
       "name": "@casfa/core",
       "version": "0.2.0",
       "dependencies": {
+        "@casfa/encoding": "workspace:*",
         "@casfa/storage-core": "workspace:*",
       },
       "devDependencies": {
@@ -184,6 +186,14 @@
       },
       "devDependencies": {
         "@noble/hashes": "^1.3.0",
+        "@types/bun": "latest",
+        "typescript": "^5.3.0",
+      },
+    },
+    "packages/encoding": {
+      "name": "@casfa/encoding",
+      "version": "0.2.0",
+      "devDependencies": {
         "@types/bun": "latest",
         "typescript": "^5.3.0",
       },
@@ -239,6 +249,7 @@
       "name": "@casfa/protocol",
       "version": "0.2.0",
       "dependencies": {
+        "@casfa/encoding": "workspace:*",
         "zod": "^3.23.8",
       },
       "devDependencies": {
@@ -482,6 +493,8 @@
     "@casfa/delegate": ["@casfa/delegate@workspace:packages/delegate"],
 
     "@casfa/delegate-token": ["@casfa/delegate-token@workspace:packages/delegate-token"],
+
+    "@casfa/encoding": ["@casfa/encoding@workspace:packages/encoding"],
 
     "@casfa/explorer": ["@casfa/explorer@workspace:packages/explorer"],
 
@@ -1257,6 +1270,8 @@
 
     "@casfa/delegate-token/@types/bun": ["@types/bun@1.3.9", "", { "dependencies": { "bun-types": "1.3.9" } }, "sha512-KQ571yULOdWJiMH+RIWIOZ7B2RXQGpL1YQrBtLIV3FqDcCu6FsbFUBwhdKUlCKUpS3PJDsHlJ1QKlpxoVR+xtw=="],
 
+    "@casfa/encoding/@types/bun": ["@types/bun@1.3.9", "", { "dependencies": { "bun-types": "1.3.9" } }, "sha512-KQ571yULOdWJiMH+RIWIOZ7B2RXQGpL1YQrBtLIV3FqDcCu6FsbFUBwhdKUlCKUpS3PJDsHlJ1QKlpxoVR+xtw=="],
+
     "@casfa/fs/@noble/hashes": ["@noble/hashes@1.8.0", "https://mirrors.tencent.com/npm/@noble/hashes/-/hashes-1.8.0.tgz", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
 
     "@casfa/proof/@types/bun": ["@types/bun@1.3.9", "", { "dependencies": { "bun-types": "1.3.9" } }, "sha512-KQ571yULOdWJiMH+RIWIOZ7B2RXQGpL1YQrBtLIV3FqDcCu6FsbFUBwhdKUlCKUpS3PJDsHlJ1QKlpxoVR+xtw=="],
@@ -1329,6 +1344,8 @@
 
     "@casfa/delegate/@types/bun/bun-types": ["bun-types@1.3.9", "", { "dependencies": { "@types/node": "*" } }, "sha512-+UBWWOakIP4Tswh0Bt0QD0alpTY8cb5hvgiYeWCMet9YukHbzuruIEeXC2D7nMJPB12kbh8C7XJykSexEqGKJg=="],
 
+    "@casfa/encoding/@types/bun/bun-types": ["bun-types@1.3.9", "", { "dependencies": { "@types/node": "*" } }, "sha512-+UBWWOakIP4Tswh0Bt0QD0alpTY8cb5hvgiYeWCMet9YukHbzuruIEeXC2D7nMJPB12kbh8C7XJykSexEqGKJg=="],
+
     "@casfa/proof/@types/bun/bun-types": ["bun-types@1.3.9", "", { "dependencies": { "@types/node": "*" } }, "sha512-+UBWWOakIP4Tswh0Bt0QD0alpTY8cb5hvgiYeWCMet9YukHbzuruIEeXC2D7nMJPB12kbh8C7XJykSexEqGKJg=="],
 
     "@casfa/protocol/@types/bun/bun-types": ["bun-types@1.3.9", "", { "dependencies": { "@types/node": "*" } }, "sha512-+UBWWOakIP4Tswh0Bt0QD0alpTY8cb5hvgiYeWCMet9YukHbzuruIEeXC2D7nMJPB12kbh8C7XJykSexEqGKJg=="],
@@ -1367,6 +1384,8 @@
 
     "@casfa/delegate/@types/bun/bun-types/@types/node": ["@types/node@25.2.0", "https://mirrors.tencent.com/npm/@types/node/-/node-25.2.0.tgz", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-DZ8VwRFUNzuqJ5khrvwMXHmvPe+zGayJhr2CDNiKB1WBE1ST8Djl00D0IC4vvNmHMdj6DlbYRIaFE7WHjlDl5w=="],
 
+    "@casfa/encoding/@types/bun/bun-types/@types/node": ["@types/node@25.2.0", "https://mirrors.tencent.com/npm/@types/node/-/node-25.2.0.tgz", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-DZ8VwRFUNzuqJ5khrvwMXHmvPe+zGayJhr2CDNiKB1WBE1ST8Djl00D0IC4vvNmHMdj6DlbYRIaFE7WHjlDl5w=="],
+
     "@casfa/proof/@types/bun/bun-types/@types/node": ["@types/node@25.2.0", "https://mirrors.tencent.com/npm/@types/node/-/node-25.2.0.tgz", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-DZ8VwRFUNzuqJ5khrvwMXHmvPe+zGayJhr2CDNiKB1WBE1ST8Djl00D0IC4vvNmHMdj6DlbYRIaFE7WHjlDl5w=="],
 
     "@casfa/protocol/@types/bun/bun-types/@types/node": ["@types/node@25.2.0", "https://mirrors.tencent.com/npm/@types/node/-/node-25.2.0.tgz", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-DZ8VwRFUNzuqJ5khrvwMXHmvPe+zGayJhr2CDNiKB1WBE1ST8Djl00D0IC4vvNmHMdj6DlbYRIaFE7WHjlDl5w=="],
@@ -1386,6 +1405,8 @@
     "@casfa/delegate-token/@types/bun/bun-types/@types/node/undici-types": ["undici-types@7.16.0", "https://mirrors.tencent.com/npm/undici-types/-/undici-types-7.16.0.tgz", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
 
     "@casfa/delegate/@types/bun/bun-types/@types/node/undici-types": ["undici-types@7.16.0", "https://mirrors.tencent.com/npm/undici-types/-/undici-types-7.16.0.tgz", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
+
+    "@casfa/encoding/@types/bun/bun-types/@types/node/undici-types": ["undici-types@7.16.0", "https://mirrors.tencent.com/npm/undici-types/-/undici-types-7.16.0.tgz", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
 
     "@casfa/proof/@types/bun/bun-types/@types/node/undici-types": ["undici-types@7.16.0", "https://mirrors.tencent.com/npm/undici-types/-/undici-types-7.16.0.tgz", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
 

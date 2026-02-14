@@ -59,7 +59,7 @@ export const createRefreshController = (deps: RefreshControllerDeps): RefreshCon
       if (buffer.length !== RT_SIZE) {
         return c.json(
           { error: "INVALID_TOKEN_FORMAT", message: `Refresh Token must be ${RT_SIZE} bytes` },
-          401,
+          401
         );
       }
       tokenBytes = new Uint8Array(buffer);
@@ -80,7 +80,7 @@ export const createRefreshController = (deps: RefreshControllerDeps): RefreshCon
       if (error instanceof RefreshError) {
         return c.json(
           { error: error.code, message: error.message },
-          error.statusCode as 400 | 401 | 409,
+          error.statusCode as 400 | 401 | 409
         );
       }
       throw error;

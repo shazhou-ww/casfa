@@ -6,8 +6,8 @@
  * TTL auto-cleanup via expiresAtTtl (DynamoDB TTL attribute).
  */
 
-import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { createDocClient } from "./client.ts";
 
 // ============================================================================
@@ -79,7 +79,7 @@ export const createAuthCodesDb = (config: AuthCodesDbConfig): AuthCodesDb => {
           expiresAtTtl: Math.floor(authCode.expiresAt / 1000),
         },
         ConditionExpression: "attribute_not_exists(pk)",
-      }),
+      })
     );
   };
 
@@ -88,7 +88,7 @@ export const createAuthCodesDb = (config: AuthCodesDbConfig): AuthCodesDb => {
       new GetCommand({
         TableName: tableName,
         Key: { pk: pk(code), sk: SK },
-      }),
+      })
     );
     if (!result.Item) return null;
     return itemToAuthCode(result.Item);
@@ -114,7 +114,7 @@ export const createAuthCodesDb = (config: AuthCodesDbConfig): AuthCodesDb => {
             ":false": false,
             ":now": Date.now(),
           },
-        }),
+        })
       );
       return existing;
     } catch (error: unknown) {
@@ -131,7 +131,6 @@ export const createAuthCodesDb = (config: AuthCodesDbConfig): AuthCodesDb => {
 // Helpers
 // ============================================================================
 
-// biome-ignore lint/suspicious/noExplicitAny: DynamoDB item mapping
 const itemToAuthCode = (item: Record<string, any>): AuthorizationCode => ({
   code: item.code,
   clientId: item.clientId,

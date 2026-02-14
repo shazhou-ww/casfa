@@ -30,8 +30,10 @@ import { createMockJwtVerifier } from "../src/auth/jwt-verifier.ts";
 import { type AppConfig, loadConfig } from "../src/config.ts";
 // DB factories - aligned with bootstrap.ts DbInstances
 import {
+  createAuthCodesDb,
   createDelegatesDb,
   createDepotsDb,
+  createOAuthClientsDb,
   createOwnershipV2Db,
   createRefCountDb,
   createScopeSetNodesDb,
@@ -293,6 +295,8 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
     usageDb: createUsageDb({ tableName: config.db.usageTable }),
     userRolesDb: createUserRolesDb({ tableName: config.db.tokensTable }),
     localUsersDb: createLocalUsersDb({ tableName: config.db.tokensTable }),
+    authCodesDb: createAuthCodesDb({ tableName: config.db.tokensTable }),
+    oauthClientsDb: createOAuthClientsDb({ tableName: config.db.tokensTable }),
   };
 
   // Create storage
