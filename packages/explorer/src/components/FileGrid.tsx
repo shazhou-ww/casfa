@@ -20,31 +20,32 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import { useHighlightMatch } from "../hooks/use-search.ts";
 import type { ExplorerItem } from "../types.ts";
-import { getIconCategory, type IconCategory } from "../utils/icon-map.ts";
+import { getIconCategory, ICON_COLORS, type IconCategory } from "../utils/icon-map.ts";
 
 // ── Icon resolver ──
 
 function getGridIcon(category: IconCategory) {
+  const color = ICON_COLORS[category] ?? ICON_COLORS.file;
   switch (category) {
     case "folder":
-      return <FolderIcon sx={{ fontSize: 40, color: "primary.main" }} />;
+      return <FolderIcon sx={{ fontSize: 40, color }} />;
     case "image":
-      return <ImageIcon sx={{ fontSize: 40, color: "secondary.main" }} />;
+      return <ImageIcon sx={{ fontSize: 40, color }} />;
     case "video":
-      return <VideoFileIcon sx={{ fontSize: 40, color: "error.main" }} />;
+      return <VideoFileIcon sx={{ fontSize: 40, color }} />;
     case "audio":
-      return <AudioFileIcon sx={{ fontSize: 40, color: "info.main" }} />;
+      return <AudioFileIcon sx={{ fontSize: 40, color }} />;
     case "pdf":
-      return <PictureAsPdfIcon sx={{ fontSize: 40, color: "error.main" }} />;
+      return <PictureAsPdfIcon sx={{ fontSize: 40, color }} />;
     case "code":
-      return <CodeIcon sx={{ fontSize: 40, color: "info.main" }} />;
+      return <CodeIcon sx={{ fontSize: 40, color }} />;
     case "document":
     case "text":
     case "spreadsheet":
     case "presentation":
-      return <DescriptionIcon sx={{ fontSize: 40, color: "action.active" }} />;
+      return <DescriptionIcon sx={{ fontSize: 40, color }} />;
     default:
-      return <InsertDriveFileIcon sx={{ fontSize: 40, color: "action.active" }} />;
+      return <InsertDriveFileIcon sx={{ fontSize: 40, color }} />;
   }
 }
 

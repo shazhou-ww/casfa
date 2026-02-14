@@ -51,9 +51,6 @@ export function CasfaExplorer(props: CasfaExplorerProps) {
             height: props.height ?? "100%",
             width: props.width ?? "100%",
             overflow: "hidden",
-            border: 1,
-            borderColor: "divider",
-            borderRadius: 1,
             ...((props.sx ?? {}) as Record<string, unknown>),
           }}
         >

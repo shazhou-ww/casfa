@@ -31,12 +31,12 @@ export function ViewToggle() {
     >
       <ToggleButton value="list" sx={{ px: 0.75 }}>
         <Tooltip title={t("toolbar.viewList")}>
-          <ViewListIcon fontSize="small" />
+          <ViewListIcon sx={{ fontSize: 16 }} />
         </Tooltip>
       </ToggleButton>
       <ToggleButton value="grid" sx={{ px: 0.75 }}>
         <Tooltip title={t("toolbar.viewGrid")}>
-          <GridViewIcon fontSize="small" />
+          <GridViewIcon sx={{ fontSize: 16 }} />
         </Tooltip>
       </ToggleButton>
     </ToggleButtonGroup>
