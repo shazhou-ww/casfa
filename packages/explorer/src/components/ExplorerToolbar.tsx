@@ -85,29 +85,30 @@ export function ExplorerToolbar({
       {/* Navigation buttons: back / forward / up */}
       <NavigationButtons onNavigate={onNavigate} />
 
-      <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+      <Divider orientation="vertical" flexItem sx={{ mx: 0.5, my: -0.5 }} />
 
       {/* Breadcrumb (with path input toggle) */}
-      <Box sx={{ flex: 1, overflow: "hidden" }}>
+      <Box sx={{ flex: 3, overflow: "clip", overflowClipMargin: 2 }}>
         <Breadcrumb renderBreadcrumb={renderBreadcrumb} onNavigate={onNavigate} />
       </Box>
 
-      {/* Search */}
-      <SearchBox />
+      <Box sx={{ flex: 1, minWidth: 180, maxWidth: 320, ml: 1 }}>
+        <SearchBox />
+      </Box>
 
-      <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+      <Divider orientation="vertical" flexItem sx={{ mx: 0.5, my: -0.5 }} />
 
       {/* View toggle */}
       <ViewToggle />
 
-      <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+      <Divider orientation="vertical" flexItem sx={{ mx: 0.5, my: -0.5 }} />
 
       {/* Upload button — hidden when no upload permission */}
       {permissions.canUpload && (
         <>
           <Tooltip title={t("toolbar.upload")}>
             <IconButton size="small" onClick={handleUploadClick}>
-              <CloudUploadIcon fontSize="small" />
+              <CloudUploadIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
           <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileChange} />
@@ -118,14 +119,14 @@ export function ExplorerToolbar({
       {permissions.canUpload && (
         <Tooltip title={t("toolbar.newFolder")}>
           <IconButton size="small" onClick={handleNewFolder}>
-            <CreateNewFolderIcon fontSize="small" />
+            <CreateNewFolderIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </Tooltip>
       )}
 
       <Tooltip title={t("toolbar.refresh")}>
         <IconButton size="small" onClick={handleRefresh}>
-          <RefreshIcon fontSize="small" />
+          <RefreshIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Tooltip>
 
@@ -136,7 +137,7 @@ export function ExplorerToolbar({
           onClick={toggleDetailPanel}
           color={detailPanelOpen ? "primary" : "default"}
         >
-          <InfoOutlinedIcon fontSize="small" />
+          <InfoOutlinedIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Tooltip>
 

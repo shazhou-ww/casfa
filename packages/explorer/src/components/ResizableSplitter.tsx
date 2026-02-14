@@ -59,6 +59,16 @@ export function ResizableSplitter({ onResize, onResizeEnd }: ResizableSplitterPr
           backgroundColor: "primary.main",
         },
         flexShrink: 0,
+        position: "relative",
+        "&::after": {
+          content: '""',
+          position: "absolute",
+          top: 35,
+          left: 0,
+          right: 0,
+          borderBottom: 1,
+          borderColor: "divider",
+        },
       }}
     />
   );

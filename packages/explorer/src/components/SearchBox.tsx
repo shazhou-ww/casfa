@@ -54,7 +54,7 @@ export function SearchBox() {
       value={searchTerm}
       onChange={handleChange}
       onKeyDown={handleKeyDown}
-      sx={{ width: 180 }}
+      sx={{ width: "100%" }}
       slotProps={{
         input: {
           startAdornment: (
