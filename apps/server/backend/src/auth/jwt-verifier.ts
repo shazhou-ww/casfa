@@ -7,6 +7,7 @@
  */
 
 import { createHmac } from "node:crypto";
+import { base64urlDecode } from "@casfa/encoding";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { CognitoConfig } from "../config.ts";
 import type { JwtVerifier } from "../middleware/jwt-auth.ts";
@@ -53,14 +54,10 @@ export const createCognitoJwtVerifier = (config: CognitoConfig): JwtVerifier => 
 // ============================================================================
 
 /**
- * Decode base64url to string
+ * Decode base64url to UTF-8 string
  */
-const base64UrlDecode = (input: string): string => {
-  // Replace URL-safe chars and add padding
-  const base64 = input.replace(/-/g, "+").replace(/_/g, "/");
-  const padding = base64.length % 4 === 0 ? "" : "=".repeat(4 - (base64.length % 4));
-  return Buffer.from(base64 + padding, "base64").toString("utf-8");
-};
+const base64UrlDecodeString = (input: string): string =>
+  new TextDecoder().decode(base64urlDecode(input));
 
 /**
  * Create a mock JWT verifier for testing
@@ -87,7 +84,7 @@ export const createMockJwtVerifier = (secret: string): JwtVerifier => {
       if (signatureB64 !== expectedSignature) return null;
 
       // Parse payload
-      const payloadJson = base64UrlDecode(payloadB64);
+      const payloadJson = base64UrlDecodeString(payloadB64);
       const payload = JSON.parse(payloadJson) as { sub?: string; exp?: number };
 
       const sub = payload.sub;

@@ -44,6 +44,7 @@
   "peerDependencies": {
     "@casfa/client": "workspace:*",
     "@casfa/core": "workspace:*",
+    "@casfa/encoding": "workspace:*",
     "@casfa/fs": "workspace:*",
     "@casfa/protocol": "workspace:*",
     "@mui/material": "^6.0.0",

@@ -23,6 +23,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
+    "@casfa/encoding": "workspace:*",
     "@casfa/protocol": "workspace:*"
   },
   "devDependencies": {

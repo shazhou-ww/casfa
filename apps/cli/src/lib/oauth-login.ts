@@ -11,12 +11,16 @@
  */
 
 import { api } from "@casfa/client";
+import {
+  generateCodeChallenge,
+  generateCodeVerifier,
+  generateState,
+} from "@casfa/client-auth-crypto";
 import chalk from "chalk";
 import open from "open";
 import ora from "ora";
 import { setUserToken } from "./credentials";
 import { type CallbackError, findAvailablePort, waitForCallback } from "./local-server";
-import { generateCodeChallenge, generateCodeVerifier, generateState } from "./pkce";
 
 export interface OAuthLoginOptions {
   baseUrl: string;
