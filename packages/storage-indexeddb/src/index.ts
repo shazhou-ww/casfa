@@ -8,4 +8,5 @@ export {
   createIndexedDBStorage,
   createPendingKeyStore,
   type IndexedDBStorageConfig,
+  type PendingKeyStore,
 } from "./indexeddb-storage.ts";

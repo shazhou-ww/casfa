@@ -28,12 +28,6 @@ await storage.put('node:abcd1234...', data);
 
 // Retrieve data
 const data = await storage.get('node:abcd1234...');
-
-// Check existence
-const exists = await storage.has('node:abcd1234...');
-
-// Delete
-const deleted = await storage.delete('node:abcd1234...');
 ```
 
 ### With Inspection (Testing)
@@ -89,8 +83,6 @@ interface MemoryStorageConfig {
 interface StorageProvider {
   get(key: string): Promise<Uint8Array | null>;
   put(key: string, data: Uint8Array): Promise<void>;
-  has(key: string): Promise<boolean>;
-  delete(key: string): Promise<boolean>;
 }
 ```
 

@@ -25,7 +25,6 @@ const createMemoryStorage = (): StorageProvider & { size: () => number } => {
       store.set(key, new Uint8Array(data));
     },
     get: async (key) => store.get(key) ?? null,
-    has: async (key) => store.has(key),
     size: () => store.size,
   };
 };
@@ -339,8 +338,11 @@ describe("Validation", () => {
       const dictKey = hashToKey(dict.hash);
 
       // With child existing
-      const result1 = await validateNode(dict.bytes, dictKey, keyProvider, (key) =>
-        storage.has(key)
+      const result1 = await validateNode(
+        dict.bytes,
+        dictKey,
+        keyProvider,
+        async (key) => (await storage.get(key)) !== null
       );
       expect(result1.valid).toBe(true);
 

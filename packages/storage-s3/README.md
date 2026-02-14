@@ -30,28 +30,6 @@ await storage.put('node:abcd1234...', data);
 
 // Retrieve data
 const data = await storage.get('node:abcd1234...');
-
-// Check existence
-const exists = await storage.has('node:abcd1234...');
-
-// Delete
-const deleted = await storage.delete('node:abcd1234...');
-```
-
-### With LRU Cache
-
-```typescript
-import { createS3StorageWithCache } from '@casfa/storage-s3';
-
-const storage = createS3StorageWithCache({
-  bucket: 'my-cas-bucket',
-  region: 'us-east-1',
-  cacheSize: 1000,      // Max items in cache
-  cacheMaxAge: 300000,  // 5 minutes TTL
-});
-
-// Cache reduces S3 API calls for repeated reads
-const data = await storage.get('node:abcd1234...');
 ```
 
 ### With Custom S3 Client
@@ -95,18 +73,6 @@ interface S3StorageConfig {
 }
 ```
 
-### Cache Options
-
-```typescript
-interface S3StorageWithCacheConfig extends S3StorageConfig {
-  // Max items in LRU cache (default: 1000)
-  cacheSize?: number;
-  
-  // Cache TTL in milliseconds (default: 60000)
-  cacheMaxAge?: number;
-}
-```
-
 ## S3 Key Structure
 
 Objects are stored with sharded prefixes for better S3 performance:
@@ -121,8 +87,7 @@ Where `ab` and `cd` are the first 4 characters of the hash, providing good distr
 
 ### Functions
 
-- `createS3Storage(config)` - Create S3 storage without cache
-- `createS3StorageWithCache(config)` - Create S3 storage with LRU cache
+- `createS3Storage(config)` - Create S3 storage
 
 ### StorageProvider Interface
 
@@ -130,8 +95,6 @@ Where `ab` and `cd` are the first 4 characters of the hash, providing good distr
 interface StorageProvider {
   get(key: string): Promise<Uint8Array | null>;
   put(key: string, data: Uint8Array): Promise<void>;
-  has(key: string): Promise<boolean>;
-  delete(key: string): Promise<boolean>;
 }
 ```
 
