@@ -21,6 +21,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
+    "@casfa/encoding": "workspace:*",
     "zod": "^3.23.8"
   },
   "devDependencies": {

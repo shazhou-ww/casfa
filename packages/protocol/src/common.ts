@@ -7,10 +7,11 @@
  * Crockford Base32 charset: 0-9, A-H, J-K, M-N, P-T, V-Z (excludes I, L, O, U)
  */
 
+import { decodeCB32, encodeCB32, isValidCB32 } from "@casfa/encoding";
 import { z } from "zod";
 
 // ============================================================================
-// Crockford Base32 Encoding
+// Crockford Base32 Encoding — re-exported from @casfa/encoding
 // ============================================================================
 
 /**
@@ -27,77 +28,19 @@ const CROCKFORD_BASE32 = "0-9A-HJKMNP-TV-Z";
 const CB32_TAIL_128 = "048CGMRW";
 
 /**
- * Crockford Base32 alphabet for encoding (32 characters)
- */
-const CROCKFORD_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-
-/**
- * Decode map for Crockford Base32 (handles lowercase and confusable chars)
- */
-const CROCKFORD_DECODE: Record<string, number> = {};
-for (let i = 0; i < CROCKFORD_ALPHABET.length; i++) {
-  CROCKFORD_DECODE[CROCKFORD_ALPHABET[i]!] = i;
-  CROCKFORD_DECODE[CROCKFORD_ALPHABET[i]!.toLowerCase()] = i;
-}
-// Handle confusable characters: I/i/L/l -> 1, O/o -> 0
-CROCKFORD_DECODE.I = 1;
-CROCKFORD_DECODE.i = 1;
-CROCKFORD_DECODE.L = 1;
-CROCKFORD_DECODE.l = 1;
-CROCKFORD_DECODE.O = 0;
-CROCKFORD_DECODE.o = 0;
-
-/**
  * Encode bytes to Crockford Base32 string
  */
-export function encodeCrockfordBase32(bytes: Uint8Array): string {
-  let result = "";
-  let buffer = 0;
-  let bitsLeft = 0;
-
-  for (const byte of bytes) {
-    buffer = (buffer << 8) | byte;
-    bitsLeft += 8;
-
-    while (bitsLeft >= 5) {
-      bitsLeft -= 5;
-      result += CROCKFORD_ALPHABET[(buffer >> bitsLeft) & 0x1f];
-    }
-  }
-
-  // Handle remaining bits (pad with zeros)
-  if (bitsLeft > 0) {
-    result += CROCKFORD_ALPHABET[(buffer << (5 - bitsLeft)) & 0x1f];
-  }
-
-  return result;
-}
+export const encodeCrockfordBase32 = encodeCB32;
 
 /**
  * Decode Crockford Base32 string to bytes
  */
-export function decodeCrockfordBase32(str: string): Uint8Array {
-  let buffer = 0;
-  let bitsLeft = 0;
-  const result: number[] = [];
+export const decodeCrockfordBase32 = decodeCB32;
 
-  for (const char of str) {
-    const value = CROCKFORD_DECODE[char];
-    if (value === undefined) {
-      throw new Error(`Invalid Crockford Base32 character: ${char}`);
-    }
-
-    buffer = (buffer << 5) | value;
-    bitsLeft += 5;
-
-    if (bitsLeft >= 8) {
-      bitsLeft -= 8;
-      result.push((buffer >> bitsLeft) & 0xff);
-    }
-  }
-
-  return new Uint8Array(result);
-}
+/**
+ * Check if a string is valid Crockford Base32
+ */
+export const isValidCrockfordBase32 = isValidCB32;
 
 // ============================================================================
 // Node Key Conversion (nod_ prefix)

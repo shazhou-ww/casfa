@@ -1,7 +1,7 @@
 {
-  "name": "@casfa/core",
+  "name": "@casfa/encoding",
   "version": "0.2.0",
-  "description": "CAS binary format encoding/decoding - self-similar B-Tree node structure",
+  "description": "Encoding utilities for CASFA — Crockford Base32, Base64URL, hex, and formatting",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -17,16 +17,14 @@
     "test": "bun run test:unit",
     "test:unit": "bun test",
     "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "check": "tsc --noEmit && biome check .",
     "prepublishOnly": "bun run build"
   },
-  "dependencies": {
-    "@casfa/encoding": "workspace:*",
-    "@casfa/storage-core": "workspace:*"
-  },
   "devDependencies": {
-    "@noble/hashes": "^1.7.1",
     "@types/bun": "latest",
-    "typescript": "^5.0.0"
+    "typescript": "^5.3.0"
   },
   "files": [
     "dist",
