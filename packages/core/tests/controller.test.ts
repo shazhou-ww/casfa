@@ -7,7 +7,6 @@ import {
   type CasContext,
   getNode,
   getTree,
-  has,
   makeDict,
   openFileStream,
   putFileNode,
@@ -40,7 +39,6 @@ const createMemoryStorage = (): MemoryStorage => {
       store.set(key, new Uint8Array(data));
     },
     get: async (key) => store.get(key) ?? null,
-    has: async (key) => store.has(key),
     size: () => store.size,
     clear: () => store.clear(),
     keys: () => Array.from(store.keys()),
@@ -361,18 +359,18 @@ describe("Controller", () => {
       const key = await putFileNode(ctx, data, "application/octet-stream");
 
       expect(key).toMatch(/^[0-9A-Z]{26}$/);
-      expect(await has(ctx, key)).toBe(true);
+      expect(await getNode(ctx, key)).not.toBeNull();
     });
   });
 
-  describe("has", () => {
-    it("should return true for existing key", async () => {
+  describe("existence check via getNode", () => {
+    it("should return node for existing key", async () => {
       const result = await writeFile(ctx, new Uint8Array([1]), "text/plain");
-      expect(await has(ctx, result.key)).toBe(true);
+      expect(await getNode(ctx, result.key)).not.toBeNull();
     });
 
-    it("should return false for non-existing key", async () => {
-      expect(await has(ctx, `blake3s:${"f".repeat(32)}`)).toBe(false);
+    it("should return null for non-existing key", async () => {
+      expect(await getNode(ctx, `blake3s:${"f".repeat(32)}`)).toBeNull();
     });
   });
 });
