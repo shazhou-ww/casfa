@@ -203,10 +203,9 @@ export function OAuthAuthorizePage() {
 
   // Handle "go to login"
   const handleLogin = useCallback(() => {
-    // Save return URL so after login → callback → success, we can come back.
-    // For now, redirect to /login in same tab. The user will need to
-    // re-trigger the MCP auth from VS Code after logging in.
-    // Future: use sessionStorage to auto-return.
+    // Save the full OAuth authorize URL so that after
+    // login → Cognito callback → token exchange, the oauth-callback
+    // page can redirect back here to complete the consent flow.
     sessionStorage.setItem("casfa_oauth_return", window.location.href);
     window.location.href = "/login";
   }, []);

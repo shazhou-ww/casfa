@@ -44,7 +44,17 @@ export function OAuthCallbackPage() {
           // client gets the correct realm for /api/realm/:realm/* calls.
           // In direct mode this re-creates the main-thread client.
           await client.setUserToken(result.data.userId);
-          navigate("/", { replace: true });
+
+          // If we were redirected here from the OAuth authorize page
+          // (MCP agent flow), return to that page so the user can
+          // complete the consent without re-triggering from the agent.
+          const oauthReturn = sessionStorage.getItem("casfa_oauth_return");
+          if (oauthReturn) {
+            sessionStorage.removeItem("casfa_oauth_return");
+            window.location.href = oauthReturn;
+          } else {
+            navigate("/", { replace: true });
+          }
         } else {
           setError(result.error.message || "Token exchange failed.");
         }
