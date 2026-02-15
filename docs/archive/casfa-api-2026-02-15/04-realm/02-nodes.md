@@ -1,6 +1,6 @@
 # Node 操作
 
-CAS 节点的读取、上传、导航与批量检查。
+CAS 节点的读取、上传、批量检查与 Claim。
 
 ---
 
@@ -54,24 +54,25 @@ Content-Type: application/json
 PUT /api/realm/usr_abc123/nodes/nod_abc123...
 Authorization: Bearer {access_token 或 jwt}
 Content-Type: application/octet-stream
+X-CAS-Child-Proofs: nod_child1...:0:1,nod_child2...:0:2
 
 (CAS 二进制节点数据)
 ```
 
 请求体为 CAS 二进制格式的节点数据（f-node、d-node 或 s-node）。
 
-**不需要任何额外 Header 或 query parameter** — 子节点引用通过 ownership 检查自动验证。
+### Headers
+
+| Header | 必填 | 说明 |
+|--------|------|------|
+| `X-CAS-Child-Proofs` | 否 | d-node 子节点的 scope 证明（当子节点非当前 Delegate 链上传时提供） |
 
 ### 验证流程
 
 1. **结构验证**：校验 CAS 二进制格式合法性
 2. **Hash 验证**：计算 BLAKE3 hash，与 URL 中的 key 比对
-3. **子节点引用验证**（d-node）：每个 child 需通过 **ownership 检查**（`hasOwnership(childKey, delegateId)`）
+3. **子节点引用验证**（d-node）：每个 child 需通过 ownership 验证或 scope 验证
 4. **配额检查**：确认 Realm 配额充足
-
-> **子节点 ownership**：上传 d-node 时，所有引用的子节点必须被当前 Delegate 链拥有。如果子节点不属于自己（例如引用 scope 内已有节点），需要先通过 `POST /api/realm/{realmId}/claim` 获取 ownership，然后再 PUT。
->
-> **Root delegate（depth=0）跳过**子节点 ownership 检查（全部放行）。
 
 ### 响应
 
@@ -96,22 +97,27 @@ Content-Type: application/octet-stream
 | `UPLOAD_NOT_ALLOWED` | 403 | Delegate 没有 canUpload 权限 |
 | `REALM_QUOTA_EXCEEDED` | 403 | Realm 存储配额不足 |
 | `missing_nodes` | 409 | d-node 引用的子节点不存在（`missing` 字段列出缺失的 key） |
-| `CHILD_NOT_AUTHORIZED` | 403 | d-node 子节点 ownership 验证失败（`unauthorized` 字段列出未授权的 key） |
+| `CHILD_NOT_AUTHORIZED` | 403 | d-node 子节点引用验证失败（`unauthorized` 字段列出未授权的 key） |
 
 ---
 
 ## GET /api/realm/{realmId}/nodes/:key
 
-读取节点原始二进制数据。
+读取节点原始二进制数据。需要 Scope 证明。
 
 ### 请求
 
 ```http
 GET /api/realm/usr_abc123/nodes/nod_abc123...
 Authorization: Bearer {access_token 或 jwt}
+X-CAS-Proof: 0:1:2
 ```
 
-`:key` 必须通过 Direct Authorization Check（见 [04-realm/README.md](./README.md)）。
+### Headers
+
+| Header | 必填 | 说明 |
+|--------|------|------|
+| `X-CAS-Proof` | 是 | 证明节点在 Delegate scope 内的 index-path |
 
 ### 响应
 
@@ -126,83 +132,21 @@ Authorization: Bearer {access_token 或 jwt}
 | 错误码 | HTTP Status | 说明 |
 |--------|-------------|------|
 | `not_found` | 404 | 节点不存在 |
-| `NODE_NOT_AUTHORIZED` | 403 | nodeId 未通过 Direct Authorization Check |
+| `NODE_NOT_IN_SCOPE` | 403 | 节点不在授权范围 |
 
 ---
 
-## GET /api/realm/{realmId}/nodes/:key/~0/~1/~2
+## GET /api/realm/{realmId}/nodes/:key/metadata
 
-从 `:key` 沿 `~N` index path 导航，读取到达的目标节点二进制数据。
+获取节点结构化元信息。需要 Scope 证明。
 
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/nodes/nod_SCOPE_ROOT/~1/~2
+GET /api/realm/usr_abc123/nodes/nod_abc123.../metadata
 Authorization: Bearer {access_token 或 jwt}
+X-CAS-Proof: 0:1
 ```
-
-- `:key` 必须通过 Direct Authorization Check
-- URL 中 `:key` 之后的每一段必须是 `~N` 格式（`~0`, `~1`, `~2` ...）
-- 服务端从 `:key` 开始，沿 children 数组的第 N 个位置逐层向下导航
-- 最终到达的节点返回二进制内容
-
-### 路由规则
-
-```
-GET /:realmId/nodes/:key/*
-```
-
-通配符 `*` 部分所有段必须是 `~\d+` 格式，否则返回 404。`/nodes/:key` 下没有任何子路由（`metadata`、`fs`、`claim` 已独立），通配符零冲突。
-
-### 响应
-
-与 `GET /nodes/:key` 相同：
-
-- **Content-Type**: `application/octet-stream`
-- **X-CAS-Kind**: 节点类型
-- **X-CAS-Payload-Size**: 有效数据大小
-- **X-CAS-Content-Type**: MIME 类型（仅 file 节点）
-- **Body**: 目标节点的 CAS 二进制数据
-
-### 错误
-
-| 错误码 | HTTP Status | 说明 |
-|--------|-------------|------|
-| `NODE_NOT_AUTHORIZED` | 403 | `:key` 未通过 Direct Authorization Check |
-| `not_found` | 404 | 起始节点不存在 |
-| `INDEX_OUT_OF_BOUNDS` | 400 | `~N` 中 N 超出 children 数组范围 |
-| `NOT_A_DIRECTORY` | 400 | 导航中途遇到非 d-node（无 children） |
-
-### 示例
-
-```bash
-# Root delegate — 直接访问任意节点
-GET /api/realm/R/nodes/nod_ABC123
-Authorization: Bearer {jwt}
-
-# Scoped delegate — 从 scope root 导航到子节点
-GET /api/realm/R/nodes/nod_SCOPE_ROOT/~0/~3
-Authorization: Bearer {access_token}
-
-# 多级导航
-GET /api/realm/R/nodes/nod_SCOPE_ROOT/~1/~0/~2
-Authorization: Bearer {access_token}
-```
-
----
-
-## GET /api/realm/{realmId}/metadata/:key
-
-获取节点结构化元信息。
-
-### 请求
-
-```http
-GET /api/realm/usr_abc123/metadata/nod_abc123...
-Authorization: Bearer {access_token 或 jwt}
-```
-
-`:key` 必须通过 Direct Authorization Check。
 
 ### 响应（dict 节点）
 
@@ -250,40 +194,55 @@ Authorization: Bearer {access_token 或 jwt}
 | `contentType` | `string` | MIME 类型（仅 file） |
 | `successor` | `string \| null` | 后继节点 key（仅 file / successor） |
 
-### 错误
-
-| 错误码 | HTTP Status | 说明 |
-|--------|-------------|------|
-| `not_found` | 404 | 节点不存在 |
-| `NODE_NOT_AUTHORIZED` | 403 | nodeId 未通过 Direct Authorization Check |
-
 ---
 
-## GET /api/realm/{realmId}/metadata/:key/~0/~1/~2
+## POST /api/realm/{realmId}/nodes/:key/claim
 
-从 `:key` 沿 `~N` index path 导航，获取到达的目标节点元信息。
+通过 Proof-of-Possession (PoP) 方式 Claim 已存在节点的所有权。需要 `canUpload` 权限。
 
-与 node 导航路由完全对应，仅返回格式不同（JSON metadata 而非二进制）。
+### 设计动机
+
+当节点已被其他 Delegate 上传至存储，当前 Delegate 想获取其所有权（例如，将其挂载到自己的目录树中），可通过 PoP 证明持有 AT 字节和节点内容来 Claim。
 
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/metadata/nod_SCOPE_ROOT/~1/~2
+POST /api/realm/usr_abc123/nodes/nod_abc123.../claim
 Authorization: Bearer {access_token 或 jwt}
+Content-Type: application/json
+
+{
+  "pop": "PoP-hash-string..."
+}
 ```
 
-### 路由规则
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `pop` | `string` | Proof-of-Possession 值：`BLAKE3-128-keyed(AT_bytes, node_content)` 的 Crockford Base32 编码 |
 
-```
-GET /:realmId/metadata/:key/*
-```
-
-通配符 `*` 部分所有段必须是 `~\d+` 格式。
+> **Root Delegate 例外**：depth=0 的 Root Delegate 使用 JWT 认证，没有 AT 字节，因此 PoP 验证被跳过（JWT 已证明身份）。
 
 ### 响应
 
-与 `GET /metadata/:key` 相同（dict / file / successor 三种格式）。
+```json
+{
+  "nodeHash": "nod_abc123...",
+  "alreadyOwned": false,
+  "delegateId": "dlt_abc123..."
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `nodeHash` | `string` | 节点 key |
+| `alreadyOwned` | `boolean` | `true` = 已拥有（幂等返回），`false` = 新 Claim |
+| `delegateId` | `string` | 执行 Claim 的 Delegate ID |
 
 ### 错误
 
-与 node 导航路由相同（`NODE_NOT_AUTHORIZED`、`INDEX_OUT_OF_BOUNDS`、`NOT_A_DIRECTORY`）。
+| 错误码 | HTTP Status | 说明 |
+|--------|-------------|------|
+| `UPLOAD_NOT_ALLOWED` | 403 | Delegate 没有 canUpload 权限 |
+| `REALM_MISMATCH` | 403 | Token realm 与请求 realm 不匹配 |
+| `NODE_NOT_FOUND` | 404 | 节点不存在 |
+| `INVALID_POP` | 403 | PoP 验证失败 |

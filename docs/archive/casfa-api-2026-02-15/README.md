@@ -2,7 +2,7 @@
 
 CASFA (Content-Addressable Storage for Agents) 是一个为 AI Agent 设计的内容寻址存储服务 API。
 
-> **日期**: 2026-02-15
+> **日期**: 2026-02-12
 
 ## 概述
 
@@ -32,29 +32,13 @@ CASFA 采用 **Delegate 授权体系**，提供统一的认证和授权机制。
 | 能力 | User JWT (Root Delegate) | Access Token (Child) | Refresh Token |
 |------|--------------------------|---------------------|---------------|
 | 转签发 Child Delegate | ✓ | ✓ | ✗ |
-| 读取 Node | ✓ | ✓ | ✗ |
+| 读取 Node | ✓ (需 scope 证明) | ✓ (需 scope 证明) | ✗ |
 | 写入 Node | ✓ (需 canUpload) | ✓ (需 canUpload) | ✗ |
 | Depot 操作 | ✓ (需 canManageDepot) | ✓ (需 canManageDepot) | ✗ |
 | 旋转获取新 AT | ✗ (JWT 自动续期) | ✗ | ✓ |
 | 管理用户 | ✓ (需 admin) | ✗ | ✗ |
 
 > **Root Delegate 特殊性**：Root delegate 使用 JWT 直接访问 Realm 数据路由，中间件自动将 JWT 转换为 `AccessTokenAuthContext`，下游无感知。Root delegate 不持有 RT/AT，不需要 refresh。PoP 验证也自动跳过。
-
-### 授权模型
-
-Realm 路由中对 `:key`（nodeId）执行 **Direct Authorization Check**：
-
-```
-nodeId 授权判定：
-  1. root delegate（depth=0）→ ✅ 任意 nodeId 放行
-  2. hasOwnership(nodeId, delegateId) → ✅ 放行
-  3. nodeId ∈ delegate.scopeRoots → ✅ 放行
-  4. 否则 → ❌ 403
-```
-
-这是 O(1) 检查，不需要自定义 Header（`X-CAS-Proof`）或 DAG proof walk。
-
-URL 中的 `~N` 导航段 / FS `?path=` 中的 `~N` 段提供从 `nodeId` 向下的隐式授权 — 能从 `nodeId` 沿 DAG 走到的节点，天然在 delegate 的授权范围内。
 
 ## ID 格式规范
 
@@ -141,68 +125,34 @@ URL 中的 `~N` 导航段 / FS `?path=` 中的 `~N` 段提供从 `nodeId` 向下
 
 [详细文档](./04-realm/README.md)
 
-#### Node 操作
-
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
-| POST | `/api/realm/{realmId}/nodes/check` | 批量检查节点状态 | AT 或 JWT |
+| GET | `/api/realm/{realmId}` | 获取 Realm 端点信息 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/usage` | 获取使用统计 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/nodes/:key` | 读取节点 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/nodes/:key/metadata` | 获取节点元信息 | AT 或 JWT |
 | PUT | `/api/realm/{realmId}/nodes/:key` | 上传节点 | AT 或 JWT (canUpload) |
-| GET | `/api/realm/{realmId}/nodes/:key` | 读取节点二进制 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/nodes/:key/~0/~1` | 导航读取节点 | AT 或 JWT |
-
-#### Metadata 操作
-
-| 方法 | 路径 | 描述 | 认证 |
-|------|------|------|------|
-| GET | `/api/realm/{realmId}/metadata/:key` | 获取节点元信息 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/metadata/:key/~0/~1` | 导航获取元信息 | AT 或 JWT |
-
-#### 文件系统操作
-
-| 方法 | 路径 | 描述 | 认证 |
-|------|------|------|------|
-| GET | `/api/realm/{realmId}/fs/:key/stat` | 文件/目录元信息 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/fs/:key/read` | 读取文件内容 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/fs/:key/ls` | 列出目录内容 | AT 或 JWT |
-| POST | `/api/realm/{realmId}/fs/:key/write` | 创建或覆盖文件 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/:key/mkdir` | 创建目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/:key/rm` | 删除文件或目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/:key/mv` | 移动/重命名 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/:key/cp` | 复制文件或目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/:key/rewrite` | 声明式批量重写 | AT 或 JWT (canUpload) |
-
-#### Claim 操作
-
-| 方法 | 路径 | 描述 | 认证 |
-|------|------|------|------|
-| POST | `/api/realm/{realmId}/claim` | 批量 Claim 节点所有权 | AT 或 JWT (canUpload) |
-
-#### Delegate 管理
-
-| 方法 | 路径 | 描述 | 认证 |
-|------|------|------|------|
+| POST | `/api/realm/{realmId}/nodes/check` | 批量检查节点状态 | AT 或 JWT |
+| POST | `/api/realm/{realmId}/nodes/:key/claim` | 认领节点所有权 (PoP) | AT 或 JWT (canUpload) |
+| GET | `…/nodes/:key/fs/stat` | 获取文件/目录元信息 | AT 或 JWT + Proof |
+| GET | `…/nodes/:key/fs/read` | 读取文件内容 | AT 或 JWT + Proof |
+| GET | `…/nodes/:key/fs/ls` | 列出目录内容 | AT 或 JWT + Proof |
+| POST | `…/nodes/:key/fs/write` | 创建或覆盖文件 | AT 或 JWT + Proof (canUpload) |
+| POST | `…/nodes/:key/fs/mkdir` | 创建目录 | AT 或 JWT + Proof (canUpload) |
+| POST | `…/nodes/:key/fs/rm` | 删除文件或目录 | AT 或 JWT + Proof (canUpload) |
+| POST | `…/nodes/:key/fs/mv` | 移动/重命名 | AT 或 JWT + Proof (canUpload) |
+| POST | `…/nodes/:key/fs/cp` | 复制文件或目录 | AT 或 JWT + Proof (canUpload) |
+| POST | `…/nodes/:key/fs/rewrite` | 声明式批量重写目录树 | AT 或 JWT + Proof (canUpload) |
 | POST | `/api/realm/{realmId}/delegates` | 创建子 Delegate | AT 或 JWT |
-| GET | `/api/realm/{realmId}/delegates` | 列出直属子 Delegate | AT 或 JWT |
+| GET | `/api/realm/{realmId}/delegates` | 列出子 Delegate | AT 或 JWT |
 | GET | `/api/realm/{realmId}/delegates/:delegateId` | 获取 Delegate 详情 | AT 或 JWT |
-| POST | `/api/realm/{realmId}/delegates/:delegateId/revoke` | 撤销 Delegate（级联） | AT 或 JWT |
-
-#### Depot 操作
-
-| 方法 | 路径 | 描述 | 认证 |
-|------|------|------|------|
+| POST | `/api/realm/{realmId}/delegates/:delegateId/revoke` | 撤销 Delegate | AT 或 JWT |
 | GET | `/api/realm/{realmId}/depots` | 列出 Depot | AT 或 JWT |
 | POST | `/api/realm/{realmId}/depots` | 创建 Depot | AT 或 JWT (canManageDepot) |
 | GET | `/api/realm/{realmId}/depots/:depotId` | 获取 Depot 详情 | AT 或 JWT |
 | PATCH | `/api/realm/{realmId}/depots/:depotId` | 修改 Depot | AT 或 JWT (canManageDepot) |
 | DELETE | `/api/realm/{realmId}/depots/:depotId` | 删除 Depot | AT 或 JWT (canManageDepot) |
 | POST | `/api/realm/{realmId}/depots/:depotId/commit` | 提交新 Root | AT 或 JWT (canUpload) |
-
-#### 基本信息
-
-| 方法 | 路径 | 描述 | 认证 |
-|------|------|------|------|
-| GET | `/api/realm/{realmId}` | 获取 Realm 端点信息 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/usage` | 获取使用统计 | AT 或 JWT |
 
 ## 错误响应
 
@@ -235,15 +185,16 @@ URL 中的 `~N` 导航段 / FS `?path=` 中的 `~N` 段提供从 `nodeId` 向下
 | `REALM_MISMATCH` | 403 | Token realm 与 URL realmId 不匹配 |
 | `INVALID_SCOPE` | 400 | Scope 不是父 delegate 的子集 |
 | `PERMISSION_ESCALATION` | 400 | 权限不能超过父 delegate |
-| `NODE_NOT_AUTHORIZED` | 403 | nodeId 未通过 Direct Authorization Check |
+| `NODE_NOT_IN_SCOPE` | 403 | 节点不在授权范围 |
 | `UPLOAD_NOT_ALLOWED` | 403 | Token 没有 canUpload 权限 |
 | `DEPOT_MANAGE_NOT_ALLOWED` | 403 | Token 没有 canManageDepot 权限 |
 | `ROOT_NOT_AUTHORIZED` | 403 | Root 引用验证失败 |
-| `CHILD_NOT_AUTHORIZED` | 403 | 子节点引用验证失败（PUT 时子节点 ownership 检查不通过） |
+| `CHILD_NOT_AUTHORIZED` | 403 | 子节点引用验证失败 |
 | `INVALID_POP` | 403 | Proof-of-Possession 校验失败 |
 | `NODE_NOT_FOUND` | 404 | 节点不存在 |
 | `REALM_QUOTA_EXCEEDED` | 403 | 超出 Realm 配额限制 |
 | `MAX_DEPTH_EXCEEDED` | 400 | 超出最大转签发深度 |
+| `INDEX_PATH_REQUIRED` | 400 | 缺少 X-CAS-Index-Path |
 | `INTERNAL_ERROR` | 500 | 服务器内部错误 |
 
 ## 幂等性保证

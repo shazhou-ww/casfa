@@ -20,12 +20,35 @@ Authorization: Bearer {access_token_base64 或 jwt}
 
 URL 中的 `realmId` 必须与 Token 关联的 realm 一致，否则返回 `403 REALM_MISMATCH`。
 
+## 授权模型
+
+### Direct Authorization Check
+
+Node / Metadata / FS 路由中的 `:key` 参数必须是 delegate **直接有权访问**的节点：
+
+```
+nodeId 授权判定：
+  1. root delegate（depth=0）→ ✅ 任意 nodeId 放行
+  2. hasOwnership(nodeId, delegateId) → ✅ 放行
+  3. nodeId ∈ delegate.scopeRoots → ✅ 放行
+  4. 否则 → ❌ 403 NODE_NOT_AUTHORIZED
+```
+
+这是 O(1) 检查。不需要自定义 Header 或 proof walk。
+
+### 隐式授权（~N 导航）
+
+通过 Direct Authorization Check 后，URL 中的 `~N` 导航段或 FS `?path=` 中的 `~N` 前缀段，沿 DAG children 数组向下遍历。到达的任何节点都在 `nodeId` 子树中，天然在授权范围内。
+
+`~N` 格式遵循 CAS URI 规范（`02-cas-uri.md`），表示 children 数组的第 N 个子节点。
+
 ## 子文档
 
 - [端点信息与使用统计](./01-endpoint.md) — Realm 基本信息和 usage 统计
-- [Node 操作](./02-nodes.md) — 节点的读取、上传与 Claim
+- [Node 操作](./02-nodes.md) — 节点的读取、上传与导航
 - [文件系统操作](./03-filesystem.md) — 基于 Node 的类文件系统 CRUD
 - [Depot 管理](./04-depots.md) — 命名存储空间的 CRUD 与 Commit
+- [Claim 操作](./05-claim.md) — 批量 claim 节点所有权（PoP + path-based）
 
 ## 端点列表
 
@@ -51,25 +74,35 @@ URL 中的 `realmId` 必须与 Token 关联的 realm 一致，否则返回 `403 
 |------|------|------|------|
 | POST | `/api/realm/{realmId}/nodes/check` | 批量检查节点状态 | AT 或 JWT |
 | PUT | `/api/realm/{realmId}/nodes/:key` | 上传节点 | AT 或 JWT (canUpload) |
-| GET | `/api/realm/{realmId}/nodes/:key` | 读取节点原始二进制 | AT 或 JWT + Proof |
-| GET | `/api/realm/{realmId}/nodes/:key/metadata` | 获取节点元信息 | AT 或 JWT + Proof |
-| POST | `/api/realm/{realmId}/nodes/:key/claim` | PoP 方式 Claim 节点所有权 | AT 或 JWT (canUpload) |
+| GET | `/api/realm/{realmId}/nodes/:key` | 读取节点二进制 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/nodes/:key/~0/~1/...` | 导航读取节点 | AT 或 JWT |
+
+### Metadata 操作
+
+| 方法 | 路径 | 描述 | 认证 |
+|------|------|------|------|
+| GET | `/api/realm/{realmId}/metadata/:key` | 获取节点元信息 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/metadata/:key/~0/~1/...` | 导航获取元信息 | AT 或 JWT |
 
 ### 文件系统操作
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
-| GET | `…/nodes/:key/fs/stat` | 获取文件/目录元信息 | AT 或 JWT + Proof |
-| GET | `…/nodes/:key/fs/read` | 读取文件内容 | AT 或 JWT + Proof |
-| GET | `…/nodes/:key/fs/ls` | 列出目录内容 | AT 或 JWT + Proof |
-| POST | `…/nodes/:key/fs/write` | 创建或覆盖文件 | AT 或 JWT + Proof (canUpload) |
-| POST | `…/nodes/:key/fs/mkdir` | 创建目录 | AT 或 JWT + Proof (canUpload) |
-| POST | `…/nodes/:key/fs/rm` | 删除文件或目录 | AT 或 JWT + Proof (canUpload) |
-| POST | `…/nodes/:key/fs/mv` | 移动/重命名 | AT 或 JWT + Proof (canUpload) |
-| POST | `…/nodes/:key/fs/cp` | 复制文件或目录 | AT 或 JWT + Proof (canUpload) |
-| POST | `…/nodes/:key/fs/rewrite` | 声明式批量重写目录树 | AT 或 JWT + Proof (canUpload) |
+| GET | `/api/realm/{realmId}/fs/:key/stat` | 获取文件/目录元信息 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/fs/:key/read` | 读取文件内容 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/fs/:key/ls` | 列出目录内容 | AT 或 JWT |
+| POST | `/api/realm/{realmId}/fs/:key/write` | 创建或覆盖文件 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/fs/:key/mkdir` | 创建目录 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/fs/:key/rm` | 删除文件或目录 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/fs/:key/mv` | 移动/重命名 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/fs/:key/cp` | 复制文件或目录 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/fs/:key/rewrite` | 声明式批量重写 | AT 或 JWT (canUpload) |
 
-> 文件系统操作详见 [03-filesystem.md](./03-filesystem.md)。
+### Claim 操作
+
+| 方法 | 路径 | 描述 | 认证 |
+|------|------|------|------|
+| POST | `/api/realm/{realmId}/claim` | 批量 Claim 节点所有权 | AT 或 JWT (canUpload) |
 
 ### Depot 操作
 
@@ -78,7 +111,7 @@ URL 中的 `realmId` 必须与 Token 关联的 realm 一致，否则返回 `403 
 | GET | `/api/realm/{realmId}/depots` | 列出 Depot | AT 或 JWT |
 | POST | `/api/realm/{realmId}/depots` | 创建 Depot | AT 或 JWT (canManageDepot) |
 | GET | `/api/realm/{realmId}/depots/:depotId` | 获取 Depot 详情 | AT 或 JWT |
-| PATCH | `/api/realm/{realmId}/depots/:depotId` | 修改 Depot 元信息 | AT 或 JWT (canManageDepot) |
+| PATCH | `/api/realm/{realmId}/depots/:depotId` | 修改 Depot | AT 或 JWT (canManageDepot) |
 | DELETE | `/api/realm/{realmId}/depots/:depotId` | 删除 Depot | AT 或 JWT (canManageDepot) |
 | POST | `/api/realm/{realmId}/depots/:depotId/commit` | 提交新 Root | AT 或 JWT (canUpload) |
 
@@ -93,40 +126,14 @@ URL 中的 `realmId` 必须与 Token 关联的 realm 一致，否则返回 `403 
 
 ### Scope 限制
 
-读取节点时需要证明节点在 Delegate 的 scope 内。通过 `X-CAS-Proof` Header 提供证明：
+读取节点时，`:key` 必须通过 Direct Authorization Check。不再需要 `X-CAS-Proof` 自定义 Header。
 
-```http
-GET /api/realm/{realmId}/nodes/:key
+```bash
+# Scoped delegate 访问自己的 scope root
+GET /api/realm/{realmId}/nodes/nod_SCOPE_ROOT
 Authorization: Bearer {access_token}
-X-CAS-Proof: 0:1:2
+
+# 从 scope root 沿 ~N 导航
+GET /api/realm/{realmId}/nodes/nod_SCOPE_ROOT/~1/~2
+Authorization: Bearer {access_token}
 ```
-
-### 所有权验证
-
-上传节点时，d-node 的每个 child 引用都需通过所有权验证：
-
-1. **Ownership 验证**：child 被 Delegate 链中任一成员上传过
-2. **Scope 验证**：通过 `X-CAS-Child-Proofs` Header 提供 child 的 scope 证明
-
-## 错误响应
-
-### Token 相关
-
-| 错误码 | HTTP Status | 说明 |
-|--------|-------------|------|
-| `INVALID_TOKEN_FORMAT` | 401 | Token 格式无效 |
-| `TOKEN_NOT_FOUND` | 401 | Delegate 不存在 |
-| `TOKEN_REVOKED` | 401 | Delegate 已被撤销 |
-| `TOKEN_EXPIRED` | 401 | AT 已过期 |
-| `ACCESS_TOKEN_REQUIRED` | 403 | 需要 AT 或 JWT |
-
-### 访问控制相关
-
-| 错误码 | HTTP Status | 说明 |
-|--------|-------------|------|
-| `REALM_MISMATCH` | 403 | Token realm 与 URL realmId 不匹配 |
-| `NODE_NOT_IN_SCOPE` | 403 | 节点不在授权范围 |
-| `UPLOAD_NOT_ALLOWED` | 403 | Delegate 没有 canUpload 权限 |
-| `DEPOT_MANAGE_NOT_ALLOWED` | 403 | Delegate 没有 canManageDepot 权限 |
-| `CHILD_NOT_AUTHORIZED` | 403 | 上传 d-node 时子节点引用验证失败 |
-| `ROOT_NOT_AUTHORIZED` | 403 | Commit Depot 时 root 所有权验证失败 |

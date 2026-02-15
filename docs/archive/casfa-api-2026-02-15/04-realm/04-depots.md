@@ -254,10 +254,10 @@ Content-Type: application/json
 
 ```
 1. 读取文件
-   GET /api/realm/{realmId}/fs/dpt_xxx/read?path=src/main.ts
+   GET /api/realm/{realmId}/nodes/dpt_xxx/fs/read?path=src/main.ts
 
 2. 写入修改后的文件
-   POST /api/realm/{realmId}/fs/dpt_xxx/write?path=src/main.ts
+   POST /api/realm/{realmId}/nodes/dpt_xxx/fs/write?path=src/main.ts
    → newRoot: "nod_modified..."
 
 3. 提交到 Depot
@@ -269,11 +269,11 @@ Content-Type: application/json
 
 ```
 1. 第一次修改
-   POST /api/realm/{realmId}/fs/dpt_xxx/write?path=file1.ts
+   POST /api/realm/{realmId}/nodes/dpt_xxx/fs/write?path=file1.ts
    → newRoot: "nod_step1..."
 
 2. 基于上一步的 newRoot 继续修改
-   POST /api/realm/{realmId}/fs/nod_step1.../write?path=file2.ts
+   POST /api/realm/{realmId}/nodes/nod_step1.../fs/write?path=file2.ts
    → newRoot: "nod_step2..."
 
 3. 一次性提交最终 Root
