@@ -155,41 +155,41 @@ URL 中的 `~N` 导航段 / FS `?path=` 中的 `~N` 段提供从 `nodeId` 向下
 
 [详细文档](./04-realm/README.md)
 
-#### Node 操作
+#### Node 二进制操作
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
-| PUT | `/api/realm/{realmId}/nodes/:key` | 上传节点 | AT 或 JWT (canUpload) |
-| GET | `/api/realm/{realmId}/nodes/:key` | 读取节点二进制 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/nodes/:key/~0/~1` | 导航读取节点 | AT 或 JWT |
+| PUT | `/api/realm/{realmId}/nodes/raw/:key` | 上传节点 | AT 或 JWT (canUpload) |
+| GET | `/api/realm/{realmId}/nodes/raw/:key` | 读取节点二进制 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/nodes/raw/:key/~0/~1` | 导航读取节点 | AT 或 JWT |
 
-#### Metadata 操作
-
-| 方法 | 路径 | 描述 | 认证 |
-|------|------|------|------|
-| GET | `/api/realm/{realmId}/metadata/:key` | 获取节点元信息 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/metadata/:key/~0/~1` | 导航获取元信息 | AT 或 JWT |
-
-#### 文件系统操作
+#### Node Metadata 操作
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
-| GET | `/api/realm/{realmId}/fs/:key/stat` | 文件/目录元信息 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/fs/:key/read` | 读取文件内容 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/fs/:key/ls` | 列出目录内容 | AT 或 JWT |
-| POST | `/api/realm/{realmId}/fs/:key/write` | 创建或覆盖文件 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/:key/mkdir` | 创建目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/:key/rm` | 删除文件或目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/:key/mv` | 移动/重命名 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/:key/cp` | 复制文件或目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/:key/rewrite` | 声明式批量重写 | AT 或 JWT (canUpload) |
+| GET | `/api/realm/{realmId}/nodes/metadata/:key` | 获取节点元信息 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/nodes/metadata/:key/~0/~1` | 导航获取元信息 | AT 或 JWT |
 
-#### Check & Claim 操作
+#### Node 文件系统操作
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
-| POST | `/api/realm/{realmId}/check` | 批量检查节点状态 | AT 或 JWT |
-| POST | `/api/realm/{realmId}/claim` | 批量 Claim 节点所有权 | AT 或 JWT (canUpload) |
+| GET | `/api/realm/{realmId}/nodes/fs/:key/stat` | 文件/目录元信息 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/nodes/fs/:key/read` | 读取文件内容 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/nodes/fs/:key/ls` | 列出目录内容 | AT 或 JWT |
+| POST | `/api/realm/{realmId}/nodes/fs/:key/write` | 创建或覆盖文件 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/fs/:key/mkdir` | 创建目录 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/fs/:key/rm` | 删除文件或目录 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/fs/:key/mv` | 移动/重命名 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/fs/:key/cp` | 复制文件或目录 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/fs/:key/rewrite` | 声明式批量重写 | AT 或 JWT (canUpload) |
+
+#### Node Check & Claim 操作
+
+| 方法 | 路径 | 描述 | 认证 |
+|------|------|------|------|
+| POST | `/api/realm/{realmId}/nodes/check` | 批量检查节点状态 | AT 或 JWT |
+| POST | `/api/realm/{realmId}/nodes/claim` | 批量 Claim 节点所有权 | AT 或 JWT (canUpload) |
 
 #### Delegate 管理
 
@@ -267,7 +267,7 @@ URL 中的 `~N` 导航段 / FS `?path=` 中的 `~N` 段提供从 `nodeId` 向下
 | 操作 | 幂等性 | 说明 |
 |------|--------|------|
 | `GET` 所有端点 | ✅ 幂等 | 读取操作 |
-| `PUT /nodes/:key` | ✅ 幂等 | 相同内容产生相同 key |
+| `PUT /nodes/raw/:key` | ✅ 幂等 | 相同内容产生相同 key |
 | `DELETE` 资源 | ✅ 幂等 | 重复删除返回成功 |
 | `fs/stat`, `fs/read`, `fs/ls` | ✅ 幂等 | 读取操作 |
 | `fs/mkdir` | ⚠️ 条件幂等 | 目录已存在时返回当前 root |
