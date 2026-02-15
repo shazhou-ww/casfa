@@ -8,6 +8,8 @@ CAS 节点的读取、上传、导航与批量检查。
 
 批量检查节点在存储中的状态。返回 missing（不存在）、owned（存在且被当前 Delegate 链拥有）、unowned（存在但未被拥有）三类。
 
+> **无需 Direct Authorization Check**：check 只查询节点的存在性和 ownership 状态，不返回节点内容，因此不要求 nodeId 在 delegate 的 scope 内。任何有效的 AT/JWT 都可以查询任意 key。
+
 ### 请求
 
 ```http
@@ -246,7 +248,7 @@ Authorization: Bearer {access_token 或 jwt}
 | `key` | `string` | 节点 key |
 | `kind` | `string` | 节点类型 |
 | `payloadSize` | `number` | 有效数据大小 |
-| `children` | `Record<string, string>` | 子节点映射（仅 dict） |
+| `children` | `Record<string, string>` | 子节点名称→key 映射（仅 dict）。注意：JSON object 不保证顺序，如需按索引定位子节点请使用 `~N` 导航或 `fs/ls`（返回 `index` 字段） |
 | `contentType` | `string` | MIME 类型（仅 file） |
 | `successor` | `string \| null` | 后继节点 key（仅 file / successor） |
 
