@@ -59,7 +59,7 @@ GET /nodes/nod_TARGET
 X-CAS-Proof: {"TARGET_HASH":"ipath#0:1:2"}
 
 # 新模型：直接用 scope root 作为 nodeId，路径导航到 target
-GET /nodes/nod_SCOPE_ROOT/~1/~2
+GET /nodes/raw/nod_SCOPE_ROOT/~1/~2
 ```
 
 FS 操作中同理：
@@ -70,7 +70,7 @@ GET /nodes/nod_TARGET/fs/read?path=src/main.ts
 X-CAS-Proof: {"TARGET_HASH":"ipath#0:1:2"}
 
 # 新模型：scope root 作为 nodeId，FS path 自然包含 ~N 导航
-GET /nodes/nod_SCOPE_ROOT/fs/read?path=~1/~2/src/main.ts
+GET /nodes/fs/nod_SCOPE_ROOT/read?path=~1/~2/src/main.ts
 ```
 
 ### 2.3 为什么 proof 彻底消失了
@@ -91,74 +91,73 @@ GET /nodes/nod_SCOPE_ROOT/fs/read?path=~1/~2/src/main.ts
 
 ## 3. URL 设计
 
-### 3.1 Node 路由（`/nodes/:key`）
+### 3.1 Node 二进制路由（`/nodes/raw/:key`）
 
-`/nodes/:key` **只承载节点本体的读、写、导航**。`metadata`、`fs`、`claim` 等全部搬出，通配符无冲突。
+`/nodes/raw/:key` 承载节点本体的读、写、导航。所有 CAS 节点操作统一在 `/nodes/` 命名空间下，通过不同子路径区分：`raw/`（二进制）、`metadata/`（元信息）、`fs/`（文件系统）、`check`、`claim`。
 
 #### 直接访问
 
 ```
-GET  /:realmId/nodes/:key         → 获取节点二进制内容
-PUT  /:realmId/nodes/:key         → 上传节点（见 §6）
+GET  /:realmId/nodes/raw/:key         → 获取节点二进制内容
+PUT  /:realmId/nodes/raw/:key         → 上传节点（见 §6）
 ```
 
 #### 导航访问（从 nodeId 沿 `~N` 路径到达目标）
 
 ```
-GET  /:realmId/nodes/:key/~0/~1/~2     → 沿 index path 导航，获取目标二进制
+GET  /:realmId/nodes/raw/:key/~0/~1/~2     → 沿 index path 导航，获取目标二进制
 ```
 
 `~N` 段遵循 CAS URI 规范（02-cas-uri.md §4.2），复用 `PathSegment { kind: "index" }` 类型。
 
-通配符路由 `GET /:realmId/nodes/:key/*` 只需处理 `~N` 导航。handler 校验所有段必须是 `~\d+` 格式，否则 404。路径下没有 `metadata`、`fs` 等子路由，**零冲突**。
+通配符路由 `GET /:realmId/nodes/raw/:key/*` 只需处理 `~N` 导航。handler 校验所有段必须是 `~\d+` 格式，否则 404。`raw` 是固定路径段，与同级的 `metadata`、`fs`、`check`、`claim` 互不冲突。
 
 ```typescript
-realmRouter.get("/:realmId/nodes/:key", nodeAuthMiddleware, chunks.get)
-realmRouter.put("/:realmId/nodes/:key", canUploadMiddleware, chunks.put)
-realmRouter.get("/:realmId/nodes/:key/*", nodeAuthMiddleware, chunks.getNavigated)
-// 无其他子路由 — 通配符安全
+realmRouter.get("/:realmId/nodes/raw/:key", nodeAuthMiddleware, chunks.get)
+realmRouter.put("/:realmId/nodes/raw/:key", canUploadMiddleware, chunks.put)
+realmRouter.get("/:realmId/nodes/raw/:key/*", nodeAuthMiddleware, chunks.getNavigated)
 ```
 
-### 3.2 Metadata 路由（独立）
+### 3.2 Metadata 路由（`/nodes/metadata/:key`）
 
-从 `/nodes/:key/metadata` 搬到独立路径：
+从 `/nodes/:key/metadata` 搬到 `/nodes/metadata/:key`：
 
 ```
-GET  /:realmId/metadata/:key              → 获取节点元数据
-GET  /:realmId/metadata/:key/~0/~1/~2     → 沿 index path 导航后获取元数据
+GET  /:realmId/nodes/metadata/:key              → 获取节点元数据
+GET  /:realmId/nodes/metadata/:key/~0/~1/~2     → 沿 index path 导航后获取元数据
 ```
 
-同样支持 `~N` 导航：通配符 `GET /:realmId/metadata/:key/*` 只处理 `~N` 段。
+同样支持 `~N` 导航：通配符 `GET /:realmId/nodes/metadata/:key/*` 只处理 `~N` 段。
 
 ```typescript
-realmRouter.get("/:realmId/metadata/:key", nodeAuthMiddleware, chunks.getMetadata)
-realmRouter.get("/:realmId/metadata/:key/*", nodeAuthMiddleware, chunks.getMetadataNavigated)
+realmRouter.get("/:realmId/nodes/metadata/:key", nodeAuthMiddleware, chunks.getMetadata)
+realmRouter.get("/:realmId/nodes/metadata/:key/*", nodeAuthMiddleware, chunks.getMetadataNavigated)
 ```
 
-### 3.3 FS 路由（独立）
+### 3.3 FS 路由（`/nodes/fs/:key`）
 
-从 `/nodes/:key/fs/*` 搬到独立路径：
+从 `/nodes/:key/fs/*` 搬到 `/nodes/fs/:key/*`：
 
 ```
-GET  /:realmId/fs/:key/stat          → stat
-GET  /:realmId/fs/:key/read          → read（?path=~1/~2/src/main.ts）
-GET  /:realmId/fs/:key/ls            → ls（?path=src）
-POST /:realmId/fs/:key/write         → write
-POST /:realmId/fs/:key/mkdir         → mkdir
-POST /:realmId/fs/:key/rm            → rm
-POST /:realmId/fs/:key/mv            → mv
-POST /:realmId/fs/:key/cp            → cp
-POST /:realmId/fs/:key/rewrite       → rewrite
+GET  /:realmId/nodes/fs/:key/stat          → stat
+GET  /:realmId/nodes/fs/:key/read          → read（?path=~1/~2/src/main.ts）
+GET  /:realmId/nodes/fs/:key/ls            → ls（?path=src）
+POST /:realmId/nodes/fs/:key/write         → write
+POST /:realmId/nodes/fs/:key/mkdir         → mkdir
+POST /:realmId/nodes/fs/:key/rm            → rm
+POST /:realmId/nodes/fs/:key/mv            → mv
+POST /:realmId/nodes/fs/:key/cp            → cp
+POST /:realmId/nodes/fs/:key/rewrite       → rewrite
 ```
 
 `:key` 必须是 delegate 直接有权访问的节点。`?path=` 中的 `~N` 段提供从该节点向下的 DAG 导航，后续 name 段在导航达到的子树中按名称查找。
 
-### 3.4 Claim 路由（独立）
+### 3.4 Claim 路由（`/nodes/claim`）
 
-从 `/nodes/:key/claim` 搬到 realm 级别（同时支持批量，见 §6.2）：
+从 `/nodes/:key/claim` 搬到 `/nodes/claim`（同时支持批量，见 §6.2）：
 
 ```
-POST /:realmId/claim                 → 批量 claim（PoP + path-based）
+POST /:realmId/nodes/claim           → 批量 claim（PoP + path-based）
 ```
 
 ### 3.5 Nodes Check（不变）
@@ -173,42 +172,42 @@ POST /:realmId/nodes/check           → 批量检查节点存在性（不变）
 
 | 路由类型 | 当前 | 新模型 |
 |---------|------|--------|
-| `GET /nodes/:key` | `:key`=target, `X-CAS-Proof` | `:key`=authorized node |
-| `GET /nodes/:key/~0/~1` | N/A | 从 `:key` 沿 index path 导航 |
-| `GET /nodes/:key/metadata` | `:key`=target, `X-CAS-Proof` | **移至** `GET /metadata/:key` |
-| `GET /nodes/:key/fs/read` | `:key`=target, `X-CAS-Proof`, `?path=` | **移至** `GET /fs/:key/read?path=~0/~1/src/main.ts` |
-| `POST /nodes/:key/fs/mkdir` | `:key`=target, `X-CAS-Proof`, body `path` | **移至** `POST /fs/:key/mkdir` |
-| `POST /nodes/:key/claim` | `:key`=target, `{ pop }` | **移至** `POST /claim`（批量） |
-| `PUT /nodes/:key` | `X-CAS-Child-Proofs` | 见 [§6](#6-put-子节点引用-与-claim-改造) |
+| `GET /nodes/:key` | `:key`=target, `X-CAS-Proof` | **移至** `GET /nodes/raw/:key`（`:key`=authorized node） |
+| `GET /nodes/:key/~0/~1` | N/A | `GET /nodes/raw/:key/~0/~1` — 从 `:key` 沿 index path 导航 |
+| `GET /nodes/:key/metadata` | `:key`=target, `X-CAS-Proof` | **移至** `GET /nodes/metadata/:key` |
+| `GET /nodes/:key/fs/read` | `:key`=target, `X-CAS-Proof`, `?path=` | **移至** `GET /nodes/fs/:key/read?path=~0/~1/src/main.ts` |
+| `POST /nodes/:key/fs/mkdir` | `:key`=target, `X-CAS-Proof`, body `path` | **移至** `POST /nodes/fs/:key/mkdir` |
+| `POST /nodes/:key/claim` | `:key`=target, `{ pop }` | **移至** `POST /nodes/claim`（批量） |
+| `PUT /nodes/:key` | `X-CAS-Child-Proofs` | **移至** `PUT /nodes/raw/:key`，见 [§6](#6-put-子节点引用-与-claim-改造) |
 
 ### 3.7 完整 URL 示例
 
 ```bash
 # Root delegate — 任意节点均可访问
-GET /api/realm/R/nodes/nod_ABCDEF
+GET /api/realm/R/nodes/raw/nod_ABCDEF
 Authorization: Bearer <token>
 
 # Scoped delegate — 使用自己的 scope root
-GET /api/realm/R/nodes/nod_SCOPE_ROOT/~1/~2
+GET /api/realm/R/nodes/raw/nod_SCOPE_ROOT/~1/~2
 Authorization: Bearer <token>
 
 # 节点元数据
-GET /api/realm/R/metadata/nod_SCOPE_ROOT/~1/~2
+GET /api/realm/R/nodes/metadata/nod_SCOPE_ROOT/~1/~2
 Authorization: Bearer <token>
 
 # FS 读取，path 开头是 ~N 导航
-GET /api/realm/R/fs/nod_SCOPE_ROOT/read?path=~1/~2/src/main.ts
+GET /api/realm/R/nodes/fs/nod_SCOPE_ROOT/read?path=~1/~2/src/main.ts
 Authorization: Bearer <token>
 
 # FS ls，无导航（scope root 就是树根）
-GET /api/realm/R/fs/nod_SCOPE_ROOT/ls?path=src
+GET /api/realm/R/nodes/fs/nod_SCOPE_ROOT/ls?path=src
 Authorization: Bearer <token>
 
 # 浏览器可直接使用的链接（token 在 cookie 或 query）
-<img src="/api/realm/R/fs/nod_SCOPE_ROOT/read?path=~0/images/logo.png">
+<img src="/api/realm/R/nodes/fs/nod_SCOPE_ROOT/read?path=~0/images/logo.png">
 
 # 批量 claim
-POST /api/realm/R/claim
+POST /api/realm/R/nodes/claim
 Authorization: Bearer <token>
 { "claims": [{ "key": "nod_A", "from": "nod_SCOPE", "path": "~0/~2" }] }
 ```
@@ -265,10 +264,10 @@ proof walk = 验证 + 导航 冗余       导航 = 验证（合二为一）
 # Delegate 有 scope roots: [nod_A, nod_B]
 
 # 访问 scope A 下的节点
-GET /nodes/nod_A/~0/~1
+GET /nodes/raw/nod_A/~0/~1
 
 # 访问 scope B 下的节点
-GET /nodes/nod_B/~2
+GET /nodes/raw/nod_B/~2
 ```
 
 不再需要 scope index 的抽象层。
@@ -292,8 +291,8 @@ GET /nodes/nod_B/~2
 
 | CAS URI | HTTP URL |
 |---------|----------|
-| `cas://node:XXX/~0/~1/src/main.ts` | `/nodes/nod_XXX/fs/read?path=~0/~1/src/main.ts` |
-| `cas://node:XXX/~0/~1` | `/nodes/nod_XXX/~0/~1` |
+| `cas://node:XXX/~0/~1/src/main.ts` | `/nodes/fs/nod_XXX/read?path=~0/~1/src/main.ts` |
+| `cas://node:XXX/~0/~1` | `/nodes/raw/nod_XXX/~0/~1` |
 
 `~N` 段的语义在两个上下文中完全相同：按 children 数组索引导航。
 
@@ -316,9 +315,9 @@ GET /nodes/nod_B/~2
 
 ### 6.1 PUT 子节点引用：仅 ownership
 
-`PUT /nodes/:key` 上传节点时，如果引用了子节点，服务端验证上传者对这些子节点有 ownership。
+`PUT /nodes/raw/:key` 上传节点时，如果引用了子节点，服务端验证上传者对这些子节点有 ownership。
 
-**不再支持通过 proof/path 引用未拥有的子节点**。如果子节点不属于自己，需要先通过 `/claim` 获取 ownership，然后再 PUT。
+**不再支持通过 proof/path 引用未拥有的子节点**。如果子节点不属于自己，需要先通过 `/nodes/claim` 获取 ownership，然后再 PUT。
 
 ```
 # 旧模型：PUT 时通过 X-CAS-Child-Proofs header 证明 scope 可达性
@@ -326,7 +325,7 @@ PUT /nodes/:key
 X-CAS-Child-Proofs: nod_child1=0:1:2,nod_child2=0:3
 
 # 新模型：PUT 时只检查 ownership，无需任何额外参数
-PUT /nodes/:key
+PUT /nodes/raw/:key
 (body = raw binary, 无额外 header/query)
 ```
 
@@ -352,13 +351,13 @@ Body: { "pop": "pop:XXXXXX..." }
 #### 6.2.2 新 Claim API
 
 ```
-POST /api/realm/{realmId}/claim
+POST /api/realm/{realmId}/nodes/claim
 Body: { "claims": [...] }
 ```
 
 **改造点**：
 
-1. **路由从 `/nodes/{key}/claim` 改为 `/claim`** — 因为要支持批量 claim
+1. **路由从 `/nodes/{key}/claim` 改为 `/nodes/claim`** — 因为要支持批量 claim
 2. **支持两种 claim 方式**：PoP 和 path-based
 3. **支持批量**：一次请求 claim 多个节点
 
@@ -444,7 +443,7 @@ scoped delegate 要上传一个引用了 scope 内已有节点的新节点：
 
 ```
 # 1. 先 claim scope 内的已有节点（path-based）
-POST /api/realm/R/claim
+POST /api/realm/R/nodes/claim
 {
   "claims": [
     { "key": "nod_EXISTING_A", "from": "nod_SCOPE_ROOT", "path": "~0/~2" },
@@ -454,7 +453,7 @@ POST /api/realm/R/claim
 
 # 2. 现在 delegate 拥有 nod_EXISTING_A 和 nod_EXISTING_B
 # 上传引用它们的新节点（PUT 只检查 ownership）
-PUT /api/realm/R/nodes/nod_NEW_NODE
+PUT /api/realm/R/nodes/raw/nod_NEW_NODE
 (binary content referencing nod_EXISTING_A and nod_EXISTING_B)
 ```
 
@@ -498,27 +497,29 @@ rewrite schema 中 `link.proof` 字段可以移除：
 
 不再需要 `verifyNodeAccess`、`ProofMap`、`parseProofHeader`。
 
-### Phase 2: 路由重构 — 搬出 metadata/fs/claim
+### Phase 2: 路由重构 — 统一在 /nodes/ 命名空间下
 
 **文件**: `apps/server/backend/src/router.ts`
 
-将 `metadata`、`fs/*`、`claim` 从 `/nodes/:key/` 下搬到独立路径，使 `/nodes/:key/*` 通配符安全无冲突。
+将所有 CAS 节点操作统一到 `/nodes/` 命名空间，通过不同子路径区分：`raw/`、`metadata/`、`fs/`、`check`、`claim`。
 
 **当前路由 → 新路由**：
 
 | 当前 | 新 |
 |------|-----|
-| `GET /:realmId/nodes/:key/metadata` | `GET /:realmId/metadata/:key` |
-| `GET /:realmId/nodes/:key/fs/stat` | `GET /:realmId/fs/:key/stat` |
-| `GET /:realmId/nodes/:key/fs/read` | `GET /:realmId/fs/:key/read` |
-| `GET /:realmId/nodes/:key/fs/ls` | `GET /:realmId/fs/:key/ls` |
-| `POST /:realmId/nodes/:key/fs/write` | `POST /:realmId/fs/:key/write` |
-| `POST /:realmId/nodes/:key/fs/mkdir` | `POST /:realmId/fs/:key/mkdir` |
-| `POST /:realmId/nodes/:key/fs/rm` | `POST /:realmId/fs/:key/rm` |
-| `POST /:realmId/nodes/:key/fs/mv` | `POST /:realmId/fs/:key/mv` |
-| `POST /:realmId/nodes/:key/fs/cp` | `POST /:realmId/fs/:key/cp` |
-| `POST /:realmId/nodes/:key/fs/rewrite` | `POST /:realmId/fs/:key/rewrite` |
-| `POST /:realmId/nodes/:key/claim` | `POST /:realmId/claim`（批量，见 Phase 5） |
+| `GET /:realmId/nodes/:key` | `GET /:realmId/nodes/raw/:key` |
+| `PUT /:realmId/nodes/:key` | `PUT /:realmId/nodes/raw/:key` |
+| `GET /:realmId/nodes/:key/metadata` | `GET /:realmId/nodes/metadata/:key` |
+| `GET /:realmId/nodes/:key/fs/stat` | `GET /:realmId/nodes/fs/:key/stat` |
+| `GET /:realmId/nodes/:key/fs/read` | `GET /:realmId/nodes/fs/:key/read` |
+| `GET /:realmId/nodes/:key/fs/ls` | `GET /:realmId/nodes/fs/:key/ls` |
+| `POST /:realmId/nodes/:key/fs/write` | `POST /:realmId/nodes/fs/:key/write` |
+| `POST /:realmId/nodes/:key/fs/mkdir` | `POST /:realmId/nodes/fs/:key/mkdir` |
+| `POST /:realmId/nodes/:key/fs/rm` | `POST /:realmId/nodes/fs/:key/rm` |
+| `POST /:realmId/nodes/:key/fs/mv` | `POST /:realmId/nodes/fs/:key/mv` |
+| `POST /:realmId/nodes/:key/fs/cp` | `POST /:realmId/nodes/fs/:key/cp` |
+| `POST /:realmId/nodes/:key/fs/rewrite` | `POST /:realmId/nodes/fs/:key/rewrite` |
+| `POST /:realmId/nodes/:key/claim` | `POST /:realmId/nodes/claim`（批量，见 Phase 6） |
 
 controller 代码不需要改（仍从 `:key` param 获取 nodeId），只改路由注册。
 
@@ -526,13 +527,12 @@ controller 代码不需要改（仍从 `:key` param 获取 nodeId），只改路
 
 **文件**: `apps/server/backend/src/router.ts`, `apps/server/backend/src/controllers/chunks.ts`
 
-`/nodes/:key` 下现在只剩 GET 和 PUT，安全添加通配符：
+`/nodes/raw/:key` 下现在只剩 GET 和 PUT，安全添加通配符：
 
 ```typescript
-realmRouter.get("/:realmId/nodes/:key", nodeAuthMiddleware, chunks.get)
-realmRouter.put("/:realmId/nodes/:key", canUploadMiddleware, chunks.put)
-realmRouter.get("/:realmId/nodes/:key/*", nodeAuthMiddleware, chunks.getNavigated)
-// 无其他子路由 — 通配符零冲突
+realmRouter.get("/:realmId/nodes/raw/:key", nodeAuthMiddleware, chunks.get)
+realmRouter.put("/:realmId/nodes/raw/:key", canUploadMiddleware, chunks.put)
+realmRouter.get("/:realmId/nodes/raw/:key/*", nodeAuthMiddleware, chunks.getNavigated)
 ```
 
 **`chunks.getNavigated` handler**：
@@ -543,8 +543,8 @@ realmRouter.get("/:realmId/nodes/:key/*", nodeAuthMiddleware, chunks.getNavigate
 **metadata 导航**同理：
 
 ```typescript
-realmRouter.get("/:realmId/metadata/:key", nodeAuthMiddleware, chunks.getMetadata)
-realmRouter.get("/:realmId/metadata/:key/*", nodeAuthMiddleware, chunks.getMetadataNavigated)
+realmRouter.get("/:realmId/nodes/metadata/:key", nodeAuthMiddleware, chunks.getMetadata)
+realmRouter.get("/:realmId/nodes/metadata/:key/*", nodeAuthMiddleware, chunks.getMetadataNavigated)
 ```
 
 ### Phase 4: FS path 适配
@@ -554,7 +554,7 @@ realmRouter.get("/:realmId/metadata/:key/*", nodeAuthMiddleware, chunks.getMetad
 FS 控制器已经支持 `?path=` 中的 `~N` 段（使用 `parsePathSegments()`），**无需改动**。
 
 变化点：
-1. 路由路径从 `/nodes/:key/fs/*` 改为 `/fs/:key/*`
+1. 路由路径从 `/nodes/:key/fs/*` 改为 `/nodes/fs/:key/*`
 2. 中间件从 `proofValidationMiddleware` 替换为 `nodeAuthMiddleware`
 
 ### Phase 5: chunks PUT 简化
@@ -563,6 +563,7 @@ FS 控制器已经支持 `?path=` 中的 `~N` 段（使用 `parsePathSegments()`
 
 > 注意：PUT 路由使用 `canUploadMiddleware` 而非 `nodeAuthMiddleware`。
 > 上传的 `:key` 是新节点的 content hash，不需要事先授权。
+> 路由为 `PUT /:realmId/nodes/raw/:key`。
 > 授权检查发生在**子节点引用**层面（ownership）。
 
 1. 移除 `X-CAS-Child-Proofs` header 解析逻辑
@@ -584,7 +585,7 @@ FS 控制器已经支持 `?path=` 中的 `~N` 段（使用 `parsePathSegments()`
      const BatchClaimRequestSchema = z.object({ claims: z.array(ClaimEntrySchema) })
      ```
    - 新增 `BatchClaimResponseSchema`
-2. **路由**：新增 `POST /:realmId/claim`（保留旧路由兼容）
+2. **路由**：新增 `POST /:realmId/nodes/claim`（保留旧路由兼容）
 3. **controller**：
    - 遍历 claims 数组，对每个 entry：
      - PoP claim：现有 `verifyPoP()` 逻辑
@@ -598,9 +599,9 @@ FS 控制器已经支持 `?path=` 中的 `~N` 段（使用 `parsePathSegments()`
 
 1. **`getNode(nodeKey, proof?)`** → **`getNode(nodeKey)`**
    - 不再接受 proof 参数
-   - 如需导航：`getNode(scopeRoot, indexPath)` → URL `/nodes/{scopeRoot}/{~path}`
-2. **`getNodeMetadata`** — URL 改为 `/metadata/:key`（及 `/metadata/:key/~N/...`）
-3. **FS 操作** — URL 从 `/nodes/:key/fs/*` 改为 `/fs/:key/*`
+   - 如需导航：`getNode(scopeRoot, indexPath)` → URL `/nodes/raw/{scopeRoot}/{~path}`
+2. **`getNodeMetadata`** — URL 改为 `/nodes/metadata/:key`（及 `/nodes/metadata/:key/~N/...`）
+3. **FS 操作** — URL 从 `/nodes/:key/fs/*` 改为 `/nodes/fs/:key/*`
 4. **移除所有 `X-CAS-Proof` header 设置**
 
 **文件**: `apps/cli/src/commands/node.ts`
@@ -637,11 +638,11 @@ FS 控制器已经支持 `?path=` 中的 `~N` 段（使用 `parsePathSegments()`
 ### Phase 10: 测试更新
 
 1. 更新 e2e 测试：移除所有 `X-CAS-Proof` / `X-CAS-Child-Proofs` header 使用
-2. 更新 e2e 测试：所有 `/nodes/:key/fs/*` → `/fs/:key/*`，`/nodes/:key/metadata` → `/metadata/:key`
+2. 更新 e2e 测试：所有 `/nodes/:key/fs/*` → `/nodes/fs/:key/*`，`/nodes/:key/metadata` → `/nodes/metadata/:key`，`/nodes/:key` → `/nodes/raw/:key`
 3. proof-validation 单元测试 → nodeAuth 中间件测试
-4. 新增：raw node 导航路由测试（`/nodes/:key/~0/~1`）
-5. 新增：metadata 导航路由测试（`/metadata/:key/~0/~1`）
-6. 新增：FS path 中 `~N` 导航集成测试（新路径 `/fs/:key/read`）
+4. 新增：raw node 导航路由测试（`/nodes/raw/:key/~0/~1`）
+5. 新增：metadata 导航路由测试（`/nodes/metadata/:key/~0/~1`）
+6. 新增：FS path 中 `~N` 导航集成测试（新路径 `/nodes/fs/:key/read`）
 7. 新增：batch claim API 测试（PoP + path-based + 混合）
 8. 新增：PUT 只检查 ownership 的测试（不传 childProofs）
 
@@ -652,7 +653,7 @@ FS 控制器已经支持 `?path=` 中的 `~N` 段（使用 `parsePathSegments()`
 | 层级 | 变化 | 行数 |
 |------|------|------|
 | 中间件 | `proofValidationMiddleware` → `nodeAuthMiddleware`（大幅简化） | -100, +30 |
-| 路由 | `metadata/:key`, `fs/:key/*`, `claim` 独立路由 + `nodes/:key/*` 通配符 | +30, -15 |
+| 路由 | `nodes/raw/:key`, `nodes/metadata/:key`, `nodes/fs/:key/*`, `nodes/claim`, `nodes/check` 统一在 `/nodes/` 下 | +30, -15 |
 | controller | `chunks.ts` 简化（移除 childProofs）+ 导航 handler | +20, -40 |
 | claim | 新增 batch claim controller（PoP + path-based） | +120 |
 | protocol | `BatchClaimRequestSchema` / `BatchClaimResponseSchema` | +30 |
