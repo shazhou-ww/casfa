@@ -173,9 +173,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     storage,
     ownershipV2Db,
   });
-  const mcp = createMcpController({
-    depotsDb,
-  });
   const oauthAuth = createOAuthAuthController({
     serverConfig: config.server,
     authCodesDb,
@@ -224,6 +221,18 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     maxFileSize: config.server.nodeLimit,
   });
   const filesystem = createFilesystemController({ fsService });
+
+  // MCP controller (depends on fsService)
+  const mcp = createMcpController({
+    depotsDb,
+    fsService,
+    storage,
+    ownershipV2Db,
+    usageDb,
+    delegatesDb,
+    scopeSetNodesDb,
+    serverConfig: config.server,
+  });
 
   // Create router
   return createRouter({

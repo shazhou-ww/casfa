@@ -8,21 +8,18 @@
  * - POST /api/realm/{realmId}/delegates/:delegateId/revoke — revoke
  *
  * Token hashes stored directly on Delegate entity (no TokenRecord table).
+ *
+ * The create handler delegates to the shared createChildDelegate service
+ * (services/delegate-creation.ts) for business logic reuse with MCP.
  */
 
-import type { Delegate } from "@casfa/delegate";
-import { buildChain, validateCreateDelegate } from "@casfa/delegate";
 import { storageKeyToNodeKey } from "@casfa/protocol";
 import type { Context } from "hono";
 import type { DelegatesDb } from "../db/delegates.ts";
 import type { DepotsDb } from "../db/depots.ts";
 import type { ScopeSetNodesDb } from "../db/scope-set-nodes.ts";
+import { createChildDelegate } from "../services/delegate-creation.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
-import { generateTokenPair } from "../util/delegate-token-utils.ts";
-import { toCrockfordBase32 } from "../util/encoding.ts";
-import { blake3Hash } from "../util/hashing.ts";
-import { resolveRelativeScope } from "../util/scope.ts";
-import { generateDelegateId } from "../util/token-id.ts";
 
 // ============================================================================
 // Types
@@ -42,12 +39,6 @@ export type DelegatesController = {
   get: (c: Context<Env>) => Promise<Response>;
   revoke: (c: Context<Env>) => Promise<Response>;
 };
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-const DEFAULT_AT_TTL_SECONDS = 3600; // 1 hour
 
 // ============================================================================
 // Controller Factory
@@ -76,7 +67,6 @@ export const createDelegatesController = (deps: DelegatesControllerDeps): Delega
     }
 
     // Resolve the parent delegate from the token's issuer chain
-    // The token's delegateId is tracked via tokenRecord → we need to find it
     const parentDelegateId = resolveParentDelegateId(auth);
     if (!parentDelegateId) {
       return c.json(
@@ -90,132 +80,32 @@ export const createDelegatesController = (deps: DelegatesControllerDeps): Delega
       return c.json({ error: "DELEGATE_NOT_FOUND", message: "Parent delegate not found" }, 404);
     }
 
-    if (parentDelegate.isRevoked) {
-      return c.json(
-        { error: "DELEGATE_REVOKED", message: "Parent delegate has been revoked" },
-        403
-      );
-    }
-
-    // Resolve scope (relative paths from parent)
-    let scopeNodeHash: string | undefined;
-    let scopeSetNodeId: string | undefined;
-    let resolvedRoots: string[] = [];
-
-    if (body.scope) {
-      const parentScopeRoots = await getParentScopeRoots(parentDelegate);
-      const getNodeInRealm = async (hash: string) => getNode(realmId, hash);
-      const scopeResult = await resolveRelativeScope(body.scope, parentScopeRoots, getNodeInRealm);
-
-      if (!scopeResult.valid) {
-        return c.json({ error: "INVALID_SCOPE", message: scopeResult.error }, 400);
+    // Delegate to shared service
+    const result = await createChildDelegate(
+      { delegatesDb, scopeSetNodesDb, getNode },
+      parentDelegate,
+      realmId,
+      {
+        name: body.name,
+        canUpload: body.canUpload,
+        canManageDepot: body.canManageDepot,
+        scope: body.scope,
+        expiresIn: body.expiresIn,
+        delegatedDepots: body.delegatedDepots,
+        tokenTtlSeconds: body.tokenTtlSeconds,
       }
-
-      resolvedRoots = scopeResult.resolvedRoots!;
-      if (resolvedRoots.length === 1) {
-        scopeNodeHash = resolvedRoots[0];
-      } else if (resolvedRoots.length > 1) {
-        const setNodeId = toCrockfordBase32(blake3Hash(resolvedRoots.join(",")).slice(0, 16));
-        await scopeSetNodesDb.createOrIncrement(setNodeId, resolvedRoots);
-        scopeSetNodeId = setNodeId;
-      }
-    } else {
-      // Inherit parent scope
-      scopeNodeHash = parentDelegate.scopeNodeHash;
-      scopeSetNodeId = parentDelegate.scopeSetNodeId;
-    }
-
-    // Build the child delegate
-    const newDelegateId = generateDelegateId();
-    const chain = buildChain(parentDelegate.chain, newDelegateId);
-    const depth = parentDelegate.depth + 1;
-
-    const canUpload = body.canUpload ?? false;
-    const canManageDepot = body.canManageDepot ?? false;
-
-    // Validate permissions using @casfa/delegate
-    const parentPermissions = {
-      canUpload: parentDelegate.canUpload,
-      canManageDepot: parentDelegate.canManageDepot,
-      depth: parentDelegate.depth,
-      expiresAt: parentDelegate.expiresAt,
-    };
-
-    const childInput = {
-      canUpload,
-      canManageDepot,
-      delegatedDepots: body.delegatedDepots,
-      expiresAt: body.expiresIn ? Date.now() + body.expiresIn * 1000 : undefined,
-    };
-
-    // Build parent's manageable depots set
-    const parentManageableDepots = new Set<string>(parentDelegate.delegatedDepots ?? []);
-
-    const validationResult = validateCreateDelegate(
-      parentPermissions,
-      childInput,
-      parentManageableDepots
     );
 
-    if (!validationResult.valid) {
-      return c.json(
-        {
-          error: "PERMISSION_ESCALATION",
-          message: validationResult.message,
-        },
-        400
-      );
+    if (!result.ok) {
+      return c.json({ error: result.error, message: result.message }, result.status as 400);
     }
-
-    const now = Date.now();
-    const expiresAt = body.expiresIn ? now + body.expiresIn * 1000 : undefined;
-
-    // Generate RT + AT pair first (need hashes for delegate creation)
-    const tokenPair = generateTokenPair({
-      delegateId: newDelegateId,
-      accessTokenTtlSeconds: body.tokenTtlSeconds ?? DEFAULT_AT_TTL_SECONDS,
-    });
-
-    const newDelegate: Delegate = {
-      delegateId: newDelegateId,
-      name: body.name,
-      realm: realmId,
-      parentId: parentDelegateId,
-      chain,
-      depth,
-      canUpload,
-      canManageDepot,
-      delegatedDepots: body.delegatedDepots,
-      scopeNodeHash,
-      scopeSetNodeId,
-      expiresAt,
-      isRevoked: false,
-      createdAt: now,
-      // Token hashes — stored on delegate, no separate TokenRecord
-      currentRtHash: tokenPair.refreshToken.hash,
-      currentAtHash: tokenPair.accessToken.hash,
-      atExpiresAt: tokenPair.accessToken.expiresAt,
-    };
-
-    await delegatesDb.create(newDelegate);
 
     return c.json(
       {
-        delegate: {
-          delegateId: newDelegateId,
-          name: body.name,
-          realm: realmId,
-          parentId: parentDelegateId,
-          depth,
-          canUpload,
-          canManageDepot,
-          delegatedDepots: body.delegatedDepots,
-          expiresAt,
-          createdAt: now,
-        },
-        refreshToken: tokenPair.refreshToken.base64,
-        accessToken: tokenPair.accessToken.base64,
-        accessTokenExpiresAt: tokenPair.accessToken.expiresAt,
+        delegate: result.delegate,
+        refreshToken: result.refreshToken,
+        accessToken: result.accessToken,
+        accessTokenExpiresAt: result.accessTokenExpiresAt,
       },
       201
     );
@@ -401,20 +291,6 @@ export const createDelegatesController = (deps: DelegatesControllerDeps): Delega
    */
   function resolveParentDelegateId(auth: AccessTokenAuthContext): string | undefined {
     return auth.delegateId;
-  }
-
-  /**
-   * Get parent delegate's scope roots
-   */
-  async function getParentScopeRoots(delegate: Delegate): Promise<string[]> {
-    if (delegate.scopeNodeHash) {
-      return [delegate.scopeNodeHash];
-    }
-    if (delegate.scopeSetNodeId) {
-      const setNode = await scopeSetNodesDb.get(delegate.scopeSetNodeId);
-      return setNode?.children ?? [];
-    }
-    return [];
   }
 
   return { create, list, get, revoke };
