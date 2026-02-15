@@ -1,10 +1,56 @@
-# Claim API
+# Check & Claim API
 
-批量获取节点 ownership。支持 Proof-of-Possession (PoP) 和 path-based 两种 claim 方式。
+批量检查节点状态与获取节点 ownership。
 
 ---
 
-## 设计动机
+## POST /api/realm/{realmId}/check
+
+批量检查节点在存储中的状态。返回 missing（不存在）、owned（存在且被当前 Delegate 链拥有）、unowned（存在但未被拥有）三类。
+
+> **无需 Direct Authorization Check**：check 只查询节点的存在性和 ownership 状态，不返回节点内容，因此不要求 nodeId 在 delegate 的 scope 内。任何有效的 AT/JWT 都可以查询任意 key。
+
+### 请求
+
+```http
+POST /api/realm/usr_abc123/check
+Authorization: Bearer {access_token 或 jwt}
+Content-Type: application/json
+
+{
+  "keys": ["nod_abc123...", "nod_def456...", "nod_ghi789..."]
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `keys` | `string[]` | 节点 key 列表（`nod_` 前缀） |
+
+### 响应
+
+```json
+{
+  "missing": ["nod_ghi789..."],
+  "owned": ["nod_abc123..."],
+  "unowned": ["nod_def456..."]
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `missing` | `string[]` | 不存在于存储中的节点 |
+| `owned` | `string[]` | 存在且被当前 Delegate 链拥有的节点 |
+| `unowned` | `string[]` | 存在但未被当前 Delegate 链拥有的节点 |
+
+> **Well-known 节点**（如空字典）始终归类为 `owned`。
+
+---
+
+## POST /api/realm/{realmId}/claim
+
+批量 claim 节点 ownership。支持 Proof-of-Possession (PoP) 和 path-based 两种方式。需要 `canUpload` 权限。
+
+### 设计动机
 
 在 CAS 系统中，**ownership** 是权限控制的核心：
 
@@ -17,12 +63,6 @@
 Claim API 提供了两种方式：
 1. **PoP Claim** — 客户端持有节点内容 + access token 字节，通过 keyed hash 证明持有权
 2. **Path-based Claim** — 从一个已授权的节点出发，沿 `~N` 路径导航到目标节点，证明可达性
-
----
-
-## POST /api/realm/{realmId}/claim
-
-批量 claim 节点 ownership。需要 `canUpload` 权限。
 
 ### 请求
 
