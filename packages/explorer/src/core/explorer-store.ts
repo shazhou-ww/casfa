@@ -21,10 +21,7 @@ import type {
   UploadQueueItem,
 } from "../types.ts";
 import { nextSortState, sortItems } from "../utils/sort.ts";
-
-// ============================================================================
-// Types
-// ============================================================================
+import { pathToSegments } from "./path-segments.ts";
 
 export type ExplorerState = {
   // ── Connection ──
@@ -241,7 +238,7 @@ async function diffCurrentDir(
 
   try {
     // List the same directory under the server root
-    const serverResult = await localFs.ls(srvRoot, currentPath || undefined, undefined, 10000);
+    const serverResult = await localFs.ls(srvRoot, pathToSegments(currentPath), 10000);
     if (isFsError(serverResult)) {
       // Server tree doesn't have this path — all items are pending
       const { items } = get();
@@ -532,7 +529,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
       });
 
       try {
-        const result = await localFs.ls(depotRoot, path || undefined, undefined, LS_PAGE_SIZE);
+        const result = await localFs.ls(depotRoot, pathToSegments(path), LS_PAGE_SIZE);
         if (isFsError(result)) {
           handleFsError(get, result);
           set({ isLoading: false });
@@ -568,12 +565,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
         totalItems: 0,
       });
       try {
-        const result = await localFs.ls(
-          depotRoot,
-          currentPath || undefined,
-          undefined,
-          LS_PAGE_SIZE
-        );
+        const result = await localFs.ls(depotRoot, pathToSegments(currentPath), LS_PAGE_SIZE);
         if (isFsError(result)) {
           handleFsError(get, result);
           set({ isLoading: false });
@@ -638,8 +630,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
       try {
         const result = await localFs.ls(
           depotRoot,
-          currentPath || undefined,
-          undefined,
+          pathToSegments(currentPath),
           LS_PAGE_SIZE,
           cursor
         );
@@ -681,7 +672,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
         searchTerm: "",
       });
       try {
-        const result = await localFs.ls(depotRoot, path || undefined, undefined, LS_PAGE_SIZE);
+        const result = await localFs.ls(depotRoot, pathToSegments(path), LS_PAGE_SIZE);
         if (isFsError(result)) {
           handleFsError(get, result);
           set({ isLoading: false });
@@ -717,7 +708,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
         searchTerm: "",
       });
       try {
-        const result = await localFs.ls(depotRoot, path || undefined, undefined, LS_PAGE_SIZE);
+        const result = await localFs.ls(depotRoot, pathToSegments(path), LS_PAGE_SIZE);
         if (isFsError(result)) {
           handleFsError(get, result);
           set({ isLoading: false });
@@ -783,7 +774,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
         }
 
         try {
-          const result = await localFs.ls(depotRoot, undefined, undefined, LS_PAGE_SIZE);
+          const result = await localFs.ls(depotRoot, [], LS_PAGE_SIZE);
           if (isFsError(result)) {
             const errMap = new Map(get().treeNodes);
             const n = errMap.get(path);
@@ -853,12 +844,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
       set({ treeNodes: newMap });
 
       try {
-        const result = await localFs.ls(
-          depotRoot,
-          relativePath || undefined,
-          undefined,
-          LS_PAGE_SIZE
-        );
+        const result = await localFs.ls(depotRoot, pathToSegments(relativePath), LS_PAGE_SIZE);
         if (isFsError(result)) {
           const errMap = new Map(get().treeNodes);
           const n = errMap.get(path);
@@ -1095,7 +1081,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
       for (const item of items) {
         try {
-          const result = await localFs.rm(currentRoot, item.path);
+          const result = await localFs.rm(currentRoot, pathToSegments(item.path));
           if (!isFsError(result)) {
             currentRoot = result.newRoot;
             success++;

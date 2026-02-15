@@ -1,8 +1,11 @@
 /**
  * Chunks controller
  *
- * Handles node upload (PUT), nodes/check, and node retrieval (GET).
- * Implements ownership model with multi-owner tracking and children reference validation.
+ * Handles node upload (PUT), nodes/check, node retrieval (GET),
+ * and node navigation (GET /nodes/raw/:key/~0/~1).
+ *
+ * Children reference validation uses ownership-only checks (no proof headers).
+ * See docs/proof-inline-migration/README.md §6.1.
  */
 
 import {
@@ -28,16 +31,18 @@ import type { StorageProvider } from "@casfa/storage-core";
 import type { Context } from "hono";
 import type { OwnershipV2Db } from "../db/ownership-v2.ts";
 import type { RefCountDb } from "../db/refcount.ts";
-import type { ScopeSetNodesDb } from "../db/scope-set-nodes.ts";
 import type { UsageDb } from "../db/usage.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
-import { parseChildProofsHeader, validateProofAgainstScope } from "../util/scope-proof.ts";
 
 export type ChunksController = {
   checkNodes: (c: Context<Env>) => Promise<Response>;
   put: (c: Context<Env>) => Promise<Response>;
   get: (c: Context<Env>) => Promise<Response>;
   getMetadata: (c: Context<Env>) => Promise<Response>;
+  /** GET /nodes/raw/:key/~0/~1/... — navigate from :key along ~N index path */
+  getNavigated: (c: Context<Env>) => Promise<Response>;
+  /** GET /nodes/metadata/:key/~0/~1/... — navigate then return metadata */
+  getMetadataNavigated: (c: Context<Env>) => Promise<Response>;
 };
 
 type ChunksControllerDeps = {
@@ -46,11 +51,10 @@ type ChunksControllerDeps = {
   ownershipV2Db: OwnershipV2Db;
   refCountDb: RefCountDb;
   usageDb: UsageDb;
-  scopeSetNodesDb: ScopeSetNodesDb;
 };
 
 export const createChunksController = (deps: ChunksControllerDeps): ChunksController => {
-  const { storage, keyProvider, ownershipV2Db, refCountDb, usageDb, scopeSetNodesDb } = deps;
+  const { storage, keyProvider, ownershipV2Db, refCountDb, usageDb } = deps;
 
   const getRealm = (c: Context<Env>): string => {
     return c.req.param("realmId") ?? c.get("auth").realm;
@@ -156,59 +160,47 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
         structureResult.kind !== "dict" ? (validationResult.size ?? bytes.length) : 0;
       const childKeys = validationResult.childKeys ?? [];
 
-      // ---- Children reference validation (see put-node-children-auth.md §4) ----
-      // Owner ID: the current delegate
+      // ---- Children reference validation (ownership-only, §6.1) ----
+      // All child nodes must be owned by the delegate chain.
+      // No proof headers needed — if child is not owned, client must claim first.
       const ownerId = auth.delegateId;
       const delegateChain = auth.issuerChain;
 
       if (childKeys.length > 0) {
-        // Parse X-CAS-Child-Proofs header for scope proofs
-        const childProofs = parseChildProofsHeader(c.req.header("X-CAS-Child-Proofs"));
+        // Root delegate (depth=0) skips child ownership checks
+        if (auth.delegate.depth > 0) {
+          const unauthorized: string[] = [];
 
-        const unauthorized: string[] = [];
+          for (const childKey of childKeys) {
+            // Well-known nodes are universally owned — skip ownership check
+            if (isWellKnownNode(childKey)) {
+              continue;
+            }
 
-        for (const childKey of childKeys) {
-          // Well-known nodes are universally owned — skip ownership check
-          if (isWellKnownNode(childKey)) {
-            continue;
-          }
+            // Ownership verification — check if any delegate in chain owns this child
+            let authorized = false;
+            for (const id of delegateChain) {
+              if (await ownershipV2Db.hasOwnership(childKey, id)) {
+                authorized = true;
+                break;
+              }
+            }
 
-          // Step 1: ownership verification — check if any delegate in chain owns this child
-          let authorized = false;
-          for (const id of delegateChain) {
-            if (await ownershipV2Db.hasOwnership(childKey, id)) {
-              authorized = true;
-              break;
+            if (!authorized) {
+              unauthorized.push(childKey);
             }
           }
 
-          // Step 2: scope verification (proof) — only if ownership verification failed
-          if (!authorized) {
-            // Client sends nod_-prefixed keys in X-CAS-Child-Proofs header,
-            // but childKey is a raw CB32 storage key from validateNode().
-            const proof = childProofs.get(storageKeyToNodeKey(childKey));
-            if (proof) {
-              authorized = await validateProofAgainstScope(proof, childKey, auth, {
-                storage,
-                scopeSetNodesDb,
-              });
-            }
+          if (unauthorized.length > 0) {
+            return c.json(
+              {
+                error: "CHILD_NOT_AUTHORIZED",
+                message: "Not authorized to reference these child nodes",
+                unauthorized: unauthorized.map(storageKeyToNodeKey),
+              },
+              403
+            );
           }
-
-          if (!authorized) {
-            unauthorized.push(childKey);
-          }
-        }
-
-        if (unauthorized.length > 0) {
-          return c.json(
-            {
-              error: "CHILD_NOT_AUTHORIZED",
-              message: "Not authorized to reference these child nodes",
-              unauthorized: unauthorized.map(storageKeyToNodeKey),
-            },
-            403
-          );
         }
       }
 
@@ -452,5 +444,190 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
         return c.json({ error: "invalid_node", message: "Failed to decode node" }, 400);
       }
     },
+
+    // ========================================================================
+    // Navigation handlers (GET /nodes/raw/:key/~0/~1/..., GET /nodes/metadata/:key/~0/~1/...)
+    // ========================================================================
+
+    getNavigated: async (c) => {
+      const nodeKey = decodeURIComponent(c.req.param("key"));
+      const nav = await navigateToTarget(c, nodeKey, storage, toStorageKey);
+      if (!nav.ok) return c.json({ error: nav.error, message: nav.message }, nav.status);
+
+      // Get content
+      const bytes = await storage.get(nav.storageKey);
+      if (!bytes) {
+        return c.json({ error: "not_found", message: "Navigated node content not found" }, 404);
+      }
+
+      let kind: string | undefined;
+      let size: number | undefined;
+      let contentType: string | undefined;
+      try {
+        const node = decodeNode(bytes);
+        kind = node.kind;
+        size = node.size;
+        contentType = node.fileInfo?.contentType;
+      } catch {}
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/octet-stream",
+        "Content-Length": String(bytes.length),
+      };
+      if (kind) headers["X-CAS-Kind"] = kind;
+      if (size !== undefined) headers["X-CAS-Payload-Size"] = String(size);
+      if (contentType) headers["X-CAS-Content-Type"] = contentType;
+
+      return new Response(bytes, { status: 200, headers });
+    },
+
+    getMetadataNavigated: async (c) => {
+      const nodeKey = decodeURIComponent(c.req.param("key"));
+      const nav = await navigateToTarget(c, nodeKey, storage, toStorageKey);
+      if (!nav.ok) return c.json({ error: nav.error, message: nav.message }, nav.status);
+
+      const bytes = await storage.get(nav.storageKey);
+      if (!bytes) {
+        return c.json({ error: "not_found", message: "Navigated node content not found" }, 404);
+      }
+
+      try {
+        const node = decodeNode(bytes);
+        if (node.kind === "dict") {
+          const children: Record<string, string> = {};
+          if (node.children && node.childNames) {
+            for (let i = 0; i < node.childNames.length; i++) {
+              const name = node.childNames[i];
+              const childHash = node.children[i];
+              if (name && childHash) {
+                children[name] = hashToNodeKey(childHash);
+              }
+            }
+          }
+          return c.json<DictNodeMetadata>({
+            key: nav.nodeKey,
+            kind: "dict",
+            payloadSize: node.size,
+            children,
+          });
+        }
+        if (node.kind === "file") {
+          const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : undefined;
+          return c.json<FileNodeMetadata>({
+            key: nav.nodeKey,
+            kind: "file",
+            payloadSize: node.size,
+            contentType: node.fileInfo?.contentType ?? "application/octet-stream",
+            successor,
+          });
+        }
+        if (node.kind === "successor") {
+          const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : undefined;
+          return c.json<SuccessorNodeMetadata>({
+            key: nav.nodeKey,
+            kind: "successor",
+            payloadSize: node.size,
+            successor,
+          });
+        }
+        return c.json({ error: "invalid_node", message: "Unknown node kind" }, 400);
+      } catch {
+        return c.json({ error: "invalid_node", message: "Failed to decode node" }, 400);
+      }
+    },
   };
 };
+
+// ============================================================================
+// Navigation helper
+// ============================================================================
+
+type NavigationResult =
+  | { ok: true; nodeKey: string; storageKey: string }
+  | { ok: false; error: string; message: string; status: 400 | 404 };
+
+/**
+ * Parse ~N segments from the wildcard path and walk the DAG from startKey.
+ * Returns the navigated node key (nod_...) or an error descriptor.
+ */
+async function navigateToTarget(
+  c: Context<Env>,
+  startNodeKey: string,
+  storage: StorageProvider,
+  toStorageKey: (nk: string) => string
+): Promise<NavigationResult> {
+  // Hono captures the wildcard as a single string (e.g. "~0/~1/~2")
+  const wildcard = c.req.url
+    .split(`/${encodeURIComponent(startNodeKey)}/`)
+    .slice(1)
+    .join("/")
+    .split("?")[0];
+  if (!wildcard) {
+    return { ok: false, error: "INVALID_REQUEST", message: "Missing navigation path", status: 400 };
+  }
+
+  const segments = wildcard.split("/").filter(Boolean);
+
+  // Validate all segments are ~N format
+  for (const seg of segments) {
+    if (!/^~\d+$/.test(seg)) {
+      return {
+        ok: false,
+        error: "INVALID_PATH",
+        message: `Invalid navigation segment: ${seg}. Expected ~N format.`,
+        status: 404,
+      };
+    }
+  }
+
+  if (segments.length === 0) {
+    return { ok: false, error: "INVALID_REQUEST", message: "Empty navigation path", status: 400 };
+  }
+
+  let currentStorageKey = toStorageKey(startNodeKey);
+
+  for (const seg of segments) {
+    const index = Number.parseInt(seg.slice(1), 10);
+
+    const nodeData = await storage.get(currentStorageKey);
+    if (!nodeData) {
+      return {
+        ok: false,
+        error: "not_found",
+        message: `Node not found during navigation`,
+        status: 404,
+      };
+    }
+
+    let decoded: ReturnType<typeof decodeNode>;
+    try {
+      decoded = decodeNode(nodeData);
+    } catch {
+      return {
+        ok: false,
+        error: "invalid_node",
+        message: `Failed to decode node during navigation`,
+        status: 400,
+      };
+    }
+
+    if (!decoded.children || index >= decoded.children.length) {
+      return {
+        ok: false,
+        error: "CHILD_INDEX_OUT_OF_BOUNDS",
+        message: `Child index ${index} out of bounds (node has ${decoded.children?.length ?? 0} children)`,
+        status: 404,
+      };
+    }
+
+    const childHash = decoded.children[index]!;
+    const childNodeKey = hashToNodeKey(childHash);
+    currentStorageKey = toStorageKey(childNodeKey);
+  }
+
+  return {
+    ok: true,
+    nodeKey: storageKeyToNodeKey(currentStorageKey),
+    storageKey: currentStorageKey,
+  };
+}

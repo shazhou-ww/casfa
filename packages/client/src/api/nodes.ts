@@ -2,9 +2,10 @@
  * Node API functions.
  *
  * Token Requirement:
- * - GET /nodes/:nodeKey: Access Token (with X-CAS-Proof header)
+ * - GET /nodes/raw/:nodeKey: Access Token (Direct Authorization Check)
+ * - GET /nodes/metadata/:nodeKey: Access Token (Direct Authorization Check)
  * - POST /nodes/check: Access Token
- * - PUT /nodes/:nodeKey: Access Token with canUpload
+ * - PUT /nodes/raw/:nodeKey: Access Token with canUpload
  */
 
 import type { CheckNodes, CheckNodesResponse, NodeMetadata } from "@casfa/protocol";
@@ -26,26 +27,65 @@ export type NodeUploadResult = {
 
 /**
  * Get node content.
- * Requires Access Token with scope covering the proof path.
- *
- * @param proof - JSON proof string for scope verification (optional for root delegates)
+ * Requires Access Token with Direct Authorization on the nodeKey.
  */
 export const getNode = async (
   baseUrl: string,
   realm: string,
   accessTokenBase64: string,
-  nodeKey: string,
-  proof?: string
+  nodeKey: string
 ): Promise<FetchResult<Uint8Array>> => {
-  const url = `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/${encodeURIComponent(nodeKey)}`;
+  const url = `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/raw/${encodeURIComponent(nodeKey)}`;
 
   try {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${accessTokenBase64}`,
     };
-    if (proof) {
-      headers["X-CAS-Proof"] = proof;
+
+    const response = await fetch(url, { headers });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: response.statusText }));
+      return {
+        ok: false,
+        error: {
+          code: String(response.status),
+          message: (error as { message?: string }).message ?? response.statusText,
+          status: response.status,
+        },
+      };
     }
+
+    const data = new Uint8Array(await response.arrayBuffer());
+    return { ok: true, data, status: response.status };
+  } catch (err) {
+    return {
+      ok: false,
+      error: {
+        code: "NETWORK_ERROR",
+        message: err instanceof Error ? err.message : "Network error",
+      },
+    };
+  }
+};
+
+/**
+ * Get node content via navigation path (GET /nodes/raw/:key/~0/~1/...).
+ * Requires Access Token with Direct Authorization on the starting nodeKey.
+ */
+export const getNodeNavigated = async (
+  baseUrl: string,
+  realm: string,
+  accessTokenBase64: string,
+  nodeKey: string,
+  indexPath: string
+): Promise<FetchResult<Uint8Array>> => {
+  const url = `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/raw/${encodeURIComponent(nodeKey)}/${indexPath}`;
+
+  try {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${accessTokenBase64}`,
+    };
 
     const response = await fetch(url, { headers });
 
@@ -76,24 +116,17 @@ export const getNode = async (
 
 /**
  * Get node metadata.
- * Requires Access Token with scope covering the proof path.
+ * Requires Access Token with Direct Authorization on the nodeKey.
  */
 export const getNodeMetadata = async (
   baseUrl: string,
   realm: string,
   accessTokenBase64: string,
-  nodeKey: string,
-  proof?: string
+  nodeKey: string
 ): Promise<FetchResult<NodeMetadata>> => {
-  const headers: Record<string, string> = {};
-  if (proof) {
-    headers["X-CAS-Proof"] = proof;
-  }
-
   return fetchWithAuth<NodeMetadata>(
-    `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/${encodeURIComponent(nodeKey)}/metadata`,
-    `Bearer ${accessTokenBase64}`,
-    { headers }
+    `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/metadata/${encodeURIComponent(nodeKey)}`,
+    `Bearer ${accessTokenBase64}`
   );
 };
 
@@ -129,7 +162,7 @@ export const putNode = async (
   nodeKey: string,
   content: Uint8Array
 ): Promise<FetchResult<NodeUploadResult>> => {
-  const url = `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/${encodeURIComponent(nodeKey)}`;
+  const url = `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/raw/${encodeURIComponent(nodeKey)}`;
 
   try {
     const response = await fetch(url, {
@@ -138,7 +171,9 @@ export const putNode = async (
         Authorization: `Bearer ${accessTokenBase64}`,
         "Content-Type": "application/octet-stream",
       },
-      body: content,
+      // Uint8Array is valid as fetch body in all runtimes, but TS lib
+      // variations (DOM vs Node vs ESNext) disagree on the exact type.
+      body: content as any, // eslint-disable-line @typescript-eslint/no-explicit-any
     });
 
     if (!response.ok) {

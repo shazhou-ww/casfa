@@ -315,8 +315,8 @@ describe("Client SDK Integration", () => {
       const claimResponse = await ctx.helpers.accessRequest(
         childResult.accessToken,
         "POST",
-        `/api/realm/${realm2}/nodes/${nodeKey}/claim`,
-        { pop: badPop }
+        `/api/realm/${realm2}/nodes/claim`,
+        { claims: [{ type: "pop", nodeKey, pop: badPop }] }
       );
       expect(claimResponse.status).toBe(403);
     });

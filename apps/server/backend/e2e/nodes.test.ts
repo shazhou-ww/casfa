@@ -3,14 +3,14 @@
  *
  * Tests for Node endpoints:
  * - POST /api/realm/{realmId}/nodes/check - Check node status (Access Token)
- * - PUT /api/realm/{realmId}/nodes/:key - Upload node (Access Token + canUpload)
- * - GET /api/realm/{realmId}/nodes/:key/metadata - Get metadata (Access Token + X-CAS-Proof)
- * - GET /api/realm/{realmId}/nodes/:key - Get binary data (Access Token + X-CAS-Proof)
+ * - PUT /api/realm/{realmId}/nodes/raw/:key - Upload node (Access Token + canUpload)
+ * - GET /api/realm/{realmId}/nodes/metadata/:key - Get metadata (Access Token + Direct Auth Check)
+ * - GET /api/realm/{realmId}/nodes/raw/:key - Get binary data (Access Token + Direct Auth Check)
  *
  * Key Concepts:
  * - All operations require Access Token
- * - Read operations require X-CAS-Proof header for non-root delegates
- * - Root delegates have unrestricted access without proof
+ * - Read operations use Direct Authorization Check (ownership / scope root)
+ * - Root delegates have unrestricted access
  * - Write operations require canUpload permission
  */
 
@@ -166,10 +166,10 @@ describe("Node Operations", () => {
   });
 
   // ==========================================================================
-  // PUT /api/realm/{realmId}/nodes/:key - Upload Node
+  // PUT /api/realm/{realmId}/nodes/raw/:key - Upload Node
   // ==========================================================================
 
-  describe("PUT /api/realm/{realmId}/nodes/:key", () => {
+  describe("PUT /api/realm/{realmId}/nodes/raw/:key", () => {
     it("should upload a node with canUpload permission", async () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
@@ -182,7 +182,7 @@ describe("Node Operations", () => {
       const nodeData = new Uint8Array([1, 2, 3, 4, 5]);
       const nodeKey = testNodeKey(1);
 
-      const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/${nodeKey}`, {
+      const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/raw/${nodeKey}`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${accessToken.accessToken}`,
@@ -191,7 +191,6 @@ describe("Node Operations", () => {
         body: nodeData,
       });
 
-      // PUT does not require X-CAS-Proof (no scope validation for uploads)
       // Returns 400 if node format is invalid, 200 if valid
       expect(response.status === 200 || response.status === 400).toBe(true);
     });
@@ -207,7 +206,7 @@ describe("Node Operations", () => {
       const nodeData = new Uint8Array([1, 2, 3, 4, 5]);
       const nodeKey = testNodeKey(2);
 
-      const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/${nodeKey}`, {
+      const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/raw/${nodeKey}`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${accessToken.accessToken}`,
@@ -223,7 +222,7 @@ describe("Node Operations", () => {
       const nodeData = new Uint8Array([1, 2, 3, 4, 5]);
       const nodeKey = testNodeKey(1);
 
-      const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/nodes/${nodeKey}`, {
+      const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/nodes/raw/${nodeKey}`, {
         method: "PUT",
         headers: { "Content-Type": "application/octet-stream" },
         body: nodeData,
@@ -245,7 +244,7 @@ describe("Node Operations", () => {
       );
       const nodeKey = hashToNodeKey(encoded.hash);
 
-      const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/${nodeKey}`, {
+      const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/raw/${nodeKey}`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${accessToken.accessToken}`,
@@ -275,7 +274,7 @@ describe("Node Operations", () => {
       );
       const dictNodeKey = hashToNodeKey(dictEncoded.hash);
 
-      const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/${dictNodeKey}`, {
+      const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/raw/${dictNodeKey}`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${accessToken.accessToken}`,
@@ -303,14 +302,17 @@ describe("Node Operations", () => {
       );
       const fileNodeKey = hashToNodeKey(fileEncoded.hash);
 
-      const putFileResp = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/${fileNodeKey}`, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${accessToken.accessToken}`,
-          "Content-Type": "application/octet-stream",
-        },
-        body: fileEncoded.bytes,
-      });
+      const putFileResp = await fetch(
+        `${ctx.baseUrl}/api/realm/${realm}/nodes/raw/${fileNodeKey}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${accessToken.accessToken}`,
+            "Content-Type": "application/octet-stream",
+          },
+          body: fileEncoded.bytes,
+        }
+      );
       expect(putFileResp.status).toBe(200);
 
       // Now build a dict node with two children:
@@ -326,14 +328,17 @@ describe("Node Operations", () => {
       );
       const dictNodeKey = hashToNodeKey(dictEncoded.hash);
 
-      const putDictResp = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/${dictNodeKey}`, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${accessToken.accessToken}`,
-          "Content-Type": "application/octet-stream",
-        },
-        body: dictEncoded.bytes,
-      });
+      const putDictResp = await fetch(
+        `${ctx.baseUrl}/api/realm/${realm}/nodes/raw/${dictNodeKey}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${accessToken.accessToken}`,
+            "Content-Type": "application/octet-stream",
+          },
+          body: dictEncoded.bytes,
+        }
+      );
 
       expect(putDictResp.status).toBe(200);
       const body = (await putDictResp.json()) as any;
@@ -361,7 +366,7 @@ describe("Node Operations", () => {
       );
       const dictNodeKey = hashToNodeKey(dictEncoded.hash);
 
-      const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/${dictNodeKey}`, {
+      const response = await fetch(`${ctx.baseUrl}/api/realm/${realm}/nodes/raw/${dictNodeKey}`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${accessToken.accessToken}`,
@@ -401,10 +406,10 @@ describe("Node Operations", () => {
   });
 
   // ==========================================================================
-  // GET /api/realm/{realmId}/nodes/:key/metadata - Get Metadata
+  // GET /api/realm/{realmId}/nodes/metadata/:key - Get Metadata
   // ==========================================================================
 
-  describe("GET /api/realm/{realmId}/nodes/:key/metadata", () => {
+  describe("GET /api/realm/{realmId}/nodes/metadata/:key", () => {
     it("should return 404 for non-existent node (root delegate)", async () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
@@ -416,29 +421,29 @@ describe("Node Operations", () => {
       const response = await ctx.helpers.accessRequest(
         token,
         "GET",
-        `/api/realm/${realm}/nodes/${nodeKey}/metadata`
+        `/api/realm/${realm}/nodes/metadata/${nodeKey}`
       );
 
-      // Root delegate bypasses proof, so missing node returns 404
+      // Root delegate bypasses auth check, so missing node returns 404
       expect(response.status).toBe(404);
     });
 
-    it("should reject child delegate without proof", async () => {
+    it("should reject child delegate without ownership", async () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Child delegate needs X-CAS-Proof for read access
+      // Child delegate needs ownership for read access (Direct Authorization Check)
       const childToken = await ctx.helpers.createAccessToken(token, realm, {
         name: "child",
       });
 
       const nodeKey = testNodeKey(1);
 
-      // No X-CAS-Proof header — child delegate has no proof
+      // Child delegate has no ownership of this node
       const response = await ctx.helpers.accessRequest(
         childToken.accessToken,
         "GET",
-        `/api/realm/${realm}/nodes/${nodeKey}/metadata`
+        `/api/realm/${realm}/nodes/metadata/${nodeKey}`
       );
 
       expect(response.status).toBe(403);
@@ -447,17 +452,17 @@ describe("Node Operations", () => {
     it("should reject unauthenticated requests", async () => {
       const nodeKey = testNodeKey(1);
 
-      const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/nodes/${nodeKey}/metadata`);
+      const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/nodes/metadata/${nodeKey}`);
 
       expect(response.status).toBe(401);
     });
   });
 
   // ==========================================================================
-  // GET /api/realm/{realmId}/nodes/:key - Get Binary Data
+  // GET /api/realm/{realmId}/nodes/raw/:key - Get Binary Data
   // ==========================================================================
 
-  describe("GET /api/realm/{realmId}/nodes/:key", () => {
+  describe("GET /api/realm/{realmId}/nodes/raw/:key", () => {
     it("should return 404 for non-existent node (root delegate)", async () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
@@ -469,29 +474,29 @@ describe("Node Operations", () => {
       const response = await ctx.helpers.accessRequest(
         token,
         "GET",
-        `/api/realm/${realm}/nodes/${nodeKey}`
+        `/api/realm/${realm}/nodes/raw/${nodeKey}`
       );
 
-      // Root delegate bypasses proof, so missing node returns 404
+      // Root delegate bypasses auth check, so missing node returns 404
       expect(response.status).toBe(404);
     });
 
-    it("should reject child delegate without proof", async () => {
+    it("should reject child delegate without ownership", async () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
-      // Child delegate needs X-CAS-Proof for read access
+      // Child delegate needs ownership for read access (Direct Authorization Check)
       const childToken = await ctx.helpers.createAccessToken(token, realm, {
         name: "child",
       });
 
       const nodeKey = testNodeKey(1);
 
-      // No X-CAS-Proof header — child delegate has no proof
+      // Child delegate has no ownership of this node
       const response = await ctx.helpers.accessRequest(
         childToken.accessToken,
         "GET",
-        `/api/realm/${realm}/nodes/${nodeKey}`
+        `/api/realm/${realm}/nodes/raw/${nodeKey}`
       );
 
       expect(response.status).toBe(403);
@@ -500,7 +505,7 @@ describe("Node Operations", () => {
     it("should reject unauthenticated requests", async () => {
       const nodeKey = testNodeKey(1);
 
-      const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/nodes/${nodeKey}`);
+      const response = await fetch(`${ctx.baseUrl}/api/realm/usr_test/nodes/raw/${nodeKey}`);
 
       expect(response.status).toBe(401);
     });
@@ -524,32 +529,31 @@ describe("Node Operations", () => {
       const response = await ctx.helpers.accessRequest(
         accessToken.accessToken,
         "GET",
-        `/api/realm/${otherRealm}/nodes/${nodeKey}`
+        `/api/realm/${otherRealm}/nodes/raw/${nodeKey}`
       );
 
       expect(response.status).toBe(403);
     });
 
-    it("should reject invalid X-CAS-Proof format", async () => {
+    it("should reject child delegate without node ownership", async () => {
       const userId = uniqueId();
       const { token, realm } = await ctx.helpers.createTestUser(userId, "authorized");
 
       // Use child delegate so it doesn't get root bypass
       const childToken = await ctx.helpers.createAccessToken(token, realm, {
-        name: "child-for-invalid-proof",
+        name: "child-without-ownership",
       });
 
       const nodeKey = testNodeKey(1);
 
+      // Direct Authorization Check rejects because child has no ownership
       const response = await ctx.helpers.accessRequest(
         childToken.accessToken,
         "GET",
-        `/api/realm/${realm}/nodes/${nodeKey}`,
-        undefined,
-        { "X-CAS-Proof": "invalid-not-json" }
+        `/api/realm/${realm}/nodes/raw/${nodeKey}`
       );
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(403);
     });
   });
 });

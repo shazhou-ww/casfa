@@ -17,8 +17,7 @@ export function registerNodeCommands(program: Command): void {
     .description("Download a file from a node key")
     .option("-o, --output <path>", "output file path")
     .option("--raw", "save raw node bytes without decoding")
-    .option("-P, --proof <proof>", "CAS proof for scope verification (optional for root delegates)")
-    .action(async (key: string, cmdOpts: { output?: string; raw?: boolean; proof?: string }) => {
+    .action(async (key: string, cmdOpts: { output?: string; raw?: boolean }) => {
       const opts = program.opts();
       const formatter = createFormatter(opts);
 
@@ -34,7 +33,7 @@ export function registerNodeCommands(program: Command): void {
             if (cached) return new Uint8Array(cached);
           }
 
-          const result = await resolved.client.nodes.get(nodeKey, cmdOpts.proof);
+          const result = await resolved.client.nodes.get(nodeKey);
           if (!result.ok) {
             throw new Error(`Failed to get node ${nodeKey}: ${result.error.message}`);
           }
@@ -165,8 +164,7 @@ export function registerNodeCommands(program: Command): void {
   node
     .command("info <key>")
     .description("Show node metadata")
-    .option("-P, --proof <proof>", "CAS proof for scope verification (optional for root delegates)")
-    .action(async (key: string, cmdOpts: { proof?: string }) => {
+    .action(async (key: string, cmdOpts: Record<string, never>) => {
       const opts = program.opts();
       const formatter = createFormatter(opts);
 
@@ -174,7 +172,7 @@ export function registerNodeCommands(program: Command): void {
         const resolved = await createClient(opts);
         requireRealmAuth(resolved);
 
-        const result = await resolved.client.nodes.getMetadata(key, cmdOpts.proof);
+        const result = await resolved.client.nodes.getMetadata(key);
         if (!result.ok) {
           formatter.error(`Failed to get metadata: ${result.error.message}`);
           process.exit(1);
@@ -208,8 +206,7 @@ export function registerNodeCommands(program: Command): void {
   node
     .command("cat <key>")
     .description("Output file content to stdout (decodes CAS node)")
-    .option("-P, --proof <proof>", "CAS proof for scope verification (optional for root delegates)")
-    .action(async (key: string, cmdOpts: { proof?: string }) => {
+    .action(async (key: string, _cmdOpts: Record<string, never>) => {
       const opts = program.opts();
       const formatter = createFormatter(opts);
 
@@ -225,7 +222,7 @@ export function registerNodeCommands(program: Command): void {
             if (cached) return new Uint8Array(cached);
           }
 
-          const result = await resolved.client.nodes.get(nodeKey, cmdOpts.proof);
+          const result = await resolved.client.nodes.get(nodeKey);
           if (!result.ok) {
             throw new Error(`Failed to get node ${nodeKey}: ${result.error.message}`);
           }

@@ -15,6 +15,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { PopContext } from "@casfa/proof";
 import { nodeKeyToStorageKey } from "@casfa/protocol";
+import type { StorageProvider } from "@casfa/storage-core";
 import { type ClaimController, createClaimController } from "../../src/controllers/claim.ts";
 import type { OwnershipV2Db } from "../../src/db/ownership-v2.ts";
 
@@ -145,16 +146,19 @@ describe("ClaimController", () => {
   let mockOwnershipDb: OwnershipV2Db;
   let mockPopContext: PopContext;
   let mockGetNodeContent: ReturnType<typeof mock>;
+  let mockStorage: StorageProvider;
 
   beforeEach(() => {
     mockOwnershipDb = createMockOwnershipDb();
     mockPopContext = createMockPopContext();
     mockGetNodeContent = mock(async (_realm: string, _hash: string) => TEST_CONTENT);
+    mockStorage = { get: mock(async () => null), put: mock(async () => {}) };
 
     controller = createClaimController({
       ownershipDb: mockOwnershipDb,
       getNodeContent: mockGetNodeContent,
       popContext: mockPopContext,
+      storage: mockStorage,
     });
   });
 
@@ -205,6 +209,7 @@ describe("ClaimController", () => {
         ownershipDb: mockOwnershipDb,
         getNodeContent: mockGetNodeContent,
         popContext: mockPopContext,
+        storage: mockStorage,
       });
 
       const c = createMockContext({
@@ -234,6 +239,7 @@ describe("ClaimController", () => {
         ownershipDb: mockOwnershipDb,
         getNodeContent: mockGetNodeContent,
         popContext: mockPopContext,
+        storage: mockStorage,
       });
 
       const c = createMockContext({
@@ -295,6 +301,7 @@ describe("ClaimController", () => {
         ownershipDb: mockOwnershipDb,
         getNodeContent: mockGetNodeContent,
         popContext: mockPopContext,
+        storage: mockStorage,
       });
 
       const c = createMockContext({
@@ -314,6 +321,7 @@ describe("ClaimController", () => {
         ownershipDb: mockOwnershipDb,
         getNodeContent: mockGetNodeContent,
         popContext: mockPopContext,
+        storage: mockStorage,
       });
 
       const c = createMockContext({
@@ -364,6 +372,7 @@ describe("ClaimController", () => {
         ownershipDb: mockOwnershipDb,
         getNodeContent: mockGetNodeContent,
         popContext: mockPopContext,
+        storage: mockStorage,
       });
 
       const c = createMockContext({

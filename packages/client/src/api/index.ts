@@ -3,7 +3,7 @@
  */
 
 // Claim API
-export { claimNode } from "./claim.ts";
+export { batchClaimNodes, claimNode } from "./claim.ts";
 // Delegate API
 export {
   createDelegate,
@@ -42,6 +42,7 @@ export {
   checkNodes,
   getNode,
   getNodeMetadata,
+  getNodeNavigated,
   type NodeUploadResult,
   putNode,
 } from "./nodes.ts";

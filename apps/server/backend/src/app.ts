@@ -5,7 +5,7 @@
  * All dependencies must be injected - no fallback logic.
  */
 
-import { decodeNode, isWellKnownNode } from "@casfa/core";
+import { isWellKnownNode } from "@casfa/core";
 import type { PopContext } from "@casfa/proof";
 import type { StorageProvider } from "@casfa/storage-core";
 import { blake3 } from "@noble/hashes/blake3";
@@ -41,7 +41,7 @@ import {
   createRealmAccessMiddleware,
   type JwtVerifier,
 } from "./middleware/index.ts";
-import { createProofValidationMiddleware } from "./middleware/proof-validation.ts";
+import { createNodeAuthMiddleware } from "./middleware/node-auth.ts";
 // Router
 import { createRouter } from "./router.ts";
 // Services
@@ -131,51 +131,11 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
   const realmAccessMiddleware = createRealmAccessMiddleware();
   const adminAccessMiddleware = createAdminAccessMiddleware();
   const authorizedUserMiddleware = createAuthorizedUserMiddleware();
-  const proofValidationMiddleware = createProofValidationMiddleware({
+  const nodeAuthMiddleware = createNodeAuthMiddleware({
     hasOwnership: (nodeHash, delegateId) =>
       isWellKnownNode(nodeHash)
         ? Promise.resolve(true)
         : ownershipV2Db.hasOwnership(nodeHash, delegateId),
-    isRootDelegate: async (delegateId) => {
-      // Root delegate = depth 0, parentId null.
-      // The delegateId comes from the auth context, and we can look it
-      // up in any realm — but we don't know the realm here.
-      // However, the proof-validation middleware always runs after
-      // accessTokenMiddleware, so auth.delegate is already available.
-      // We use the delegates DB to check. Since delegateId is unique
-      // within a realm, we need the realm. As a pragmatic workaround,
-      // we check the delegate's depth from the auth context set in
-      // the middleware. The middleware calls buildContext which has
-      // access to auth — so we can use a closure-based approach instead.
-      //
-      // Note: The actual check happens inside the middleware's buildContext
-      // where auth.delegate.depth === 0 is checked directly. This fallback
-      // is kept for compatibility but should not normally be reached.
-      return false;
-    },
-    getScopeRoots: async (_delegateId) => {
-      // This is handled by the fast-path in buildContext using auth.delegate
-      return [];
-    },
-    resolveNode: async (_realm, hash) => {
-      const data = await storage.get(hash);
-      if (!data) return null;
-      const decoded = decodeNode(new Uint8Array(data));
-      if (!decoded || decoded.kind !== "dict" || !decoded.children) return { children: [] };
-      return {
-        children: decoded.children.map((c) => Buffer.from(c).toString("hex")),
-      };
-    },
-    resolveDepotVersion: async (_realm, depotId, version) => {
-      const depot = await depotsDb.get(_realm, depotId);
-      if (!depot) return null;
-      // For now, just use the current root
-      return depot.root ?? null;
-    },
-    hasDepotAccess: async (_delegateId, _depotId) => {
-      // TODO: implement depot-level ACL
-      return true;
-    },
   });
   const canUploadMiddleware = createCanUploadMiddleware();
   const canManageDepotMiddleware = createCanManageDepotMiddleware();
@@ -207,7 +167,6 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     ownershipV2Db,
     refCountDb,
     usageDb,
-    scopeSetNodesDb,
   });
   const depots = createDepotsController({
     depotsDb,
@@ -240,6 +199,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     ownershipDb: ownershipV2Db,
     getNodeContent: (_realm: string, hash: string) => storage.get(hash),
     popContext: createPopContext(),
+    storage,
   });
 
   // Local Auth controller (only in mock JWT mode)
@@ -286,7 +246,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     accessTokenMiddleware,
     realmAccessMiddleware,
     adminAccessMiddleware,
-    proofValidationMiddleware,
+    nodeAuthMiddleware,
     canUploadMiddleware,
     canManageDepotMiddleware,
     serveStaticMiddleware,

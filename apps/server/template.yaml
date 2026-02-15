@@ -146,7 +146,6 @@ Resources:
         AllowHeaders:
           - Content-Type
           - Authorization
-          - X-CAS-Proof
         AllowMethods:
           - GET
           - POST

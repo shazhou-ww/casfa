@@ -5,6 +5,7 @@
  */
 
 import {
+  BatchClaimRequestSchema,
   CheckNodesSchema,
   ClaimNodeRequestSchema,
   CreateDelegateRequestSchema,
@@ -94,7 +95,8 @@ export type RouterDeps = {
   accessTokenMiddleware: MiddlewareHandler<Env>;
   realmAccessMiddleware: MiddlewareHandler<Env>;
   adminAccessMiddleware: MiddlewareHandler<Env>;
-  proofValidationMiddleware: MiddlewareHandler<Env>;
+  /** New Direct Authorization Check middleware (replaces proofValidationMiddleware) */
+  nodeAuthMiddleware: MiddlewareHandler<Env>;
   canUploadMiddleware: MiddlewareHandler<Env>;
   canManageDepotMiddleware: MiddlewareHandler<Env>;
 
@@ -142,7 +144,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
     "*",
     cors({
       origin: "*",
-      allowHeaders: ["Content-Type", "Authorization", "X-CAS-Proof"],
+      allowHeaders: ["Content-Type", "Authorization"],
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     })
   );
@@ -247,21 +249,35 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   realmRouter.get("/:realmId", deps.realm.getInfo);
   realmRouter.get("/:realmId/usage", deps.realm.getUsage);
 
-  // Nodes
+  // ---- Nodes: /nodes/raw/:key (binary read/upload + navigation) ----
   realmRouter.post(
     "/:realmId/nodes/check",
     validatedJson(CheckNodesSchema),
     deps.chunks.checkNodes
   );
-  realmRouter.put("/:realmId/nodes/:key", deps.canUploadMiddleware, deps.chunks.put);
-  realmRouter.get("/:realmId/nodes/:key", deps.proofValidationMiddleware, deps.chunks.get);
+  realmRouter.put("/:realmId/nodes/raw/:key", deps.canUploadMiddleware, deps.chunks.put);
+  realmRouter.get("/:realmId/nodes/raw/:key", deps.nodeAuthMiddleware, deps.chunks.get);
+  realmRouter.get("/:realmId/nodes/raw/:key/*", deps.nodeAuthMiddleware, deps.chunks.getNavigated);
+
+  // ---- Nodes: /nodes/metadata/:key (metadata + navigation) ----
   realmRouter.get(
-    "/:realmId/nodes/:key/metadata",
-    deps.proofValidationMiddleware,
+    "/:realmId/nodes/metadata/:key",
+    deps.nodeAuthMiddleware,
     deps.chunks.getMetadata
   );
+  realmRouter.get(
+    "/:realmId/nodes/metadata/:key/*",
+    deps.nodeAuthMiddleware,
+    deps.chunks.getMetadataNavigated
+  );
 
-  // Node claim (PoP-based ownership)
+  // ---- Node claim: /nodes/claim (batch) + /nodes/:key/claim (legacy) ----
+  realmRouter.post(
+    "/:realmId/nodes/claim",
+    deps.canUploadMiddleware,
+    validatedJson(BatchClaimRequestSchema),
+    deps.claim.batchClaim
+  );
   realmRouter.post(
     "/:realmId/nodes/:key/claim",
     deps.canUploadMiddleware,
@@ -269,55 +285,47 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
     deps.claim.claim
   );
 
-  // Filesystem operations (mounted under nodes/:key/fs/*)
-  realmRouter.get(
-    "/:realmId/nodes/:key/fs/stat",
-    deps.proofValidationMiddleware,
-    deps.filesystem.stat
-  );
-  realmRouter.get(
-    "/:realmId/nodes/:key/fs/read",
-    deps.proofValidationMiddleware,
-    deps.filesystem.read
-  );
-  realmRouter.get("/:realmId/nodes/:key/fs/ls", deps.proofValidationMiddleware, deps.filesystem.ls);
+  // ---- Filesystem operations: /nodes/fs/:key/{op} ----
+  realmRouter.get("/:realmId/nodes/fs/:key/stat", deps.nodeAuthMiddleware, deps.filesystem.stat);
+  realmRouter.get("/:realmId/nodes/fs/:key/read", deps.nodeAuthMiddleware, deps.filesystem.read);
+  realmRouter.get("/:realmId/nodes/fs/:key/ls", deps.nodeAuthMiddleware, deps.filesystem.ls);
   realmRouter.post(
-    "/:realmId/nodes/:key/fs/write",
-    deps.proofValidationMiddleware,
+    "/:realmId/nodes/fs/:key/write",
+    deps.nodeAuthMiddleware,
     deps.canUploadMiddleware,
     deps.filesystem.write
   );
   realmRouter.post(
-    "/:realmId/nodes/:key/fs/mkdir",
-    deps.proofValidationMiddleware,
+    "/:realmId/nodes/fs/:key/mkdir",
+    deps.nodeAuthMiddleware,
     deps.canUploadMiddleware,
     validatedJson(FsMkdirRequestSchema),
     deps.filesystem.mkdir
   );
   realmRouter.post(
-    "/:realmId/nodes/:key/fs/rm",
-    deps.proofValidationMiddleware,
+    "/:realmId/nodes/fs/:key/rm",
+    deps.nodeAuthMiddleware,
     deps.canUploadMiddleware,
     validatedJson(FsRmRequestSchema),
     deps.filesystem.rm
   );
   realmRouter.post(
-    "/:realmId/nodes/:key/fs/mv",
-    deps.proofValidationMiddleware,
+    "/:realmId/nodes/fs/:key/mv",
+    deps.nodeAuthMiddleware,
     deps.canUploadMiddleware,
     validatedJson(FsMvRequestSchema),
     deps.filesystem.mv
   );
   realmRouter.post(
-    "/:realmId/nodes/:key/fs/cp",
-    deps.proofValidationMiddleware,
+    "/:realmId/nodes/fs/:key/cp",
+    deps.nodeAuthMiddleware,
     deps.canUploadMiddleware,
     validatedJson(FsCpRequestSchema),
     deps.filesystem.cp
   );
   realmRouter.post(
-    "/:realmId/nodes/:key/fs/rewrite",
-    deps.proofValidationMiddleware,
+    "/:realmId/nodes/fs/:key/rewrite",
+    deps.nodeAuthMiddleware,
     deps.canUploadMiddleware,
     validatedJson(FsRewriteRequestSchema),
     deps.filesystem.rewrite
