@@ -4,14 +4,14 @@ CAS 节点的读取、上传与导航。
 
 ---
 
-## PUT /api/realm/{realmId}/nodes/:key
+## PUT /api/realm/{realmId}/nodes/raw/:key
 
 上传 CAS 节点。需要 `canUpload` 权限。
 
 ### 请求
 
 ```http
-PUT /api/realm/usr_abc123/nodes/nod_abc123...
+PUT /api/realm/usr_abc123/nodes/raw/nod_abc123...
 Authorization: Bearer {access_token 或 jwt}
 Content-Type: application/octet-stream
 
@@ -29,7 +29,7 @@ Content-Type: application/octet-stream
 3. **子节点引用验证**（d-node）：每个 child 需通过 **ownership 检查**（`hasOwnership(childKey, delegateId)`）
 4. **配额检查**：确认 Realm 配额充足
 
-> **子节点 ownership**：上传 d-node 时，所有引用的子节点必须被当前 Delegate 链拥有。如果子节点不属于自己（例如引用 scope 内已有节点），需要先通过 `POST /api/realm/{realmId}/claim` 获取 ownership，然后再 PUT。
+> **子节点 ownership**：上传 d-node 时，所有引用的子节点必须被当前 Delegate 链拥有。如果子节点不属于自己（例如引用 scope 内已有节点），需要先通过 `POST /api/realm/{realmId}/nodes/claim` 获取 ownership，然后再 PUT。
 >
 > **Root delegate（depth=0）跳过**子节点 ownership 检查（全部放行）。
 
@@ -60,14 +60,14 @@ Content-Type: application/octet-stream
 
 ---
 
-## GET /api/realm/{realmId}/nodes/:key
+## GET /api/realm/{realmId}/nodes/raw/:key
 
 读取节点原始二进制数据。
 
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/nodes/nod_abc123...
+GET /api/realm/usr_abc123/nodes/raw/nod_abc123...
 Authorization: Bearer {access_token 或 jwt}
 ```
 
@@ -90,14 +90,14 @@ Authorization: Bearer {access_token 或 jwt}
 
 ---
 
-## GET /api/realm/{realmId}/nodes/:key/~0/~1/~2
+## GET /api/realm/{realmId}/nodes/raw/:key/~0/~1/~2
 
 从 `:key` 沿 `~N` index path 导航，读取到达的目标节点二进制数据。
 
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/nodes/nod_SCOPE_ROOT/~1/~2
+GET /api/realm/usr_abc123/nodes/raw/nod_SCOPE_ROOT/~1/~2
 Authorization: Bearer {access_token 或 jwt}
 ```
 
@@ -109,14 +109,14 @@ Authorization: Bearer {access_token 或 jwt}
 ### 路由规则
 
 ```
-GET /:realmId/nodes/:key/*
+GET /:realmId/nodes/raw/:key/*
 ```
 
-通配符 `*` 部分所有段必须是 `~\d+` 格式，否则返回 404。`/nodes/:key` 下没有任何子路由（`metadata`、`fs`、`claim` 已独立），通配符零冲突。
+通配符 `*` 部分所有段必须是 `~\d+` 格式，否则返回 404。`/nodes/raw/:key/*` 与同级的 `metadata/`、`fs/`、`check`、`claim` 路由互不冲突，因为 `raw` 是独立的路径段。
 
 ### 响应
 
-与 `GET /nodes/:key` 相同：
+与 `GET /nodes/raw/:key` 相同：
 
 - **Content-Type**: `application/octet-stream`
 - **X-CAS-Kind**: 节点类型
@@ -137,28 +137,28 @@ GET /:realmId/nodes/:key/*
 
 ```bash
 # Root delegate — 直接访问任意节点
-GET /api/realm/R/nodes/nod_ABC123
+GET /api/realm/R/nodes/raw/nod_ABC123
 Authorization: Bearer {jwt}
 
 # Scoped delegate — 从 scope root 导航到子节点
-GET /api/realm/R/nodes/nod_SCOPE_ROOT/~0/~3
+GET /api/realm/R/nodes/raw/nod_SCOPE_ROOT/~0/~3
 Authorization: Bearer {access_token}
 
 # 多级导航
-GET /api/realm/R/nodes/nod_SCOPE_ROOT/~1/~0/~2
+GET /api/realm/R/nodes/raw/nod_SCOPE_ROOT/~1/~0/~2
 Authorization: Bearer {access_token}
 ```
 
 ---
 
-## GET /api/realm/{realmId}/metadata/:key
+## GET /api/realm/{realmId}/nodes/metadata/:key
 
 获取节点结构化元信息。
 
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/metadata/nod_abc123...
+GET /api/realm/usr_abc123/nodes/metadata/nod_abc123...
 Authorization: Bearer {access_token 或 jwt}
 ```
 
@@ -219,7 +219,7 @@ Authorization: Bearer {access_token 或 jwt}
 
 ---
 
-## GET /api/realm/{realmId}/metadata/:key/~0/~1/~2
+## GET /api/realm/{realmId}/nodes/metadata/:key/~0/~1/~2
 
 从 `:key` 沿 `~N` index path 导航，获取到达的目标节点元信息。
 
@@ -228,21 +228,21 @@ Authorization: Bearer {access_token 或 jwt}
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/metadata/nod_SCOPE_ROOT/~1/~2
+GET /api/realm/usr_abc123/nodes/metadata/nod_SCOPE_ROOT/~1/~2
 Authorization: Bearer {access_token 或 jwt}
 ```
 
 ### 路由规则
 
 ```
-GET /:realmId/metadata/:key/*
+GET /:realmId/nodes/metadata/:key/*
 ```
 
 通配符 `*` 部分所有段必须是 `~\d+` 格式。
 
 ### 响应
 
-与 `GET /metadata/:key` 相同（dict / file / successor 三种格式）。
+与 `GET /nodes/metadata/:key` 相同（dict / file / successor 三种格式）。
 
 ### 错误
 

@@ -4,7 +4,7 @@
 
 ---
 
-## POST /api/realm/{realmId}/check
+## POST /api/realm/{realmId}/nodes/check
 
 批量检查节点在存储中的状态。返回 missing（不存在）、owned（存在且被当前 Delegate 链拥有）、unowned（存在但未被拥有）三类。
 
@@ -13,7 +13,7 @@
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/check
+POST /api/realm/usr_abc123/nodes/check
 Authorization: Bearer {access_token 或 jwt}
 Content-Type: application/json
 
@@ -46,7 +46,7 @@ Content-Type: application/json
 
 ---
 
-## POST /api/realm/{realmId}/claim
+## POST /api/realm/{realmId}/nodes/claim
 
 批量 claim 节点 ownership。支持 Proof-of-Possession (PoP) 和 path-based 两种方式。需要 `canUpload` 权限。
 
@@ -54,7 +54,7 @@ Content-Type: application/json
 
 在 CAS 系统中，**ownership** 是权限控制的核心：
 
-- `PUT /nodes/:key` 上传节点时，所有子节点引用必须通过 ownership 检查
+- `PUT /nodes/raw/:key` 上传节点时，所有子节点引用必须通过 ownership 检查
 - `rewrite` 的 `link` 操作挂载已有节点时，必须拥有该节点
 - `commit` 提交新 root 时，root 节点必须被 delegate 链拥有
 
@@ -67,7 +67,7 @@ Claim API 提供了两种方式：
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/claim
+POST /api/realm/usr_abc123/nodes/claim
 Authorization: Bearer {access_token 或 jwt}
 Content-Type: application/json
 
@@ -203,7 +203,7 @@ batch 中每个 claim **独立处理**，某个失败不影响其他：
 
 ```
 # 1. 先 claim scope 内的已有节点（path-based）
-POST /api/realm/R/claim
+POST /api/realm/R/nodes/claim
 {
   "claims": [
     { "key": "nod_EXISTING_A", "from": "nod_SCOPE_ROOT", "path": "~0/~2" },
@@ -214,7 +214,7 @@ POST /api/realm/R/claim
 
 # 2. 现在 delegate 拥有 nod_EXISTING_A 和 nod_EXISTING_B
 #    上传引用它们的新节点（PUT 只检查 ownership）
-PUT /api/realm/R/nodes/nod_NEW_NODE
+PUT /api/realm/R/nodes/raw/nod_NEW_NODE
 Authorization: Bearer {access_token}
 Body: (CAS binary referencing nod_EXISTING_A and nod_EXISTING_B)
 → 200
@@ -224,11 +224,11 @@ Body: (CAS binary referencing nod_EXISTING_A and nod_EXISTING_B)
 
 ```
 # 1. 列出 scope root 的子节点，获取索引
-GET /api/realm/R/fs/nod_SCOPE_ROOT/ls
+GET /api/realm/R/nodes/fs/nod_SCOPE_ROOT/ls
 → children: [{ name: "lib", index: 0, key: "nod_LIB" }, ...]
 
 # 2. claim lib 节点
-POST /api/realm/R/claim
+POST /api/realm/R/nodes/claim
 {
   "claims": [
     { "key": "nod_LIB", "from": "nod_SCOPE_ROOT", "path": "~0" }
@@ -236,7 +236,7 @@ POST /api/realm/R/claim
 }
 
 # 3. 在 rewrite 中 link 挂载
-POST /api/realm/R/fs/nod_SCOPE_ROOT/rewrite
+POST /api/realm/R/nodes/fs/nod_SCOPE_ROOT/rewrite
 {
   "entries": {
     "vendor/lib": { "link": "nod_LIB" }
@@ -250,7 +250,7 @@ POST /api/realm/R/fs/nod_SCOPE_ROOT/rewrite
 # 客户端从其他渠道获取了节点内容和 key
 # 计算 PoP 并 claim
 
-POST /api/realm/R/claim
+POST /api/realm/R/nodes/claim
 {
   "claims": [
     { "key": "nod_EXTERNAL", "pop": "pop:ABC123..." }
@@ -267,10 +267,10 @@ POST /api/realm/R/claim
 
 | API | 与 Claim 的关系 |
 |-----|----------------|
-| `PUT /nodes/:key` | 子节点引用需要 ownership → 先 claim |
+| `PUT /nodes/raw/:key` | 子节点引用需要 ownership → 先 claim |
 | `fs/rewrite` link | 挂载已有节点需要 ownership → 先 claim |
 | `depots/commit` | 提交 root 需要 ownership → 通常已通过上传自动获得 |
-| `GET /nodes/:key` | 读取只需 Direct Authorization Check，不需要 ownership |
-| `GET /metadata/:key` | 同上 |
+| `GET /nodes/raw/:key` | 读取只需 Direct Authorization Check，不需要 ownership |
+| `GET /nodes/metadata/:key` | 同上 |
 
-> **上传即拥有**：当 delegate 通过 `PUT /nodes/:key` 自己上传节点时，自动获得 ownership，无需额外 claim。Claim 只在引用**他人上传的**或 **scope 内已有的**节点时需要。
+> **上传即拥有**：当 delegate 通过 `PUT /nodes/raw/:key` 自己上传节点时，自动获得 ownership，无需额外 claim。Claim 只在引用**他人上传的**或 **scope 内已有的**节点时需要。

@@ -10,7 +10,7 @@
 
 ### 为什么需要文件系统 API
 
-现有底层 API（`PUT /nodes/:key`、`POST /depots/:depotId/commit`）提供了 CAS 原语操作，但客户端需要自行：
+现有底层 API（`PUT /nodes/raw/:key`、`POST /depots/:depotId/commit`）提供了 CAS 原语操作，但客户端需要自行：
 
 1. 解析 d-node 的 children 列表找到目标文件
 2. 构建新的 d-node 二进制数据
@@ -43,13 +43,13 @@
 
 ## 路由设计
 
-文件系统操作使用独立的 `/fs/` 路由前缀，与 `/nodes/:key` 路由分离：
+文件系统操作使用 `/nodes/fs/` 路由前缀，与 `/nodes/raw/:key` 二进制路由分离：
 
 ```
-/api/realm/{realmId}/fs/{nodeKey}/...
+/api/realm/{realmId}/nodes/fs/{nodeKey}/...
 ```
 
-**设计理由**：将 `fs` 独立出来避免与 `/nodes/:key/*` 通配符路由（用于 `~N` 导航）冲突，保持路由清晰。`nodeKey` 直接在 URL 中，无需额外的 `root` 查询参数。
+**设计理由**：所有 CAS 节点操作统一在 `/nodes/` 下，通过不同子路径区分：`raw/`（二进制）、`metadata/`（元信息）、`fs/`（文件系统）、`check`、`claim`。`nodeKey` 直接在 URL 中，无需额外的 `root` 查询参数。
 
 > **CAS URI 解析**：`nodeKey` 支持 `nod_xxx`（直接 hash）、`dpt_xxx`（解析 Depot 当前 root）两种格式。
 
@@ -89,15 +89,15 @@ Authorization: Bearer {access_token_base64 或 jwt}
 
 | 方法 | 路径 | 描述 | 权限 |
 |------|------|------|------|
-| GET | `/api/realm/{realmId}/fs/{nodeKey}/stat` | 获取文件/目录元信息 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/fs/{nodeKey}/read` | 读取文件内容 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/fs/{nodeKey}/ls` | 列出目录内容 | AT 或 JWT |
-| POST | `/api/realm/{realmId}/fs/{nodeKey}/write` | 创建或覆盖文件 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/{nodeKey}/mkdir` | 创建目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/{nodeKey}/rm` | 删除文件或目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/{nodeKey}/mv` | 移动/重命名 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/{nodeKey}/cp` | 复制文件或目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/{nodeKey}/rewrite` | 声明式批量重写目录树 | AT 或 JWT (canUpload) |
+| GET | `/api/realm/{realmId}/nodes/fs/{nodeKey}/stat` | 获取文件/目录元信息 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/nodes/fs/{nodeKey}/read` | 读取文件内容 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/nodes/fs/{nodeKey}/ls` | 列出目录内容 | AT 或 JWT |
+| POST | `/api/realm/{realmId}/nodes/fs/{nodeKey}/write` | 创建或覆盖文件 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/fs/{nodeKey}/mkdir` | 创建目录 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/fs/{nodeKey}/rm` | 删除文件或目录 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/fs/{nodeKey}/mv` | 移动/重命名 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/fs/{nodeKey}/cp` | 复制文件或目录 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/fs/{nodeKey}/rewrite` | 声明式批量重写目录树 | AT 或 JWT (canUpload) |
 
 ---
 
@@ -152,14 +152,14 @@ Authorization: Bearer {access_token_base64 或 jwt}
 
 ---
 
-## GET /api/realm/{realmId}/fs/{nodeKey}/stat
+## GET /api/realm/{realmId}/nodes/fs/{nodeKey}/stat
 
 获取文件或目录的元信息。
 
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/fs/dpt_abc123/stat?path=src/main.ts
+GET /api/realm/usr_abc123/nodes/fs/dpt_abc123/stat?path=src/main.ts
 Authorization: Bearer {access_token}
 ```
 
@@ -228,16 +228,16 @@ Authorization: Bearer {access_token}
 
 ---
 
-## GET /api/realm/{realmId}/fs/{nodeKey}/read
+## GET /api/realm/{realmId}/nodes/fs/{nodeKey}/read
 
 读取文件内容。仅支持单 block 的 `file` 类型节点。
 
-> **大文件**：如果文件有 successor 节点（多 block），此端点返回 `FILE_TOO_LARGE` 错误。客户端应使用底层 `GET /api/realm/{realmId}/nodes/:key` API 逐块读取。
+> **大文件**：如果文件有 successor 节点（多 block），此端点返回 `FILE_TOO_LARGE` 错误。客户端应使用底层 `GET /api/realm/{realmId}/nodes/raw/:key` API 逐块读取。
 
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/fs/dpt_abc123/read?path=src/main.ts
+GET /api/realm/usr_abc123/nodes/fs/dpt_abc123/read?path=src/main.ts
 Authorization: Bearer {access_token}
 ```
 
@@ -277,14 +277,14 @@ X-CAS-Key: nod_abc123...
 
 ---
 
-## GET /api/realm/{realmId}/fs/{nodeKey}/ls
+## GET /api/realm/{realmId}/nodes/fs/{nodeKey}/ls
 
 列出目录的直接子节点。
 
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/fs/dpt_abc123/ls?path=src
+GET /api/realm/usr_abc123/nodes/fs/dpt_abc123/ls?path=src
 Authorization: Bearer {access_token}
 ```
 
@@ -360,18 +360,18 @@ Authorization: Bearer {access_token}
 
 ---
 
-## POST /api/realm/{realmId}/fs/{nodeKey}/write
+## POST /api/realm/{realmId}/nodes/fs/{nodeKey}/write
 
 创建或覆盖文件。如果文件已存在则替换内容；如果不存在则创建（自动创建中间目录）。
 
-> **大小限制**：请求体不得超过 `maxNodeSize`（4MB）。更大的文件应使用底层 `PUT /api/realm/{realmId}/nodes/:key` API 分块上传，然后通过 `rewrite` 的 `link` 操作将节点引用挂载到目录树中。
+> **大小限制**：请求体不得超过 `maxNodeSize`（4MB）。更大的文件应使用底层 `PUT /api/realm/{realmId}/nodes/raw/:key` API 分块上传，然后通过 `rewrite` 的 `link` 操作将节点引用挂载到目录树中。
 
 ### 请求
 
 文件路径和元信息通过查询参数和 Header 传递，文件内容通过 binary body 传递：
 
 ```http
-POST /api/realm/usr_abc123/fs/dpt_abc123/write?path=src/utils/helper.ts
+POST /api/realm/usr_abc123/nodes/fs/dpt_abc123/write?path=src/utils/helper.ts
 Authorization: Bearer {access_token}
 Content-Type: text/typescript
 Content-Length: 2048
@@ -441,14 +441,14 @@ Content-Length: 2048
 
 ---
 
-## POST /api/realm/{realmId}/fs/{nodeKey}/mkdir
+## POST /api/realm/{realmId}/nodes/fs/{nodeKey}/mkdir
 
 创建目录。自动创建中间目录（类似 `mkdir -p`）。
 
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/fs/dpt_abc123/mkdir
+POST /api/realm/usr_abc123/nodes/fs/dpt_abc123/mkdir
 Authorization: Bearer {access_token}
 Content-Type: application/json
 
@@ -498,14 +498,14 @@ Content-Type: application/json
 
 ---
 
-## POST /api/realm/{realmId}/fs/{nodeKey}/rm
+## POST /api/realm/{realmId}/nodes/fs/{nodeKey}/rm
 
 删除文件或目录。删除目录时递归移除所有子节点引用（CAS 节点本身不会被物理删除，因为可能被其他树引用）。
 
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/fs/dpt_abc123/rm
+POST /api/realm/usr_abc123/nodes/fs/dpt_abc123/rm
 Authorization: Bearer {access_token}
 Content-Type: application/json
 
@@ -550,14 +550,14 @@ Content-Type: application/json
 
 ---
 
-## POST /api/realm/{realmId}/fs/{nodeKey}/mv
+## POST /api/realm/{realmId}/nodes/fs/{nodeKey}/mv
 
 移动或重命名文件/目录。
 
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/fs/dpt_abc123/mv
+POST /api/realm/usr_abc123/nodes/fs/dpt_abc123/mv
 Authorization: Bearer {access_token}
 Content-Type: application/json
 
@@ -602,14 +602,14 @@ Content-Type: application/json
 
 ---
 
-## POST /api/realm/{realmId}/fs/{nodeKey}/cp
+## POST /api/realm/{realmId}/nodes/fs/{nodeKey}/cp
 
 复制文件或目录。
 
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/fs/dpt_abc123/cp
+POST /api/realm/usr_abc123/nodes/fs/dpt_abc123/cp
 Authorization: Bearer {access_token}
 Content-Type: application/json
 
@@ -649,7 +649,7 @@ Content-Type: application/json
 
 ---
 
-## POST /api/realm/{realmId}/fs/{nodeKey}/rewrite
+## POST /api/realm/{realmId}/nodes/fs/{nodeKey}/rewrite
 
 声明式地描述新树的路径映射关系，一次性产出新 Root。
 
@@ -672,7 +672,7 @@ Content-Type: application/json
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/fs/dpt_abc123/rewrite
+POST /api/realm/usr_abc123/nodes/fs/dpt_abc123/rewrite
 Authorization: Bearer {access_token}
 Content-Type: application/json
 
@@ -709,7 +709,7 @@ Content-Type: application/json
 | **dir（空目录）** | `{ "dir": true }` | 创建空目录 |
 | **link（挂载节点）** | `{ "link": "nod_xxx" }` | 挂载一个已存在的 CAS 节点（需通过 ownership 验证） |
 
-> **如何创建新文件？** 使用 `fs/write` 端点先创建文件获取新 Root，或通过底层 `PUT /nodes/:key` 上传 f-node 后用 `link` 挂载。`rewrite` 专注于树的结构变更（移动、复制、删除、挂载），不内嵌文件内容。
+> **如何创建新文件？** 使用 `fs/write` 端点先创建文件获取新 Root，或通过底层 `PUT /nodes/raw/:key` 上传 f-node 后用 `link` 挂载。`rewrite` 专注于树的结构变更（移动、复制、删除、挂载），不内嵌文件内容。
 
 #### 详细说明
 
@@ -742,17 +742,17 @@ Content-Type: application/json
 ```
 
 - 将一个已存在于存储中的 CAS 节点挂载到指定路径
-- 典型场景：大文件先通过底层 `PUT /nodes/:key` 分块上传，再通过 `link` 挂载到目录树
+- 典型场景：大文件先通过底层 `PUT /nodes/raw/:key` 分块上传，再通过 `link` 挂载到目录树
 - 服务端验证节点存在性
 - 可以挂载 f-node（文件）或 d-node（目录）
 
-**Ownership 验证**：`link` 引用的节点必须被当前 Delegate 链拥有（`hasOwnership(nodeKey, delegateId)`）。如果节点尚未被拥有，需要先通过 `POST /api/realm/{realmId}/claim` 获取 ownership。
+**Ownership 验证**：`link` 引用的节点必须被当前 Delegate 链拥有（`hasOwnership(nodeKey, delegateId)`）。如果节点尚未被拥有，需要先通过 `POST /api/realm/{realmId}/nodes/claim` 获取 ownership。
 
 > **Root delegate（depth=0）跳过** ownership 验证（全部放行）。
 
 > **安全说明**：如果不做引用验证，hash 泄漏会导致内容泄漏——攻击者可以将别人的节点挂载到自己的树中，再通过 `fs/read` 读取内容。Ownership 验证确保只有 claim 过的节点才能被引用。
 >
-> **与 PUT /nodes/:key 一致**：底层 `PUT /nodes/:key` 上传 d-node 时同样通过 ownership 检查验证子节点引用。这是 CAS 系统的通用安全机制，不仅限于 `link`。
+> **与 PUT /nodes/raw/:key 一致**：底层 `PUT /nodes/raw/:key` 上传 d-node 时同样通过 ownership 检查验证子节点引用。这是 CAS 系统的通用安全机制，不仅限于 `link`。
 
 ### 执行语义
 
@@ -872,17 +872,17 @@ Content-Type: application/json
    → root: "nod_original..."
 
 2. 读取目标文件
-   GET /api/realm/{realmId}/fs/dpt_abc123/read?path=src/config.ts
+   GET /api/realm/{realmId}/nodes/fs/dpt_abc123/read?path=src/config.ts
    → 文件内容
 
 3. 修改文件（binary body）
-   POST /api/realm/{realmId}/fs/dpt_abc123/write?path=src/config.ts
+   POST /api/realm/{realmId}/nodes/fs/dpt_abc123/write?path=src/config.ts
    Content-Type: text/typescript
    Body: (文件二进制内容)
    → newRoot: "nod_modified..."
 
 4. 可选：继续修改其他文件（使用上一步的 newRoot）
-   POST /api/realm/{realmId}/fs/nod_modified.../write?path=src/app.ts
+   POST /api/realm/{realmId}/nodes/fs/nod_modified.../write?path=src/app.ts
    Content-Type: text/typescript
    Body: (文件二进制内容)
    → newRoot: "nod_modified2..."
@@ -896,17 +896,17 @@ Content-Type: application/json
 
 ```
 1. 列出项目根目录
-   GET /api/realm/{realmId}/fs/dpt_abc123/ls
+   GET /api/realm/{realmId}/nodes/fs/dpt_abc123/ls
    → 根目录子节点列表
 
 2. 深入查看某个子目录
-   GET /api/realm/{realmId}/fs/dpt_abc123/ls?path=src/commands
+   GET /api/realm/{realmId}/nodes/fs/dpt_abc123/ls?path=src/commands
 
 3. 如果目录子节点很多，使用 cursor 分页
-   GET /api/realm/{realmId}/fs/dpt_abc123/ls?path=src&cursor=xxx
+   GET /api/realm/{realmId}/nodes/fs/dpt_abc123/ls?path=src&cursor=xxx
 
 4. 读取具体文件
-   GET /api/realm/{realmId}/fs/dpt_abc123/read?path=src/commands/auth.ts
+   GET /api/realm/{realmId}/nodes/fs/dpt_abc123/read?path=src/commands/auth.ts
 ```
 
 ### 场景 3：声明式重构操作
@@ -916,7 +916,7 @@ Content-Type: application/json
 ```typescript
 // 1. 先写入新文件，获取新 Root
 const writeResult = await fetch(
-  `/api/realm/${realmId}/fs/dpt_abc123/write?path=src/new-module/index.ts`,
+  `/api/realm/${realmId}/nodes/fs/dpt_abc123/write?path=src/new-module/index.ts`,
   {
     method: "POST",
     headers: {
@@ -931,7 +931,7 @@ const { newRoot: rootAfterWrite } = await writeResult.json();
 
 // 2. 基于新 Root 进行树结构重构
 const result = await fetch(
-  `/api/realm/${realmId}/fs/${rootAfterWrite}/rewrite`,
+  `/api/realm/${realmId}/nodes/fs/${rootAfterWrite}/rewrite`,
   {
     method: "POST",
     headers: {
@@ -966,13 +966,13 @@ await fetch(`/api/realm/${realmId}/depots/${depotId}/commit`, {
 
 | 文件系统 API | 底层操作 |
 |-------------|---------|
-| `fs/read` | 解析路径 → `GET /nodes/:key`（提取 payload） |
-| `fs/write` | 构建 f-node → `PUT /nodes/:key`（多次）→ 逐层重建 d-node |
-| `fs/mkdir` | 构建空 d-node → `PUT /nodes/:key`（多次）→ 逐层重建 d-node |
-| `fs/rm` | 重建不含目标子节点的 d-node → `PUT /nodes/:key`（多次） |
+| `fs/read` | 解析路径 → `GET /nodes/raw/:key`（提取 payload） |
+| `fs/write` | 构建 f-node → `PUT /nodes/raw/:key`（多次）→ 逐层重建 d-node |
+| `fs/mkdir` | 构建空 d-node → `PUT /nodes/raw/:key`（多次）→ 逐层重建 d-node |
+| `fs/rm` | 重建不含目标子节点的 d-node → `PUT /nodes/raw/:key`（多次） |
 | `fs/mv` | `rm` + 将引用插入新位置 → 逐层重建 |
 | `fs/cp` | 在新位置插入现有节点引用 → 逐层重建 |
-| `fs/rewrite` | 解析声明式 entries/deletes → 在内存中计算最终树 → 一次性重建 → `PUT /nodes/:key`（批量） |
+| `fs/rewrite` | 解析声明式 entries/deletes → 在内存中计算最终树 → 一次性重建 → `PUT /nodes/raw/:key`（批量） |
 
 ### 大文件工作流
 
@@ -980,12 +980,12 @@ await fetch(`/api/realm/${realmId}/depots/${depotId}/commit`, {
 
 ```
 1. 使用底层 API 分块上传文件
-   PUT /api/realm/{realmId}/nodes/nod_chunk1...  (s-node)
-   PUT /api/realm/{realmId}/nodes/nod_chunk2...  (s-node)
-   PUT /api/realm/{realmId}/nodes/nod_file...    (f-node, 引用 chunks)
+   PUT /api/realm/{realmId}/nodes/raw/nod_chunk1...  (s-node)
+   PUT /api/realm/{realmId}/nodes/raw/nod_chunk2...  (s-node)
+   PUT /api/realm/{realmId}/nodes/raw/nod_file...    (f-node, 引用 chunks)
 
 2. 使用 rewrite 将已上传的 f-node 挂载到目录树
-   POST /api/realm/{realmId}/fs/dpt_abc123/rewrite
+   POST /api/realm/{realmId}/nodes/fs/dpt_abc123/rewrite
    { entries: { "data/large-file.bin": { "link": "nod_file..." } } }
    （nod_file... 是本 Delegate 刚上传的，已有 ownership，自动通过验证）
 ```
@@ -1033,5 +1033,5 @@ await fetch(`/api/realm/${realmId}/depots/${depotId}/commit`, {
 4. **Direct Authorization Check**：所有操作的 nodeKey 必须通过 Direct Authorization Check，无需额外的 proof header
 5. **写操作审计**：所有写操作通过 `canUpload` 权限控制，不可变存储自带审计追踪
 6. **rewrite 原子性**：声明式重写全部成功或不产生新 Root，不存在部分应用的中间状态
-7. **节点引用验证**：`link` 引用的节点必须通过 ownership 检查。底层 `PUT /nodes/:key` 上传 d-node 时同样通过 ownership 检查验证子节点引用。这是 CAS 系统的通用安全机制
+7. **节点引用验证**：`link` 引用的节点必须通过 ownership 检查。底层 `PUT /nodes/raw/:key` 上传 d-node 时同样通过 ownership 检查验证子节点引用。这是 CAS 系统的通用安全机制
 8. **Refcount 原子更新**：写操作引起的节点引用计数变化在操作完成后统一更新，避免并发 GC 导致的中间状态节点误删
