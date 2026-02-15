@@ -153,7 +153,7 @@ batch 中每个 claim **独立处理**，某个失败不影响其他：
 | `UPLOAD_NOT_ALLOWED` | 403 | Delegate 没有 canUpload 权限 |
 | `REALM_MISMATCH` | 403 | Token realm 与请求 realm 不匹配 |
 | `EMPTY_CLAIMS` | 400 | claims 数组为空 |
-| `TOO_MANY_CLAIMS` | 400 | claims 数量超过上限 |
+| `TOO_MANY_CLAIMS` | 400 | claims 数量超过 100 |
 
 ---
 

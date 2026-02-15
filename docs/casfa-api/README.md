@@ -120,13 +120,27 @@ URL 中的 `~N` 导航段 / FS `?path=` 中的 `~N` 段提供从 `nodeId` 向下
 
 [详细文档](./02-auth.md)
 
-| 方法 | 路径 | 描述 | 认证 | 状态 |
-|------|------|------|------|------|
-| POST | `/api/auth/refresh` | 旋转 RT → 新 RT + AT | Refresh Token | ✅ 已实现 |
-| POST | `/api/auth/request` | 发起授权申请 | 无 | ⚠️ 未实现 |
-| GET | `/api/auth/request/:requestId/poll` | 轮询授权状态 | 无 | ⚠️ 未实现 |
-| POST | `/api/auth/request/:requestId/approve` | 批准申请 | User JWT | ⚠️ 未实现 |
-| POST | `/api/auth/request/:requestId/deny` | 拒绝申请 | User JWT | ⚠️ 未实现 |
+#### Well-Known 元数据
+
+| 方法 | 路径 | 描述 | 认证 |
+|------|------|------|------|
+| GET | `/.well-known/oauth-authorization-server` | OAuth 2.1 授权服务器元数据 | 无 |
+| GET | `/.well-known/oauth-protected-resource` | 受保护资源元数据 | 无 |
+
+#### OAuth 2.1 授权
+
+| 方法 | 路径 | 描述 | 认证 |
+|------|------|------|------|
+| POST | `/api/auth/register` | 动态客户端注册 | 无 |
+| GET | `/api/auth/authorize/info` | 获取授权请求信息 | 无 |
+| POST | `/api/auth/authorize` | 批准授权请求 | User JWT |
+| POST | `/api/auth/token` | Token 端点（授权码/刷新） | 无 |
+
+#### 内部 Token 刷新
+
+| 方法 | 路径 | 描述 | 认证 |
+|------|------|------|------|
+| POST | `/api/auth/refresh` | 旋转 RT → 新 RT + AT | Refresh Token |
 
 ### Admin 管理 API
 
