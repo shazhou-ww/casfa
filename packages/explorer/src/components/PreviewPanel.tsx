@@ -115,7 +115,7 @@ export function PreviewPanel({ item, onClose, previewProviders }: PreviewPanelPr
           py: 1,
         }}
       >
-        <Typography variant="subtitle1" noWrap sx={{ flex: 1 }}>
+        <Typography variant="subtitle1" component="span" noWrap sx={{ flex: 1 }}>
           {item.name}
         </Typography>
         <IconButton size="small" onClick={handleClose}>
