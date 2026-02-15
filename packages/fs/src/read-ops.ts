@@ -5,6 +5,8 @@
  * Depends only on TreeOps (which depends only on FsContext).
  */
 
+import type { PathSegment } from "@casfa/cas-uri";
+import { INDEX_SEGMENT_PREFIX } from "@casfa/cas-uri";
 import type { FsLsChild, FsLsResponse, FsStatResponse } from "@casfa/protocol";
 import { storageKeyToNodeKey } from "@casfa/protocol";
 import { hashToStorageKey } from "./helpers.ts";
@@ -24,13 +26,12 @@ export const createReadOps = (ctx: FsContext, tree: TreeOps) => {
    */
   const stat = async (
     rootNodeKey: string,
-    pathStr?: string,
-    indexPathStr?: string
+    segments: PathSegment[] = []
   ): Promise<FsStatResponse | FsError> => {
     const rootKey = await tree.resolveNodeKey(rootNodeKey);
     if (typeof rootKey === "object") return rootKey;
 
-    const resolved = await tree.resolvePath(rootKey, pathStr, indexPathStr);
+    const resolved = await tree.resolvePath(rootKey, segments);
     if ("code" in resolved) return resolved;
 
     const { hash, node, name } = resolved;
@@ -75,13 +76,12 @@ export const createReadOps = (ctx: FsContext, tree: TreeOps) => {
    */
   const read = async (
     rootNodeKey: string,
-    pathStr?: string,
-    indexPathStr?: string
+    segments: PathSegment[] = []
   ): Promise<{ data: Uint8Array; contentType: string; size: number; key: string } | FsError> => {
     const rootKey = await tree.resolveNodeKey(rootNodeKey);
     if (typeof rootKey === "object") return rootKey;
 
-    const resolved = await tree.resolvePath(rootKey, pathStr, indexPathStr);
+    const resolved = await tree.resolvePath(rootKey, segments);
     if ("code" in resolved) return resolved;
 
     const { hash, node } = resolved;
@@ -128,15 +128,14 @@ export const createReadOps = (ctx: FsContext, tree: TreeOps) => {
    */
   const readStream = async (
     rootNodeKey: string,
-    pathStr?: string,
-    indexPathStr?: string
+    segments: PathSegment[] = []
   ): Promise<
     { stream: ReadableStream<Uint8Array>; contentType: string; size: number; key: string } | FsError
   > => {
     const rootKey = await tree.resolveNodeKey(rootNodeKey);
     if (typeof rootKey === "object") return rootKey;
 
-    const resolved = await tree.resolvePath(rootKey, pathStr, indexPathStr);
+    const resolved = await tree.resolvePath(rootKey, segments);
     if ("code" in resolved) return resolved;
 
     const { hash, node } = resolved;
@@ -168,15 +167,14 @@ export const createReadOps = (ctx: FsContext, tree: TreeOps) => {
    */
   const ls = async (
     rootNodeKey: string,
-    pathStr?: string,
-    indexPathStr?: string,
+    segments: PathSegment[] = [],
     limit = 100,
     cursor?: string
   ): Promise<FsLsResponse | FsError> => {
     const rootKey = await tree.resolveNodeKey(rootNodeKey);
     if (typeof rootKey === "object") return rootKey;
 
-    const resolved = await tree.resolvePath(rootKey, pathStr, indexPathStr);
+    const resolved = await tree.resolvePath(rootKey, segments);
     if ("code" in resolved) return resolved;
 
     const { hash, node } = resolved;
@@ -220,7 +218,9 @@ export const createReadOps = (ctx: FsContext, tree: TreeOps) => {
     }
 
     return {
-      path: pathStr ?? "",
+      path: segments
+        .map((s) => (s.kind === "name" ? s.value : `${INDEX_SEGMENT_PREFIX}${s.value}`))
+        .join("/"),
       key: storageKeyToNodeKey(hash),
       children,
       total,

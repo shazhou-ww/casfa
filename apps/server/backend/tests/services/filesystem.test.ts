@@ -6,6 +6,7 @@
  */
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
+import type { PathSegment } from "@casfa/cas-uri";
 import {
   decodeCB32,
   encodeCB32,
@@ -42,6 +43,14 @@ const storageKeyToHash = (key: string): Uint8Array => decodeCB32(key);
 /** Helper to check if result is an FsError */
 function isFsError(result: unknown): result is FsError {
   return typeof result === "object" && result !== null && "code" in result && "status" in result;
+}
+
+/** Convert "a/b/c" to PathSegment[] with kind:"name" */
+function nameSegs(pathStr: string): PathSegment[] {
+  return pathStr
+    .split("/")
+    .filter(Boolean)
+    .map((s) => ({ kind: "name" as const, value: s }));
 }
 
 // ============================================================================
@@ -313,7 +322,7 @@ describe("Filesystem Service", () => {
     });
 
     it("should stat a file by path", async () => {
-      const result = await service.stat(REALM, rootNodeKey, "README.md");
+      const result = await service.stat(REALM, rootNodeKey, nameSegs("README.md"));
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
@@ -324,7 +333,7 @@ describe("Filesystem Service", () => {
     });
 
     it("should stat a nested directory", async () => {
-      const result = await service.stat(REALM, rootNodeKey, "src");
+      const result = await service.stat(REALM, rootNodeKey, nameSegs("src"));
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
@@ -334,7 +343,7 @@ describe("Filesystem Service", () => {
     });
 
     it("should stat a deeply nested file", async () => {
-      const result = await service.stat(REALM, rootNodeKey, "src/lib/utils.ts");
+      const result = await service.stat(REALM, rootNodeKey, nameSegs("src/lib/utils.ts"));
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
@@ -343,7 +352,7 @@ describe("Filesystem Service", () => {
     });
 
     it("should return PATH_NOT_FOUND for non-existent path", async () => {
-      const result = await service.stat(REALM, rootNodeKey, "nonexistent.txt");
+      const result = await service.stat(REALM, rootNodeKey, nameSegs("nonexistent.txt"));
       expect(isFsError(result)).toBe(true);
       if (!isFsError(result)) return;
 
@@ -352,7 +361,7 @@ describe("Filesystem Service", () => {
     });
 
     it("should return NOT_A_DIRECTORY for path through a file", async () => {
-      const result = await service.stat(REALM, rootNodeKey, "README.md/child");
+      const result = await service.stat(REALM, rootNodeKey, nameSegs("README.md/child"));
       expect(isFsError(result)).toBe(true);
       if (!isFsError(result)) return;
 
@@ -367,20 +376,20 @@ describe("Filesystem Service", () => {
       expect(result.code).toBe("INVALID_ROOT");
     });
 
-    it("should return INVALID_PATH for absolute path", async () => {
-      const result = await service.stat(REALM, rootNodeKey, "/absolute/path");
+    it("should return PATH_NOT_FOUND for non-existent nested path", async () => {
+      const result = await service.stat(REALM, rootNodeKey, nameSegs("absolute/path"));
       expect(isFsError(result)).toBe(true);
       if (!isFsError(result)) return;
 
-      expect(result.code).toBe("INVALID_PATH");
+      expect(result.code).toBe("PATH_NOT_FOUND");
     });
 
-    it("should return INVALID_PATH for path traversal", async () => {
-      const result = await service.stat(REALM, rootNodeKey, "../escape");
+    it("should return PATH_NOT_FOUND for non-existent traversal-like path", async () => {
+      const result = await service.stat(REALM, rootNodeKey, nameSegs("../escape"));
       expect(isFsError(result)).toBe(true);
       if (!isFsError(result)) return;
 
-      expect(result.code).toBe("INVALID_PATH");
+      expect(result.code).toBe("PATH_NOT_FOUND");
     });
   });
 
@@ -397,7 +406,9 @@ describe("Filesystem Service", () => {
       // Find index of a known child
       const child = lsResult.children[0]!;
 
-      const result = await service.stat(REALM, rootNodeKey, undefined, String(child.index));
+      const result = await service.stat(REALM, rootNodeKey, [
+        { kind: "index", value: child.index },
+      ]);
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
@@ -405,7 +416,7 @@ describe("Filesystem Service", () => {
     });
 
     it("should return INDEX_OUT_OF_BOUNDS for invalid index", async () => {
-      const result = await service.stat(REALM, rootNodeKey, undefined, "999");
+      const result = await service.stat(REALM, rootNodeKey, [{ kind: "index", value: 999 }]);
       expect(isFsError(result)).toBe(true);
       if (!isFsError(result)) return;
 
@@ -419,7 +430,7 @@ describe("Filesystem Service", () => {
 
   describe("read", () => {
     it("should read file content", async () => {
-      const result = await service.read(REALM, rootNodeKey, "README.md");
+      const result = await service.read(REALM, rootNodeKey, nameSegs("README.md"));
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
@@ -430,7 +441,7 @@ describe("Filesystem Service", () => {
     });
 
     it("should read deeply nested file", async () => {
-      const result = await service.read(REALM, rootNodeKey, "src/lib/utils.ts");
+      const result = await service.read(REALM, rootNodeKey, nameSegs("src/lib/utils.ts"));
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
@@ -439,7 +450,7 @@ describe("Filesystem Service", () => {
     });
 
     it("should return NOT_A_FILE for directory", async () => {
-      const result = await service.read(REALM, rootNodeKey, "src");
+      const result = await service.read(REALM, rootNodeKey, nameSegs("src"));
       expect(isFsError(result)).toBe(true);
       if (!isFsError(result)) return;
 
@@ -447,7 +458,7 @@ describe("Filesystem Service", () => {
     });
 
     it("should return PATH_NOT_FOUND for missing file", async () => {
-      const result = await service.read(REALM, rootNodeKey, "missing.txt");
+      const result = await service.read(REALM, rootNodeKey, nameSegs("missing.txt"));
       expect(isFsError(result)).toBe(true);
       if (!isFsError(result)) return;
 
@@ -476,7 +487,7 @@ describe("Filesystem Service", () => {
     });
 
     it("should list subdirectory", async () => {
-      const result = await service.ls(REALM, rootNodeKey, "src");
+      const result = await service.ls(REALM, rootNodeKey, nameSegs("src"));
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
@@ -487,7 +498,7 @@ describe("Filesystem Service", () => {
     });
 
     it("should include type info for children", async () => {
-      const result = await service.ls(REALM, rootNodeKey, "src");
+      const result = await service.ls(REALM, rootNodeKey, nameSegs("src"));
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
@@ -503,7 +514,7 @@ describe("Filesystem Service", () => {
     });
 
     it("should support pagination with limit", async () => {
-      const result = await service.ls(REALM, rootNodeKey, undefined, undefined, 2);
+      const result = await service.ls(REALM, rootNodeKey, undefined, 2);
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
@@ -514,18 +525,11 @@ describe("Filesystem Service", () => {
 
     it("should support pagination with cursor", async () => {
       // Get first page
-      const page1 = await service.ls(REALM, rootNodeKey, undefined, undefined, 2);
+      const page1 = await service.ls(REALM, rootNodeKey, undefined, 2);
       if (isFsError(page1)) throw new Error("page1 failed");
 
       // Get second page
-      const page2 = await service.ls(
-        REALM,
-        rootNodeKey,
-        undefined,
-        undefined,
-        2,
-        page1.nextCursor!
-      );
+      const page2 = await service.ls(REALM, rootNodeKey, undefined, 2, page1.nextCursor!);
       if (isFsError(page2)) throw new Error("page2 failed");
 
       expect(page2.children.length).toBe(1);
@@ -537,7 +541,7 @@ describe("Filesystem Service", () => {
     });
 
     it("should return NOT_A_DIRECTORY for file", async () => {
-      const result = await service.ls(REALM, rootNodeKey, "README.md");
+      const result = await service.ls(REALM, rootNodeKey, nameSegs("README.md"));
       expect(isFsError(result)).toBe(true);
       if (!isFsError(result)) return;
 
@@ -556,8 +560,7 @@ describe("Filesystem Service", () => {
         REALM,
         TOKEN_ID,
         rootNodeKey,
-        "new.txt",
-        undefined,
+        nameSegs("new.txt"),
         content,
         "text/plain"
       );
@@ -584,8 +587,7 @@ describe("Filesystem Service", () => {
         REALM,
         TOKEN_ID,
         rootNodeKey,
-        "README.md",
-        undefined,
+        nameSegs("README.md"),
         content,
         "text/markdown"
       );
@@ -595,7 +597,7 @@ describe("Filesystem Service", () => {
       expect(result.created).toBe(false);
 
       // Verify content was updated
-      const readResult = await service.read(REALM, result.newRoot, "README.md");
+      const readResult = await service.read(REALM, result.newRoot, nameSegs("README.md"));
       if (isFsError(readResult)) throw new Error("read failed");
 
       expect(new TextDecoder().decode(readResult.data)).toBe("updated content");
@@ -607,8 +609,7 @@ describe("Filesystem Service", () => {
         REALM,
         TOKEN_ID,
         rootNodeKey,
-        "a/b/c/deep.txt",
-        undefined,
+        nameSegs("a/b/c/deep.txt"),
         content,
         "text/plain"
       );
@@ -618,7 +619,7 @@ describe("Filesystem Service", () => {
       expect(result.created).toBe(true);
 
       // Verify we can read the created file
-      const readResult = await service.read(REALM, result.newRoot, "a/b/c/deep.txt");
+      const readResult = await service.read(REALM, result.newRoot, nameSegs("a/b/c/deep.txt"));
       if (isFsError(readResult)) throw new Error("read failed");
 
       expect(new TextDecoder().decode(readResult.data)).toBe("deep content");
@@ -630,8 +631,7 @@ describe("Filesystem Service", () => {
         REALM,
         TOKEN_ID,
         rootNodeKey,
-        "src/new.ts",
-        undefined,
+        nameSegs("src/new.ts"),
         content,
         "text/typescript"
       );
@@ -641,7 +641,7 @@ describe("Filesystem Service", () => {
       expect(result.created).toBe(true);
 
       // Existing files should still be there
-      const readMain = await service.read(REALM, result.newRoot, "src/main.ts");
+      const readMain = await service.read(REALM, result.newRoot, nameSegs("src/main.ts"));
       if (isFsError(readMain)) throw new Error("read main.ts failed");
       expect(new TextDecoder().decode(readMain.data)).toBe("console.log('hi')");
     });
@@ -652,8 +652,7 @@ describe("Filesystem Service", () => {
         REALM,
         TOKEN_ID,
         rootNodeKey,
-        "huge.bin",
-        undefined,
+        nameSegs("huge.bin"),
         content,
         "application/octet-stream"
       );
@@ -665,15 +664,7 @@ describe("Filesystem Service", () => {
 
     it("should return error when path is missing", async () => {
       const content = new TextEncoder().encode("no path");
-      const result = await service.write(
-        REALM,
-        TOKEN_ID,
-        rootNodeKey,
-        undefined,
-        undefined,
-        content,
-        "text/plain"
-      );
+      const result = await service.write(REALM, TOKEN_ID, rootNodeKey, [], content, "text/plain");
       expect(isFsError(result)).toBe(true);
       if (!isFsError(result)) return;
 
@@ -686,8 +677,7 @@ describe("Filesystem Service", () => {
         REALM,
         TOKEN_ID,
         rootNodeKey,
-        "src",
-        undefined,
+        nameSegs("src"),
         content,
         "text/plain"
       );
@@ -703,8 +693,7 @@ describe("Filesystem Service", () => {
         REALM,
         TOKEN_ID,
         rootNodeKey,
-        "src/lib/new.ts",
-        undefined,
+        nameSegs("src/lib/new.ts"),
         content,
         "text/plain"
       );
@@ -715,20 +704,20 @@ describe("Filesystem Service", () => {
       if (isFsError(statRoot)) throw new Error("stat root failed");
       expect(statRoot.type).toBe("dir");
 
-      const statSrc = await service.stat(REALM, result.newRoot, "src");
+      const statSrc = await service.stat(REALM, result.newRoot, nameSegs("src"));
       if (isFsError(statSrc)) throw new Error("stat src failed");
       expect(statSrc.type).toBe("dir");
 
-      const statLib = await service.stat(REALM, result.newRoot, "src/lib");
+      const statLib = await service.stat(REALM, result.newRoot, nameSegs("src/lib"));
       if (isFsError(statLib)) throw new Error("stat lib failed");
       expect(statLib.type).toBe("dir");
 
       // Both old and new files should exist
-      const readOld = await service.read(REALM, result.newRoot, "src/lib/utils.ts");
+      const readOld = await service.read(REALM, result.newRoot, nameSegs("src/lib/utils.ts"));
       if (isFsError(readOld)) throw new Error("read old failed");
       expect(new TextDecoder().decode(readOld.data)).toBe("export const x = 1");
 
-      const readNew = await service.read(REALM, result.newRoot, "src/lib/new.ts");
+      const readNew = await service.read(REALM, result.newRoot, nameSegs("src/lib/new.ts"));
       if (isFsError(readNew)) throw new Error("read new failed");
       expect(new TextDecoder().decode(readNew.data)).toBe("integrity test");
     });
@@ -748,7 +737,7 @@ describe("Filesystem Service", () => {
       expect(result.dir.path).toBe("new-dir");
 
       // Verify directory exists
-      const statResult = await service.stat(REALM, result.newRoot, "new-dir");
+      const statResult = await service.stat(REALM, result.newRoot, nameSegs("new-dir"));
       if (isFsError(statResult)) throw new Error("stat failed");
       expect(statResult.type).toBe("dir");
       expect(statResult.childCount).toBe(0);
@@ -762,15 +751,15 @@ describe("Filesystem Service", () => {
       expect(result.created).toBe(true);
 
       // Verify intermediate dirs
-      const statA = await service.stat(REALM, result.newRoot, "a");
+      const statA = await service.stat(REALM, result.newRoot, nameSegs("a"));
       if (isFsError(statA)) throw new Error("stat a failed");
       expect(statA.type).toBe("dir");
 
-      const statB = await service.stat(REALM, result.newRoot, "a/b");
+      const statB = await service.stat(REALM, result.newRoot, nameSegs("a/b"));
       if (isFsError(statB)) throw new Error("stat b failed");
       expect(statB.type).toBe("dir");
 
-      const statC = await service.stat(REALM, result.newRoot, "a/b/c");
+      const statC = await service.stat(REALM, result.newRoot, nameSegs("a/b/c"));
       if (isFsError(statC)) throw new Error("stat c failed");
       expect(statC.type).toBe("dir");
       expect(statC.childCount).toBe(0);
@@ -799,7 +788,7 @@ describe("Filesystem Service", () => {
 
   describe("rm", () => {
     it("should remove a file", async () => {
-      const result = await service.rm(REALM, TOKEN_ID, rootNodeKey, "README.md");
+      const result = await service.rm(REALM, TOKEN_ID, rootNodeKey, nameSegs("README.md"));
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
@@ -807,39 +796,39 @@ describe("Filesystem Service", () => {
       expect(result.removed.type).toBe("file");
 
       // Verify file is gone
-      const statResult = await service.stat(REALM, result.newRoot, "README.md");
+      const statResult = await service.stat(REALM, result.newRoot, nameSegs("README.md"));
       expect(isFsError(statResult)).toBe(true);
       if (!isFsError(statResult)) return;
       expect(statResult.code).toBe("PATH_NOT_FOUND");
     });
 
     it("should remove a directory (recursive)", async () => {
-      const result = await service.rm(REALM, TOKEN_ID, rootNodeKey, "src");
+      const result = await service.rm(REALM, TOKEN_ID, rootNodeKey, nameSegs("src"));
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
       expect(result.removed.type).toBe("dir");
 
       // Verify directory is gone
-      const statResult = await service.stat(REALM, result.newRoot, "src");
+      const statResult = await service.stat(REALM, result.newRoot, nameSegs("src"));
       expect(isFsError(statResult)).toBe(true);
     });
 
     it("should remove nested file", async () => {
-      const result = await service.rm(REALM, TOKEN_ID, rootNodeKey, "src/main.ts");
+      const result = await service.rm(REALM, TOKEN_ID, rootNodeKey, nameSegs("src/main.ts"));
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
       expect(result.removed.path).toBe("src/main.ts");
 
       // src directory should still exist with fewer children
-      const statSrc = await service.stat(REALM, result.newRoot, "src");
+      const statSrc = await service.stat(REALM, result.newRoot, nameSegs("src"));
       if (isFsError(statSrc)) throw new Error("stat src failed");
       expect(statSrc.childCount).toBe(1); // only lib remains
     });
 
     it("should return PATH_NOT_FOUND for missing file", async () => {
-      const result = await service.rm(REALM, TOKEN_ID, rootNodeKey, "nonexistent");
+      const result = await service.rm(REALM, TOKEN_ID, rootNodeKey, nameSegs("nonexistent"));
       expect(isFsError(result)).toBe(true);
       if (!isFsError(result)) return;
 
@@ -847,10 +836,10 @@ describe("Filesystem Service", () => {
     });
 
     it("should not modify original root", async () => {
-      await service.rm(REALM, TOKEN_ID, rootNodeKey, "README.md");
+      await service.rm(REALM, TOKEN_ID, rootNodeKey, nameSegs("README.md"));
 
       // Original root should still have README.md
-      const statResult = await service.stat(REALM, rootNodeKey, "README.md");
+      const statResult = await service.stat(REALM, rootNodeKey, nameSegs("README.md"));
       expect(isFsError(statResult)).toBe(false);
     });
   });
@@ -869,11 +858,11 @@ describe("Filesystem Service", () => {
       expect(result.to).toBe("README.txt");
 
       // Old name should be gone
-      const statOld = await service.stat(REALM, result.newRoot, "README.md");
+      const statOld = await service.stat(REALM, result.newRoot, nameSegs("README.md"));
       expect(isFsError(statOld)).toBe(true);
 
       // New name should exist with same content
-      const readNew = await service.read(REALM, result.newRoot, "README.txt");
+      const readNew = await service.read(REALM, result.newRoot, nameSegs("README.txt"));
       if (isFsError(readNew)) throw new Error("read failed");
       expect(new TextDecoder().decode(readNew.data)).toBe("# Hello");
     });
@@ -884,11 +873,11 @@ describe("Filesystem Service", () => {
       if (isFsError(result)) return;
 
       // Old location should be gone
-      const statOld = await service.stat(REALM, result.newRoot, "README.md");
+      const statOld = await service.stat(REALM, result.newRoot, nameSegs("README.md"));
       expect(isFsError(statOld)).toBe(true);
 
       // New location should have the file
-      const readNew = await service.read(REALM, result.newRoot, "docs/README.md");
+      const readNew = await service.read(REALM, result.newRoot, nameSegs("docs/README.md"));
       if (isFsError(readNew)) throw new Error("read new failed");
       expect(new TextDecoder().decode(readNew.data)).toBe("# Hello");
     });
@@ -899,11 +888,11 @@ describe("Filesystem Service", () => {
       if (isFsError(result)) return;
 
       // Old name gone
-      const statOld = await service.stat(REALM, result.newRoot, "src");
+      const statOld = await service.stat(REALM, result.newRoot, nameSegs("src"));
       expect(isFsError(statOld)).toBe(true);
 
       // New name exists with children
-      const lsNew = await service.ls(REALM, result.newRoot, "source");
+      const lsNew = await service.ls(REALM, result.newRoot, nameSegs("source"));
       if (isFsError(lsNew)) throw new Error("ls failed");
       expect(lsNew.total).toBe(2); // main.ts, lib
     });
@@ -928,11 +917,11 @@ describe("Filesystem Service", () => {
       if (isFsError(result)) return;
 
       // Both should exist
-      const readOrig = await service.read(REALM, result.newRoot, "README.md");
+      const readOrig = await service.read(REALM, result.newRoot, nameSegs("README.md"));
       if (isFsError(readOrig)) throw new Error("read orig failed");
       expect(new TextDecoder().decode(readOrig.data)).toBe("# Hello");
 
-      const readCopy = await service.read(REALM, result.newRoot, "README-copy.md");
+      const readCopy = await service.read(REALM, result.newRoot, nameSegs("README-copy.md"));
       if (isFsError(readCopy)) throw new Error("read copy failed");
       expect(new TextDecoder().decode(readCopy.data)).toBe("# Hello");
     });
@@ -943,11 +932,11 @@ describe("Filesystem Service", () => {
       if (isFsError(result)) return;
 
       // Both should exist
-      const lsOrig = await service.ls(REALM, result.newRoot, "src");
+      const lsOrig = await service.ls(REALM, result.newRoot, nameSegs("src"));
       if (isFsError(lsOrig)) throw new Error("ls orig failed");
       expect(lsOrig.total).toBe(2);
 
-      const lsCopy = await service.ls(REALM, result.newRoot, "src-copy");
+      const lsCopy = await service.ls(REALM, result.newRoot, nameSegs("src-copy"));
       if (isFsError(lsCopy)) throw new Error("ls copy failed");
       expect(lsCopy.total).toBe(2);
     });
@@ -963,7 +952,11 @@ describe("Filesystem Service", () => {
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
-      const readCopy = await service.read(REALM, result.newRoot, "archive/2024/README.md");
+      const readCopy = await service.read(
+        REALM,
+        result.newRoot,
+        nameSegs("archive/2024/README.md")
+      );
       if (isFsError(readCopy)) throw new Error("read copy failed");
       expect(new TextDecoder().decode(readCopy.data)).toBe("# Hello");
     });
@@ -990,7 +983,7 @@ describe("Filesystem Service", () => {
       expect(result.deleted).toBe(1);
 
       // Verify
-      const statResult = await service.stat(REALM, result.newRoot, "README.md");
+      const statResult = await service.stat(REALM, result.newRoot, nameSegs("README.md"));
       expect(isFsError(statResult)).toBe(true);
     });
 
@@ -1008,7 +1001,7 @@ describe("Filesystem Service", () => {
       expect(result.entriesApplied).toBeGreaterThanOrEqual(1);
 
       // New path should exist
-      const readResult = await service.read(REALM, result.newRoot, "renamed.md");
+      const readResult = await service.read(REALM, result.newRoot, nameSegs("renamed.md"));
       if (isFsError(readResult)) throw new Error("read failed");
       expect(new TextDecoder().decode(readResult.data)).toBe("# Hello");
     });
@@ -1024,7 +1017,7 @@ describe("Filesystem Service", () => {
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
-      const statResult = await service.stat(REALM, result.newRoot, "empty-dir");
+      const statResult = await service.stat(REALM, result.newRoot, nameSegs("empty-dir"));
       if (isFsError(statResult)) throw new Error("stat failed");
       expect(statResult.type).toBe("dir");
       expect(statResult.childCount).toBe(0);
@@ -1045,11 +1038,11 @@ describe("Filesystem Service", () => {
       expect(result.deleted).toBe(1);
 
       // Verify
-      const statDir = await service.stat(REALM, result.newRoot, "new-dir");
+      const statDir = await service.stat(REALM, result.newRoot, nameSegs("new-dir"));
       if (isFsError(statDir)) throw new Error("stat failed");
       expect(statDir.type).toBe("dir");
 
-      const statRm = await service.stat(REALM, result.newRoot, "README.md");
+      const statRm = await service.stat(REALM, result.newRoot, nameSegs("README.md"));
       expect(isFsError(statRm)).toBe(true);
     });
   });
@@ -1123,8 +1116,7 @@ describe("Filesystem Service", () => {
         REALM,
         TOKEN_ID,
         rootNodeKey,
-        "new.txt",
-        undefined,
+        nameSegs("new.txt"),
         content,
         "text/plain"
       );
@@ -1141,7 +1133,7 @@ describe("Filesystem Service", () => {
     });
 
     it("should return different newRoot after rm", async () => {
-      const result = await service.rm(REALM, TOKEN_ID, rootNodeKey, "README.md");
+      const result = await service.rm(REALM, TOKEN_ID, rootNodeKey, nameSegs("README.md"));
       if (isFsError(result)) throw new Error("rm failed");
 
       expect(result.newRoot).not.toBe(rootNodeKey);
@@ -1154,8 +1146,7 @@ describe("Filesystem Service", () => {
         REALM,
         TOKEN_ID,
         rootNodeKey,
-        "file1.txt",
-        undefined,
+        nameSegs("file1.txt"),
         content1,
         "text/plain"
       );
@@ -1166,8 +1157,7 @@ describe("Filesystem Service", () => {
         REALM,
         TOKEN_ID,
         rootNodeKey,
-        "file2.txt",
-        undefined,
+        nameSegs("file2.txt"),
         content2,
         "text/plain"
       );
@@ -1219,8 +1209,7 @@ describe("Filesystem Service", () => {
         REALM,
         TOKEN_ID,
         emptyRootNodeKey,
-        "hello.txt",
-        undefined,
+        nameSegs("hello.txt"),
         content,
         "text/plain"
       );
@@ -1229,7 +1218,7 @@ describe("Filesystem Service", () => {
 
       expect(result.created).toBe(true);
 
-      const readResult = await service.read(REALM, result.newRoot, "hello.txt");
+      const readResult = await service.read(REALM, result.newRoot, nameSegs("hello.txt"));
       if (isFsError(readResult)) throw new Error("read failed");
       expect(new TextDecoder().decode(readResult.data)).toBe("hello");
     });

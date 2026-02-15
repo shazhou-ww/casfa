@@ -265,7 +265,6 @@ export {
   ErrorCodeSchema,
   ErrorResponseSchema,
   FORBIDDEN,
-  INDEX_PATH_REQUIRED,
   INTERNAL_ERROR,
   INVALID_BOUND_TOKEN,
   INVALID_ID_FORMAT,

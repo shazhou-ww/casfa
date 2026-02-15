@@ -8,20 +8,14 @@
  * plus optional hooks. No database or server dependencies.
  */
 
+import type { PathSegment } from "@casfa/cas-uri";
 import { type CasNode, decodeNode, encodeDictNode, getWellKnownNodeData } from "@casfa/core";
 import {
   FS_MAX_COLLECTION_CHILDREN,
   FS_MAX_NAME_BYTES,
   nodeKeyToStorageKey,
 } from "@casfa/protocol";
-
-import {
-  findChildByIndex,
-  findChildByName,
-  hashToStorageKey,
-  parseIndexPath,
-  parsePath,
-} from "./helpers.ts";
+import { findChildByIndex, findChildByName, hashToStorageKey } from "./helpers.ts";
 import { type FsContext, type FsError, fsError, type ResolvedNode } from "./types.ts";
 
 const textEncoder = new TextEncoder();
@@ -108,35 +102,23 @@ export const createTreeOps = (ctx: FsContext) => {
   // --------------------------------------------------------------------------
 
   /**
-   * Resolve path + indexPath to a target node, collecting the parent chain.
+   * Resolve a sequence of PathSegments to a target node, collecting the
+   * parent chain for Merkle-path rebuilds.
+   *
+   * Segments are traversed in order — name and index segments may be
+   * freely interleaved (e.g. `["src", ~2, "utils", ~0]`).
    */
   const resolvePath = async (
     rootStorageKey: string,
-    pathStr?: string,
-    indexPathStr?: string
+    segments: PathSegment[] = []
   ): Promise<ResolvedNode | FsError> => {
     const rootNode = await getAndDecodeNode(rootStorageKey);
     if (!rootNode) {
       return fsError("INVALID_ROOT", 400, "Root node not found or invalid");
     }
 
-    if (!pathStr && !indexPathStr) {
+    if (segments.length === 0) {
       return { hash: rootStorageKey, node: rootNode, name: "", parentPath: [] };
-    }
-
-    // Parse segments
-    let pathSegments: string[] = [];
-    if (pathStr) {
-      const parsed = parsePath(pathStr);
-      if ("code" in parsed) return parsed;
-      pathSegments = parsed;
-    }
-
-    let indexIndices: number[] = [];
-    if (indexPathStr) {
-      const parsed = parseIndexPath(indexPathStr);
-      if ("code" in parsed) return parsed;
-      indexIndices = parsed;
     }
 
     let currentHash = rootStorageKey;
@@ -144,57 +126,58 @@ export const createTreeOps = (ctx: FsContext) => {
     let currentName = "";
     const parentPath: ResolvedNode["parentPath"] = [];
 
-    // Navigate by name
-    for (const segment of pathSegments) {
+    for (const segment of segments) {
       if (currentNode.kind !== "dict") {
-        return fsError("NOT_A_DIRECTORY", 400, `'${currentName}' is not a directory`, {
-          path: currentName,
-        });
+        const label = segment.kind === "name" ? `'${segment.value}'` : `~${segment.value}`;
+        return fsError(
+          "NOT_A_DIRECTORY",
+          400,
+          `Cannot descend into '${currentName}' (not a directory) at segment ${label}`,
+          {
+            path: currentName,
+          }
+        );
       }
 
-      const child = findChildByName(currentNode, segment);
-      if (!child) {
-        return fsError("PATH_NOT_FOUND", 404, `Path not found: '${segment}'`, {
-          resolvedTo: currentName,
-          missingSegment: segment,
-        });
+      if (segment.kind === "name") {
+        const child = findChildByName(currentNode, segment.value);
+        if (!child) {
+          return fsError("PATH_NOT_FOUND", 404, `Path not found: '${segment.value}'`, {
+            resolvedTo: currentName,
+            missingSegment: segment.value,
+          });
+        }
+
+        const childStorageKey = hashToStorageKey(child.hash);
+        const childNode = await getAndDecodeNode(childStorageKey);
+        if (!childNode) {
+          return fsError("PATH_NOT_FOUND", 404, `Node data not found for '${segment.value}'`);
+        }
+
+        parentPath.push({ hash: currentHash, node: currentNode, childIndex: child.index });
+        currentHash = childStorageKey;
+        currentNode = childNode;
+        currentName = segment.value;
+      } else {
+        // index segment
+        const child = findChildByIndex(currentNode, segment.value);
+        if (!child) {
+          return fsError("INDEX_OUT_OF_BOUNDS", 400, `Index ${segment.value} out of bounds`, {
+            maxIndex: (currentNode.children?.length ?? 0) - 1,
+          });
+        }
+
+        const childStorageKey = hashToStorageKey(child.hash);
+        const childNode = await getAndDecodeNode(childStorageKey);
+        if (!childNode) {
+          return fsError("PATH_NOT_FOUND", 404, `Node data not found at index ${segment.value}`);
+        }
+
+        parentPath.push({ hash: currentHash, node: currentNode, childIndex: segment.value });
+        currentHash = childStorageKey;
+        currentNode = childNode;
+        currentName = child.name;
       }
-
-      const childStorageKey = hashToStorageKey(child.hash);
-      const childNode = await getAndDecodeNode(childStorageKey);
-      if (!childNode) {
-        return fsError("PATH_NOT_FOUND", 404, `Node data not found for '${segment}'`);
-      }
-
-      parentPath.push({ hash: currentHash, node: currentNode, childIndex: child.index });
-      currentHash = childStorageKey;
-      currentNode = childNode;
-      currentName = segment;
-    }
-
-    // Continue by index
-    for (const index of indexIndices) {
-      if (currentNode.kind !== "dict") {
-        return fsError("NOT_A_DIRECTORY", 400, "Node at index is not a directory");
-      }
-
-      const child = findChildByIndex(currentNode, index);
-      if (!child) {
-        return fsError("INDEX_OUT_OF_BOUNDS", 400, `Index ${index} out of bounds`, {
-          maxIndex: (currentNode.children?.length ?? 0) - 1,
-        });
-      }
-
-      const childStorageKey = hashToStorageKey(child.hash);
-      const childNode = await getAndDecodeNode(childStorageKey);
-      if (!childNode) {
-        return fsError("PATH_NOT_FOUND", 404, `Node data not found at index ${index}`);
-      }
-
-      parentPath.push({ hash: currentHash, node: currentNode, childIndex: index });
-      currentHash = childStorageKey;
-      currentNode = childNode;
-      currentName = child.name;
     }
 
     return { hash: currentHash, node: currentNode, name: currentName, parentPath };
@@ -300,10 +283,13 @@ export const createTreeOps = (ctx: FsContext) => {
   /**
    * Ensure all intermediate directories exist along `segments` (excluding the
    * last segment, which is the target). Returns the parent node info.
+   *
+   * Name segments are created if missing (mkdir -p). Index segments must
+   * already exist (you cannot "create" a child by index).
    */
   const ensureParentDirs = async (
     rootStorageKey: string,
-    segments: string[]
+    segments: PathSegment[]
   ): Promise<
     { parentHash: string; parentNode: CasNode; parentPath: ResolvedNode["parentPath"] } | FsError
   > => {
@@ -319,55 +305,105 @@ export const createTreeOps = (ctx: FsContext) => {
       const seg = segments[i]!;
 
       if (currentNode.kind !== "dict") {
-        return fsError("NOT_A_DIRECTORY", 400, `'${seg}' is not a directory`);
+        return fsError("NOT_A_DIRECTORY", 400, "Path component is not a directory");
       }
 
-      const child = findChildByName(currentNode, seg);
+      if (seg.kind === "index") {
+        // Index segment — must exist, navigate through
+        const child = findChildByIndex(currentNode, seg.value);
+        if (!child) {
+          return fsError("INDEX_OUT_OF_BOUNDS", 400, `Index ${seg.value} out of bounds`, {
+            maxIndex: (currentNode.children?.length ?? 0) - 1,
+          });
+        }
+        const childKey = hashToStorageKey(child.hash);
+        const childNode = await getAndDecodeNode(childKey);
+        if (!childNode) {
+          return fsError("PATH_NOT_FOUND", 404, `Node data not found at index ${seg.value}`);
+        }
+        if (childNode.kind !== "dict") {
+          return fsError("NOT_A_DIRECTORY", 400, `Node at index ${seg.value} is not a directory`);
+        }
+        builtParentPath.push({ hash: currentHash, node: currentNode, childIndex: seg.value });
+        currentHash = childKey;
+        currentNode = childNode;
+        continue;
+      }
+
+      // Name segment — navigate or create
+      const child = findChildByName(currentNode, seg.value);
       if (child) {
         const childStorageKey = hashToStorageKey(child.hash);
         const childNode = await getAndDecodeNode(childStorageKey);
         if (!childNode) {
-          return fsError("PATH_NOT_FOUND", 404, `Node data not found for '${seg}'`);
+          return fsError("PATH_NOT_FOUND", 404, `Node data not found for '${seg.value}'`);
         }
         if (childNode.kind !== "dict") {
-          return fsError("NOT_A_DIRECTORY", 400, `'${seg}' exists but is not a directory`);
+          return fsError("NOT_A_DIRECTORY", 400, `'${seg.value}' exists but is not a directory`);
         }
         builtParentPath.push({ hash: currentHash, node: currentNode, childIndex: child.index });
         currentHash = childStorageKey;
         currentNode = childNode;
       } else {
-        // Create all remaining intermediate dirs bottom-up
-        let newDirHash: Uint8Array | null = null;
+        // Create missing directory.
+        // Optimisation: batch-create consecutive remaining name-only segments.
+        const remaining = segments.slice(i + 1, -1); // intermediates after this
+        const allRemainingNames = remaining.every((s) => s.kind === "name");
 
-        for (let j = segments.length - 2; j > i; j--) {
-          const emptyEncoded = await encodeDictNode(
-            {
-              children: newDirHash ? [newDirHash] : [],
-              childNames: newDirHash ? [segments[j + 1]!] : [],
-            },
+        if (allRemainingNames) {
+          // Batch bottom-up creation (original optimisation)
+          let newDirHash: Uint8Array | null = null;
+
+          for (let j = segments.length - 2; j > i; j--) {
+            const nextSeg = segments[j + 1]!;
+            const nextName = nextSeg.kind === "name" ? nextSeg.value : `~${nextSeg.value}`;
+            const emptyEncoded = await encodeDictNode(
+              {
+                children: newDirHash ? [newDirHash] : [],
+                childNames: newDirHash ? [nextName] : [],
+              },
+              keyProvider
+            );
+            await storeNode(emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
+            newDirHash = emptyEncoded.hash;
+          }
+
+          if (!newDirHash) {
+            const emptyEncoded = await encodeDictNode(
+              { children: [], childNames: [] },
+              keyProvider
+            );
+            await storeNode(emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
+            newDirHash = emptyEncoded.hash;
+          }
+
+          const newNames = [...(currentNode.childNames ?? []), seg.value];
+          const newChildren = [...(currentNode.children ?? []), newDirHash];
+          const parentEncoded = await encodeDictNode(
+            { children: newChildren, childNames: newNames },
             keyProvider
           );
-          await storeNode(emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
-          newDirHash = emptyEncoded.hash;
+          await storeNode(parentEncoded.bytes, parentEncoded.hash, "dict", 0);
+
+          const newRootKey = await rebuildMerklePath(builtParentPath, parentEncoded.hash);
+          // Re-resolve from the new root
+          return ensureParentDirs(newRootKey, segments);
         }
 
-        if (!newDirHash) {
-          const emptyEncoded = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
-          await storeNode(emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
-          newDirHash = emptyEncoded.hash;
-        }
+        // Mixed segments remain — create single dir, rebuild, re-resolve
+        const emptyEncoded = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
+        await storeNode(emptyEncoded.bytes, emptyEncoded.hash, "dict", 0);
 
-        const newNames = [...(currentNode.childNames ?? []), seg];
-        const newChildren = [...(currentNode.children ?? []), newDirHash];
-        const parentEncoded = await encodeDictNode(
-          { children: newChildren, childNames: newNames },
-          keyProvider
+        const result = await insertChild(
+          builtParentPath,
+          currentHash,
+          currentNode,
+          seg.value,
+          emptyEncoded.hash
         );
-        await storeNode(parentEncoded.bytes, parentEncoded.hash, "dict", 0);
+        if (typeof result === "object" && "code" in result) return result;
 
-        const newRootKey = await rebuildMerklePath(builtParentPath, parentEncoded.hash);
-        // Re-resolve from the new root
-        return ensureParentDirs(newRootKey, segments);
+        return ensureParentDirs(result, segments);
       }
     }
 

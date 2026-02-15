@@ -43,6 +43,7 @@
     "@aws-sdk/client-dynamodb": "^3.975.0",
     "@aws-sdk/client-s3": "^3.975.0",
     "@aws-sdk/lib-dynamodb": "^3.975.0",
+    "@casfa/cas-uri": "workspace:*",
     "@casfa/client": "workspace:*",
     "@casfa/client-bridge": "workspace:*",
     "@casfa/client-sw": "workspace:*",

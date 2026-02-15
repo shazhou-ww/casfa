@@ -2,16 +2,18 @@
  * CAS URI parsing
  *
  * Root format: prefix_CB32VALUE (using underscore separator)
- * e.g., nod_ABCDEF.../path or dpt_ABCDEF.../path
+ * Segments: name segments or ~N index segments
+ * e.g., nod_ABCDEF.../path/~0/~1 or dpt_ABCDEF.../path
  */
 
-import { CROCKFORD_BASE32_26, ROOT_TYPES } from "./constants.ts";
+import { CROCKFORD_BASE32_26, INDEX_SEGMENT_REGEX, ROOT_TYPES } from "./constants.ts";
 import type {
   CasUri,
   CasUriParseError,
   CasUriParseResult,
   CasUriRoot,
   CasUriRootType,
+  PathSegment,
 } from "./types.ts";
 
 /**
@@ -55,9 +57,31 @@ function parseRoot(rootStr: string): CasUriRoot | CasUriParseError {
 }
 
 /**
+ * Parse a raw path segment string into a PathSegment.
+ *
+ * Segments starting with ~ followed by digits are index segments.
+ * All other segments are name segments.
+ */
+function parseSegment(raw: string): PathSegment | CasUriParseError {
+  const indexMatch = raw.match(INDEX_SEGMENT_REGEX);
+  if (indexMatch) {
+    const value = Number.parseInt(indexMatch[1]!, 10);
+    if (!Number.isFinite(value) || value < 0) {
+      return {
+        code: "invalid_index",
+        message: `Invalid index segment: "${raw}"`,
+      };
+    }
+    return { kind: "index", value };
+  }
+  return { kind: "name", value: raw };
+}
+
+/**
  * Parse a CAS URI string
  *
- * Format: {root}[/path...][#index-path]
+ * Format: {root}[/segment...]
+ * Segments can be name segments or ~N index segments.
  *
  * @param uriStr - CAS URI string to parse
  * @returns Parse result with parsed URI or error
@@ -65,10 +89,10 @@ function parseRoot(rootStr: string): CasUriRoot | CasUriParseError {
  * @example
  * ```ts
  * parseCasUri("nod_ABC123XYZ01234567890ABCD/docs/readme.md")
- * // => { ok: true, uri: { root: { type: "nod", hash: "ABC123XYZ01234567890ABCD" }, path: ["docs", "readme.md"], indexPath: null } }
+ * // => { ok: true, uri: { root: { type: "nod", hash: "ABC123..." }, segments: [{kind:"name",value:"docs"},{kind:"name",value:"readme.md"}] } }
  *
- * parseCasUri("dpt_01HQABC123XYZ456789012/config#version")
- * // => { ok: true, uri: { root: { type: "dpt", id: "01HQABC123XYZ456789012" }, path: ["config"], indexPath: "version" } }
+ * parseCasUri("dpt_01HQABC123XYZ456789012/src/~0/~1")
+ * // => { ok: true, uri: { root: { type: "dpt", id: "01HQABC..." }, segments: [{kind:"name",value:"src"},{kind:"index",value:0},{kind:"index",value:1}] } }
  * ```
  */
 export function parseCasUri(uriStr: string): CasUriParseResult {
@@ -83,18 +107,8 @@ export function parseCasUri(uriStr: string): CasUriParseResult {
     };
   }
 
-  // Split fragment (index path)
-  let indexPath: string | null = null;
-  let mainPart = uriStr;
-
-  const hashIndex = uriStr.indexOf("#");
-  if (hashIndex !== -1) {
-    indexPath = uriStr.slice(hashIndex + 1);
-    mainPart = uriStr.slice(0, hashIndex);
-  }
-
   // Split by path separator
-  const parts = mainPart.split("/");
+  const parts = uriStr.split("/");
   const rootStr = parts[0];
 
   if (!rootStr) {
@@ -113,15 +127,23 @@ export function parseCasUri(uriStr: string): CasUriParseResult {
     return { ok: false, error: rootResult };
   }
 
-  // Extract path segments (filter empty strings from consecutive slashes)
-  const path = parts.slice(1).filter((p) => p !== "");
+  // Parse segments (filter empty strings from consecutive slashes)
+  const segments: PathSegment[] = [];
+  const rawSegments = parts.slice(1).filter((p) => p !== "");
+
+  for (const raw of rawSegments) {
+    const seg = parseSegment(raw);
+    if ("code" in seg) {
+      return { ok: false, error: seg };
+    }
+    segments.push(seg);
+  }
 
   return {
     ok: true,
     uri: {
       root: rootResult,
-      path,
-      indexPath,
+      segments,
     },
   };
 }
@@ -139,4 +161,37 @@ export function parseCasUriOrThrow(uriStr: string): CasUri {
     throw new Error(`Failed to parse CAS URI: ${result.error.message}`);
   }
   return result.uri;
+}
+
+/**
+ * Parse a path-only string (no root) into PathSegment[].
+ *
+ * Splits on "/" and classifies each segment as a name or ~N index segment.
+ * Returns an empty array for empty/undefined input.
+ *
+ * @example
+ * ```ts
+ * parsePathSegments("src/~0/utils/~2")
+ * // => { ok: true, segments: [{kind:"name",value:"src"},{kind:"index",value:0},{kind:"name",value:"utils"},{kind:"index",value:2}] }
+ * ```
+ */
+export function parsePathSegments(
+  pathStr: string | undefined
+): { ok: true; segments: PathSegment[] } | { ok: false; error: CasUriParseError } {
+  if (!pathStr || pathStr.trim() === "") {
+    return { ok: true, segments: [] };
+  }
+
+  const parts = pathStr.split("/").filter((p) => p !== "");
+  const segments: PathSegment[] = [];
+
+  for (const raw of parts) {
+    const seg = parseSegment(raw);
+    if ("code" in seg) {
+      return { ok: false, error: seg };
+    }
+    segments.push(seg);
+  }
+
+  return { ok: true, segments };
 }
