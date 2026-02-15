@@ -8,6 +8,7 @@
 
 import { isFsError } from "@casfa/fs";
 import { useCallback, useEffect, useRef } from "react";
+import { pathToSegments } from "../core/path-segments.ts";
 import type { ExplorerError } from "../types.ts";
 import { useExplorerStore } from "./use-explorer-context.ts";
 
@@ -74,8 +75,7 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
 
         const result = await localFs.write(
           depotRoot,
-          nextPending.targetPath,
-          undefined,
+          pathToSegments(nextPending.targetPath),
           bytes,
           contentType
         );

@@ -8,6 +8,7 @@
 
 import { Autocomplete, TextField } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { pathToSegments } from "../core/path-segments.ts";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 
 type PathInputProps = {
@@ -52,7 +53,7 @@ export function PathInput({ onCancel, onNavigate }: PathInputProps) {
           : inputValue.toLowerCase();
 
       try {
-        const result = await localFs.ls(depotRoot, parentPath || undefined, undefined, 50);
+        const result = await localFs.ls(depotRoot, pathToSegments(parentPath || undefined), 50);
         if ("children" in result) {
           const suggestions = result.children
             .filter((c) => c.type === "dir")
@@ -77,7 +78,7 @@ export function PathInput({ onCancel, onNavigate }: PathInputProps) {
     // Validate: try to ls the path
     if (!depotRoot) return;
     try {
-      const result = await localFs.ls(depotRoot, path || undefined, undefined, 1);
+      const result = await localFs.ls(depotRoot, pathToSegments(path || undefined), 1);
       if ("code" in result) {
         setError(t("pathInput.invalid"));
         return;

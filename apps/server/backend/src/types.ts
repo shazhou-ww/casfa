@@ -213,6 +213,8 @@ export type Env = {
     auth: AuthContext;
     scopeVerification?: ScopeVerificationResult;
     proofVerification?: import("./middleware/proof-validation.ts").ProofVerificationState;
+    /** Set by nodeAuthMiddleware — the authorized node key from URL `:key` param */
+    authorizedNodeKey?: string;
   };
 };
 

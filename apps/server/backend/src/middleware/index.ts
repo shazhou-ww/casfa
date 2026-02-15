@@ -26,9 +26,14 @@ export {
 // Authorization
 // ============================================================================
 
+// Node Authorization (Direct Authorization Check — replaces proof validation)
+export {
+  createNodeAuthMiddleware,
+  type NodeAuthMiddlewareDeps,
+} from "./node-auth.ts";
 // Permission Check
 export { createCanManageDepotMiddleware, createCanUploadMiddleware } from "./permission-check.ts";
-// Proof Validation (X-CAS-Proof — replaces scope validation)
+// Proof Validation (X-CAS-Proof — legacy, kept for backward compatibility)
 export {
   createMultiNodeProofMiddleware,
   createProofValidationMiddleware,

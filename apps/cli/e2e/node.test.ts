@@ -128,13 +128,12 @@ describe("CLI Node Commands", () => {
       const nodeKey = extractNodeKey(putResult.stdout);
       expect(nodeKey).not.toBeNull();
 
-      // For get command, we need a proof (access authorization).
-      // Since this is a newly uploaded file not in any depot tree yet,
-      // we need to use a different approach or test get with mock data.
+      // For get command, the node must pass Direct Authorization Check.
+      // Since this is a newly uploaded file, the delegate owns it.
       // For now, we test that the command runs with proper arguments.
 
-      // Note: In a real scenario, the file would need to be added to a depot
-      // and we'd need the proper proof. This test verifies the CLI accepts
+      // Note: In a real scenario, the file would need to be in the
+      // delegate's ownership chain. This test verifies the CLI accepts
       // the command and connects to the server properly.
     });
   });

@@ -18,6 +18,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
+import { pathToSegments } from "../core/path-segments.ts";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import { findPreviewProvider, MAX_PREVIEW_SIZE } from "../preview/builtin-providers.tsx";
 import type { ExplorerItem, PreviewProvider } from "../types.ts";
@@ -59,7 +60,7 @@ export function PreviewPanel({ item, onClose, previewProviders }: PreviewPanelPr
 
     (async () => {
       try {
-        const result = await localFs.read(depotRoot, item.path);
+        const result = await localFs.read(depotRoot, pathToSegments(item.path));
         if (cancelled) return;
         if ("code" in result) {
           setError(t("preview.error"));
@@ -67,7 +68,7 @@ export function PreviewPanel({ item, onClose, previewProviders }: PreviewPanelPr
           return;
         }
         const contentType = result.contentType || item.contentType || "application/octet-stream";
-        setBlob(new Blob([result.data], { type: contentType }));
+        setBlob(new Blob([result.data as BlobPart], { type: contentType }));
         setLoading(false);
       } catch {
         if (!cancelled) {

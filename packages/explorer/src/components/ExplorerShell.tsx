@@ -13,6 +13,7 @@
 
 import { Box, CircularProgress, Typography } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { pathToSegments } from "../core/path-segments.ts";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import { useKeyboardNavigation } from "../hooks/use-keyboard-navigation.ts";
 import { useUpload } from "../hooks/use-upload.ts";
@@ -193,7 +194,7 @@ export function ExplorerShell(props: ExplorerShellProps) {
     async (item: ExplorerItem) => {
       if (!depotRoot || item.isDirectory) return;
       try {
-        const result = await localFs.read(depotRoot, item.path);
+        const result = await localFs.read(depotRoot, pathToSegments(item.path));
         if ("code" in result) {
           setError({ type: "unknown", message: t("error.unknown") });
           return;

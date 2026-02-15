@@ -138,8 +138,26 @@ export {
 // Claim schemas
 // ============================================================================
 
-export type { ClaimNodeRequest, ClaimNodeResponse } from "./claim.ts";
-export { ClaimNodeRequestSchema, ClaimNodeResponseSchema } from "./claim.ts";
+export type {
+  BatchClaimRequest,
+  BatchClaimResponse,
+  BatchClaimResult,
+  ClaimEntry,
+  ClaimNodeRequest,
+  ClaimNodeResponse,
+  PathClaimEntry,
+  PopClaimEntry,
+} from "./claim.ts";
+export {
+  BatchClaimRequestSchema,
+  BatchClaimResponseSchema,
+  BatchClaimResultSchema,
+  ClaimEntrySchema,
+  ClaimNodeRequestSchema,
+  ClaimNodeResponseSchema,
+  PathClaimEntrySchema,
+  PopClaimEntrySchema,
+} from "./claim.ts";
 
 // ============================================================================
 // Depot schemas

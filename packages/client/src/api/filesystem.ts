@@ -2,12 +2,12 @@
  * Filesystem API functions for @casfa/client.
  *
  * All filesystem operations are mounted under:
- *   /api/realm/{realmId}/nodes/{nodeKey}/fs/{op}
+ *   /api/realm/{realmId}/nodes/fs/{nodeKey}/{op}
  *
  * Where nodeKey is the depot's current root node.
  *
  * Token Requirements:
- * - Read ops (stat, ls, read): Access Token
+ * - Read ops (stat, ls, read): Access Token (nodeKey must pass Direct Authorization Check)
  * - Write ops (write, mkdir, rm, mv, cp, rewrite): Access Token with canUpload
  */
 
@@ -30,7 +30,7 @@ import { fetchWithAuth } from "../utils/http.ts";
 // ============================================================================
 
 function buildFsUrl(baseUrl: string, realm: string, rootKey: string, op: string): string {
-  return `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/${encodeURIComponent(rootKey)}/fs/${op}`;
+  return `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/fs/${encodeURIComponent(rootKey)}/${op}`;
 }
 
 // ============================================================================
