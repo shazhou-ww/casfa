@@ -48,7 +48,7 @@ nodeId 授权判定：
 - [Node 操作](./02-nodes.md) — 节点的读取、上传与导航
 - [文件系统操作](./03-filesystem.md) — 基于 Node 的类文件系统 CRUD
 - [Depot 管理](./04-depots.md) — 命名存储空间的 CRUD 与 Commit
-- [Claim 操作](./05-claim.md) — 批量 claim 节点所有权（PoP + path-based）
+- [Check & Claim](./05-claim.md) — 批量检查节点状态与 claim 所有权
 
 ## 端点列表
 
@@ -72,7 +72,6 @@ nodeId 授权判定：
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
-| POST | `/api/realm/{realmId}/nodes/check` | 批量检查节点状态 | AT 或 JWT |
 | PUT | `/api/realm/{realmId}/nodes/:key` | 上传节点 | AT 或 JWT (canUpload) |
 | GET | `/api/realm/{realmId}/nodes/:key` | 读取节点二进制 | AT 或 JWT |
 | GET | `/api/realm/{realmId}/nodes/:key/~0/~1/...` | 导航读取节点 | AT 或 JWT |
@@ -98,10 +97,11 @@ nodeId 授权判定：
 | POST | `/api/realm/{realmId}/fs/:key/cp` | 复制文件或目录 | AT 或 JWT (canUpload) |
 | POST | `/api/realm/{realmId}/fs/:key/rewrite` | 声明式批量重写 | AT 或 JWT (canUpload) |
 
-### Claim 操作
+### Check & Claim 操作
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
+| POST | `/api/realm/{realmId}/check` | 批量检查节点状态 | AT 或 JWT |
 | POST | `/api/realm/{realmId}/claim` | 批量 Claim 节点所有权 | AT 或 JWT (canUpload) |
 
 ### Depot 操作

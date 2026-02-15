@@ -1,48 +1,6 @@
 # Node 操作
 
-CAS 节点的读取、上传、导航与批量检查。
-
----
-
-## POST /api/realm/{realmId}/nodes/check
-
-批量检查节点在存储中的状态。返回 missing（不存在）、owned（存在且被当前 Delegate 链拥有）、unowned（存在但未被拥有）三类。
-
-> **无需 Direct Authorization Check**：check 只查询节点的存在性和 ownership 状态，不返回节点内容，因此不要求 nodeId 在 delegate 的 scope 内。任何有效的 AT/JWT 都可以查询任意 key。
-
-### 请求
-
-```http
-POST /api/realm/usr_abc123/nodes/check
-Authorization: Bearer {access_token 或 jwt}
-Content-Type: application/json
-
-{
-  "keys": ["nod_abc123...", "nod_def456...", "nod_ghi789..."]
-}
-```
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `keys` | `string[]` | 节点 key 列表（`nod_` 前缀） |
-
-### 响应
-
-```json
-{
-  "missing": ["nod_ghi789..."],
-  "owned": ["nod_abc123..."],
-  "unowned": ["nod_def456..."]
-}
-```
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `missing` | `string[]` | 不存在于存储中的节点 |
-| `owned` | `string[]` | 存在且被当前 Delegate 链拥有的节点 |
-| `unowned` | `string[]` | 存在但未被当前 Delegate 链拥有的节点 |
-
-> **Well-known 节点**（如空字典）始终归类为 `owned`。
+CAS 节点的读取、上传与导航。
 
 ---
 
