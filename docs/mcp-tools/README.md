@@ -77,10 +77,19 @@ AI 通过高层 **文件系统 API**（`/nodes/fs/`）和 **元数据 API**（`/
 ```jsonc
 {
   "name": "list_depots",
-  "description": "List all depots in the user's realm. A depot is a named mutable pointer to a CAS root node, like a Git branch. Returns depot IDs, titles, current root keys, and timestamps.",
+  "description": "List all depots in the user's realm. A depot is a named mutable pointer to a CAS root node, like a Git branch. Returns depot IDs, titles, current root keys, and timestamps. This is typically the first tool to call when exploring a user's data.",
   "inputSchema": {
     "type": "object",
-    "properties": {},
+    "properties": {
+      "limit": {
+        "type": "number",
+        "description": "Max depots per page (default 100)"
+      },
+      "cursor": {
+        "type": "string",
+        "description": "Pagination cursor from a previous response"
+      }
+    },
     "required": []
   }
 }
@@ -89,15 +98,19 @@ AI 通过高层 **文件系统 API**（`/nodes/fs/`）和 **元数据 API**（`/
 **返回示例**：
 
 ```json
-[
-  {
-    "depotId": "dpt_01H5K6Z9X3ABCDEF01234567",
-    "title": "my-project",
-    "root": "nod_abc123...",
-    "createdAt": 1707600000000,
-    "updatedAt": 1707600100000
-  }
-]
+{
+  "depots": [
+    {
+      "depotId": "dpt_01H5K6Z9X3ABCDEF01234567",
+      "title": "my-project",
+      "root": "nod_abc123...",
+      "createdAt": 1707600000000,
+      "updatedAt": 1707600100000
+    }
+  ],
+  "nextCursor": null,
+  "hasMore": false
+}
 ```
 
 ---
@@ -259,7 +272,7 @@ AI 通过高层 **文件系统 API**（`/nodes/fs/`）和 **元数据 API**（`/
 ```jsonc
 {
   "name": "fs_read",
-  "description": "Read the contents of a text file. Only works for single-block files (≤4MB). Returns the file content as text. Do NOT use this for binary files (images, compiled code, etc.).",
+  "description": "Read the contents of a text file. Only works for single-block files (≤4MB). Returns the file content as UTF-8 text along with metadata (key, size, contentType). Do NOT use this for binary files (images, compiled code, etc.) — check contentType via fs_stat first if unsure.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -277,9 +290,19 @@ AI 通过高层 **文件系统 API**（`/nodes/fs/`）和 **元数据 API**（`/
 }
 ```
 
-**返回**：文件文本内容（UTF-8）。
+**返回示例**：
 
-> **Note**：底层 HTTP API 返回原始字节（`Content-Type` 为文件 MIME 类型）。MCP handler 需将响应体以 UTF-8 解码为文本返回给 AI。对于二进制文件（图片、编译产物等），AI 端应避免调用此 Tool。
+```json
+{
+  "path": "src/main.ts",
+  "key": "nod_abc123...",
+  "size": 2048,
+  "contentType": "text/typescript",
+  "content": "import { App } from './app';\n\nconst app = new App();\napp.start();\n"
+}
+```
+
+> **实现说明**：底层 HTTP API 返回原始字节（`Content-Type` 为文件 MIME 类型）。MCP handler 需将响应体以 UTF-8 解码为文本，并附带 `key`、`size`、`contentType` 元数据返回。对于二进制文件（图片、编译产物等），AI 应先用 `fs_stat` 检查 `contentType`，避免读取乱码。
 
 ---
 
@@ -290,7 +313,7 @@ AI 通过高层 **文件系统 API**（`/nodes/fs/`）和 **元数据 API**（`/
 ```jsonc
 {
   "name": "node_metadata",
-  "description": "Get structural metadata of a CAS node. For dict nodes, returns the children map (name → key). For file nodes, returns size and content type. Useful for inspecting the tree structure at the CAS level.",
+  "description": "Get structural metadata of a CAS node. For dict nodes, returns the children map (name → key). For file nodes, returns size and content type. Lower-level than fs_ls/fs_stat — use this when you need the raw children map or to inspect successor chains.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -343,7 +366,7 @@ AI 通过高层 **文件系统 API**（`/nodes/fs/`）和 **元数据 API**（`/
 ```jsonc
 {
   "name": "fs_write",
-  "description": "Create or overwrite a text file. Returns a new root node key (CAS is immutable — writes produce a new tree root). The depot is NOT automatically updated; call depot_commit with the returned newRoot to persist the change. For chained edits, use the returned newRoot as the nodeKey for the next operation.",
+  "description": "Create or overwrite a text file (≤4MB). Returns a new root node key (CAS is immutable — writes produce a new tree root). The depot is NOT automatically updated; call depot_commit with the returned newRoot to persist the change. For chained edits, use the returned newRoot as the nodeKey for the next operation.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -677,7 +700,7 @@ AI 通过高层 **文件系统 API**（`/nodes/fs/`）和 **元数据 API**（`/
       "scope": {
         "type": "array",
         "items": { "type": "string" },
-        "description": "Scope paths restricting accessible nodes. '.' inherits all parent scope roots. '0:1:2' navigates parent root 0 → child 1 → child 2 to create a narrower scope. Omit to inherit parent's full scope."
+        "description": "Scope paths restricting accessible nodes. '.' inherits all parent scope roots. '0:1:2' navigates parent scope root index 0 → child index 1 → child index 2 to create a narrower scope. Note: uses colon-separated indices (not ~N format). Omit to inherit parent's full scope."
       },
       "expiresIn": {
         "type": "number",
@@ -901,3 +924,54 @@ MCP Tool 的错误应映射为 MCP 标准错误格式：
 - `nod_xxx` — 直接使用节点 hash（不可变，适合链式操作中使用上一步的 `newRoot`）
 
 这使得 AI 可以用简洁的 `dpt_xxx` 开始操作，链式修改时切换到 `nod_xxx`，无需额外 API 调用。
+
+### Tool 注解 (Annotations)
+
+MCP 2025-03-26 规范引入了 [Tool Annotations](https://modelcontextprotocol.io/specification/2025-03-26/server/tools#annotations)，帮助客户端理解 Tool 行为。实现时应为每个 Tool 添加注解：
+
+| Tool | `readOnlyHint` | `destructiveHint` | `idempotentHint` |
+|------|:-:|:-:|:-:|
+| `list_depots` | ✅ | — | ✅ |
+| `get_depot` | ✅ | — | ✅ |
+| `fs_stat` | ✅ | — | ✅ |
+| `fs_ls` | ✅ | — | ✅ |
+| `fs_read` | ✅ | — | ✅ |
+| `node_metadata` | ✅ | — | ✅ |
+| `fs_write` | — | — | ✅* |
+| `fs_mkdir` | — | — | ✅ |
+| `fs_rm` | — | ✅ | — |
+| `fs_mv` | — | ✅ | — |
+| `fs_cp` | — | — | ✅* |
+| `fs_rewrite` | — | ✅ | — |
+| `depot_commit` | — | ✅ | — |
+| `create_delegate` | — | — | — |
+| `get_realm_info` | ✅ | — | ✅ |
+| `get_usage` | ✅ | — | ✅ |
+
+> `*` CAS 写入相同内容产生相同 key，因此 `fs_write`（相同内容）和 `fs_cp` 天然幂等。但 `depot_commit` 不幂等（覆盖当前 root）。
+
+---
+
+## 未来扩展
+
+### 搜索能力
+
+当前 Tool 集缺少文件内容搜索（grep）和文件名搜索（find）能力。AI Agent 在大型项目中需要高效定位代码，目前只能通过 `fs_ls` 逐层浏览 + `fs_read` 逐个读取，效率低下。
+
+**候选 Tool**：
+
+| Tool | 说明 | 优先级 |
+|------|------|--------|
+| `fs_search` / `fs_grep` | 在文件树内搜索文本/正则 | 高 — AI 最常见需求 |
+| `fs_find` | 按文件名 glob 模式查找 | 中 |
+| `fs_tree` | 递归返回完整目录树（带深度限制） | 中 — 减少 `fs_ls` 往返 |
+
+这些需要服务端新增对应 API，不在当前实现范围内。
+
+### `node_metadata` 的定位
+
+`node_metadata` 暴露 CAS 底层结构（children map、successor chain），与 `fs_ls` / `fs_stat` 存在功能重叠。如果 Tool 数量需要精简（减少 AI context 占用），`node_metadata` 是首选移除候选。保留它的理由：
+
+- 唯一能看到 successor 链的工具（多 block 文件结构）
+- children map 格式比 `fs_ls` 更紧凑（无分页开销）
+- 高级用户调试 CAS 结构时有用
