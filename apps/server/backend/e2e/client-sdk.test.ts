@@ -316,7 +316,7 @@ describe("Client SDK Integration", () => {
         childResult.accessToken,
         "POST",
         `/api/realm/${realm2}/nodes/claim`,
-        { claims: [{ type: "pop", nodeKey, pop: badPop }] }
+        { claims: [{ key: nodeKey, pop: badPop }] }
       );
       expect(claimResponse.status).toBe(403);
     });
