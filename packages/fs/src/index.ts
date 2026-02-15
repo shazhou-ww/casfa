@@ -36,7 +36,6 @@ export {
   findChildByIndex,
   findChildByName,
   hashToStorageKey,
-  parseIndexPath,
   parsePath,
   storageKeyToHash,
 } from "./helpers.ts";

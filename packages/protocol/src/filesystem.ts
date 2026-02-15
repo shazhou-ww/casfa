@@ -40,13 +40,11 @@ export type FsNodeType = z.infer<typeof FsNodeTypeSchema>;
 
 /**
  * Common query parameters for path-based fs operations.
- * Corresponds to CAS URI path + index-path.
+ * Path may contain ~N index segments (e.g. "src/~0/utils").
  */
 export const FsPathQuerySchema = z.object({
-  /** Name-based relative path, e.g. "src/main.ts" */
+  /** Path with optional ~N index segments, e.g. "src/~0/main.ts" */
   path: z.string().optional(),
-  /** Index-based path, e.g. "1:0" */
-  indexPath: z.string().optional(),
 });
 
 export type FsPathQuery = z.infer<typeof FsPathQuerySchema>;
@@ -174,16 +172,10 @@ export type FsMkdirResponse = z.infer<typeof FsMkdirResponseSchema>;
 // ============================================================================
 
 /** Request body for POST .../fs/rm */
-export const FsRmRequestSchema = z
-  .object({
-    /** Name-based path */
-    path: z.string().optional(),
-    /** Index-based path */
-    indexPath: z.string().optional(),
-  })
-  .refine((d) => d.path || d.indexPath, {
-    message: "Either path or indexPath must be provided",
-  });
+export const FsRmRequestSchema = z.object({
+  /** Path with optional ~N index segments */
+  path: z.string(),
+});
 
 export type FsRmRequest = z.infer<typeof FsRmRequestSchema>;
 

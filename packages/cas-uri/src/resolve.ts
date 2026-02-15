@@ -1,45 +1,78 @@
 /**
- * CAS URI path resolution
+ * CAS URI path resolution and utility functions
  */
 
-import type { CasUri } from "./types.ts";
+import type { CasUri, PathSegment } from "./types.ts";
+
+// ============================================================================
+// Segment Constructors
+// ============================================================================
 
 /**
- * Append path segments to a CAS URI
+ * Create a name segment
+ */
+export function nameSegment(value: string): PathSegment {
+  return { kind: "name", value };
+}
+
+/**
+ * Create an index segment
+ */
+export function indexSegment(value: number): PathSegment {
+  return { kind: "index", value };
+}
+
+// ============================================================================
+// Path Manipulation
+// ============================================================================
+
+/**
+ * Append name segments to a CAS URI
  *
  * @param uri - Base CAS URI
- * @param segments - Path segments to append
- * @returns New CAS URI with appended path
+ * @param names - Name path segments to append
+ * @returns New CAS URI with appended name segments
  */
-export function appendPath(uri: CasUri, ...segments: string[]): CasUri {
+export function appendPath(uri: CasUri, ...names: string[]): CasUri {
   return {
     ...uri,
-    path: [...uri.path, ...segments.filter((s) => s !== "")],
-    // Clear index path when appending (navigation changes the target)
-    indexPath: null,
+    segments: [...uri.segments, ...names.filter((s) => s !== "").map(nameSegment)],
   };
 }
 
 /**
- * Get parent URI (go up one level)
+ * Append index segments to a CAS URI
+ *
+ * @param uri - Base CAS URI
+ * @param indices - Index values to append
+ * @returns New CAS URI with appended index segments
+ */
+export function appendIndex(uri: CasUri, ...indices: number[]): CasUri {
+  return {
+    ...uri,
+    segments: [...uri.segments, ...indices.map(indexSegment)],
+  };
+}
+
+/**
+ * Get parent URI (go up one segment)
  *
  * @param uri - CAS URI
  * @returns Parent URI, or null if already at root
  */
 export function parentUri(uri: CasUri): CasUri | null {
-  if (uri.path.length === 0) {
+  if (uri.segments.length === 0) {
     return null; // Already at root
   }
 
   return {
     ...uri,
-    path: uri.path.slice(0, -1),
-    indexPath: null,
+    segments: uri.segments.slice(0, -1),
   };
 }
 
 /**
- * Get the root URI (remove all path and fragment)
+ * Get the root URI (remove all segments)
  *
  * @param uri - CAS URI
  * @returns Root URI
@@ -47,36 +80,24 @@ export function parentUri(uri: CasUri): CasUri | null {
 export function rootUri(uri: CasUri): CasUri {
   return {
     root: uri.root,
-    path: [],
-    indexPath: null,
+    segments: [],
   };
 }
 
 /**
- * Set the index path (fragment)
+ * Get the last segment's display name
+ *
+ * Returns the name value for name segments, or "~N" for index segments.
  *
  * @param uri - CAS URI
- * @param indexPath - New index path (null to remove)
- * @returns New URI with updated index path
- */
-export function withIndexPath(uri: CasUri, indexPath: string | null): CasUri {
-  return {
-    ...uri,
-    indexPath,
-  };
-}
-
-/**
- * Get the last path segment (basename)
- *
- * @param uri - CAS URI
- * @returns Last path segment, or null if no path
+ * @returns Last segment display name, or null if no segments
  */
 export function basename(uri: CasUri): string | null {
-  if (uri.path.length === 0) {
+  if (uri.segments.length === 0) {
     return null;
   }
-  return uri.path[uri.path.length - 1] ?? null;
+  const last = uri.segments[uri.segments.length - 1]!;
+  return last.kind === "name" ? last.value : `~${last.value}`;
 }
 
 /**
@@ -93,29 +114,32 @@ export function basename(uri: CasUri): string | null {
  */
 export function resolvePath(base: CasUri, relativePath: string): CasUri {
   // Split into segments
-  const segments = relativePath.split("/").filter((s) => s !== "" && s !== ".");
+  const parts = relativePath.split("/").filter((s) => s !== "" && s !== ".");
 
-  const currentPath = [...base.path];
+  const currentSegments = [...base.segments];
 
-  for (const segment of segments) {
-    if (segment === "..") {
+  for (const part of parts) {
+    if (part === "..") {
       // Go up one level
-      if (currentPath.length > 0) {
-        currentPath.pop();
+      if (currentSegments.length > 0) {
+        currentSegments.pop();
       }
       // If at root, stay at root (don't go above root)
     } else {
-      // Append segment
-      currentPath.push(segment);
+      // Append name segment
+      currentSegments.push(nameSegment(part));
     }
   }
 
   return {
     ...base,
-    path: currentPath,
-    indexPath: null,
+    segments: currentSegments,
   };
 }
+
+// ============================================================================
+// Comparison
+// ============================================================================
 
 /**
  * Check if two URIs are equal
@@ -143,18 +167,18 @@ export function uriEquals(a: CasUri, b: CasUri): boolean {
       break;
   }
 
-  // Compare paths
-  if (a.path.length !== b.path.length) {
+  // Compare segments
+  if (a.segments.length !== b.segments.length) {
     return false;
   }
-  for (let i = 0; i < a.path.length; i++) {
-    if (a.path[i] !== b.path[i]) {
-      return false;
-    }
+  for (let i = 0; i < a.segments.length; i++) {
+    const sa = a.segments[i]!;
+    const sb = b.segments[i]!;
+    if (sa.kind !== sb.kind) return false;
+    if (sa.value !== sb.value) return false;
   }
 
-  // Compare index paths
-  return a.indexPath === b.indexPath;
+  return true;
 }
 
 /**
@@ -183,16 +207,43 @@ export function isAncestorOf(ancestor: CasUri, descendant: CasUri): boolean {
       break;
   }
 
-  // Ancestor path must be prefix of descendant path
-  if (ancestor.path.length > descendant.path.length) {
+  // Ancestor segments must be prefix of descendant segments
+  if (ancestor.segments.length > descendant.segments.length) {
     return false;
   }
 
-  for (let i = 0; i < ancestor.path.length; i++) {
-    if (ancestor.path[i] !== descendant.path[i]) {
-      return false;
-    }
+  for (let i = 0; i < ancestor.segments.length; i++) {
+    const sa = ancestor.segments[i]!;
+    const sd = descendant.segments[i]!;
+    if (sa.kind !== sd.kind) return false;
+    if (sa.value !== sd.value) return false;
   }
 
   return true;
+}
+
+// ============================================================================
+// Extraction helpers (bridge to legacy path/indexPath APIs)
+// ============================================================================
+
+/**
+ * Extract only name segments from the URI
+ *
+ * Useful for bridging to APIs that take a separate path string.
+ */
+export function getNamePath(uri: CasUri): string[] {
+  return uri.segments
+    .filter((s): s is { kind: "name"; value: string } => s.kind === "name")
+    .map((s) => s.value);
+}
+
+/**
+ * Extract only index segments from the URI
+ *
+ * Useful for bridging to APIs that take a separate index path string.
+ */
+export function getIndexPath(uri: CasUri): number[] {
+  return uri.segments
+    .filter((s): s is { kind: "index"; value: number } => s.kind === "index")
+    .map((s) => s.value);
 }

@@ -10,6 +10,7 @@
  * This adapter captures those in closures when building per-call FsContext.
  */
 
+import type { PathSegment } from "@casfa/cas-uri";
 import { isWellKnownNode } from "@casfa/core";
 import {
   type AuthorizeLinkFn,
@@ -48,20 +49,17 @@ export type FsService = {
   stat(
     realm: string,
     rootNodeKey: string,
-    pathStr?: string,
-    indexPathStr?: string
+    segments?: PathSegment[]
   ): Promise<FsStatResponse | FsError>;
   read(
     realm: string,
     rootNodeKey: string,
-    pathStr?: string,
-    indexPathStr?: string
+    segments?: PathSegment[]
   ): Promise<{ data: Uint8Array; contentType: string; size: number; key: string } | FsError>;
   ls(
     realm: string,
     rootNodeKey: string,
-    pathStr?: string,
-    indexPathStr?: string,
+    segments?: PathSegment[],
     limit?: number,
     cursor?: string
   ): Promise<FsLsResponse | FsError>;
@@ -69,8 +67,7 @@ export type FsService = {
     realm: string,
     ownerId: string,
     rootNodeKey: string,
-    pathStr: string | undefined,
-    indexPathStr: string | undefined,
+    segments: PathSegment[],
     fileContent: Uint8Array,
     contentType: string
   ): Promise<FsWriteResponse | FsError>;
@@ -84,8 +81,7 @@ export type FsService = {
     realm: string,
     ownerId: string,
     rootNodeKey: string,
-    pathStr?: string,
-    indexPathStr?: string
+    segments: PathSegment[]
   ): Promise<FsRmResponse | FsError>;
   mv(
     realm: string,
@@ -248,34 +244,28 @@ export const createFsService = (deps: FsServiceDeps): FsService => {
   // --------------------------------------------------------------------------
 
   return {
-    stat: (realm, rootNodeKey, pathStr?, indexPathStr?) => {
-      return getReadService(realm).stat(rootNodeKey, pathStr, indexPathStr);
+    stat: (realm, rootNodeKey, segments?) => {
+      return getReadService(realm).stat(rootNodeKey, segments);
     },
 
-    read: (realm, rootNodeKey, pathStr?, indexPathStr?) => {
-      return getReadService(realm).read(rootNodeKey, pathStr, indexPathStr);
+    read: (realm, rootNodeKey, segments?) => {
+      return getReadService(realm).read(rootNodeKey, segments);
     },
 
-    ls: (realm, rootNodeKey, pathStr?, indexPathStr?, limit?, cursor?) => {
-      return getReadService(realm).ls(rootNodeKey, pathStr, indexPathStr, limit, cursor);
+    ls: (realm, rootNodeKey, segments?, limit?, cursor?) => {
+      return getReadService(realm).ls(rootNodeKey, segments, limit, cursor);
     },
 
-    write: (realm, ownerId, rootNodeKey, pathStr, indexPathStr, fileContent, contentType) => {
-      return getWriteService(realm, ownerId).write(
-        rootNodeKey,
-        pathStr,
-        indexPathStr,
-        fileContent,
-        contentType
-      );
+    write: (realm, ownerId, rootNodeKey, segments, fileContent, contentType) => {
+      return getWriteService(realm, ownerId).write(rootNodeKey, segments, fileContent, contentType);
     },
 
     mkdir: (realm, ownerId, rootNodeKey, pathStr) => {
       return getWriteService(realm, ownerId).mkdir(rootNodeKey, pathStr);
     },
 
-    rm: (realm, ownerId, rootNodeKey, pathStr?, indexPathStr?) => {
-      return getWriteService(realm, ownerId).rm(rootNodeKey, pathStr, indexPathStr);
+    rm: (realm, ownerId, rootNodeKey, segments) => {
+      return getWriteService(realm, ownerId).rm(rootNodeKey, segments);
     },
 
     mv: (realm, ownerId, rootNodeKey, fromPath, toPath) => {

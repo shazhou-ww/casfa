@@ -7,6 +7,7 @@
  * Based on docs/casfa-api/04-realm/03-filesystem.md
  */
 
+import { type PathSegment, parsePathSegments } from "@casfa/cas-uri";
 import type {
   FsCpRequest,
   FsMkdirRequest,
@@ -75,6 +76,24 @@ const getOwnerId = (c: Context<Env>): string => {
   return auth.delegateId;
 };
 
+/**
+ * Parse the `path` query parameter into PathSegment[].
+ * Returns an error Response if the path contains invalid ~N segments.
+ */
+const parsePathParam = (
+  c: Context<Env>
+): { ok: true; segments: PathSegment[] } | { ok: false; response: Response } => {
+  const pathStr = c.req.query("path");
+  const result = parsePathSegments(pathStr);
+  if (!result.ok) {
+    return {
+      ok: false as const,
+      response: c.json({ error: "INVALID_PATH", message: result.error.message }, 400),
+    };
+  }
+  return { ok: true as const, segments: result.segments };
+};
+
 // ============================================================================
 // Factory
 // ============================================================================
@@ -91,10 +110,10 @@ export const createFilesystemController = (
     stat: async (c) => {
       const realm = getRealm(c);
       const nodeKey = getNodeKey(c);
-      const path = c.req.query("path");
-      const indexPath = c.req.query("indexPath");
+      const parsed = parsePathParam(c);
+      if (!parsed.ok) return parsed.response;
 
-      const result = await fsService.stat(realm, nodeKey, path, indexPath);
+      const result = await fsService.stat(realm, nodeKey, parsed.segments);
       if (isFsError(result)) return fsErrorResponse(c, result);
 
       return c.json(result);
@@ -106,10 +125,10 @@ export const createFilesystemController = (
     read: async (c) => {
       const realm = getRealm(c);
       const nodeKey = getNodeKey(c);
-      const path = c.req.query("path");
-      const indexPath = c.req.query("indexPath");
+      const parsed = parsePathParam(c);
+      if (!parsed.ok) return parsed.response;
 
-      const result = await fsService.read(realm, nodeKey, path, indexPath);
+      const result = await fsService.read(realm, nodeKey, parsed.segments);
       if (isFsError(result)) return fsErrorResponse(c, result);
 
       return new Response(result.data, {
@@ -128,12 +147,12 @@ export const createFilesystemController = (
     ls: async (c) => {
       const realm = getRealm(c);
       const nodeKey = getNodeKey(c);
-      const path = c.req.query("path");
-      const indexPath = c.req.query("indexPath");
+      const parsed = parsePathParam(c);
+      if (!parsed.ok) return parsed.response;
       const limit = c.req.query("limit") ? Number.parseInt(c.req.query("limit")!, 10) : 100;
       const cursor = c.req.query("cursor");
 
-      const result = await fsService.ls(realm, nodeKey, path, indexPath, limit, cursor);
+      const result = await fsService.ls(realm, nodeKey, parsed.segments, limit, cursor);
       if (isFsError(result)) return fsErrorResponse(c, result);
 
       return c.json(result);
@@ -146,8 +165,8 @@ export const createFilesystemController = (
       const realm = getRealm(c);
       const nodeKey = getNodeKey(c);
       const ownerId = getOwnerId(c);
-      const path = c.req.query("path");
-      const indexPath = c.req.query("indexPath");
+      const parsed = parsePathParam(c);
+      if (!parsed.ok) return parsed.response;
       const contentType = c.req.header("Content-Type") ?? "application/octet-stream";
       const contentLength = c.req.header("Content-Length");
 
@@ -173,8 +192,7 @@ export const createFilesystemController = (
         realm,
         ownerId,
         nodeKey,
-        path,
-        indexPath,
+        parsed.segments,
         fileContent,
         contentType
       );
@@ -207,7 +225,12 @@ export const createFilesystemController = (
       const ownerId = getOwnerId(c);
       const body = c.req.valid("json" as never) as FsRmRequest;
 
-      const result = await fsService.rm(realm, ownerId, nodeKey, body.path, body.indexPath);
+      const rmParsed = parsePathSegments(body.path);
+      if (!rmParsed.ok) {
+        return c.json({ error: "INVALID_PATH", message: rmParsed.error.message }, 400);
+      }
+
+      const result = await fsService.rm(realm, ownerId, nodeKey, rmParsed.segments);
       if (isFsError(result)) return fsErrorResponse(c, result);
 
       return c.json(result);

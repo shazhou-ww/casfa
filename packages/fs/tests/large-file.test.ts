@@ -21,6 +21,13 @@ import { blake3 } from "@noble/hashes/blake3";
 
 import { createFsService, type FsContext, isFsError } from "../src/index.ts";
 
+/** Convert a name-path string like "a/b/c" to PathSegment[] */
+const nameSegs = (pathStr: string) =>
+  pathStr
+    .split("/")
+    .filter(Boolean)
+    .map((value) => ({ kind: "name" as const, value }));
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -117,7 +124,7 @@ describe("Large File Support", () => {
       const rootKey = await createEmptyRoot(storage, keyProvider);
       const data = new Uint8Array([1, 2, 3, 4, 5]);
 
-      const result = await fs.write(rootKey, "hello.txt", undefined, data, "text/plain");
+      const result = await fs.write(rootKey, nameSegs("hello.txt"), data, "text/plain");
       expect(isFsError(result)).toBe(false);
       if (isFsError(result)) return;
 
@@ -142,8 +149,7 @@ describe("Large File Support", () => {
 
       const result = await fs.write(
         rootKey,
-        "large.bin",
-        undefined,
+        nameSegs("large.bin"),
         data,
         "application/octet-stream"
       );
@@ -165,8 +171,7 @@ describe("Large File Support", () => {
 
       const writeResult = await fs.write(
         rootKey,
-        "big-file.dat",
-        undefined,
+        nameSegs("big-file.dat"),
         originalData,
         "application/octet-stream"
       );
@@ -174,7 +179,7 @@ describe("Large File Support", () => {
       if (isFsError(writeResult)) return;
 
       // Read it back
-      const readResult = await fs.read(writeResult.newRoot, "big-file.dat");
+      const readResult = await fs.read(writeResult.newRoot, nameSegs("big-file.dat"));
       expect(isFsError(readResult)).toBe(false);
       if (isFsError(readResult)) return;
 
@@ -191,11 +196,11 @@ describe("Large File Support", () => {
       const dataSize = SINGLE_NODE_CAPACITY + 200;
       const data = makeTestData(dataSize);
 
-      const writeResult = await fs.write(rootKey, "multi.bin", undefined, data, "image/png");
+      const writeResult = await fs.write(rootKey, nameSegs("multi.bin"), data, "image/png");
       expect(isFsError(writeResult)).toBe(false);
       if (isFsError(writeResult)) return;
 
-      const statResult = await fs.stat(writeResult.newRoot, "multi.bin");
+      const statResult = await fs.stat(writeResult.newRoot, nameSegs("multi.bin"));
       expect(isFsError(statResult)).toBe(false);
       if (isFsError(statResult)) return;
 
@@ -221,8 +226,7 @@ describe("Large File Support", () => {
 
       const result = await fs.write(
         rootKey,
-        "too-big.bin",
-        undefined,
+        nameSegs("too-big.bin"),
         data,
         "application/octet-stream"
       );
@@ -245,7 +249,7 @@ describe("Large File Support", () => {
       const rootKey = await createEmptyRoot(storage, keyProvider);
       const data = makeTestData(50);
 
-      const result = await fs.write(rootKey, "ok.bin", undefined, data, "text/plain");
+      const result = await fs.write(rootKey, nameSegs("ok.bin"), data, "text/plain");
       expect(isFsError(result)).toBe(false);
     });
 
@@ -259,8 +263,7 @@ describe("Large File Support", () => {
 
       const result = await fs.write(
         rootKey,
-        "huge.bin",
-        undefined,
+        nameSegs("huge.bin"),
         data,
         "application/octet-stream"
       );
@@ -276,11 +279,11 @@ describe("Large File Support", () => {
       const rootKey = await createEmptyRoot(storage, keyProvider);
       const data = new Uint8Array([10, 20, 30, 40, 50]);
 
-      const writeResult = await fs.write(rootKey, "small.txt", undefined, data, "text/plain");
+      const writeResult = await fs.write(rootKey, nameSegs("small.txt"), data, "text/plain");
       expect(isFsError(writeResult)).toBe(false);
       if (isFsError(writeResult)) return;
 
-      const readResult = await fs.read(writeResult.newRoot, "small.txt");
+      const readResult = await fs.read(writeResult.newRoot, nameSegs("small.txt"));
       expect(isFsError(readResult)).toBe(false);
       if (isFsError(readResult)) return;
 
@@ -299,15 +302,14 @@ describe("Large File Support", () => {
 
       const writeResult = await fs.write(
         rootKey,
-        "multi.dat",
-        undefined,
+        nameSegs("multi.dat"),
         originalData,
         "application/octet-stream"
       );
       expect(isFsError(writeResult)).toBe(false);
       if (isFsError(writeResult)) return;
 
-      const readResult = await fs.read(writeResult.newRoot, "multi.dat");
+      const readResult = await fs.read(writeResult.newRoot, nameSegs("multi.dat"));
       expect(isFsError(readResult)).toBe(false);
       if (isFsError(readResult)) return;
 
@@ -324,11 +326,11 @@ describe("Large File Support", () => {
       const rootKey = await createEmptyRoot(storage, keyProvider);
       const data = new Uint8Array([1, 2, 3, 4, 5]);
 
-      const writeResult = await fs.write(rootKey, "tiny.txt", undefined, data, "text/plain");
+      const writeResult = await fs.write(rootKey, nameSegs("tiny.txt"), data, "text/plain");
       expect(isFsError(writeResult)).toBe(false);
       if (isFsError(writeResult)) return;
 
-      const streamResult = await fs.readStream(writeResult.newRoot, "tiny.txt");
+      const streamResult = await fs.readStream(writeResult.newRoot, nameSegs("tiny.txt"));
       expect(isFsError(streamResult)).toBe(false);
       if (isFsError(streamResult)) return;
 
@@ -349,15 +351,14 @@ describe("Large File Support", () => {
 
       const writeResult = await fs.write(
         rootKey,
-        "stream-me.bin",
-        undefined,
+        nameSegs("stream-me.bin"),
         originalData,
         "application/octet-stream"
       );
       expect(isFsError(writeResult)).toBe(false);
       if (isFsError(writeResult)) return;
 
-      const streamResult = await fs.readStream(writeResult.newRoot, "stream-me.bin");
+      const streamResult = await fs.readStream(writeResult.newRoot, nameSegs("stream-me.bin"));
       expect(isFsError(streamResult)).toBe(false);
       if (isFsError(streamResult)) return;
 
@@ -375,7 +376,7 @@ describe("Large File Support", () => {
       expect(isFsError(mkdirResult)).toBe(false);
       if (isFsError(mkdirResult)) return;
 
-      const streamResult = await fs.readStream(mkdirResult.newRoot, "mydir");
+      const streamResult = await fs.readStream(mkdirResult.newRoot, nameSegs("mydir"));
       expect(isFsError(streamResult)).toBe(true);
       if (!isFsError(streamResult)) return;
       expect(streamResult.code).toBe("NOT_A_FILE");
@@ -402,8 +403,7 @@ describe("Large File Support", () => {
 
       const result = await fs.write(
         rootKey,
-        "tracked.bin",
-        undefined,
+        nameSegs("tracked.bin"),
         data,
         "application/octet-stream"
       );
@@ -431,7 +431,7 @@ describe("Large File Support", () => {
 
       // Write a small file first
       const smallData = new Uint8Array([1, 2, 3]);
-      const writeResult1 = await fs.write(rootKey, "file.dat", undefined, smallData, "text/plain");
+      const writeResult1 = await fs.write(rootKey, nameSegs("file.dat"), smallData, "text/plain");
       expect(isFsError(writeResult1)).toBe(false);
       if (isFsError(writeResult1)) return;
 
@@ -440,8 +440,7 @@ describe("Large File Support", () => {
       const largeData = makeTestData(largeSize);
       const writeResult2 = await fs.write(
         writeResult1.newRoot,
-        "file.dat",
-        undefined,
+        nameSegs("file.dat"),
         largeData,
         "application/octet-stream"
       );
@@ -452,7 +451,7 @@ describe("Large File Support", () => {
       expect(writeResult2.file.size).toBe(largeSize);
 
       // Read back and verify
-      const readResult = await fs.read(writeResult2.newRoot, "file.dat");
+      const readResult = await fs.read(writeResult2.newRoot, nameSegs("file.dat"));
       expect(isFsError(readResult)).toBe(false);
       if (isFsError(readResult)) return;
 
@@ -471,8 +470,7 @@ describe("Large File Support", () => {
 
       const result = await fs.write(
         rootKey,
-        "a/b/large.bin",
-        undefined,
+        nameSegs("a/b/large.bin"),
         data,
         "application/octet-stream"
       );
@@ -483,7 +481,7 @@ describe("Large File Support", () => {
       expect(result.created).toBe(true);
 
       // Read back
-      const readResult = await fs.read(result.newRoot, "a/b/large.bin");
+      const readResult = await fs.read(result.newRoot, nameSegs("a/b/large.bin"));
       expect(isFsError(readResult)).toBe(false);
       if (isFsError(readResult)) return;
 

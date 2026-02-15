@@ -29,9 +29,6 @@ export const DEPOT_MANAGEMENT_NOT_ALLOWED = "DEPOT_MANAGEMENT_NOT_ALLOWED";
 /** Node path does not match token's scope restriction */
 export const SCOPE_MISMATCH = "SCOPE_MISMATCH";
 
-/** X-CAS-Index-Path header is missing for node read */
-export const INDEX_PATH_REQUIRED = "INDEX_PATH_REQUIRED";
-
 // ============================================================================
 // Token Lifecycle Error Codes
 // ============================================================================
@@ -144,7 +141,6 @@ export const ErrorCodeSchema = z.enum([
   UPLOAD_NOT_ALLOWED,
   DEPOT_MANAGEMENT_NOT_ALLOWED,
   SCOPE_MISMATCH,
-  INDEX_PATH_REQUIRED,
   // Token Lifecycle
   TOKEN_REVOKED,
   TOKEN_EXPIRED,

@@ -3,7 +3,8 @@
  *
  * CAS URI parsing and formatting for content-addressable storage.
  *
- * CAS URI format: {root}[/path...][#index-path]
+ * CAS URI format: {root}[/segment...]
+ * Segments can be name segments or ~N index segments.
  *
  * @packageDocumentation
  */
@@ -18,19 +19,26 @@ export type {
   CasUriParseResult,
   CasUriRoot,
   CasUriRootType,
+  PathSegment,
 } from "./types.ts";
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-export { CROCKFORD_BASE32_26, PATH_SEGMENT_REGEX, ROOT_TYPES } from "./constants.ts";
+export {
+  CROCKFORD_BASE32_26,
+  INDEX_SEGMENT_PREFIX,
+  INDEX_SEGMENT_REGEX,
+  PATH_SEGMENT_REGEX,
+  ROOT_TYPES,
+} from "./constants.ts";
 
 // ============================================================================
 // Parsing
 // ============================================================================
 
-export { parseCasUri, parseCasUriOrThrow } from "./parse.ts";
+export { parseCasUri, parseCasUriOrThrow, parsePathSegments } from "./parse.ts";
 
 // ============================================================================
 // Formatting
@@ -48,12 +56,16 @@ export {
 // ============================================================================
 
 export {
+  appendIndex,
   appendPath,
   basename,
+  getIndexPath,
+  getNamePath,
+  indexSegment,
   isAncestorOf,
+  nameSegment,
   parentUri,
   resolvePath,
   rootUri,
   uriEquals,
-  withIndexPath,
 } from "./resolve.ts";

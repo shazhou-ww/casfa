@@ -10,6 +10,8 @@
  * are accepted without authorization (suitable for local-only usage).
  */
 
+import type { PathSegment } from "@casfa/cas-uri";
+import { INDEX_SEGMENT_PREFIX } from "@casfa/cas-uri";
 import {
   DEFAULT_NODE_LIMIT,
   encodeDictNode,
@@ -55,6 +57,14 @@ export type WriteOps = ReturnType<typeof createWriteOps>;
 export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: AuthorizeLinkFn) => {
   const { key: keyProvider, storage } = ctx;
 
+  /** Format PathSegment[] as a display path string */
+  const formatPath = (segs: PathSegment[]): string =>
+    segs.map((s) => (s.kind === "name" ? s.value : `${INDEX_SEGMENT_PREFIX}${s.value}`)).join("/");
+
+  /** Convert a string[] of names to PathSegment[] */
+  const namesToSegments = (names: string[]): PathSegment[] =>
+    names.map((n) => ({ kind: "name" as const, value: n }));
+
   /**
    * write — Create or overwrite a file.
    *
@@ -65,8 +75,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
    */
   const write = async (
     rootNodeKey: string,
-    pathStr: string | undefined,
-    indexPathStr: string | undefined,
+    segments: PathSegment[],
     fileContent: Uint8Array,
     contentType: string
   ): Promise<FsWriteResponse | FsError> => {
@@ -110,16 +119,23 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
       fileHash = keyToHash(result.key);
     }
 
-    // ---------- indexPath-only overwrite ----------
-    if (indexPathStr && !pathStr) {
-      const resolved = await tree.resolvePath(rootKey, undefined, indexPathStr);
+    // ---------- Determine write mode ----------
+    if (segments.length === 0) {
+      return fsError("INVALID_PATH", 400, "Path is required for write");
+    }
+
+    const lastSegment = segments[segments.length - 1]!;
+
+    // ---------- Index-overwrite mode (last segment is index) ----------
+    if (lastSegment.kind === "index") {
+      const resolved = await tree.resolvePath(rootKey, segments);
       if ("code" in resolved) return resolved;
 
       if (resolved.node.kind !== "file") {
         return fsError(
           "NOT_A_FILE",
           400,
-          "Target is not a file (cannot overwrite directory with indexPath)"
+          "Target is not a file (cannot overwrite directory by index)"
         );
       }
       if (resolved.parentPath.length === 0) {
@@ -131,7 +147,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
       return {
         newRoot: storageKeyToNodeKey(newRootKey),
         file: {
-          path: indexPathStr,
+          path: formatPath(segments),
           key: storageKeyToNodeKey(fileKey),
           size: fileContent.length,
           contentType,
@@ -140,18 +156,8 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
       };
     }
 
-    // ---------- path-based write ----------
-    if (!pathStr) {
-      return fsError("INVALID_PATH", 400, "Either path or indexPath is required for write");
-    }
-
-    const segments = parsePath(pathStr);
-    if ("code" in segments) return segments;
-    if (segments.length === 0) {
-      return fsError("INVALID_PATH", 400, "Path cannot be empty for write");
-    }
-
-    const fileName = segments[segments.length - 1]!;
+    // ---------- Name-based write (last segment is name) ----------
+    const fileName = lastSegment.value;
 
     if (segments.length === 1) {
       // Writing directly under root
@@ -188,7 +194,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
         return {
           newRoot: storageKeyToNodeKey(newRootKey),
           file: {
-            path: pathStr,
+            path: formatPath(segments),
             key: storageKeyToNodeKey(fileKey),
             size: fileContent.length,
             contentType,
@@ -204,7 +210,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
       return {
         newRoot: storageKeyToNodeKey(result),
         file: {
-          path: pathStr,
+          path: formatPath(segments),
           key: storageKeyToNodeKey(fileKey),
           size: fileContent.length,
           contentType,
@@ -242,7 +248,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
       return {
         newRoot: storageKeyToNodeKey(newRootKey),
         file: {
-          path: pathStr,
+          path: formatPath(segments),
           key: storageKeyToNodeKey(fileKey),
           size: fileContent.length,
           contentType,
@@ -257,7 +263,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
     return {
       newRoot: storageKeyToNodeKey(result),
       file: {
-        path: pathStr,
+        path: formatPath(segments),
         key: storageKeyToNodeKey(fileKey),
         size: fileContent.length,
         contentType,
@@ -276,14 +282,15 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
     const rootKey = await tree.resolveNodeKey(rootNodeKey);
     if (typeof rootKey === "object") return rootKey;
 
-    const segments = parsePath(pathStr);
-    if ("code" in segments) return segments;
-    if (segments.length === 0) {
+    const parsed = parsePath(pathStr);
+    if ("code" in parsed) return parsed;
+    if (parsed.length === 0) {
       return fsError("INVALID_PATH", 400, "Path cannot be empty for mkdir");
     }
+    const segments = namesToSegments(parsed);
 
     // Check if already exists
-    const existing = await tree.resolvePath(rootKey, pathStr);
+    const existing = await tree.resolvePath(rootKey, segments);
     if (!("code" in existing)) {
       if (existing.node.kind === "dict") {
         return {
@@ -298,7 +305,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
     const emptyDirEncoded = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
     await tree.storeNode(emptyDirEncoded.bytes, emptyDirEncoded.hash, "dict", 0);
     const dirKey = hashToStorageKey(emptyDirEncoded.hash);
-    const dirName = segments[segments.length - 1]!;
+    const dirName = parsed[parsed.length - 1]!;
 
     if (segments.length === 1) {
       const rootNode = await tree.getAndDecodeNode(rootKey);
@@ -341,17 +348,16 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
    */
   const rm = async (
     rootNodeKey: string,
-    pathStr?: string,
-    indexPathStr?: string
+    segments: PathSegment[]
   ): Promise<FsRmResponse | FsError> => {
     const rootKey = await tree.resolveNodeKey(rootNodeKey);
     if (typeof rootKey === "object") return rootKey;
 
-    if (!pathStr && !indexPathStr) {
+    if (segments.length === 0) {
       return fsError("CANNOT_REMOVE_ROOT", 400, "Cannot remove root node. Specify a sub-path.");
     }
 
-    const resolved = await tree.resolvePath(rootKey, pathStr, indexPathStr);
+    const resolved = await tree.resolvePath(rootKey, segments);
     if ("code" in resolved) return resolved;
 
     if (resolved.parentPath.length === 0) {
@@ -368,7 +374,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
     return {
       newRoot: storageKeyToNodeKey(newRootKey),
       removed: {
-        path: pathStr ?? indexPathStr ?? "",
+        path: formatPath(segments),
         type: resolved.node.kind === "dict" ? "dir" : "file",
         key: storageKeyToNodeKey(resolved.hash),
       },
@@ -402,7 +408,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
       );
     }
 
-    const source = await tree.resolvePath(rootKey, fromPath);
+    const source = await tree.resolvePath(rootKey, namesToSegments(fromSegments));
     if ("code" in source) return source;
 
     const sourceNodeHash = storageKeyToHash(source.hash);
@@ -421,7 +427,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
     const toName = toSegments[toSegments.length - 1]!;
 
     // Check if target exists in the new tree
-    const targetCheck = await tree.resolvePath(afterRemoveRootKey, toPath);
+    const targetCheck = await tree.resolvePath(afterRemoveRootKey, namesToSegments(toSegments));
     if (!("code" in targetCheck)) {
       if (targetCheck.node.kind === "dict" && source.node.kind !== "dict") {
         const result = await tree.insertChild(
@@ -458,7 +464,10 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
       return { newRoot: storageKeyToNodeKey(result), from: fromPath, to: toPath };
     }
 
-    const parentResult = await tree.ensureParentDirs(afterRemoveRootKey, toSegments);
+    const parentResult = await tree.ensureParentDirs(
+      afterRemoveRootKey,
+      namesToSegments(toSegments)
+    );
     if ("code" in parentResult) return parentResult;
 
     const result = await tree.insertChild(
@@ -488,10 +497,13 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
     if ("code" in toSegments) return toSegments;
     if (toSegments.length === 0) return fsError("INVALID_PATH", 400, "Target path cannot be empty");
 
-    const source = await tree.resolvePath(rootKey, fromPath);
+    const fromSegments = parsePath(fromPath);
+    if ("code" in fromSegments) return fromSegments;
+
+    const source = await tree.resolvePath(rootKey, namesToSegments(fromSegments));
     if ("code" in source) return source;
 
-    const targetCheck = await tree.resolvePath(rootKey, toPath);
+    const targetCheck = await tree.resolvePath(rootKey, namesToSegments(toSegments));
     if (!("code" in targetCheck)) {
       return fsError("TARGET_EXISTS", 409, `Target path already exists: ${toPath}`);
     }
@@ -510,7 +522,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
       return { newRoot: storageKeyToNodeKey(result), from: fromPath, to: toPath };
     }
 
-    const parentResult = await tree.ensureParentDirs(rootKey, toSegments);
+    const parentResult = await tree.ensureParentDirs(rootKey, namesToSegments(toSegments));
     if ("code" in parentResult) return parentResult;
 
     const result = await tree.insertChild(
@@ -559,7 +571,7 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
         const pathSegments = parsePath(deletePath);
         if ("code" in pathSegments) return pathSegments;
 
-        const resolved = await tree.resolvePath(currentRootKey, deletePath);
+        const resolved = await tree.resolvePath(currentRootKey, namesToSegments(pathSegments));
         if ("code" in resolved) continue; // skip non-existent
 
         if (resolved.parentPath.length === 0) {
@@ -589,7 +601,9 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
         let nodeHash: Uint8Array;
 
         if ("from" in entry) {
-          const source = await tree.resolvePath(originalRootKey, entry.from);
+          const fromParsed = parsePath(entry.from);
+          if ("code" in fromParsed) return fromParsed;
+          const source = await tree.resolvePath(originalRootKey, namesToSegments(fromParsed));
           if ("code" in source) {
             return fsError(
               "PATH_NOT_FOUND",
@@ -662,7 +676,10 @@ export const createWriteOps = (ctx: FsContext, tree: TreeOps, authorizeLink?: Au
             currentRootKey = result;
           }
         } else {
-          const parentResult = await tree.ensureParentDirs(currentRootKey, targetSegments);
+          const parentResult = await tree.ensureParentDirs(
+            currentRootKey,
+            namesToSegments(targetSegments)
+          );
           if ("code" in parentResult) return parentResult;
 
           const { parentHash, parentNode, parentPath } = parentResult;

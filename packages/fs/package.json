@@ -20,6 +20,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
+    "@casfa/cas-uri": "workspace:*",
     "@casfa/core": "workspace:*",
     "@casfa/protocol": "workspace:*"
   },

@@ -57,16 +57,6 @@ export const parsePath = (path: string): string[] | FsError => {
   return segments;
 };
 
-/** Parse an index-based path ("0:2:1") into an array of integers */
-export const parseIndexPath = (indexPath: string): number[] | FsError => {
-  if (!indexPath) return [];
-  const parts = indexPath.split(":").map((s) => Number.parseInt(s, 10));
-  if (parts.some(Number.isNaN)) {
-    return fsError("INVALID_PATH", 400, "Invalid indexPath format");
-  }
-  return parts;
-};
-
 // ============================================================================
 // Child Navigation
 // ============================================================================
