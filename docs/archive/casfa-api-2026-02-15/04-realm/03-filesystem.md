@@ -26,8 +26,8 @@
 |------|------|
 | **不可变** | 所有写操作返回新的 Root Node，原数据不受影响 |
 | **单 Block 文件** | read/write 仅支持单 block 文件（≤ `maxNodeSize`，线上 4MB），多 block 大文件应使用底层 Node API 分块读写 |
-| **路径寻址** | 支持名称路径和 `~N` 索引前缀两种定位方式 |
-| **权限复用** | 复用现有 AT / JWT + Direct Authorization Check 权限体系 |
+| **路径寻址** | 支持 CAS URI 的 path 和 index-path 两种定位方式 |
+| **权限复用** | 复用现有 AT / JWT + Scope 权限体系 |
 | **声明式重写** | 提供 `rewrite` 端点，声明新树的路径映射关系，一次性产出新 Root，避免中间结果 |
 
 ### 限制
@@ -43,13 +43,16 @@
 
 ## 路由设计
 
-文件系统操作使用独立的 `/fs/` 路由前缀，与 `/nodes/:key` 路由分离：
+文件系统操作挂载在 Node 路由下：
 
 ```
-/api/realm/{realmId}/fs/{nodeKey}/...
+/api/realm/{realmId}/nodes/{nodeKey}/fs/...
 ```
 
-**设计理由**：将 `fs` 独立出来避免与 `/nodes/:key/*` 通配符路由（用于 `~N` 导航）冲突，保持路由清晰。`nodeKey` 直接在 URL 中，无需额外的 `root` 查询参数。
+**设计理由**：所有 fs 操作都以某个 Node 为根。将其放在 `/nodes/{nodeKey}` 下：
+- 语义清晰：fs 操作是某个 Node 上的视图/变换
+- 与现有 `GET /nodes/:key`（获取原始二进制）和 `GET /nodes/:key/metadata` 形成自然层级
+- `nodeKey` 直接在 URL 中，无需额外的 `root` 查询参数
 
 > **CAS URI 解析**：`nodeKey` 支持 `nod_xxx`（直接 hash）、`dpt_xxx`（解析 Depot 当前 root）两种格式。
 
@@ -69,19 +72,18 @@ Authorization: Bearer {access_token_base64 或 jwt}
 
 | 操作 | 权限要求 |
 |------|----------|
-| 读取文件/目录 | AT 或 JWT（nodeKey 需通过 Direct Authorization Check） |
-| 创建/更新/删除文件或目录 | AT 或 JWT + `canUpload`（nodeKey 需通过 Direct Authorization Check） |
+| 读取文件/目录 | AT 或 JWT（需 scope 证明） |
+| 创建/更新/删除文件或目录 | AT 或 JWT + `canUpload` |
 
-### 授权方式
+### Scope 证明
 
-`{nodeKey}` 必须通过 **Direct Authorization Check**（见 [04-realm/README.md](./README.md)）：
+与现有 Node 读取一致，需通过 `X-CAS-Index-Path` Header 证明 `{nodeKey}` 在 Token 的 scope 内：
 
-1. Root delegate（depth=0）→ 放行任何 nodeKey
-2. `hasOwnership(nodeKey, delegateId)` → 放行
-3. nodeKey 是 Token 的 scopeRoots 之一 → 放行
-4. 否则 → 403 `NODE_NOT_AUTHORIZED`
+```http
+X-CAS-Index-Path: 0:1
+```
 
-> **不需要 `X-CAS-Index-Path` 或任何 proof header。**
+> **说明**：此 Header 证明的是 URL 中的 `{nodeKey}` 在 Token scope 内的路径，而非文件在树内的路径。文件在树内的定位由查询参数 `path` / `indexPath` 完成。
 
 ---
 
@@ -89,15 +91,15 @@ Authorization: Bearer {access_token_base64 或 jwt}
 
 | 方法 | 路径 | 描述 | 权限 |
 |------|------|------|------|
-| GET | `/api/realm/{realmId}/fs/{nodeKey}/stat` | 获取文件/目录元信息 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/fs/{nodeKey}/read` | 读取文件内容 | AT 或 JWT |
-| GET | `/api/realm/{realmId}/fs/{nodeKey}/ls` | 列出目录内容 | AT 或 JWT |
-| POST | `/api/realm/{realmId}/fs/{nodeKey}/write` | 创建或覆盖文件 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/{nodeKey}/mkdir` | 创建目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/{nodeKey}/rm` | 删除文件或目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/{nodeKey}/mv` | 移动/重命名 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/{nodeKey}/cp` | 复制文件或目录 | AT 或 JWT (canUpload) |
-| POST | `/api/realm/{realmId}/fs/{nodeKey}/rewrite` | 声明式批量重写目录树 | AT 或 JWT (canUpload) |
+| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/stat` | 获取文件/目录元信息 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/read` | 读取文件内容 | AT 或 JWT |
+| GET | `/api/realm/{realmId}/nodes/{nodeKey}/fs/ls` | 列出目录内容 | AT 或 JWT |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/write` | 创建或覆盖文件 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mkdir` | 创建目录 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rm` | 删除文件或目录 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/mv` | 移动/重命名 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/cp` | 复制文件或目录 | AT 或 JWT (canUpload) |
+| POST | `/api/realm/{realmId}/nodes/{nodeKey}/fs/rewrite` | 声明式批量重写目录树 | AT 或 JWT (canUpload) |
 
 ---
 
@@ -112,33 +114,27 @@ Authorization: Bearer {access_token_base64 或 jwt}
 
 ### 查询参数：路径定位
 
-文件/目录在树内的位置通过 `path` 查询参数指定。`path` 支持名称段和 `~N` 索引段混合使用：
+文件/目录在树内的位置通过查询参数指定，对应 CAS URI 的 `path` 和 `#index-path` 部分：
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
-| `path` | `string` | 树内相对路径，支持名称段和 `~N` 索引段 |
+| `path` | `string` | 基于名称的相对路径，如 `src/main.ts` |
+| `indexPath` | `string` | 基于索引的路径，如 `1:0`（对应 children 数组的索引） |
 
-**路径段类型**：
+**组合语义**（与 CAS URI `cas://root/path#index-path` 一致）：
 
-| 段类型 | 格式 | 说明 |
-|--------|------|------|
-| 名称段 | `src`、`main.ts` | 按子节点名称查找 |
-| 索引段 | `~0`、`~1`、`~42` | 按 children 数组索引查找（`~` 前缀 + 数字） |
-
-**示例**：
-
-| `path` | 含义 |
-|--------|------|
-| 省略 | 根节点自身 |
-| `src/main.ts` | 按名称定位到 `src/main.ts` |
-| `~1/~0` | 从根节点按索引 `1` → `0` 定位 |
-| `src/~2/main.ts` | 先按名称到 `src`，再按索引 `2`，再按名称 `main.ts` |
+| `path` | `indexPath` | 含义 |
+|--------|-------------|------|
+| 省略 | 省略 | 根节点自身 |
+| `src/main.ts` | 省略 | 按名称定位到 `src/main.ts` |
+| 省略 | `1:0` | 从根节点按索引 `1:0` 定位 |
+| `src` | `0:1` | 先按名称定位到 `src`，再从 `src` 按索引 `0:1` 继续向下 |
 
 - `path` 使用 `/` 分隔，不以 `/` 开头（相对于 root）
-- `~N` 段可与名称段自由混合
-- 当段以 `~` 开头，后面紧跟纯数字时，视为索引段；否则视为名称段
+- `indexPath` 使用 `:` 分隔
+- 两者可同时提供：先按 `path` 定位到中间节点，再从该节点按 `indexPath` 继续向下
 
-> **典型场景**：`path=src/~2` 表示「`src` 目录下第 2 个子节点」。当客户端通过 `ls` 拿到了 children 的 index，可以用名称 + 索引组合精确定位，而不必拼出完整名称路径。
+> **典型场景**：`path=src&indexPath=2` 表示「`src` 目录下第 2 个子节点」。当客户端通过 `ls` 拿到了 children 的 index，可以用 `path` + `indexPath` 组合精确定位，而不必拼出完整名称路径。
 
 ### 写操作的通用响应字段
 
@@ -152,22 +148,24 @@ Authorization: Bearer {access_token_base64 或 jwt}
 
 ---
 
-## GET /api/realm/{realmId}/fs/{nodeKey}/stat
+## GET /api/realm/{realmId}/nodes/{nodeKey}/fs/stat
 
 获取文件或目录的元信息。
 
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/fs/dpt_abc123/stat?path=src/main.ts
+GET /api/realm/usr_abc123/nodes/dpt_abc123/fs/stat?path=src/main.ts
 Authorization: Bearer {access_token}
+X-CAS-Index-Path: 0
 ```
 
 ### 查询参数
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `path` | `string` | 否 | 路径（支持名称段和 `~N` 索引段） |
+| `path` | `string` | 否 | 名称路径 |
+| `indexPath` | `string` | 否 | 索引路径 |
 
 ### 响应（文件）
 
@@ -194,7 +192,7 @@ Authorization: Bearer {access_token}
 
 ### 响应（根节点）
 
-当未指定 `path` 时，返回根节点自身：
+当未指定 `path` 和 `indexPath` 时，返回根节点自身：
 
 ```json
 {
@@ -223,12 +221,12 @@ Authorization: Bearer {access_token}
 | `INVALID_ROOT` | 400 | nodeKey 无效或引用的节点不存在 |
 | `PATH_NOT_FOUND` | 404 | 路径不存在 |
 | `NOT_A_DIRECTORY` | 400 | 路径中间节点不是目录（如 `file.txt/foo`） |
-| `INDEX_OUT_OF_BOUNDS` | 400 | `~N` 索引超出 children 范围 |
-| `NODE_NOT_AUTHORIZED` | 403 | nodeKey 未通过 Direct Authorization Check |
+| `INDEX_OUT_OF_BOUNDS` | 400 | indexPath 中的索引超出范围 |
+| `NODE_NOT_IN_SCOPE` | 403 | 根节点不在 Token scope 内 |
 
 ---
 
-## GET /api/realm/{realmId}/fs/{nodeKey}/read
+## GET /api/realm/{realmId}/nodes/{nodeKey}/fs/read
 
 读取文件内容。仅支持单 block 的 `file` 类型节点。
 
@@ -237,15 +235,17 @@ Authorization: Bearer {access_token}
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/fs/dpt_abc123/read?path=src/main.ts
+GET /api/realm/usr_abc123/nodes/dpt_abc123/fs/read?path=src/main.ts
 Authorization: Bearer {access_token}
+X-CAS-Index-Path: 0
 ```
 
 ### 查询参数
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `path` | `string` | 否 | 路径（支持名称段和 `~N` 索引段） |
+| `path` | `string` | 否 | 名称路径 |
+| `indexPath` | `string` | 否 | 索引路径 |
 
 ### 响应
 
@@ -273,26 +273,28 @@ X-CAS-Key: nod_abc123...
 | `PATH_NOT_FOUND` | 404 | 路径不存在 |
 | `NOT_A_FILE` | 400 | 目标不是文件（是目录） |
 | `FILE_TOO_LARGE` | 400 | 文件有 successor 节点（多 block），请使用底层 Node API 读取 |
-| `NODE_NOT_AUTHORIZED` | 403 | nodeKey 未通过 Direct Authorization Check |
+| `NODE_NOT_IN_SCOPE` | 403 | 根节点不在 Token scope 内 |
 
 ---
 
-## GET /api/realm/{realmId}/fs/{nodeKey}/ls
+## GET /api/realm/{realmId}/nodes/{nodeKey}/fs/ls
 
 列出目录的直接子节点。
 
 ### 请求
 
 ```http
-GET /api/realm/usr_abc123/fs/dpt_abc123/ls?path=src
+GET /api/realm/usr_abc123/nodes/dpt_abc123/fs/ls?path=src
 Authorization: Bearer {access_token}
+X-CAS-Index-Path: 0
 ```
 
 ### 查询参数
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `path` | `string` | 否 | 路径（支持名称段和 `~N` 索引段） |
+| `path` | `string` | 否 | 名称路径 |
+| `indexPath` | `string` | 否 | 索引路径 |
 | `limit` | `number` | 否 | 每页数量，默认 100，最大 1000 |
 | `cursor` | `string` | 否 | 分页游标（首次请求时不提供） |
 
@@ -341,7 +343,7 @@ Authorization: Bearer {access_token}
 | `key` | `string` | 当前目录的 CAS key |
 | `children` | `array` | 子节点列表（按名称 UTF-8 字节序排列） |
 | `children[].name` | `string` | 子节点名称 |
-| `children[].index` | `number` | 子节点在当前 d-node 的 children 中的全局索引（不随分页变化），可直接用于 `~N` 定位 |
+| `children[].index` | `number` | 子节点在当前 d-node 的 children 中的全局索引（不随分页变化），可直接用于 `indexPath` 定位 |
 | `children[].type` | `"file" \| "dir"` | 子节点类型 |
 | `children[].key` | `string` | 子节点的 CAS key |
 | `children[].size` | `number` | 文件大小（仅 `file`） |
@@ -356,11 +358,11 @@ Authorization: Bearer {access_token}
 | `INVALID_ROOT` | 400 | nodeKey 无效 |
 | `PATH_NOT_FOUND` | 404 | 路径不存在 |
 | `NOT_A_DIRECTORY` | 400 | 目标不是目录 |
-| `NODE_NOT_AUTHORIZED` | 403 | nodeKey 未通过 Direct Authorization Check |
+| `NODE_NOT_IN_SCOPE` | 403 | 根节点不在 Token scope 内 |
 
 ---
 
-## POST /api/realm/{realmId}/fs/{nodeKey}/write
+## POST /api/realm/{realmId}/nodes/{nodeKey}/fs/write
 
 创建或覆盖文件。如果文件已存在则替换内容；如果不存在则创建（自动创建中间目录）。
 
@@ -371,8 +373,9 @@ Authorization: Bearer {access_token}
 文件路径和元信息通过查询参数和 Header 传递，文件内容通过 binary body 传递：
 
 ```http
-POST /api/realm/usr_abc123/fs/dpt_abc123/write?path=src/utils/helper.ts
+POST /api/realm/usr_abc123/nodes/dpt_abc123/fs/write?path=src/utils/helper.ts
 Authorization: Bearer {access_token}
+X-CAS-Index-Path: 0
 Content-Type: text/typescript
 Content-Length: 2048
 
@@ -383,9 +386,8 @@ Content-Length: 2048
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `path` | `string` | 是 | 路径（支持名称段和 `~N` 索引段；使用 `~N` 段时仅用于覆盖已有文件） |
-
-> **注意**：纯 `~N` 索引路径只能用于覆盖已存在的文件，不能用于创建新文件（因为新文件没有预先存在的索引位置）。创建新文件必须使用名称路径。
+| `path` | `string` | *二选一 | 名称路径 |
+| `indexPath` | `string` | *二选一 | 索引路径（仅用于覆盖已有文件） |
 
 ### 请求头
 
@@ -399,6 +401,8 @@ Content-Length: 2048
 原始文件二进制内容（非 Base64、非 JSON）。
 
 > **Body 校验**：服务端在流式读取 body 时进行字节计数。若实际读取字节数超过 `maxNodeSize` 则立即中断连接并返回 `413 FILE_TOO_LARGE`；若读取完成后实际字节数与 `Content-Length` 不一致，则拒绝写入并返回 `400 CONTENT_LENGTH_MISMATCH`。
+
+> **注意**：`indexPath` 只能用于覆盖已存在的文件，不能用于创建新文件（因为新文件没有预先存在的索引位置）。创建新文件必须使用 `path`。
 
 ### 响应
 
@@ -436,20 +440,21 @@ Content-Length: 2048
 | `INVALID_PATH` | 400 | 路径无效（空段、非法字符等） |
 | `NAME_TOO_LONG` | 400 | 文件名超过 `maxNameBytes` |
 | `COLLECTION_FULL` | 400 | 目录子节点数达到上限 |
-| `NODE_NOT_AUTHORIZED` | 403 | nodeKey 未通过 Direct Authorization Check |
-| `INDEX_OUT_OF_BOUNDS` | 400 | `~N` 索引超出 children 范围 |
+| `NODE_NOT_IN_SCOPE` | 403 | 根节点不在 Token scope 内 |
+| `INDEX_OUT_OF_BOUNDS` | 400 | indexPath 中的索引超出范围 |
 
 ---
 
-## POST /api/realm/{realmId}/fs/{nodeKey}/mkdir
+## POST /api/realm/{realmId}/nodes/{nodeKey}/fs/mkdir
 
 创建目录。自动创建中间目录（类似 `mkdir -p`）。
 
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/fs/dpt_abc123/mkdir
+POST /api/realm/usr_abc123/nodes/dpt_abc123/fs/mkdir
 Authorization: Bearer {access_token}
+X-CAS-Index-Path: 0
 Content-Type: application/json
 
 {
@@ -494,19 +499,20 @@ Content-Type: application/json
 | `INVALID_PATH` | 400 | 路径无效 |
 | `NAME_TOO_LONG` | 400 | 目录名超过 `maxNameBytes` |
 | `COLLECTION_FULL` | 400 | 父目录子节点数达到上限 |
-| `NODE_NOT_AUTHORIZED` | 403 | nodeKey 未通过 Direct Authorization Check |
+| `NODE_NOT_IN_SCOPE` | 403 | 根节点不在 Token scope 内 |
 
 ---
 
-## POST /api/realm/{realmId}/fs/{nodeKey}/rm
+## POST /api/realm/{realmId}/nodes/{nodeKey}/fs/rm
 
 删除文件或目录。删除目录时递归移除所有子节点引用（CAS 节点本身不会被物理删除，因为可能被其他树引用）。
 
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/fs/dpt_abc123/rm
+POST /api/realm/usr_abc123/nodes/dpt_abc123/fs/rm
 Authorization: Bearer {access_token}
+X-CAS-Index-Path: 0
 Content-Type: application/json
 
 {
@@ -516,7 +522,8 @@ Content-Type: application/json
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `path` | `string` | 是 | 路径（支持名称段和 `~N` 索引段） |
+| `path` | `string` | *二选一 | 名称路径 |
+| `indexPath` | `string` | *二选一 | 索引路径 |
 
 ### 响应
 
@@ -546,19 +553,20 @@ Content-Type: application/json
 | `UPLOAD_NOT_ALLOWED` | 403 | Token 没有 `canUpload` 权限 |
 | `PATH_NOT_FOUND` | 404 | 路径不存在 |
 | `CANNOT_REMOVE_ROOT` | 400 | 不能删除根节点（必须指定子路径） |
-| `NODE_NOT_AUTHORIZED` | 403 | nodeKey 未通过 Direct Authorization Check |
+| `NODE_NOT_IN_SCOPE` | 403 | 根节点不在 Token scope 内 |
 
 ---
 
-## POST /api/realm/{realmId}/fs/{nodeKey}/mv
+## POST /api/realm/{realmId}/nodes/{nodeKey}/fs/mv
 
 移动或重命名文件/目录。
 
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/fs/dpt_abc123/mv
+POST /api/realm/usr_abc123/nodes/dpt_abc123/fs/mv
 Authorization: Bearer {access_token}
+X-CAS-Index-Path: 0
 Content-Type: application/json
 
 {
@@ -598,19 +606,20 @@ Content-Type: application/json
 | `INVALID_PATH` | 400 | 路径无效 |
 | `CANNOT_MOVE_ROOT` | 400 | 不能移动根节点 |
 | `MOVE_INTO_SELF` | 400 | 不能将目录移入自身或其子目录 |
-| `NODE_NOT_AUTHORIZED` | 403 | nodeKey 未通过 Direct Authorization Check |
+| `NODE_NOT_IN_SCOPE` | 403 | 根节点不在 Token scope 内 |
 
 ---
 
-## POST /api/realm/{realmId}/fs/{nodeKey}/cp
+## POST /api/realm/{realmId}/nodes/{nodeKey}/fs/cp
 
 复制文件或目录。
 
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/fs/dpt_abc123/cp
+POST /api/realm/usr_abc123/nodes/dpt_abc123/fs/cp
 Authorization: Bearer {access_token}
+X-CAS-Index-Path: 0
 Content-Type: application/json
 
 {
@@ -645,11 +654,11 @@ Content-Type: application/json
 | `PATH_NOT_FOUND` | 404 | 源路径不存在 |
 | `TARGET_EXISTS` | 409 | 目标路径已存在 |
 | `INVALID_PATH` | 400 | 路径无效 |
-| `NODE_NOT_AUTHORIZED` | 403 | nodeKey 未通过 Direct Authorization Check |
+| `NODE_NOT_IN_SCOPE` | 403 | 根节点不在 Token scope 内 |
 
 ---
 
-## POST /api/realm/{realmId}/fs/{nodeKey}/rewrite
+## POST /api/realm/{realmId}/nodes/{nodeKey}/fs/rewrite
 
 声明式地描述新树的路径映射关系，一次性产出新 Root。
 
@@ -672,8 +681,9 @@ Content-Type: application/json
 ### 请求
 
 ```http
-POST /api/realm/usr_abc123/fs/dpt_abc123/rewrite
+POST /api/realm/usr_abc123/nodes/dpt_abc123/fs/rewrite
 Authorization: Bearer {access_token}
+X-CAS-Index-Path: 0
 Content-Type: application/json
 
 {
@@ -707,7 +717,7 @@ Content-Type: application/json
 |------|------|------|
 | **from（移动/复制）** | `{ "from": "旧路径" }` | 从旧树的指定路径引用节点（文件或目录均可） |
 | **dir（空目录）** | `{ "dir": true }` | 创建空目录 |
-| **link（挂载节点）** | `{ "link": "nod_xxx" }` | 挂载一个已存在的 CAS 节点（需通过 ownership 验证） |
+| **link（挂载节点）** | `{ "link": "nod_xxx", "proof?": "index-path" }` | 挂载一个已存在的 CAS 节点（需通过引用验证） |
 
 > **如何创建新文件？** 使用 `fs/write` 端点先创建文件获取新 Root，或通过底层 `PUT /nodes/:key` 上传 f-node 后用 `link` 挂载。`rewrite` 专注于树的结构变更（移动、复制、删除、挂载），不内嵌文件内容。
 
@@ -739,20 +749,25 @@ Content-Type: application/json
 
 ```json
 "data/large-file.bin": { "link": "nod_abc123..." }
+"data/ref-file.bin":   { "link": "nod_def456...", "proof": "0:3:1" }
 ```
 
 - 将一个已存在于存储中的 CAS 节点挂载到指定路径
 - 典型场景：大文件先通过底层 `PUT /nodes/:key` 分块上传，再通过 `link` 挂载到目录树
 - 服务端验证节点存在性
 - 可以挂载 f-node（文件）或 d-node（目录）
+- **`proof` 字段**（可选）：提供目标节点在 Token scope 内的 index-path 证明
 
-**Ownership 验证**：`link` 引用的节点必须被当前 Delegate 链拥有（`hasOwnership(nodeKey, delegateId)`）。如果节点尚未被拥有，需要先通过 `POST /api/realm/{realmId}/claim` 获取 ownership。
+**引用验证**：服务端按以下顺序验证客户端有权引用该节点，满足其一即可：
 
-> **Root delegate（depth=0）跳过** ownership 验证（全部放行）。
+| 验证方式 | 条件 | 典型场景 |
+|----------|------|----------|
+| **uploader 验证** | 该节点的 `uploaderTokenId` == 当前请求的 Token ID | 刚通过 `PUT /nodes/:key` 上传的节点 |
+| **scope 验证** | 提供 `proof`（index-path），证明节点在 Token scope 内 | 引用 scope 内已有的节点 |
 
-> **安全说明**：如果不做引用验证，hash 泄漏会导致内容泄漏——攻击者可以将别人的节点挂载到自己的树中，再通过 `fs/read` 读取内容。Ownership 验证确保只有 claim 过的节点才能被引用。
+> **安全说明**：如果不做引用验证，hash 泄漏会导致内容泄漏——攻击者可以将别人的节点挂载到自己的树中，再通过 `fs/read` 读取内容。uploader 验证附着在已有的节点存在性检查上（只需多比较一个字段），零额外 IO。
 >
-> **与 PUT /nodes/:key 一致**：底层 `PUT /nodes/:key` 上传 d-node 时同样通过 ownership 检查验证子节点引用。这是 CAS 系统的通用安全机制，不仅限于 `link`。
+> **注意**：底层 `PUT /nodes/:key` 上传 d-node 时同样执行此验证——d-node 的每个 child 引用都必须满足 uploader 验证或 scope 验证。这是 CAS 系统的通用安全机制，不仅限于 `link`。
 
 ### 执行语义
 
@@ -795,11 +810,11 @@ Content-Type: application/json
 | `INVALID_PATH` | 400 | 某个路径无效（空段、`..`、绝对路径等） |
 | `PATH_NOT_FOUND` | 404 | `from` 引用的源路径在原树中不存在 |
 | `NODE_NOT_FOUND` | 404 | `link` 指定的节点在存储中不存在 |
-| `LINK_NOT_AUTHORIZED` | 403 | `link` 引用的节点 ownership 检查失败 |
+| `LINK_NOT_AUTHORIZED` | 403 | `link` 引用验证失败：既非本 Token 上传，`proof` 也无效或未提供 |
 | `EXISTS_AS_FILE` | 409 | 目标路径的中间段是文件，无法作为目录 |
 | `NAME_TOO_LONG` | 400 | 路径中某段名称超过 `maxNameBytes` |
 | `COLLECTION_FULL` | 400 | 某目录子节点数达到上限 |
-| `NODE_NOT_AUTHORIZED` | 403 | nodeKey 未通过 Direct Authorization Check |
+| `NODE_NOT_IN_SCOPE` | 403 | 根节点不在 Token scope 内 |
 
 **错误详情示例**：
 
@@ -872,17 +887,17 @@ Content-Type: application/json
    → root: "nod_original..."
 
 2. 读取目标文件
-   GET /api/realm/{realmId}/fs/dpt_abc123/read?path=src/config.ts
+   GET /api/realm/{realmId}/nodes/dpt_abc123/fs/read?path=src/config.ts
    → 文件内容
 
 3. 修改文件（binary body）
-   POST /api/realm/{realmId}/fs/dpt_abc123/write?path=src/config.ts
+   POST /api/realm/{realmId}/nodes/dpt_abc123/fs/write?path=src/config.ts
    Content-Type: text/typescript
    Body: (文件二进制内容)
    → newRoot: "nod_modified..."
 
 4. 可选：继续修改其他文件（使用上一步的 newRoot）
-   POST /api/realm/{realmId}/fs/nod_modified.../write?path=src/app.ts
+   POST /api/realm/{realmId}/nodes/nod_modified.../fs/write?path=src/app.ts
    Content-Type: text/typescript
    Body: (文件二进制内容)
    → newRoot: "nod_modified2..."
@@ -896,17 +911,17 @@ Content-Type: application/json
 
 ```
 1. 列出项目根目录
-   GET /api/realm/{realmId}/fs/dpt_abc123/ls
+   GET /api/realm/{realmId}/nodes/dpt_abc123/fs/ls
    → 根目录子节点列表
 
 2. 深入查看某个子目录
-   GET /api/realm/{realmId}/fs/dpt_abc123/ls?path=src/commands
+   GET /api/realm/{realmId}/nodes/dpt_abc123/fs/ls?path=src/commands
 
 3. 如果目录子节点很多，使用 cursor 分页
-   GET /api/realm/{realmId}/fs/dpt_abc123/ls?path=src&cursor=xxx
+   GET /api/realm/{realmId}/nodes/dpt_abc123/fs/ls?path=src&cursor=xxx
 
 4. 读取具体文件
-   GET /api/realm/{realmId}/fs/dpt_abc123/read?path=src/commands/auth.ts
+   GET /api/realm/{realmId}/nodes/dpt_abc123/fs/read?path=src/commands/auth.ts
 ```
 
 ### 场景 3：声明式重构操作
@@ -916,11 +931,12 @@ Content-Type: application/json
 ```typescript
 // 1. 先写入新文件，获取新 Root
 const writeResult = await fetch(
-  `/api/realm/${realmId}/fs/dpt_abc123/write?path=src/new-module/index.ts`,
+  `/api/realm/${realmId}/nodes/dpt_abc123/fs/write?path=src/new-module/index.ts`,
   {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
+      "X-CAS-Index-Path": "0",
       "Content-Type": "text/typescript",
     },
     body: new TextEncoder().encode("export const hello = 'world';"),
@@ -931,11 +947,12 @@ const { newRoot: rootAfterWrite } = await writeResult.json();
 
 // 2. 基于新 Root 进行树结构重构
 const result = await fetch(
-  `/api/realm/${realmId}/fs/${rootAfterWrite}/rewrite`,
+  `/api/realm/${realmId}/nodes/${rootAfterWrite}/fs/rewrite`,
   {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
+      "X-CAS-Index-Path": "0",
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -985,9 +1002,9 @@ await fetch(`/api/realm/${realmId}/depots/${depotId}/commit`, {
    PUT /api/realm/{realmId}/nodes/nod_file...    (f-node, 引用 chunks)
 
 2. 使用 rewrite 将已上传的 f-node 挂载到目录树
-   POST /api/realm/{realmId}/fs/dpt_abc123/rewrite
+   POST /api/realm/{realmId}/nodes/dpt_abc123/fs/rewrite
    { entries: { "data/large-file.bin": { "link": "nod_file..." } } }
-   （nod_file... 是本 Delegate 刚上传的，已有 ownership，自动通过验证）
+   （无需 proof——nod_file... 是本 Token 刚上传的，自动通过 uploader 验证）
 ```
 
 > **注意**：`link` 是 rewrite 专有的操作类型，用于将一个已存在的节点挂载到指定路径。不在单独端点中提供。
@@ -1030,8 +1047,9 @@ await fetch(`/api/realm/${realmId}/depots/${depotId}/commit`, {
 1. **路径遍历防护**：`path` 中不允许 `..` 和绝对路径，仅支持向下的相对路径
 2. **大小限制**：read/write 均限制单 block 文件（≤ `maxNodeSize`），防止 Lambda 超限。write 端点对 body 进行流式字节计数（超限立即中断），并在完成后校验实际大小与 `Content-Length` 一致性
 3. **分页控制**：`ls` API 通过 cursor 分页和 limit 控制响应大小，防止资源耗尽
-4. **Direct Authorization Check**：所有操作的 nodeKey 必须通过 Direct Authorization Check，无需额外的 proof header
+4. **Scope 验证**：所有操作的 root 必须在 Token scope 内，与底层 Node API 保持一致
 5. **写操作审计**：所有写操作通过 `canUpload` 权限控制，不可变存储自带审计追踪
 6. **rewrite 原子性**：声明式重写全部成功或不产生新 Root，不存在部分应用的中间状态
-7. **节点引用验证**：`link` 引用的节点必须通过 ownership 检查。底层 `PUT /nodes/:key` 上传 d-node 时同样通过 ownership 检查验证子节点引用。这是 CAS 系统的通用安全机制
+7. **节点引用验证**：`link` 引用和底层 `PUT /nodes/:key` 的子节点引用均需通过 uploader 验证（`uploaderTokenId` 匹配）或 scope 验证（提供 `proof` index-path），防止 hash 泄漏导致内容泄漏
 8. **Refcount 原子更新**：写操作引起的节点引用计数变化在操作完成后统一更新，避免并发 GC 导致的中间状态节点误删
+
