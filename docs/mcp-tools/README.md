@@ -1,4 +1,4 @@
-# MCP Tools 规划
+# MCP Tools & Resources 规划
 
 > 日期: 2026-02-15
 
@@ -42,6 +42,167 @@ AI 通过高层 **文件系统 API**（`/nodes/fs/`）和 **元数据 API**（`/
 - `fs_read` 返回文件内容，AI 应仅用于读取文本文件（代码、文档等）
 - `fs_write` 接受文本内容，AI 应仅用于写入文本文件
 - 大文件（>4MB）需使用底层 Node API 分块处理，不在 MCP Tool 范围内
+
+---
+
+## MCP Resources
+
+### 为什么 CAS 天然适合 MCP Resource
+
+MCP [Resources](https://modelcontextprotocol.io/specification/2025-03-26/server/resources) 是服务端向客户端暴露只读数据的标准接口。CAS 的几个核心特性与 Resource 模型完美契合：
+
+| CAS 特性 | Resource 契合点 |
+|----------|----------------|
+| **内容寻址 + 不可变** | `nod_xxx` 一旦存在，内容永不变化 → 客户端可以无限缓存，不需要 ETag/Last-Modified |
+| **树形结构** | Resource Templates 参数化路径 → `resources/templates/list` 天然支持目录浏览 |
+| **Depot 可变指针** | root 随 commit 变化 → `resources/subscribe` 推送更新通知 |
+| **已有 CAS URI** | `cas://` scheme 直接复用为 Resource URI |
+
+### Resource vs Tool 分工
+
+| 关注点 | Resource | Tool |
+|--------|----------|------|
+| 方向 | 数据 → AI（读取、附加到上下文） | AI → 数据（执行副作用） |
+| CAS 对应 | 浏览目录、读取文件、查看元数据 | 写入文件、重构目录、提交 Depot |
+| 缓存 | `nod_xxx` 永久缓存；`dpt_xxx` 靠 subscribe 刷新 | 不缓存 |
+| 触发方式 | 客户端/用户主动附加到对话上下文 | AI 主动调用 |
+
+> **Tool 仍然保留读取能力**：并非所有客户端都实现了 Resource 接口，且 AI 需要在工作流中动态决定读什么。读取类 Tool（`fs_ls`、`fs_read` 等）保持不变，Resource 是**补充**而非替代。
+
+### URI 设计
+
+复用 CAS URI scheme（`cas://`），作为 MCP Resource URI：
+
+```
+cas://depot:{depotId}                    → Depot 当前 root 元数据
+cas://depot:{depotId}/src/main.ts        → 读取文件
+cas://depot:{depotId}/src                → 目录列表
+
+cas://node:{nodeKey}                     → 不可变节点元数据
+cas://node:{nodeKey}/src/main.ts         → 不可变路径下读取文件
+```
+
+> `{depotId}` 和 `{nodeKey}` 均为 Crockford Base32 编码（与 CAS URI 规范一致，不含 `dpt_`/`nod_` 前缀）。
+
+### Resource Template 定义
+
+#### 1. `cas://depot:{depotId}`
+
+Depot 的当前 root 概览。支持 `resources/subscribe` — root 变化时推送通知。
+
+```jsonc
+{
+  "uriTemplate": "cas://depot:{depotId}",
+  "name": "Depot root",
+  "description": "Current root of a depot. Subscribe to receive notifications when the root changes (new commit).",
+  "mimeType": "application/json"
+}
+```
+
+**返回内容**：
+
+```json
+{
+  "depotId": "dpt_01H5K6Z9X3ABCDEF01234567",
+  "title": "my-project",
+  "root": "nod_abc123...",
+  "updatedAt": 1707600100000
+}
+```
+
+**subscribe 场景**：AI 订阅 `cas://depot:4XZRT7Y2M5K9BQWP`，当其他 Agent 或用户 commit 新 root 时，MCP server 发送 `notifications/resources/updated`，客户端可自动刷新上下文。
+
+---
+
+#### 2. `cas://depot:{depotId}/{path}`
+
+通过 Depot 的可变 root 读取文件内容或列出目录。
+
+```jsonc
+{
+  "uriTemplate": "cas://depot:{depotId}/{path}",
+  "name": "File or directory in depot",
+  "description": "Read a file (returns text content) or list a directory (returns JSON children list) from the depot's current root. Path supports name segments and ~N index segments.",
+  "mimeType": "text/plain"
+}
+```
+
+**行为**：
+- path 指向文件 → 返回文件文本内容，`mimeType` 为文件 MIME 类型
+- path 指向目录 → 返回 JSON 格式的 children 列表，`mimeType` 为 `application/json`
+- path 省略 → 等同于 `cas://depot:{depotId}`（根目录列表）
+
+---
+
+#### 3. `cas://node:{nodeKey}`
+
+不可变节点的结构化元数据。**永久可缓存** — 同一 URI 永远返回相同内容。
+
+```jsonc
+{
+  "uriTemplate": "cas://node:{nodeKey}",
+  "name": "CAS node metadata",
+  "description": "Structural metadata of an immutable CAS node. For dict nodes: children map. For file nodes: size and content type. Content never changes — safe to cache indefinitely.",
+  "mimeType": "application/json"
+}
+```
+
+---
+
+#### 4. `cas://node:{nodeKey}/{path}`
+
+从不可变节点出发，按路径读取文件或目录。**永久可缓存**。
+
+```jsonc
+{
+  "uriTemplate": "cas://node:{nodeKey}/{path}",
+  "name": "File or directory under CAS node",
+  "description": "Read a file or list a directory under an immutable CAS node. Content never changes for the same URI.",
+  "mimeType": "text/plain"
+}
+```
+
+### `resources/list` 动态发现
+
+`resources/list` 返回用户 Realm 下的所有 Depot 作为具体 Resource（非模板）：
+
+```json
+{
+  "resources": [
+    {
+      "uri": "cas://depot:4XZRT7Y2M5K9BQWP",
+      "name": "my-project",
+      "description": "Depot: my-project",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "cas://depot:7YMHKC3R9VQWPN5X",
+      "name": "docs",
+      "description": "Depot: docs",
+      "mimeType": "application/json"
+    }
+  ]
+}
+```
+
+客户端（如 VS Code）可以在 UI 中展示这些 Depot，用户选择后 attach 到对话上下文。
+
+### Subscription 实现
+
+`dpt_xxx` Resource 支持 `resources/subscribe`：
+
+```
+→ { method: "resources/subscribe", params: { uri: "cas://depot:4XZRT7Y2M5K9BQWP" } }
+← { result: {} }
+
+... 某人执行了 depot_commit ...
+
+→ { method: "notifications/resources/updated", params: { uri: "cas://depot:4XZRT7Y2M5K9BQWP" } }
+```
+
+实现方式：`depot_commit` handler 写入新 root 后，通知 MCP Resource 订阅管理器发送更新。
+
+> `nod_xxx` Resource 不需要 subscribe — 内容不可变。
 
 ---
 
@@ -970,8 +1131,8 @@ MCP 2025-03-26 规范引入了 [Tool Annotations](https://modelcontextprotocol.i
 
 ### `node_metadata` 的定位
 
-`node_metadata` 暴露 CAS 底层结构（children map、successor chain），与 `fs_ls` / `fs_stat` 存在功能重叠。如果 Tool 数量需要精简（减少 AI context 占用），`node_metadata` 是首选移除候选。保留它的理由：
+`node_metadata` 暴露 CAS 底层结构（children map、successor chain），与 `fs_ls` / `fs_stat` 存在功能重叠。如果 Tool 数量需要精简（减少 AI context 占用），`node_metadata` 是首选移除候选 — 其功能已被 `cas://node:{nodeKey}` Resource 覆盖。保留 Tool 版本的理由：
 
+- 不是所有客户端都实现了 Resource 接口
+- AI 主动查询时 Tool 调用比 Resource 更直接
 - 唯一能看到 successor 链的工具（多 block 文件结构）
-- children map 格式比 `fs_ls` 更紧凑（无分页开销）
-- 高级用户调试 CAS 结构时有用
