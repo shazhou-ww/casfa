@@ -18,6 +18,7 @@
  */
 
 export { dagDiff } from "./diff.ts";
+export { dagMerge } from "./merge.ts";
 export { dagDiffStream, createDiffStream } from "./stream.ts";
 export type {
   AddedEntry,
@@ -26,6 +27,10 @@ export type {
   DiffEntryKind,
   DiffResult,
   DiffStats,
+  LwwResolution,
+  MergeOp,
+  MergeOptions,
+  MergeResult,
   ModifiedEntry,
   MovedEntry,
   RawDiffEntry,
