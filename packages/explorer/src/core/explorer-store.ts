@@ -117,6 +117,10 @@ export type ExplorerActions = {
   // ── Navigation ──
   navigate: (path: string) => Promise<void>;
   refresh: () => Promise<void>;
+  /** Re-load the current directory listing from local CAS (no server fetch). */
+  reloadDir: () => Promise<void>;
+  /** Fetch latest server root; adopt as depotRoot if no local uncommitted changes. */
+  pullServerRoot: () => Promise<void>;
   loadMore: () => Promise<void>;
 
   // ── Layout ──
@@ -187,6 +191,9 @@ export type ExplorerActions = {
   /** Release internal resources (BroadcastChannel, subscriptions). */
   dispose: () => void;
 
+  /** Re-establish BroadcastChannel + commit subscription after a dispose. */
+  connect: () => void;
+
   // ── File operations (Iter 2) ──
   createFolder: (name: string) => Promise<boolean>;
   deleteItems: (items: ExplorerItem[]) => Promise<{ success: number; failed: number }>;
@@ -234,6 +241,9 @@ function toExplorerItem(child: FsLsChild, parentPath: string): ExplorerItem {
  *
  * This only compares the currently displayed directory (shallow),
  * not the entire tree.
+ *
+ * Staleness guard: if `serverRoot` has changed since we started, the diff
+ * result is stale and we skip the state update.
  */
 async function diffCurrentDir(
   localFs: FsService,
@@ -252,6 +262,10 @@ async function diffCurrentDir(
   try {
     // List the same directory under the server root
     const serverResult = await localFs.ls(srvRoot, pathToSegments(currentPath), 10000);
+
+    // ── Staleness guard: abort if serverRoot moved while we were reading ──
+    if (get().serverRoot !== srvRoot) return;
+
     if (isFsError(serverResult)) {
       // Server tree doesn't have this path — all items are pending
       const { items } = get();
@@ -268,6 +282,9 @@ async function diffCurrentDir(
     for (const child of serverResult.children) {
       serverKeyMap.set(child.name, child.key);
     }
+
+    // ── Second staleness guard (after building the map) ──
+    if (get().serverRoot !== srvRoot) return;
 
     // Compare against current items
     const { items } = get();
@@ -355,18 +372,11 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
   });
 
   // ── Cross-tab BroadcastChannel ──
+  // Created/destroyed by connect()/dispose() — survives React StrictMode re-mount.
   let bc: BroadcastChannel | null = null;
-  try {
-    bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
-  } catch {
-    // BroadcastChannel not available (e.g. SSR, older browsers) — skip
-  }
 
-  // Cleanup functions accumulated during factory — called by store.dispose()
+  // Cleanup functions accumulated by connect() — called by dispose()
   const cleanups: Array<() => void> = [];
-  if (bc) {
-    cleanups.push(() => bc!.close());
-  }
 
   const store = createStore<ExplorerStore>()((set, get) => ({
     // ── Initial state ──
@@ -553,87 +563,36 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
     // ── Navigation ──
     navigate: async (path: string) => {
-      const { localFs, depotRoot, pathHistory, historyIndex } = get();
+      const { depotRoot, pathHistory, historyIndex } = get();
       if (!depotRoot) return;
 
       // Push to history stack (truncate forward history)
       const newHistory = [...pathHistory.slice(0, historyIndex + 1), path];
       set({
         currentPath: path,
-        items: [],
-        isLoading: true,
-        cursor: null,
-        hasMore: false,
-        totalItems: 0,
         selectedItems: [],
         searchTerm: "",
         pathHistory: newHistory,
         historyIndex: newHistory.length - 1,
       });
 
-      try {
-        const result = await localFs.ls(depotRoot, pathToSegments(path), LS_PAGE_SIZE);
-        if (isFsError(result)) {
-          handleFsError(get, result);
-          set({ isLoading: false });
-          return;
-        }
-        const items = result.children.map((c) => toExplorerItem(c, path));
-        set({
-          items,
-          cursor: result.nextCursor,
-          hasMore: result.nextCursor !== null,
-          totalItems: result.total,
-          isLoading: false,
-        });
-        // Diff against server root to mark pending items
-        const { serverRoot } = get();
-        if (serverRoot && serverRoot !== depotRoot) {
-          diffCurrentDir(localFs, depotRoot, serverRoot, path, get, set);
-        }
-      } catch {
-        set({ isLoading: false });
-      }
+      await get().reloadDir();
     },
 
     refresh: async () => {
-      const { client, depotId, localFs, depotRoot, serverRoot, currentPath } = get();
+      await get().pullServerRoot();
+      await get().reloadDir();
+    },
+
+    reloadDir: async () => {
+      const { localFs, depotRoot, currentPath } = get();
       if (!depotRoot) return;
 
-      // ── Fetch latest server root so refresh picks up remote changes ──
-      // (e.g. committed by another tab, or after a sync cycle)
-      let effectiveRoot = depotRoot;
-      let latestServerRoot = serverRoot;
-      if (depotId) {
-        try {
-          const depotResult = await client.depots.get(depotId);
-          if (depotResult.ok && depotResult.data.root) {
-            latestServerRoot = depotResult.data.root;
-            // Adopt the server root if no local uncommitted changes
-            const noLocalPendingChanges = depotRoot === serverRoot;
-            if (noLocalPendingChanges && latestServerRoot !== depotRoot) {
-              effectiveRoot = latestServerRoot;
-              set({ depotRoot: latestServerRoot, serverRoot: latestServerRoot });
-            } else if (latestServerRoot !== serverRoot) {
-              // Server moved but we have local changes — just update serverRoot
-              set({ serverRoot: latestServerRoot });
-            }
-          }
-        } catch {
-          // Network error — proceed with current depotRoot
-        }
-      }
-
-      // Refresh without pushing to history
-      set({
-        items: [],
-        isLoading: true,
-        cursor: null,
-        hasMore: false,
-        totalItems: 0,
-      });
+      // Keep existing items visible during reload to avoid skeleton flash.
+      // They will be atomically replaced once the new listing arrives.
+      set({ isLoading: true });
       try {
-        const result = await localFs.ls(effectiveRoot, pathToSegments(currentPath), LS_PAGE_SIZE);
+        const result = await localFs.ls(depotRoot, pathToSegments(currentPath), LS_PAGE_SIZE);
         if (isFsError(result)) {
           handleFsError(get, result);
           set({ isLoading: false });
@@ -648,9 +607,9 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           isLoading: false,
         });
         // Diff against server root to mark pending items
-        const { serverRoot: currentServerRoot, depotRoot: currentDepotRoot } = get();
-        if (currentServerRoot && currentServerRoot !== currentDepotRoot) {
-          diffCurrentDir(localFs, currentDepotRoot!, currentServerRoot, currentPath, get, set);
+        const { serverRoot, depotRoot: currentDepotRoot } = get();
+        if (serverRoot && serverRoot !== currentDepotRoot) {
+          diffCurrentDir(localFs, currentDepotRoot!, serverRoot, currentPath, get, set);
         } else {
           // Roots match — clear pending state
           set({ pendingPaths: new Set<string>() });
@@ -659,13 +618,13 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
             set({ items: currentItems.map((i) => ({ ...i, syncStatus: undefined })) });
           }
         }
-        // Also refresh tree node cache for current path
-        const { depotId: refreshDepotId } = get();
-        if (refreshDepotId) {
+        // Refresh tree node cache for current path
+        const { depotId } = get();
+        if (depotId) {
           // Invalidate children of expanded tree nodes along the path so
           // expandTreeNode will re-fetch them with the (possibly new) depotRoot.
           const keysToRefresh: string[] = [];
-          const depotKey = `depot:${refreshDepotId}`;
+          const depotKey = `depot:${depotId}`;
           keysToRefresh.push(depotKey);
           if (currentPath) {
             let acc = depotKey;
@@ -693,6 +652,34 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
         }
       } catch {
         set({ isLoading: false });
+      }
+    },
+
+    pullServerRoot: async () => {
+      const { client, depotId, depotRoot, serverRoot } = get();
+      if (!depotId) return;
+
+      try {
+        const result = await client.depots.get(depotId);
+        if (!result.ok || !result.data.root) return;
+
+        const newServerRoot = result.data.root;
+        if (newServerRoot === serverRoot) return; // no change
+
+        const noLocalChanges = depotRoot === serverRoot;
+        if (noLocalChanges) {
+          // Adopt the new server root
+          set({
+            depotRoot: newServerRoot,
+            serverRoot: newServerRoot,
+            pendingPaths: new Set<string>(),
+          });
+        } else {
+          // Local changes exist — just update serverRoot
+          set({ serverRoot: newServerRoot });
+        }
+      } catch {
+        // Network error — proceed with current state
       }
     },
 
@@ -731,75 +718,29 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
     // ── Navigation history (Iter 3) ──
     goBack: async () => {
-      const { historyIndex, pathHistory, localFs, depotRoot } = get();
+      const { historyIndex, pathHistory, depotRoot } = get();
       if (historyIndex <= 0 || !depotRoot) return;
       const newIndex = historyIndex - 1;
-      const path = pathHistory[newIndex]!;
       set({
         historyIndex: newIndex,
-        currentPath: path,
-        items: [],
-        isLoading: true,
-        cursor: null,
-        hasMore: false,
-        totalItems: 0,
+        currentPath: pathHistory[newIndex]!,
         selectedItems: [],
         searchTerm: "",
       });
-      try {
-        const result = await localFs.ls(depotRoot, pathToSegments(path), LS_PAGE_SIZE);
-        if (isFsError(result)) {
-          handleFsError(get, result);
-          set({ isLoading: false });
-          return;
-        }
-        const items = result.children.map((c) => toExplorerItem(c, path));
-        set({
-          items,
-          cursor: result.nextCursor,
-          hasMore: result.nextCursor !== null,
-          totalItems: result.total,
-          isLoading: false,
-        });
-      } catch {
-        set({ isLoading: false });
-      }
+      await get().reloadDir();
     },
 
     goForward: async () => {
-      const { historyIndex, pathHistory, localFs, depotRoot } = get();
+      const { historyIndex, pathHistory, depotRoot } = get();
       if (historyIndex >= pathHistory.length - 1 || !depotRoot) return;
       const newIndex = historyIndex + 1;
-      const path = pathHistory[newIndex]!;
       set({
         historyIndex: newIndex,
-        currentPath: path,
-        items: [],
-        isLoading: true,
-        cursor: null,
-        hasMore: false,
-        totalItems: 0,
+        currentPath: pathHistory[newIndex]!,
         selectedItems: [],
         searchTerm: "",
       });
-      try {
-        const result = await localFs.ls(depotRoot, pathToSegments(path), LS_PAGE_SIZE);
-        if (isFsError(result)) {
-          handleFsError(get, result);
-          set({ isLoading: false });
-          return;
-        }
-        const items = result.children.map((c) => toExplorerItem(c, path));
-        set({
-          items,
-          cursor: result.nextCursor,
-          hasMore: result.nextCursor !== null,
-          totalItems: result.total,
-          isLoading: false,
-        });
-      } catch {
-        set({ isLoading: false });
-      }
+      await get().reloadDir();
     },
 
     goUp: async () => {
@@ -1000,8 +941,16 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     },
 
     pasteItems: async (targetPath: string) => {
-      const { clipboard, localFs, depotRoot, depotId, client, beforeCommit, scheduleCommit } =
-        get();
+      const {
+        clipboard,
+        localFs,
+        depotRoot,
+        depotId,
+        client,
+        beforeCommit,
+        scheduleCommit,
+        serverRoot,
+      } = get();
       if (!clipboard || !depotRoot || !depotId) return;
 
       set({ operationLoading: { ...get().operationLoading, paste: true } });
@@ -1022,7 +971,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
         if (currentRoot !== depotRoot) {
           if (scheduleCommit) {
-            scheduleCommit(depotId, currentRoot, depotRoot);
+            scheduleCommit(depotId, currentRoot, serverRoot);
           } else {
             await beforeCommit?.();
             await client.depots.commit(depotId, { root: currentRoot });
@@ -1036,7 +985,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
         }
 
         set({ operationLoading: { ...get().operationLoading, paste: false } });
-        await get().refresh();
+        await get().reloadDir();
       } catch {
         set({
           operationLoading: { ...get().operationLoading, paste: false },
@@ -1110,18 +1059,10 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
     onRootCommitted: (event: SyncCommitEvent, fromBroadcast = false) => {
       const { depotId, depotRoot, serverRoot } = get();
-      // Only process events for the currently viewed depot
       if (event.depotId !== depotId) return;
 
-      // Determine whether to adopt committedRoot as our local depotRoot:
-      //
-      // Case 1 — Merge changed the root (committedRoot !== requestedRoot)
-      //   and no new local writes happened since (depotRoot === requestedRoot).
-      //   → Adopt the merged result.
-      //
-      // Case 2 — Cross-tab broadcast from another tab that committed,
-      //   and this tab has no local uncommitted changes (depotRoot === serverRoot).
-      //   → Adopt the other tab's committed root so the view stays in sync.
+      // Case 1 — Merge changed root; adopt if no new local writes since.
+      // Case 2 — Cross-tab broadcast; adopt if this tab has no local changes.
       const mergeChangedRoot = event.committedRoot !== event.requestedRoot;
       const noNewLocalWrites = depotRoot === event.requestedRoot;
       const noLocalPendingChanges = depotRoot === serverRoot;
@@ -1133,12 +1074,12 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
         set({ depotRoot: event.committedRoot });
       }
 
-      // Always update serverRoot (reuses existing logic for pending diff)
+      // Always update serverRoot
       get().updateServerRoot(event.committedRoot);
 
-      // Refresh directory view when we adopted a new root
+      // Reload directory view only when we adopted a new root
       if (shouldAdoptRoot) {
-        get().refresh();
+        get().reloadDir();
       }
 
       // Broadcast to other tabs (unless this event came from broadcast)
@@ -1156,11 +1097,42 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     dispose: () => {
       for (const cleanup of cleanups) cleanup();
       cleanups.length = 0;
+      if (bc) {
+        bc.close();
+        bc = null;
+      }
+    },
+
+    connect: () => {
+      // Idempotent — safe to call multiple times (StrictMode re-mount)
+      // First dispose any existing connections
+      get().dispose();
+
+      // Re-create BroadcastChannel
+      try {
+        bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+        bc.onmessage = (ev: MessageEvent<DepotRootBroadcast>) => {
+          if (ev.data?.type === "root-committed") {
+            store.getState().onRootCommitted(ev.data, true);
+          }
+        };
+      } catch {
+        // BroadcastChannel not available (e.g. SSR, older browsers) — skip
+      }
+
+      // Re-subscribe to commit events
+      if (opts.subscribeCommit) {
+        const unsub = opts.subscribeCommit((event) => {
+          store.getState().onRootCommitted(event);
+        });
+        cleanups.push(unsub);
+      }
     },
 
     // ── File operations ──
     createFolder: async (name: string) => {
-      const { client, depotId, depotRoot, currentPath, beforeCommit, scheduleCommit } = get();
+      const { client, depotId, depotRoot, currentPath, beforeCommit, scheduleCommit, serverRoot } =
+        get();
       if (!depotRoot || !depotId) return false;
 
       set({ operationLoading: { ...get().operationLoading, createFolder: true } });
@@ -1173,9 +1145,8 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           set({ operationLoading: { ...get().operationLoading, createFolder: false } });
           return false;
         }
-        // Commit new root to depot (persists across refresh)
         if (scheduleCommit) {
-          scheduleCommit(depotId, result.newRoot, depotRoot);
+          scheduleCommit(depotId, result.newRoot, serverRoot);
         } else {
           await beforeCommit?.();
           await client.depots.commit(depotId, { root: result.newRoot });
@@ -1184,7 +1155,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           depotRoot: result.newRoot,
           operationLoading: { ...get().operationLoading, createFolder: false },
         });
-        await get().refresh();
+        await get().reloadDir();
         return true;
       } catch {
         set({
@@ -1219,11 +1190,10 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
         }
       }
 
-      // Commit final root to depot (single commit for all deletions)
       if (currentRoot !== depotRoot) {
-        const { beforeCommit, scheduleCommit } = get();
+        const { beforeCommit, scheduleCommit, serverRoot } = get();
         if (scheduleCommit) {
-          scheduleCommit(depotId, currentRoot, depotRoot);
+          scheduleCommit(depotId, currentRoot, serverRoot);
         } else {
           await beforeCommit?.();
           await client.depots.commit(depotId, { root: currentRoot }).catch(() => {});
@@ -1235,12 +1205,12 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
         operationLoading: { ...get().operationLoading, delete: false },
         selectedItems: [],
       });
-      await get().refresh();
+      await get().reloadDir();
       return { success, failed };
     },
 
     renameItem: async (item: ExplorerItem, newName: string) => {
-      const { client, depotId, depotRoot, beforeCommit, scheduleCommit } = get();
+      const { client, depotId, depotRoot, beforeCommit, scheduleCommit, serverRoot } = get();
       if (!depotRoot || !depotId) return false;
 
       set({ operationLoading: { ...get().operationLoading, rename: true } });
@@ -1257,9 +1227,8 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           set({ operationLoading: { ...get().operationLoading, rename: false } });
           return false;
         }
-        // Commit new root to depot
         if (scheduleCommit) {
-          scheduleCommit(depotId, result.newRoot, depotRoot);
+          scheduleCommit(depotId, result.newRoot, serverRoot);
         } else {
           await beforeCommit?.();
           await client.depots.commit(depotId, { root: result.newRoot });
@@ -1268,7 +1237,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           depotRoot: result.newRoot,
           operationLoading: { ...get().operationLoading, rename: false },
         });
-        await get().refresh();
+        await get().reloadDir();
         return true;
       } catch {
         set({
@@ -1294,22 +1263,8 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     closeDialog: () => set({ dialogState: { type: "none" } }),
   }));
 
-  // ── Wire BroadcastChannel listener ──
-  if (bc) {
-    bc.onmessage = (ev: MessageEvent<DepotRootBroadcast>) => {
-      if (ev.data?.type === "root-committed") {
-        store.getState().onRootCommitted(ev.data, true);
-      }
-    };
-  }
-
-  // ── Wire commit subscription ──
-  if (opts.subscribeCommit) {
-    const unsub = opts.subscribeCommit((event) => {
-      store.getState().onRootCommitted(event);
-    });
-    cleanups.push(unsub);
-  }
+  // ── Initial connection (BroadcastChannel + commit subscription) ──
+  store.getState().connect();
 
   return store;
 };

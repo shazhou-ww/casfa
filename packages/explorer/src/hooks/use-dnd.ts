@@ -30,9 +30,10 @@ export function useDnd() {
   const client = useExplorerStore((s) => s.client);
   const depotId = useExplorerStore((s) => s.depotId);
   const depotRoot = useExplorerStore((s) => s.depotRoot);
+  const serverRoot = useExplorerStore((s) => s.serverRoot);
   const beforeCommit = useExplorerStore((s) => s.beforeCommit);
   const scheduleCommit = useExplorerStore((s) => s.scheduleCommit);
-  const refresh = useExplorerStore((s) => s.refresh);
+  const reloadDir = useExplorerStore((s) => s.reloadDir);
   const selectedItems = useExplorerStore((s) => s.selectedItems);
   const setSelectedItems = useExplorerStore((s) => s.setSelectedItems);
   const updateDepotRoot = useExplorerStore((s) => s.updateDepotRoot);
@@ -80,7 +81,7 @@ export function useDnd() {
 
         if (currentRoot !== depotRoot) {
           if (scheduleCommit) {
-            scheduleCommit(depotId, currentRoot, depotRoot);
+            scheduleCommit(depotId, currentRoot, serverRoot);
           } else {
             await beforeCommit?.();
             await client.depots.commit(depotId, { root: currentRoot });
@@ -89,7 +90,7 @@ export function useDnd() {
         }
 
         setSelectedItems([]);
-        await refresh();
+        await reloadDir();
       } catch {
         setError({ type: "network", message: "Drag operation failed" });
       } finally {
@@ -104,9 +105,10 @@ export function useDnd() {
       client,
       beforeCommit,
       scheduleCommit,
+      serverRoot,
       updateDepotRoot,
       setSelectedItems,
-      refresh,
+      reloadDir,
       setError,
     ]
   );

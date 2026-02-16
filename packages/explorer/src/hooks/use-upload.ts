@@ -23,12 +23,13 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
   const scheduleCommit = useExplorerStore((s) => s.scheduleCommit);
   const depotId = useExplorerStore((s) => s.depotId);
   const depotRoot = useExplorerStore((s) => s.depotRoot);
+  const serverRoot = useExplorerStore((s) => s.serverRoot);
   const addToUploadQueue = useExplorerStore((s) => s.addToUploadQueue);
   const updateUploadItem = useExplorerStore((s) => s.updateUploadItem);
   const removeFromUploadQueue = useExplorerStore((s) => s.removeFromUploadQueue);
   const uploadQueue = useExplorerStore((s) => s.uploadQueue);
   const setError = useExplorerStore((s) => s.setError);
-  const refresh = useExplorerStore((s) => s.refresh);
+  const reloadDir = useExplorerStore((s) => s.reloadDir);
   const permissions = useExplorerStore((s) => s.permissions);
   const updateDepotRoot = useExplorerStore((s) => s.updateDepotRoot);
 
@@ -83,7 +84,7 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
           // Enqueue background commit or commit directly
           if (depotId) {
             if (scheduleCommit) {
-              scheduleCommit(depotId, result.newRoot, depotRoot);
+              scheduleCommit(depotId, result.newRoot, serverRoot);
             } else {
               await beforeCommit?.();
               await client.depots.commit(depotId, { root: result.newRoot }).catch(() => {});
@@ -126,6 +127,7 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
     localFs,
     beforeCommit,
     scheduleCommit,
+    serverRoot,
     updateUploadItem,
     updateDepotRoot,
     onError,
@@ -138,10 +140,10 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
       (item) => item.status === "pending" || item.status === "uploading"
     );
     if (prevHadPending.current && !hasPending && uploadQueue.length > 0) {
-      refresh();
+      reloadDir();
     }
     prevHadPending.current = hasPending;
-  }, [uploadQueue, refresh]);
+  }, [uploadQueue, reloadDir]);
 
   /** Cancel a pending upload (remove from queue) */
   const cancelUpload = useCallback(

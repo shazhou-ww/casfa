@@ -35,8 +35,10 @@ export function CasfaExplorer(props: CasfaExplorerProps) {
     props.onStoreReady?.(store.current);
   }
 
-  // Clean up BroadcastChannel + subscriptions on unmount
+  // Connect BroadcastChannel + commit subscription on mount,
+  // disconnect on unmount. Survives React StrictMode re-mount.
   useEffect(() => {
+    store.current?.getState().connect();
     return () => {
       store.current?.getState().dispose();
     };
