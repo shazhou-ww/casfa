@@ -163,9 +163,23 @@ export type RealmUsage = {
 // Depot Types
 // ============================================================================
 
+export type CommitDiffEntry = {
+  type: "added" | "removed" | "modified" | "moved";
+  path: string;
+  kind?: "file" | "dir";
+  /** Destination path for moved entries */
+  pathTo?: string;
+};
+
 export type DepotHistoryEntry = {
   root: string;
+  /** The root this version was derived from (null for first commit / unknown) */
+  parentRoot?: string | null;
   timestamp: number;
+  /** Up to 5 diff entries summarising changes from parentRoot → root */
+  diff?: CommitDiffEntry[];
+  /** Whether the diff was truncated */
+  diffTruncated?: boolean;
 };
 
 export type Depot = {

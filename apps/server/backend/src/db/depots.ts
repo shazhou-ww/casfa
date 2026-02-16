@@ -21,7 +21,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import type { Delegate } from "@casfa/delegate";
 import type { ListOptions, PaginatedResult } from "../types/delegate-token.ts";
-import type { Depot } from "../types.ts";
+import type { CommitDiffEntry, Depot } from "../types.ts";
 import { decodeCursor, encodeCursor, toCreatorGsi3Pk, toDepotGsi3Sk } from "../util/db-keys.ts";
 import { generateDepotId } from "../util/token-id.ts";
 import { createDocClient } from "./client.ts";
@@ -122,7 +122,8 @@ export type DepotsDb = {
     realm: string,
     depotId: string,
     newRoot: string,
-    expectedRoot?: string | null
+    expectedRoot?: string | null,
+    diff?: { entries: CommitDiffEntry[]; truncated: boolean }
   ) => Promise<ExtendedDepot | null>;
 
   /** Delete a depot */
@@ -326,7 +327,8 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
     realm: string,
     depotId: string,
     newRoot: string,
-    expectedRoot?: string | null
+    expectedRoot?: string | null,
+    diff?: { entries: CommitDiffEntry[]; truncated: boolean }
   ): Promise<ExtendedDepot | null> => {
     const now = Date.now();
 
@@ -344,9 +346,22 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
       }
     }
 
-    // Build new history: remove newRoot if exists, add oldRoot at front with timestamp
+    // Build new history: current version (newRoot) at [0], then previous entries.
+    // Remove any existing entry with the same root to avoid duplicates.
     let newHistory = current.history.filter((h) => h.root !== newRoot);
-    newHistory = [{ root: oldRoot, timestamp: now }, ...newHistory];
+
+    // The new current-version entry
+    const currentEntry: Record<string, unknown> = {
+      root: newRoot,
+      parentRoot: oldRoot ?? null,
+      timestamp: now,
+    };
+    if (diff) {
+      currentEntry.diff = diff.entries;
+      currentEntry.diffTruncated = diff.truncated;
+    }
+
+    newHistory = [currentEntry as (typeof newHistory)[0], ...newHistory];
 
     // Truncate to maxHistory
     if (newHistory.length > current.maxHistory) {

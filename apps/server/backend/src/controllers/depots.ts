@@ -22,6 +22,7 @@ import {
   SYSTEM_MAX_HISTORY,
 } from "../db/depots.ts";
 import type { OwnershipV2Db } from "../db/ownership-v2.ts";
+import { computeCommitDiff } from "../services/commit-diff.ts";
 import type { AccessTokenAuthContext, DepotHistoryEntry, Env } from "../types.ts";
 
 // ============================================================================
@@ -201,16 +202,28 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
       // Store old root for response
       const previousRoot = existingDepot.root ?? null;
 
+      // Compute dag diff between old and new root (best-effort, max 5 entries)
+      const oldRootStorageKey = previousRoot ? nodeKeyToStorageKey(previousRoot) : null;
+      const commitDiff = await computeCommitDiff(oldRootStorageKey, storageKey, storage);
+
       try {
         // Store root as node key format (node:XXXX) in the depot
-        const depot = await depotsDb.commit(realm, depotId, newRoot, expectedRoot);
+        const depot = await depotsDb.commit(
+          realm,
+          depotId,
+          newRoot,
+          expectedRoot,
+          commitDiff ?? undefined
+        );
         if (!depot) {
           return c.json({ error: "Depot not found" }, 404);
         }
 
         return c.json({
-          ...formatDepotResponse(depot),
+          depotId: depot.depotId,
+          root: depot.root,
           previousRoot,
+          updatedAt: depot.updatedAt,
         });
       } catch (err) {
         if (err instanceof DepotConflictError) {

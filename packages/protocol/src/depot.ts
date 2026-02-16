@@ -106,11 +106,39 @@ export const DepotListItemSchema = z.object({
 export type DepotListItem = z.infer<typeof DepotListItemSchema>;
 
 /**
- * Single history entry: root hash + commit timestamp
+ * A single diff entry in a commit summary (max 5 per commit).
+ */
+export const CommitDiffEntrySchema = z.object({
+  /** Change type */
+  type: z.enum(["added", "removed", "modified", "moved"]),
+  /** Affected path (source path for moved entries) */
+  path: z.string(),
+  /** Node kind */
+  kind: z.enum(["file", "dir"]).optional(),
+  /** Destination path (only for moved entries) */
+  pathTo: z.string().optional(),
+});
+
+export type CommitDiffEntry = z.infer<typeof CommitDiffEntrySchema>;
+
+/** Maximum number of diff entries stored per commit */
+export const MAX_COMMIT_DIFF_ENTRIES = 5;
+
+/**
+ * Single history entry: root hash + commit timestamp + optional diff summary.
+ *
+ * history[0] is always the **current** version.
+ * Each entry records which root it was derived from (`parentRoot`).
  */
 export const HistoryEntrySchema = z.object({
   root: z.string(),
+  /** The root this version was derived from (null for first commit / unknown) */
+  parentRoot: z.string().nullable().optional(),
   timestamp: z.number(),
+  /** Up to 5 diff entries summarising changes from parentRoot → root */
+  diff: z.array(CommitDiffEntrySchema).optional(),
+  /** Whether the diff was truncated (more than MAX_COMMIT_DIFF_ENTRIES changes) */
+  diffTruncated: z.boolean().optional(),
 });
 
 export type HistoryEntry = z.infer<typeof HistoryEntrySchema>;

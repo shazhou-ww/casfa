@@ -77,8 +77,8 @@ export const withDepotCache = (
       return result;
     },
 
-    commit: async (realm, depotId, newRoot, expectedRoot?) => {
-      const result = await db.commit(realm, depotId, newRoot, expectedRoot);
+    commit: async (realm, depotId, newRoot, expectedRoot?, diff?) => {
+      const result = await db.commit(realm, depotId, newRoot, expectedRoot, diff);
       invalidate(result, realm, depotId);
       return result;
     },

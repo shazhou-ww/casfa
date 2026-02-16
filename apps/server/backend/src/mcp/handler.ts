@@ -25,6 +25,7 @@ import type { OwnershipV2Db } from "../db/ownership-v2.ts";
 import type { ScopeSetNodesDb } from "../db/scope-set-nodes.ts";
 import type { UsageDb } from "../db/usage.ts";
 import { type CreateDelegateDeps, createChildDelegate } from "../services/delegate-creation.ts";
+import { computeCommitDiff } from "../services/commit-diff.ts";
 import type { FsService } from "../services/fs/index.ts";
 import { isFsError } from "../services/fs/index.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
@@ -669,16 +670,24 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
       }
     }
 
-    const depot = await depotsDb.commit(realm, depotId, newRoot, expectedRoot);
+    // Compute dag diff between old and new root (best-effort, max 5 entries)
+    const previousRoot = existingDepot.root ?? null;
+    const oldRootStorageKey = previousRoot ? nodeKeyToStorageKey(previousRoot) : null;
+    const commitDiff = await computeCommitDiff(oldRootStorageKey, storageKey, storage);
+
+    const depot = await depotsDb.commit(
+      realm,
+      depotId,
+      newRoot,
+      expectedRoot,
+      commitDiff ?? undefined
+    );
     if (!depot) return toolError(`Error: DEPOT_NOT_FOUND — Depot '${depotId}' does not exist`);
 
     return toolResult({
       depotId: depot.depotId,
-      title: depot.title,
       root: depot.root,
-      maxHistory: depot.maxHistory,
-      history: depot.history,
-      createdAt: depot.createdAt,
+      previousRoot,
       updatedAt: depot.updatedAt,
     });
   };

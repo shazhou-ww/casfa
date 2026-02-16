@@ -47,6 +47,7 @@
     "@casfa/client-bridge": "workspace:*",
     "@casfa/client-sw": "workspace:*",
     "@casfa/core": "workspace:*",
+    "@casfa/dag-diff": "workspace:*",
     "@casfa/delegate": "workspace:*",
     "@casfa/delegate-token": "workspace:*",
     "@casfa/encoding": "workspace:*",

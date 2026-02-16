@@ -26,6 +26,14 @@ export type ListDepotsResponse = {
   nextCursor?: string;
 };
 
+export type CommitDiffEntry = {
+  type: "added" | "removed" | "modified" | "moved";
+  path: string;
+  kind?: "file" | "dir";
+  /** Destination path for moved entries */
+  pathTo?: string;
+};
+
 export type CommitDepotResponse = {
   depotId: string;
   root: string;
