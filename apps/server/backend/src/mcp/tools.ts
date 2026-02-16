@@ -320,6 +320,11 @@ export const MCP_TOOLS: McpTool[] = [
           type: "string",
           description: "New root node key (nod_ prefix) from a previous write operation",
         },
+        expectedRoot: {
+          type: ["string", "null"],
+          description:
+            "Optimistic lock: expected current depot root. If server root differs, the commit fails with a conflict error. Omit to skip the check (backward-compatible). Use null to assert the depot has no root yet.",
+        },
       },
       required: ["depotId", "root"],
     },

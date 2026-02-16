@@ -30,7 +30,34 @@ export type CommitDepotResponse = {
   depotId: string;
   root: string;
   updatedAt: number;
+  /** Previous root before this commit (null if first commit) */
+  previousRoot: string | null;
 };
+
+// ============================================================================
+// Conflict Types
+// ============================================================================
+
+/** 409 Conflict error body returned when expectedRoot doesn't match server root */
+export type CommitConflictInfo = {
+  code: "CONFLICT";
+  message: string;
+  /** Current server root that doesn't match expectedRoot */
+  currentRoot: string;
+  /** The expectedRoot the client sent */
+  expectedRoot: string | null;
+};
+
+/** Type guard for commit conflict errors */
+export function isCommitConflict(error: unknown): error is CommitConflictInfo {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code: unknown }).code === "CONFLICT" &&
+    "currentRoot" in error
+  );
+}
 
 // ============================================================================
 // Access Token APIs

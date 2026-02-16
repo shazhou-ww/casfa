@@ -635,6 +635,7 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
   ) => {
     const depotId = args.depotId as string;
     const newRoot = args.root as string;
+    const expectedRoot = args.expectedRoot as string | null | undefined;
     if (!depotId) return toolError("Missing required parameter: depotId");
     if (!newRoot) return toolError("Missing required parameter: root");
 
@@ -668,7 +669,7 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
       }
     }
 
-    const depot = await depotsDb.commit(realm, depotId, newRoot);
+    const depot = await depotsDb.commit(realm, depotId, newRoot, expectedRoot);
     if (!depot) return toolError(`Error: DEPOT_NOT_FOUND — Depot '${depotId}' does not exist`);
 
     return toolResult({

@@ -138,3 +138,34 @@ export type MergeResult = {
   /** Automatic LWW conflict resolutions that were made */
   resolutions: LwwResolution[];
 };
+
+// ---------------------------------------------------------------------------
+// Pull types
+// ---------------------------------------------------------------------------
+
+/** Options for pullRemoteTree */
+export type PullOptions = {
+  /** Local storage for reading base nodes and writing fetched remote nodes */
+  storage: StorageProvider;
+  /**
+   * Fetch a remote node via navigated index-path from the remote root.
+   *
+   * - `navPath = ""` → fetch the remote root node itself
+   * - `navPath = "~0"` → fetch child at index 0 of the root
+   * - `navPath = "~0/~2"` → fetch grandchild (child 2 of child 0)
+   *
+   * Typically wired to `client.nodes.getNavigated(remoteRootKey, navPath)`
+   * for non-empty paths, and `client.nodes.get(remoteRootKey)` for `""`.
+   *
+   * Returns raw node bytes, or null if not reachable.
+   */
+  fetchNode: (navPath: string) => Promise<Uint8Array | null>;
+};
+
+/** Result statistics from pullRemoteTree */
+export type PullResult = {
+  /** Number of nodes fetched from the remote server */
+  nodesFetched: number;
+  /** Number of nodes skipped (hash match or already local) */
+  nodesSkipped: number;
+};
