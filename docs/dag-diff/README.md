@@ -161,19 +161,85 @@ packages/dag-diff/
   tsconfig.json
   src/
     index.ts        — public API re-exports
-    types.ts        — DiffEntry, DiffResult, DagDiffOptions
+    types.ts        — DiffEntry, DiffResult, MergeResult, etc.
     diff.ts         — dagDiff() batch function + moved detection
     stream.ts       — dagDiffStream() core algorithm
     collect.ts      — collectLeaves() helper for added/removed subtrees
+    merge.ts        — dagMerge() 3-way merge with LWW
   tests/
     dag-diff.test.ts
+    merge.test.ts
 ```
 
 Dependencies: `@casfa/core` (decodeNode, hashToKey, well-known keys).
+
+## 3-Way Merge
+
+### Overview
+
+`dagMerge(baseRootKey, oursRootKey, theirsRootKey, options)` computes Operations
+to apply to the base tree to produce a merged result from two diverged versions.
+
+### Algorithm
+
+1. Compute `dagDiff(base → ours)` and `dagDiff(base → theirs)` concurrently
+2. Index both diffs by path
+3. For each affected path, apply merge rules:
+
+| ours ╲ theirs | (none)        | added          | removed       | modified       |
+|---------------|---------------|----------------|---------------|----------------|
+| (none)        | —             | add(theirs)    | remove        | update(theirs) |
+| added         | add(ours)     | LWW if ≠ key   | —             | —              |
+| removed       | remove        | —              | remove        | LWW            |
+| modified      | update(ours)  | —              | LWW           | LWW if ≠ key   |
+
+### Conflict Resolution: Last-Writer-Wins (LWW)
+
+When both sides changed the same path differently, the version with the
+**later timestamp** wins. Tiebreaker: **ours wins** when timestamps are equal.
+
+Three conflict types are tracked in `LwwResolution`:
+- `both-added` — both added the same path with different keys
+- `both-modified` — both modified the same path to different keys
+- `modify-remove` — one side modified, the other removed
+
+### API
+
+```typescript
+type MergeOptions = {
+  storage: StorageProvider;
+  oursTimestamp: number;
+  theirsTimestamp: number;
+  maxDepth?: number;
+  maxEntries?: number;
+};
+
+type MergeOp =
+  | { type: "add"; path: string; nodeKey: string }
+  | { type: "remove"; path: string }
+  | { type: "update"; path: string; nodeKey: string };
+
+type MergeResult = {
+  operations: MergeOp[];
+  resolutions: LwwResolution[];
+};
+
+async function dagMerge(
+  baseRootKey: string,
+  oursRootKey: string,
+  theirsRootKey: string,
+  options: MergeOptions
+): Promise<MergeResult>;
+```
+
+### Fast Paths
+
+- All three roots identical → empty merge
+- Only one side diverged → that side's diff becomes operations directly
+- Both converged to same state → treat as one-side diff
 
 ## Non-Goals (Future)
 
 - Byte-level content diff within f-nodes
 - Permission / set-node aware diffing
-- Three-way merge
 - Rename detection heuristics beyond exact key match

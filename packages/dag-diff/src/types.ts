@@ -93,3 +93,48 @@ export type DagDiffOptions = {
    */
   maxEntries?: number;
 };
+
+// ---------------------------------------------------------------------------
+// 3-way merge types
+// ---------------------------------------------------------------------------
+
+/** Options for dagMerge */
+export type MergeOptions = {
+  storage: StorageProvider;
+  /** Timestamp of the "ours" version (for LWW conflict resolution) */
+  oursTimestamp: number;
+  /** Timestamp of the "theirs" version (for LWW conflict resolution) */
+  theirsTimestamp: number;
+  /** Max d-node nesting depth (forwarded to diff) */
+  maxDepth?: number;
+  /** Max diff entries per side (forwarded to diff) */
+  maxEntries?: number;
+};
+
+/** A single merge operation to apply to the base tree */
+export type MergeOp =
+  | { type: "add"; path: string; nodeKey: string }
+  | { type: "remove"; path: string }
+  | { type: "update"; path: string; nodeKey: string };
+
+/** Record of an automatic LWW conflict resolution */
+export type LwwResolution = {
+  path: string;
+  /** Which side won */
+  winner: "ours" | "theirs";
+  /** What kind of conflict was resolved */
+  conflict:
+    | "both-added"      // both added same path with different keys
+    | "both-modified"   // both modified same path to different keys
+    | "modify-remove";  // one modified, other removed
+  oursNodeKey: string | null;
+  theirsNodeKey: string | null;
+};
+
+/** Result of a 3-way merge */
+export type MergeResult = {
+  /** Operations to apply to the base tree to produce the merged tree */
+  operations: MergeOp[];
+  /** Automatic LWW conflict resolutions that were made */
+  resolutions: LwwResolution[];
+};
