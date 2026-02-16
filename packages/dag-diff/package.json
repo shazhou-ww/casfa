@@ -1,0 +1,41 @@
+{
+  "name": "@casfa/dag-diff",
+  "version": "0.1.0",
+  "description": "DAG diff — compute edit distance between two CAS DAG roots at file-system granularity",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "bun ../../scripts/build-pkg.ts",
+    "test": "bun run test:unit",
+    "test:unit": "bun test",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "check": "tsc --noEmit && biome check .",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@casfa/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@noble/hashes": "^1.7.1",
+    "@types/bun": "latest",
+    "typescript": "^5.3.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}
