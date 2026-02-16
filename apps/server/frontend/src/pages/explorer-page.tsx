@@ -54,7 +54,6 @@ export function ExplorerPage() {
   const [storage, setStorage] = useState<StorageProvider | null>(null);
   const keyProv = getKeyProvider();
 
-  const explorerStoreRef = useRef<ExplorerStoreApi | null>(null);
   const [conflictToast, setConflictToast] = useState<string | null>(null);
 
   // Local cache of pending roots — keeps getSyncPendingRoot synchronous.
@@ -66,7 +65,7 @@ export function ExplorerPage() {
     getStorage().then(setStorage);
   }, []);
 
-  // Wire AppClient events (conflict toast + commit → update explorer store)
+  // Wire AppClient events (conflict toast + pending roots cache)
   useEffect(() => {
     if (!appClient) return;
 
@@ -83,27 +82,11 @@ export function ExplorerPage() {
           );
         }
       }),
+      // Root updates (depotRoot, serverRoot, refresh) are handled
+      // internally by the explorer store via subscribeCommit.
+      // Here we only clear the pending-roots cache.
       appClient.onCommit((event) => {
         pendingRootsRef.current.delete(event.depotId);
-        const store = explorerStoreRef.current?.getState();
-        if (!store) return;
-
-        // If merge produced a different root (committedRoot !== requestedRoot)
-        // and no new local writes happened (depotRoot === requestedRoot),
-        // update depotRoot to the merged result and refresh the directory.
-        if (
-          event.committedRoot !== event.requestedRoot &&
-          store.depotRoot === event.requestedRoot &&
-          store.depotId === event.depotId
-        ) {
-          store.updateDepotRoot(event.committedRoot);
-        }
-        store.updateServerRoot(event.committedRoot);
-
-        // Refresh directory view when merge changed the root
-        if (event.committedRoot !== event.requestedRoot && store.depotId === event.depotId) {
-          store.refresh();
-        }
       }),
     ];
 
@@ -136,8 +119,18 @@ export function ExplorerPage() {
     [appClient]
   );
 
+  const subscribeCommit = useCallback(
+    (
+      listener: (event: { depotId: string; committedRoot: string; requestedRoot: string }) => void
+    ) => {
+      return appClient?.onCommit(listener) ?? (() => {});
+    },
+    [appClient]
+  );
+
   const onStoreReady = useCallback((store: ExplorerStoreApi) => {
-    explorerStoreRef.current = store;
+    // Store reference available if needed for future extensions
+    void store;
   }, []);
 
   if (!appClient || !storage) {
@@ -159,6 +152,7 @@ export function ExplorerPage() {
         onDepotChange={(id) => navigate(`/depot/${encodeURIComponent(id)}`)}
         scheduleCommit={scheduleCommit}
         getSyncPendingRoot={getSyncPendingRoot}
+        subscribeCommit={subscribeCommit}
         onStoreReady={onStoreReady}
       />
       <SyncIndicator appClient={appClient} />

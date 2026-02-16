@@ -3,7 +3,7 @@
  */
 
 import { Box } from "@mui/material";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { createExplorerStore, type ExplorerStoreApi } from "../core/explorer-store.ts";
 import { ExplorerI18nContext, ExplorerStoreContext } from "../hooks/use-explorer-context.ts";
 import { createEnUsT } from "../i18n/en-US.ts";
@@ -30,9 +30,17 @@ export function CasfaExplorer(props: CasfaExplorerProps) {
       beforeCommit: props.beforeCommit,
       scheduleCommit: props.scheduleCommit,
       getSyncPendingRoot: props.getSyncPendingRoot,
+      subscribeCommit: props.subscribeCommit,
     });
     props.onStoreReady?.(store.current);
   }
+
+  // Clean up BroadcastChannel + subscriptions on unmount
+  useEffect(() => {
+    return () => {
+      store.current?.getState().dispose();
+    };
+  }, []);
 
   const t = useMemo<ExplorerT>(() => {
     const locale = props.locale ?? "en-US";
