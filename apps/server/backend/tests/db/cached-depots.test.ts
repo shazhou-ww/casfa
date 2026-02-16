@@ -171,7 +171,13 @@ describe("withDepotCache", () => {
       const result = await cached.commit("usr_OWNER", "dpt_ABC", "NEWROOT");
 
       expect(result).toEqual(updated);
-      expect(db.commit).toHaveBeenCalledWith("usr_OWNER", "dpt_ABC", "NEWROOT", undefined, undefined);
+      expect(db.commit).toHaveBeenCalledWith(
+        "usr_OWNER",
+        "dpt_ABC",
+        "NEWROOT",
+        undefined,
+        undefined
+      );
       await new Promise((r) => setTimeout(r, 10));
       const delCalls = (redis.del as any).mock.calls;
       const keys = delCalls.map((c: any) => c[0]) as string[];

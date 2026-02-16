@@ -7,7 +7,7 @@
  */
 
 import { type DiffEntry, dagDiff } from "@casfa/dag-diff";
-import { MAX_COMMIT_DIFF_ENTRIES } from "@casfa/protocol";
+import { MAX_COMMIT_DIFF_ENTRIES, nodeKeyToStorageKey } from "@casfa/protocol";
 import type { StorageProvider } from "@casfa/storage-core";
 import type { CommitDiffEntry } from "../types.ts";
 
@@ -38,24 +38,45 @@ function toCommitDiffEntry(entry: DiffEntry): CommitDiffEntry {
 }
 
 /**
- * Compute a compact diff summary between two roots (storage keys).
+ * Safely convert a node key (nod_ prefixed or raw storage key) to a storage key.
+ */
+function safeToStorageKey(key: string): string {
+  try {
+    return nodeKeyToStorageKey(key);
+  } catch {
+    // Already a raw storage key (legacy format)
+    return key;
+  }
+}
+
+/**
+ * Compute a compact diff summary between two roots.
  *
+ * Accepts node keys in any format (nod_ prefixed or raw storage keys).
  * Returns up to 5 diff entries and a truncated flag.
  * Returns null if diff cannot be computed (e.g. no previous root,
  * same root, or nodes not found in storage).
  */
 export async function computeCommitDiff(
-  oldRootStorageKey: string | null,
-  newRootStorageKey: string,
+  oldRoot: string | null,
+  newRoot: string,
   storage: StorageProvider
 ): Promise<CommitDiffResult | null> {
-  // No diff possible if there's no previous root or roots are identical
-  if (!oldRootStorageKey || oldRootStorageKey === newRootStorageKey) {
+  // No diff possible if there's no previous root
+  if (!oldRoot) {
+    return null;
+  }
+
+  const oldKey = safeToStorageKey(oldRoot);
+  const newKey = safeToStorageKey(newRoot);
+
+  // Same root means no changes
+  if (oldKey === newKey) {
     return null;
   }
 
   try {
-    const result = await dagDiff(oldRootStorageKey, newRootStorageKey, {
+    const result = await dagDiff(oldKey, newKey, {
       storage,
       maxEntries: MAX_COMMIT_DIFF_ENTRIES,
     });
