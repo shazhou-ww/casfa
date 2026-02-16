@@ -77,9 +77,9 @@ export type ConflictEvent = {
   serverRoot: string | null;
   /** Resolution strategy used */
   resolution:
-    | "lww-overwrite"         // old behavior or fallback
-    | "3way-merge-success"    // merge succeeded
-    | "3way-merge-failed";    // merge failed, fell back to LWW or gave up
+    | "lww-overwrite" // old behavior or fallback
+    | "3way-merge-success" // merge succeeded
+    | "3way-merge-failed"; // merge failed, fell back to LWW or gave up
   /** New root after merge (only when resolution = "3way-merge-success") */
   mergedRoot?: string;
 };
@@ -211,7 +211,12 @@ const DEFAULT_MAX_MERGE_ATTEMPTS = 3;
  * Extract the server's current root from a 409 Conflict error.
  * Returns null if the error is not a conflict or not structured correctly.
  */
-function extractConflictRoot(error: { code: string; message: string; status?: number; details?: unknown }): string | null {
+function extractConflictRoot(error: {
+  code: string;
+  message: string;
+  status?: number;
+  details?: unknown;
+}): string | null {
   if (error.status !== 409) return null;
   const details = error.details as { error?: { code?: string; currentRoot?: string } } | undefined;
   if (details?.error?.code === "CONFLICT" && typeof details.error.currentRoot === "string") {
@@ -417,10 +422,7 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
             }
             // else: merge failed, will attempt LWW below
           } catch (mergeErr) {
-            console.warn(
-              `[SyncManager] pre-merge failed for ${entry.depotId}:`,
-              mergeErr
-            );
+            console.warn(`[SyncManager] pre-merge failed for ${entry.depotId}:`, mergeErr);
             // Fall through to commit attempt
           }
           setState("syncing");

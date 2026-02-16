@@ -6,8 +6,8 @@
  * optimisation.
  */
 
-import { decodeNode, hashToKey, isWellKnownNode, getWellKnownNodeData } from "@casfa/core";
-import type { StorageProvider, CasNode } from "@casfa/core";
+import type { CasNode, StorageProvider } from "@casfa/core";
+import { decodeNode, getWellKnownNodeData, hashToKey, isWellKnownNode } from "@casfa/core";
 import { collectLeaves } from "./collect.ts";
 import type { DagDiffOptions, DiffEntryKind, RawDiffEntry, TypeChange } from "./types.ts";
 
@@ -33,7 +33,7 @@ async function fetchNode(storage: StorageProvider, key: string): Promise<CasNode
   return decodeNode(bytes);
 }
 
-function nodeKindToDiffKind(kind: CasNode["kind"]): DiffEntryKind {
+function _nodeKindToDiffKind(kind: CasNode["kind"]): DiffEntryKind {
   return kind === "file" ? "file" : "dir";
 }
 
@@ -42,8 +42,8 @@ function nodeKindToDiffKind(kind: CasNode["kind"]): DiffEntryKind {
 // ---------------------------------------------------------------------------
 
 type MergedChild =
-  | { name: string; oldHash: Uint8Array; newHash: null }        // only in old
-  | { name: string; oldHash: null;       newHash: Uint8Array }  // only in new
+  | { name: string; oldHash: Uint8Array; newHash: null } // only in old
+  | { name: string; oldHash: null; newHash: Uint8Array } // only in new
   | { name: string; oldHash: Uint8Array; newHash: Uint8Array }; // in both
 
 /**
@@ -54,7 +54,7 @@ function mergeChildren(
   oldNames: string[],
   oldHashes: Uint8Array[],
   newNames: string[],
-  newHashes: Uint8Array[],
+  newHashes: Uint8Array[]
 ): MergedChild[] {
   const result: MergedChild[] = [];
   let i = 0;
@@ -122,7 +122,7 @@ type TruncationState = {
 export async function* dagDiffStream(
   oldRootKey: string,
   newRootKey: string,
-  options: DagDiffOptions,
+  options: DagDiffOptions
 ): AsyncGenerator<RawDiffEntry> {
   // Trivial: same root ⇒ no changes
   if (oldRootKey === newRootKey) return;
@@ -146,7 +146,7 @@ export async function* dagDiffStream(
 export function createDiffStream(
   oldRootKey: string,
   newRootKey: string,
-  options: DagDiffOptions,
+  options: DagDiffOptions
 ): { stream: AsyncGenerator<RawDiffEntry>; isTruncated: () => boolean } {
   const state: TruncationState = {
     count: 0,
@@ -175,7 +175,7 @@ async function* diffNodes(
   path: string,
   depth: number,
   options: DagDiffOptions,
-  state: TruncationState,
+  state: TruncationState
 ): AsyncGenerator<RawDiffEntry> {
   // Hash short-circuit
   if (oldKey === newKey) return;
@@ -208,7 +208,10 @@ async function* diffNodes(
 
   // Both are f-nodes → modified at file level
   if (oldNode.kind === "file" && newNode.kind === "file") {
-    if (state.count >= state.maxEntries) { state.truncated = true; return; }
+    if (state.count >= state.maxEntries) {
+      state.truncated = true;
+      return;
+    }
     state.count++;
     yield {
       type: "modified",
@@ -222,10 +225,12 @@ async function* diffNodes(
 
   // Type mismatch: one is file, other is dict
   if (oldNode.kind !== newNode.kind) {
-    const typeChange: TypeChange =
-      oldNode.kind === "file" ? "file2dir" : "dir2file";
+    const typeChange: TypeChange = oldNode.kind === "file" ? "file2dir" : "dir2file";
 
-    if (state.count >= state.maxEntries) { state.truncated = true; return; }
+    if (state.count >= state.maxEntries) {
+      state.truncated = true;
+      return;
+    }
     state.count++;
     yield {
       type: "modified",
@@ -240,7 +245,10 @@ async function* diffNodes(
   // Both are d-nodes — recurse with merge-join
   // maxDepth check
   if (maxDepth !== undefined && depth >= maxDepth) {
-    if (state.count >= state.maxEntries) { state.truncated = true; return; }
+    if (state.count >= state.maxEntries) {
+      state.truncated = true;
+      return;
+    }
     state.count++;
     yield {
       type: "modified",
@@ -293,7 +301,7 @@ async function* collectLeavesWithState(
   nodeKey: string,
   basePath: string,
   side: "added" | "removed",
-  state: TruncationState,
+  state: TruncationState
 ): AsyncGenerator<RawDiffEntry> {
   for await (const entry of collectLeaves(storage, nodeKey, basePath, side)) {
     if (state.count >= state.maxEntries) {

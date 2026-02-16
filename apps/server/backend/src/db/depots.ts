@@ -43,7 +43,9 @@ export class DepotConflictError extends Error {
   readonly expectedRoot: string | null;
 
   constructor(currentRoot: string | null, expectedRoot: string | null) {
-    super(`Depot root conflict: expected ${expectedRoot ?? "(null)"}, got ${currentRoot ?? "(null)"}`);
+    super(
+      `Depot root conflict: expected ${expectedRoot ?? "(null)"}, got ${currentRoot ?? "(null)"}`
+    );
     this.name = "DepotConflictError";
     this.currentRoot = currentRoot;
     this.expectedRoot = expectedRoot;
@@ -120,7 +122,7 @@ export type DepotsDb = {
     realm: string,
     depotId: string,
     newRoot: string,
-    expectedRoot?: string | null,
+    expectedRoot?: string | null
   ) => Promise<ExtendedDepot | null>;
 
   /** Delete a depot */
@@ -324,7 +326,7 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
     realm: string,
     depotId: string,
     newRoot: string,
-    expectedRoot?: string | null,
+    expectedRoot?: string | null
   ): Promise<ExtendedDepot | null> => {
     const now = Date.now();
 

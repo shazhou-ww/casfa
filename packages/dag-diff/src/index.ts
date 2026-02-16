@@ -20,7 +20,7 @@
 export { dagDiff } from "./diff.ts";
 export { dagMerge } from "./merge.ts";
 export { pullRemoteTree } from "./pull.ts";
-export { dagDiffStream, createDiffStream } from "./stream.ts";
+export { createDiffStream, dagDiffStream } from "./stream.ts";
 export type {
   AddedEntry,
   DagDiffOptions,

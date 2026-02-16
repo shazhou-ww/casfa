@@ -17,7 +17,7 @@ import {
 import { storageKeyToNodeKey } from "@casfa/protocol";
 import { blake3 } from "@noble/hashes/blake3";
 
-import { createFsService, type FsContext, applyMergeOps, type MergeOp as FsMergeOp } from "../src/index.ts";
+import { applyMergeOps, createFsService, type FsContext, type FsMergeOp } from "../src/index.ts";
 
 // ============================================================================
 // Helpers
@@ -54,7 +54,7 @@ const keyProvider = createKeyProvider();
 async function storeDict(
   storage: MemoryStorage,
   childNames: string[],
-  children: Uint8Array[],
+  children: Uint8Array[]
 ): Promise<{ nodeKey: string; hash: Uint8Array }> {
   const encoded = await encodeDictNode({ children, childNames }, keyProvider);
   const key = hashToKey(encoded.hash);
@@ -66,13 +66,10 @@ async function storeDict(
 async function storeFile(
   storage: MemoryStorage,
   content: string,
-  contentType = "text/plain",
+  contentType = "text/plain"
 ): Promise<{ nodeKey: string; hash: Uint8Array }> {
   const data = new TextEncoder().encode(content);
-  const encoded = await encodeFileNode(
-    { data, contentType, fileSize: data.length },
-    keyProvider,
-  );
+  const encoded = await encodeFileNode({ data, contentType, fileSize: data.length }, keyProvider);
   const key = hashToKey(encoded.hash);
   await storage.put(key, encoded.bytes);
   return { nodeKey: storageKeyToNodeKey(key), hash: encoded.hash };
@@ -112,9 +109,7 @@ describe("applyMergeOps", () => {
     const fileB = await storeFile(storage, "content-B");
 
     const fs = createFsService({ ctx });
-    const ops: FsMergeOp[] = [
-      { type: "add", path: "b.txt", nodeKey: fileB.nodeKey },
-    ];
+    const ops: FsMergeOp[] = [{ type: "add", path: "b.txt", nodeKey: fileB.nodeKey }];
 
     const result = await applyMergeOps(root.nodeKey, ops, fs);
 
@@ -125,7 +120,9 @@ describe("applyMergeOps", () => {
     // Verify new root has both files
     const listing = await fs.ls(result.newRoot);
     expect(listing).toHaveProperty("children");
-    const names = (listing as { children: Array<{ name: string }> }).children.map((e) => e.name).sort();
+    const names = (listing as { children: Array<{ name: string }> }).children
+      .map((e) => e.name)
+      .sort();
     expect(names).toEqual(["a.txt", "b.txt"]);
   });
 
@@ -136,9 +133,7 @@ describe("applyMergeOps", () => {
     const root = await storeDict(storage, ["a.txt", "b.txt"], [fileA.hash, fileB.hash]);
 
     const fs = createFsService({ ctx });
-    const ops: FsMergeOp[] = [
-      { type: "remove", path: "b.txt" },
-    ];
+    const ops: FsMergeOp[] = [{ type: "remove", path: "b.txt" }];
 
     const result = await applyMergeOps(root.nodeKey, ops, fs);
 
@@ -160,9 +155,7 @@ describe("applyMergeOps", () => {
     const fileANew = await storeFile(storage, "new-content");
 
     const fs = createFsService({ ctx });
-    const ops: FsMergeOp[] = [
-      { type: "update", path: "a.txt", nodeKey: fileANew.nodeKey },
-    ];
+    const ops: FsMergeOp[] = [{ type: "update", path: "a.txt", nodeKey: fileANew.nodeKey }];
 
     const result = await applyMergeOps(root.nodeKey, ops, fs);
 
@@ -178,10 +171,10 @@ describe("applyMergeOps", () => {
     const root = await storeDict(
       storage,
       ["a.txt", "b.txt", "c.txt"],
-      [fileA.hash, fileB.hash, fileC.hash],
+      [fileA.hash, fileB.hash, fileC.hash]
     );
 
-    const fileD = await storeFile(storage, "content-D");       // new file
+    const fileD = await storeFile(storage, "content-D"); // new file
     const fileBNew = await storeFile(storage, "content-B-new"); // updated
 
     const fs = createFsService({ ctx });
@@ -194,12 +187,14 @@ describe("applyMergeOps", () => {
     const result = await applyMergeOps(root.nodeKey, ops, fs);
 
     expect(result.entriesApplied).toBe(2); // add + update
-    expect(result.deleted).toBe(1);        // remove
+    expect(result.deleted).toBe(1); // remove
 
     // Verify final state: a.txt, b.txt (updated), d.txt
     const listing = await fs.ls(result.newRoot);
     expect(listing).toHaveProperty("children");
-    const names = (listing as { children: Array<{ name: string }> }).children.map((e) => e.name).sort();
+    const names = (listing as { children: Array<{ name: string }> }).children
+      .map((e) => e.name)
+      .sort();
     expect(names).toEqual(["a.txt", "b.txt", "d.txt"]);
   });
 
@@ -210,9 +205,7 @@ describe("applyMergeOps", () => {
     const file = await storeFile(storage, "deep-content");
 
     const fs = createFsService({ ctx });
-    const ops: FsMergeOp[] = [
-      { type: "add", path: "src/utils/helper.ts", nodeKey: file.nodeKey },
-    ];
+    const ops: FsMergeOp[] = [{ type: "add", path: "src/utils/helper.ts", nodeKey: file.nodeKey }];
 
     const result = await applyMergeOps(root.nodeKey, ops, fs);
 

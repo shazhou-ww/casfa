@@ -3,21 +3,19 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { blake3 } from "@noble/hashes/blake3";
 import {
-  type CasNode,
-  type KeyProvider,
-  type StorageProvider,
   computeSizeFlagByte,
+  EMPTY_DICT_KEY,
   encodeDictNode,
   encodeFileNode,
-  hashToKey,
-  EMPTY_DICT_KEY,
-  isWellKnownNode,
   getWellKnownNodeData,
+  hashToKey,
+  isWellKnownNode,
+  type KeyProvider,
+  type StorageProvider,
 } from "@casfa/core";
-import { dagDiff, dagDiffStream, createDiffStream } from "../src/index.ts";
-import type { DagDiffOptions, DiffEntry, RawDiffEntry } from "../src/index.ts";
+import { blake3 } from "@noble/hashes/blake3";
+import { createDiffStream, dagDiff, dagDiffStream } from "../src/index.ts";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -62,7 +60,7 @@ const keyProvider = createKeyProvider();
 async function storeDict(
   storage: MemoryStorage,
   childNames: string[],
-  children: Uint8Array[],
+  children: Uint8Array[]
 ): Promise<string> {
   const encoded = await encodeDictNode({ children, childNames }, keyProvider);
   const key = hashToKey(encoded.hash);
@@ -74,13 +72,10 @@ async function storeDict(
 async function storeFile(
   storage: MemoryStorage,
   content: string,
-  contentType = "text/plain",
+  contentType = "text/plain"
 ): Promise<{ key: string; hash: Uint8Array }> {
   const data = new TextEncoder().encode(content);
-  const encoded = await encodeFileNode(
-    { data, contentType, fileSize: data.length },
-    keyProvider,
-  );
+  const encoded = await encodeFileNode({ data, contentType, fileSize: data.length }, keyProvider);
   const key = hashToKey(encoded.hash);
   await storage.put(key, encoded.bytes);
   return { key, hash: encoded.hash };
@@ -174,11 +169,10 @@ describe("dagDiff", () => {
     const storage = createMemoryStorage();
     const { hash: fHash } = await storeFile(storage, "file content");
     const { hash: innerHash } = await storeFile(storage, "inner file");
-    const dirKey = await storeDict(storage, ["inner.txt"], [innerHash]);
-    const dirHash = (await encodeDictNode(
-      { children: [innerHash], childNames: ["inner.txt"] },
-      keyProvider,
-    )).hash;
+    const _dirKey = await storeDict(storage, ["inner.txt"], [innerHash]);
+    const dirHash = (
+      await encodeDictNode({ children: [innerHash], childNames: ["inner.txt"] }, keyProvider)
+    ).hash;
 
     const oldRoot = await storeDict(storage, ["x"], [fHash]);
     const newRoot = await storeDict(storage, ["x"], [dirHash]);
@@ -196,11 +190,10 @@ describe("dagDiff", () => {
   test("type change dir→file reported as modified with typeChange", async () => {
     const storage = createMemoryStorage();
     const { hash: innerHash } = await storeFile(storage, "inner file");
-    const dirKey = await storeDict(storage, ["y.txt"], [innerHash]);
-    const dirHash = (await encodeDictNode(
-      { children: [innerHash], childNames: ["y.txt"] },
-      keyProvider,
-    )).hash;
+    const _dirKey = await storeDict(storage, ["y.txt"], [innerHash]);
+    const dirHash = (
+      await encodeDictNode({ children: [innerHash], childNames: ["y.txt"] }, keyProvider)
+    ).hash;
     const { hash: fHash } = await storeFile(storage, "file content");
 
     const oldRoot = await storeDict(storage, ["x"], [dirHash]);
@@ -227,8 +220,9 @@ describe("dagDiff", () => {
     const { hash: h3 } = await storeFile(storage, "v2");
 
     // Both trees share the same "lib/" subtree
-    const libHash = (await encodeDictNode({ children: [h1], childNames: ["util.ts"] }, keyProvider)).hash;
-    const libKey = await storeDict(storage, ["util.ts"], [h1]);
+    const libHash = (await encodeDictNode({ children: [h1], childNames: ["util.ts"] }, keyProvider))
+      .hash;
+    const _libKey = await storeDict(storage, ["util.ts"], [h1]);
 
     const oldRoot = await storeDict(storage, ["lib", "main.ts"], [libHash, h2]);
     const newRoot = await storeDict(storage, ["lib", "main.ts"], [libHash, h3]);
@@ -255,17 +249,25 @@ describe("dagDiff", () => {
     const { hash: h3 } = await storeFile(storage, "c");
 
     // old: src/lib/x.ts(h1)  src/lib/y.ts(h2)
-    const oldLib = await storeDict(storage, ["x.ts", "y.ts"], [h1, h2]);
-    const oldLibHash = (await encodeDictNode({ children: [h1, h2], childNames: ["x.ts", "y.ts"] }, keyProvider)).hash;
-    const oldSrc = await storeDict(storage, ["lib"], [oldLibHash]);
-    const oldSrcHash = (await encodeDictNode({ children: [oldLibHash], childNames: ["lib"] }, keyProvider)).hash;
+    const _oldLib = await storeDict(storage, ["x.ts", "y.ts"], [h1, h2]);
+    const oldLibHash = (
+      await encodeDictNode({ children: [h1, h2], childNames: ["x.ts", "y.ts"] }, keyProvider)
+    ).hash;
+    const _oldSrc = await storeDict(storage, ["lib"], [oldLibHash]);
+    const oldSrcHash = (
+      await encodeDictNode({ children: [oldLibHash], childNames: ["lib"] }, keyProvider)
+    ).hash;
     const oldRoot = await storeDict(storage, ["src"], [oldSrcHash]);
 
     // new: src/lib/x.ts(h1)  src/lib/y.ts(h3) — y.ts changed
-    const newLib = await storeDict(storage, ["x.ts", "y.ts"], [h1, h3]);
-    const newLibHash = (await encodeDictNode({ children: [h1, h3], childNames: ["x.ts", "y.ts"] }, keyProvider)).hash;
-    const newSrc = await storeDict(storage, ["lib"], [newLibHash]);
-    const newSrcHash = (await encodeDictNode({ children: [newLibHash], childNames: ["lib"] }, keyProvider)).hash;
+    const _newLib = await storeDict(storage, ["x.ts", "y.ts"], [h1, h3]);
+    const newLibHash = (
+      await encodeDictNode({ children: [h1, h3], childNames: ["x.ts", "y.ts"] }, keyProvider)
+    ).hash;
+    const _newSrc = await storeDict(storage, ["lib"], [newLibHash]);
+    const newSrcHash = (
+      await encodeDictNode({ children: [newLibHash], childNames: ["lib"] }, keyProvider)
+    ).hash;
     const newRoot = await storeDict(storage, ["src"], [newSrcHash]);
 
     const result = await dagDiff(oldRoot, newRoot, { storage });
@@ -336,7 +338,11 @@ describe("dagDiff", () => {
     // Old: a.txt(fHash), x.txt(otherHash)
     const oldRoot = await storeDict(storage, ["a.txt", "x.txt"], [fHash, otherHash]);
     // New: a.txt(fHash), b.txt(fHash) — a.txt unchanged, b.txt added with same key
-    const newRoot = await storeDict(storage, ["a.txt", "b.txt", "x.txt"], [fHash, fHash, otherHash]);
+    const newRoot = await storeDict(
+      storage,
+      ["a.txt", "b.txt", "x.txt"],
+      [fHash, fHash, otherHash]
+    );
 
     const result = await dagDiff(oldRoot, newRoot, { storage });
 
@@ -359,17 +365,15 @@ describe("dagDiff", () => {
     const { hash: h1 } = await storeFile(storage, "v1");
     const { hash: h2 } = await storeFile(storage, "v2");
 
-    const oldInner = await storeDict(storage, ["deep.ts"], [h1]);
-    const oldInnerHash = (await encodeDictNode(
-      { children: [h1], childNames: ["deep.ts"] },
-      keyProvider,
-    )).hash;
+    const _oldInner = await storeDict(storage, ["deep.ts"], [h1]);
+    const oldInnerHash = (
+      await encodeDictNode({ children: [h1], childNames: ["deep.ts"] }, keyProvider)
+    ).hash;
 
-    const newInner = await storeDict(storage, ["deep.ts"], [h2]);
-    const newInnerHash = (await encodeDictNode(
-      { children: [h2], childNames: ["deep.ts"] },
-      keyProvider,
-    )).hash;
+    const _newInner = await storeDict(storage, ["deep.ts"], [h2]);
+    const newInnerHash = (
+      await encodeDictNode({ children: [h2], childNames: ["deep.ts"] }, keyProvider)
+    ).hash;
 
     const oldRoot = await storeDict(storage, ["sub"], [oldInnerHash]);
     const newRoot = await storeDict(storage, ["sub"], [newInnerHash]);
@@ -421,7 +425,7 @@ describe("dagDiff", () => {
     storage.data.delete(fKey);
 
     await expect(dagDiff(rootKey, EMPTY_DICT_KEY, { storage })).rejects.toThrow(
-      /not found in storage/,
+      /not found in storage/
     );
   });
 
@@ -431,7 +435,7 @@ describe("dagDiff", () => {
     const fakeKey = "AAAAAAAAAAAAAAAAAAAAAAAAAA";
 
     await expect(dagDiff(fakeKey, EMPTY_DICT_KEY, { storage })).rejects.toThrow(
-      /not found in storage/,
+      /not found in storage/
     );
   });
 
@@ -477,7 +481,7 @@ describe("dagDiff", () => {
 
   test("dagDiffStream yields raw entries without moved detection", async () => {
     const storage = createMemoryStorage();
-    const { key: fKey, hash: fHash } = await storeFile(storage, "moveme");
+    const { hash: fHash } = await storeFile(storage, "moveme");
 
     const oldRoot = await storeDict(storage, ["old.txt"], [fHash]);
     const newRoot = await storeDict(storage, ["new.txt"], [fHash]);
@@ -523,12 +527,12 @@ describe("dagDiff", () => {
     const oldRoot = await storeDict(
       storage,
       ["keep.txt", "mod.txt", "rm.txt"],
-      [hUnchanged, hOldMod, hRemoved],
+      [hUnchanged, hOldMod, hRemoved]
     );
     const newRoot = await storeDict(
       storage,
       ["add.txt", "keep.txt", "mod.txt"],
-      [hAdded, hUnchanged, hNewMod],
+      [hAdded, hUnchanged, hNewMod]
     );
 
     const result = await dagDiff(oldRoot, newRoot, { storage });
@@ -554,11 +558,10 @@ describe("dagDiff", () => {
 
     const { hash: h1 } = await storeFile(storage, "f1");
     const { hash: h2 } = await storeFile(storage, "f2");
-    const subDir = await storeDict(storage, ["a.ts", "b.ts"], [h1, h2]);
-    const subDirHash = (await encodeDictNode(
-      { children: [h1, h2], childNames: ["a.ts", "b.ts"] },
-      keyProvider,
-    )).hash;
+    const _subDir = await storeDict(storage, ["a.ts", "b.ts"], [h1, h2]);
+    const subDirHash = (
+      await encodeDictNode({ children: [h1, h2], childNames: ["a.ts", "b.ts"] }, keyProvider)
+    ).hash;
 
     const oldRoot = await storeDict(storage, [], []);
     const newRoot = await storeDict(storage, ["src"], [subDirHash]);
@@ -578,11 +581,10 @@ describe("dagDiff", () => {
 
     const { hash: h1 } = await storeFile(storage, "f1");
     const { hash: h2 } = await storeFile(storage, "f2");
-    const subDir = await storeDict(storage, ["a.ts", "b.ts"], [h1, h2]);
-    const subDirHash = (await encodeDictNode(
-      { children: [h1, h2], childNames: ["a.ts", "b.ts"] },
-      keyProvider,
-    )).hash;
+    const _subDir = await storeDict(storage, ["a.ts", "b.ts"], [h1, h2]);
+    const subDirHash = (
+      await encodeDictNode({ children: [h1, h2], childNames: ["a.ts", "b.ts"] }, keyProvider)
+    ).hash;
 
     const oldRoot = await storeDict(storage, ["src"], [subDirHash]);
     const newRoot = await storeDict(storage, [], []);
@@ -603,7 +605,7 @@ describe("dagDiff", () => {
     const newRoot = await storeDict(
       storage,
       ["empty-dir"],
-      [(await encodeDictNode({ children: [], childNames: [] }, keyProvider)).hash],
+      [(await encodeDictNode({ children: [], childNames: [] }, keyProvider)).hash]
     );
 
     const result = await dagDiff(EMPTY_DICT_KEY, newRoot, { storage });
@@ -621,11 +623,10 @@ describe("dagDiff", () => {
     const storage = createMemoryStorage();
 
     const { hash: h1 } = await storeFile(storage, "content");
-    const subDirHash = (await encodeDictNode(
-      { children: [h1], childNames: ["file.ts"] },
-      keyProvider,
-    )).hash;
-    const subDirKey = await storeDict(storage, ["file.ts"], [h1]);
+    const subDirHash = (
+      await encodeDictNode({ children: [h1], childNames: ["file.ts"] }, keyProvider)
+    ).hash;
+    const _subDirKey = await storeDict(storage, ["file.ts"], [h1]);
 
     const oldRoot = await storeDict(storage, ["old-dir"], [subDirHash]);
     const newRoot = await storeDict(storage, ["new-dir"], [subDirHash]);

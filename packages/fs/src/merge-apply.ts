@@ -55,7 +55,7 @@ export type ApplyMergeResult = {
 export async function applyMergeOps(
   rootNodeKey: string,
   operations: MergeOp[],
-  fs: FsService,
+  fs: FsService
 ): Promise<ApplyMergeResult> {
   if (operations.length === 0) {
     return { newRoot: rootNodeKey, entriesApplied: 0, deleted: 0 };
