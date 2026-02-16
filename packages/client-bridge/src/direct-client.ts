@@ -9,7 +9,12 @@
  */
 
 import { createClient } from "@casfa/client";
-import { createSyncManager, type SyncManager } from "@casfa/explorer/core/sync-manager";
+import { createMergeHandler } from "@casfa/explorer/core/merge-handler";
+import {
+  createSyncManager,
+  type MergeHandler,
+  type SyncManager,
+} from "@casfa/explorer/core/sync-manager";
 import type { AppClient, AppClientConfig } from "./types.ts";
 
 export async function createDirectClient(config: AppClientConfig): Promise<AppClient> {
@@ -47,11 +52,29 @@ export async function createDirectClient(config: AppClientConfig): Promise<AppCl
       syncManager.dispose();
     }
     if (!config.storage || !config.queueStore) return;
+
+    // Build merge handler (lazy StorageProvider resolution to avoid circular init)
+    let mergeHandler: MergeHandler | undefined;
+    if (config.getLocalStorage && config.keyProvider) {
+      const getStorage = config.getLocalStorage;
+      const kp = config.keyProvider;
+      let inner: MergeHandler | null = null;
+
+      mergeHandler = async (args) => {
+        if (!inner) {
+          const storage = await getStorage();
+          inner = createMergeHandler({ storage, keyProvider: kp, client });
+        }
+        return inner(args);
+      };
+    }
+
     syncManager = createSyncManager({
       storage: config.storage,
       client,
       queueStore: config.queueStore,
       debounceMs: config.syncDebounceMs ?? 2_000,
+      mergeHandler,
     });
     // Wire events → AppClient listeners
     syncManager.onStateChange((s) =>

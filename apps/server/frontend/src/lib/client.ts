@@ -17,7 +17,7 @@ import {
   createAppClient as createAppClientFactory,
   createDirectClient,
 } from "@casfa/client-bridge";
-import { flushBufferedStorage } from "./storage.ts";
+import { flushBufferedStorage, getKeyProvider, getStorage } from "./storage.ts";
 import { createSyncQueueStore } from "./sync-queue-store.ts";
 
 const TOKEN_STORAGE_KEY = "casfa_tokens";
@@ -92,6 +92,9 @@ export function getAppClient(): Promise<AppClient> {
           flush: () => flushBufferedStorage(),
         },
         queueStore: createSyncQueueStore(),
+        // 3-way merge: provide lazy storage + key provider
+        getLocalStorage: getStorage,
+        keyProvider: getKeyProvider(),
       });
     })();
   }

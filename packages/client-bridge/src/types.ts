@@ -7,6 +7,7 @@
  */
 
 import type { CasfaClient, TokenStorageProvider } from "@casfa/client";
+import type { KeyProvider, StorageProvider } from "@casfa/core";
 import type {
   ConflictEvent,
   FlushableStorage,
@@ -97,6 +98,24 @@ export type AppClientConfig = {
 
   /** Sync debounce delay in ms (default: 2000). */
   syncDebounceMs?: number;
+
+  // ── 3-way merge (direct mode) ──
+
+  /**
+   * Lazy StorageProvider getter for reading/writing nodes during merge.
+   * When provided along with `keyProvider`, enables 3-way merge on commit conflicts.
+   * This should return the same StorageProvider that backs the FlushableStorage.
+   *
+   * Uses a lazy getter to avoid circular init with `getStorage()` / `getAppClient()`.
+   * Called only when a merge is actually needed (conflict on commit).
+   */
+  getLocalStorage?: () => Promise<StorageProvider>;
+
+  /**
+   * Key provider for creating new nodes during merge apply.
+   * Required together with `localStorage` to enable 3-way merge.
+   */
+  keyProvider?: KeyProvider;
 
   // ── SW mode ──
 

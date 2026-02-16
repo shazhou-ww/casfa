@@ -28,6 +28,7 @@
   "dependencies": {},
   "peerDependencies": {
     "@casfa/client": "workspace:*",
+    "@casfa/core": "workspace:*",
     "@casfa/explorer": "workspace:*",
     "@casfa/port-rpc": "workspace:*"
   },

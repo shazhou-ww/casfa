@@ -20,6 +20,11 @@
       "bun": "./src/core/sync-coordinator.ts",
       "types": "./dist/core/sync-coordinator.d.ts",
       "import": "./dist/core/sync-coordinator.js"
+    },
+    "./core/merge-handler": {
+      "bun": "./src/core/merge-handler.ts",
+      "types": "./dist/core/merge-handler.d.ts",
+      "import": "./dist/core/merge-handler.js"
     }
   },
   "files": [
@@ -44,6 +49,7 @@
   "peerDependencies": {
     "@casfa/client": "workspace:*",
     "@casfa/core": "workspace:*",
+    "@casfa/dag-diff": "workspace:*",
     "@casfa/encoding": "workspace:*",
     "@casfa/fs": "workspace:*",
     "@casfa/protocol": "workspace:*",
