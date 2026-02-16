@@ -28,7 +28,7 @@ type DepotInfo = {
   title: string | null;
   root: string | null;
   maxHistory: number;
-  history: string[];
+  history: { root: string; timestamp: number }[];
   createdAt: number;
   updatedAt: number;
 };
