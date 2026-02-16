@@ -6,7 +6,7 @@
  * in depot history.
  */
 
-import { dagDiff, type DiffEntry } from "@casfa/dag-diff";
+import { type DiffEntry, dagDiff } from "@casfa/dag-diff";
 import { MAX_COMMIT_DIFF_ENTRIES } from "@casfa/protocol";
 import type { StorageProvider } from "@casfa/storage-core";
 import type { CommitDiffEntry } from "../types.ts";
