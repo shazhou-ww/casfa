@@ -12,6 +12,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FolderIcon from "@mui/icons-material/Folder";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import MenuOpenIcon from "@mui/icons-material/MenuOpen";
 import StorageIcon from "@mui/icons-material/Storage";
 import {
@@ -30,6 +31,7 @@ import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts
 import type { TreeNode } from "../types.ts";
 import { CreateDepotDialog } from "./CreateDepotDialog.tsx";
 import { DeleteDepotDialog } from "./DeleteDepotDialog.tsx";
+import { DepotInfoDialog } from "./DepotInfoDialog.tsx";
 
 type DirectoryTreeProps = {
   onNavigate?: (path: string) => void;
@@ -52,6 +54,7 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
   // ── Depot management dialogs ──
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ depotId: string; name: string } | null>(null);
+  const [infoTarget, setInfoTarget] = useState<string | null>(null);
 
   // ── Context menu for depot nodes ──
   const [contextMenu, setContextMenu] = useState<{
@@ -145,20 +148,17 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
     [expandTreeNode, collapseTreeNode]
   );
 
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent, node: TreeNode) => {
-      if (node.type !== "depot" || !node.depotId || !permissions.canManageDepot) return;
-      e.preventDefault();
-      e.stopPropagation();
-      setContextMenu({
-        mouseX: e.clientX,
-        mouseY: e.clientY,
-        depotId: node.depotId,
-        depotName: node.name,
-      });
-    },
-    [permissions.canManageDepot]
-  );
+  const handleContextMenu = useCallback((e: React.MouseEvent, node: TreeNode) => {
+    if (node.type !== "depot" || !node.depotId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      depotId: node.depotId,
+      depotName: node.name,
+    });
+  }, []);
 
   const handleContextMenuClose = useCallback(() => {
     setContextMenu(null);
@@ -167,6 +167,13 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
   const handleDeleteFromMenu = useCallback(() => {
     if (contextMenu) {
       setDeleteTarget({ depotId: contextMenu.depotId, name: contextMenu.depotName });
+    }
+    setContextMenu(null);
+  }, [contextMenu]);
+
+  const handleInfoFromMenu = useCallback(() => {
+    if (contextMenu) {
+      setInfoTarget(contextMenu.depotId);
     }
     setContextMenu(null);
   }, [contextMenu]);
@@ -278,12 +285,20 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
           contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined
         }
       >
-        <MenuItem onClick={handleDeleteFromMenu}>
+        <MenuItem onClick={handleInfoFromMenu}>
           <ListItemIcon>
-            <DeleteOutlineIcon fontSize="small" color="error" />
+            <InfoOutlinedIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>{t("depot.delete")}</ListItemText>
+          <ListItemText>{t("depot.info")}</ListItemText>
         </MenuItem>
+        {permissions.canManageDepot && (
+          <MenuItem onClick={handleDeleteFromMenu}>
+            <ListItemIcon>
+              <DeleteOutlineIcon fontSize="small" color="error" />
+            </ListItemIcon>
+            <ListItemText>{t("depot.delete")}</ListItemText>
+          </MenuItem>
+        )}
       </Menu>
 
       {/* Create depot dialog */}
@@ -295,6 +310,13 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
         depotId={deleteTarget?.depotId ?? null}
         depotName={deleteTarget?.name ?? null}
         onClose={() => setDeleteTarget(null)}
+      />
+
+      {/* Depot info dialog */}
+      <DepotInfoDialog
+        open={!!infoTarget}
+        depotId={infoTarget}
+        onClose={() => setInfoTarget(null)}
       />
     </Box>
   );

@@ -14,6 +14,7 @@ export { ContextMenu } from "./components/ContextMenu.tsx";
 export { CreateDepotDialog } from "./components/CreateDepotDialog.tsx";
 export { CreateFolderDialog } from "./components/CreateFolderDialog.tsx";
 export { DeleteDepotDialog } from "./components/DeleteDepotDialog.tsx";
+export { DepotInfoDialog } from "./components/DepotInfoDialog.tsx";
 /** @deprecated Use the tree sidebar instead. */
 export { DepotSelector } from "./components/DepotSelector.tsx";
 export { DetailPanel } from "./components/DetailPanel.tsx";
