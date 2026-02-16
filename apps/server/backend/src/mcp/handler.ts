@@ -672,8 +672,7 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
 
     // Compute dag diff between old and new root (best-effort, max 5 entries)
     const previousRoot = existingDepot.root ?? null;
-    const oldRootStorageKey = previousRoot ? nodeKeyToStorageKey(previousRoot) : null;
-    const commitDiff = await computeCommitDiff(oldRootStorageKey, storageKey, storage);
+    const commitDiff = await computeCommitDiff(previousRoot, newRoot, storage);
 
     const depot = await depotsDb.commit(
       realm,

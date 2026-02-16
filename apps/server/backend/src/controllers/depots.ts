@@ -203,8 +203,7 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
       const previousRoot = existingDepot.root ?? null;
 
       // Compute dag diff between old and new root (best-effort, max 5 entries)
-      const oldRootStorageKey = previousRoot ? nodeKeyToStorageKey(previousRoot) : null;
-      const commitDiff = await computeCommitDiff(oldRootStorageKey, storageKey, storage);
+      const commitDiff = await computeCommitDiff(previousRoot, newRoot, storage);
 
       try {
         // Store root as node key format (node:XXXX) in the depot
