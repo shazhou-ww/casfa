@@ -164,6 +164,7 @@ export {
 // ============================================================================
 
 export type {
+  CommitDiffEntry,
   CreateDepot,
   CreateDepotResponse,
   DepotCommit,
@@ -174,6 +175,7 @@ export type {
   UpdateDepot,
 } from "./depot.ts";
 export {
+  CommitDiffEntrySchema,
   CreateDepotResponseSchema,
   // Schemas
   CreateDepotSchema,
@@ -185,6 +187,7 @@ export {
   DepotListItemSchema,
   HistoryEntrySchema,
   ListDepotsQuerySchema,
+  MAX_COMMIT_DIFF_ENTRIES,
   MAX_HISTORY_LIMIT,
   MAX_TITLE_LENGTH,
   UpdateDepotSchema,
