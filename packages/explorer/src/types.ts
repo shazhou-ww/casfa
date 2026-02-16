@@ -318,6 +318,21 @@ export type CasfaExplorerProps = {
    */
   getSyncPendingRoot?: (depotId: string) => string | null | Promise<string | null>;
 
+  /**
+   * Subscribe to depot commit events for automatic root updates.
+   *
+   * When provided, the explorer store subscribes internally and handles:
+   * - Updating serverRoot / depotRoot on merge
+   * - Refreshing the directory view when root changes
+   * - Broadcasting to other tabs via BroadcastChannel
+   *
+   * Typically pass `appClient.onCommit.bind(appClient)`.
+   * Returns an unsubscribe function.
+   */
+  subscribeCommit?: (
+    listener: (event: import("./core/sync-manager.ts").SyncCommitEvent) => void
+  ) => () => void;
+
   // ── Event callbacks ──
   onNavigate?: (path: string) => void;
   onSelect?: (items: ExplorerItem[]) => void;

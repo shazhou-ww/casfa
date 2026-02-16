@@ -22,6 +22,7 @@ import type {
 } from "../types.ts";
 import { nextSortState, sortItems } from "../utils/sort.ts";
 import { pathToSegments } from "./path-segments.ts";
+import type { SyncCommitEvent } from "./sync-manager.ts";
 
 export type ExplorerState = {
   // ── Connection ──
@@ -174,6 +175,18 @@ export type ExplorerActions = {
   /** Update the server-confirmed root. If it matches depotRoot, clears pending state. */
   updateServerRoot: (newRoot: string) => void;
 
+  /**
+   * Handle a depot commit event (from SyncManager or cross-tab broadcast).
+   *
+   * - Updates serverRoot
+   * - If merge changed root and no new local writes occurred, updates depotRoot + refresh
+   * - Broadcasts to other tabs via BroadcastChannel
+   */
+  onRootCommitted: (event: SyncCommitEvent, fromBroadcast?: boolean) => void;
+
+  /** Release internal resources (BroadcastChannel, subscriptions). */
+  dispose: () => void;
+
   // ── File operations (Iter 2) ──
   createFolder: (name: string) => Promise<boolean>;
   deleteItems: (items: ExplorerItem[]) => Promise<{ success: number; failed: number }>;
@@ -301,7 +314,23 @@ export type CreateExplorerStoreOpts = {
    * Used after refresh to display local data instead of stale server root.
    */
   getSyncPendingRoot?: (depotId: string) => string | null | Promise<string | null>;
+  /**
+   * Subscribe to depot commit events (e.g. `appClient.onCommit`).
+   * When provided, the store auto-subscribes and handles root updates internally.
+   * Returns an unsubscribe function.
+   */
+  subscribeCommit?: (listener: (event: SyncCommitEvent) => void) => () => void;
 };
+
+/** BroadcastChannel message for cross-tab depot root sync. */
+type DepotRootBroadcast = {
+  type: "root-committed";
+  depotId: string;
+  committedRoot: string;
+  requestedRoot: string;
+};
+
+const BROADCAST_CHANNEL_NAME = "casfa-explorer-depot-root";
 
 const LS_PAGE_SIZE = 200;
 
@@ -325,7 +354,21 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     },
   });
 
-  return createStore<ExplorerStore>()((set, get) => ({
+  // ── Cross-tab BroadcastChannel ──
+  let bc: BroadcastChannel | null = null;
+  try {
+    bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+  } catch {
+    // BroadcastChannel not available (e.g. SSR, older browsers) — skip
+  }
+
+  // Cleanup functions accumulated during factory — called by store.dispose()
+  const cleanups: Array<() => void> = [];
+  if (bc) {
+    cleanups.push(() => bc!.close());
+  }
+
+  const store = createStore<ExplorerStore>()((set, get) => ({
     // ── Initial state ──
     client: opts.client,
     localFs,
@@ -554,8 +597,33 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     },
 
     refresh: async () => {
-      const { localFs, depotRoot, currentPath } = get();
+      const { client, depotId, localFs, depotRoot, serverRoot, currentPath } = get();
       if (!depotRoot) return;
+
+      // ── Fetch latest server root so refresh picks up remote changes ──
+      // (e.g. committed by another tab, or after a sync cycle)
+      let effectiveRoot = depotRoot;
+      let latestServerRoot = serverRoot;
+      if (depotId) {
+        try {
+          const depotResult = await client.depots.get(depotId);
+          if (depotResult.ok && depotResult.data.root) {
+            latestServerRoot = depotResult.data.root;
+            // Adopt the server root if no local uncommitted changes
+            const noLocalPendingChanges = depotRoot === serverRoot;
+            if (noLocalPendingChanges && latestServerRoot !== depotRoot) {
+              effectiveRoot = latestServerRoot;
+              set({ depotRoot: latestServerRoot, serverRoot: latestServerRoot });
+            } else if (latestServerRoot !== serverRoot) {
+              // Server moved but we have local changes — just update serverRoot
+              set({ serverRoot: latestServerRoot });
+            }
+          }
+        } catch {
+          // Network error — proceed with current depotRoot
+        }
+      }
+
       // Refresh without pushing to history
       set({
         items: [],
@@ -565,7 +633,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
         totalItems: 0,
       });
       try {
-        const result = await localFs.ls(depotRoot, pathToSegments(currentPath), LS_PAGE_SIZE);
+        const result = await localFs.ls(effectiveRoot, pathToSegments(currentPath), LS_PAGE_SIZE);
         if (isFsError(result)) {
           handleFsError(get, result);
           set({ isLoading: false });
@@ -580,9 +648,16 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
           isLoading: false,
         });
         // Diff against server root to mark pending items
-        const { serverRoot } = get();
-        if (serverRoot && serverRoot !== depotRoot) {
-          diffCurrentDir(localFs, depotRoot, serverRoot, currentPath, get, set);
+        const { serverRoot: currentServerRoot, depotRoot: currentDepotRoot } = get();
+        if (currentServerRoot && currentServerRoot !== currentDepotRoot) {
+          diffCurrentDir(localFs, currentDepotRoot!, currentServerRoot, currentPath, get, set);
+        } else {
+          // Roots match — clear pending state
+          set({ pendingPaths: new Set<string>() });
+          const { items: currentItems } = get();
+          if (currentItems.some((i) => i.syncStatus)) {
+            set({ items: currentItems.map((i) => ({ ...i, syncStatus: undefined })) });
+          }
         }
         // Also refresh tree node cache for current path
         const { depotId: refreshDepotId } = get();
@@ -1033,6 +1108,56 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
       }
     },
 
+    onRootCommitted: (event: SyncCommitEvent, fromBroadcast = false) => {
+      const { depotId, depotRoot, serverRoot } = get();
+      // Only process events for the currently viewed depot
+      if (event.depotId !== depotId) return;
+
+      // Determine whether to adopt committedRoot as our local depotRoot:
+      //
+      // Case 1 — Merge changed the root (committedRoot !== requestedRoot)
+      //   and no new local writes happened since (depotRoot === requestedRoot).
+      //   → Adopt the merged result.
+      //
+      // Case 2 — Cross-tab broadcast from another tab that committed,
+      //   and this tab has no local uncommitted changes (depotRoot === serverRoot).
+      //   → Adopt the other tab's committed root so the view stays in sync.
+      const mergeChangedRoot = event.committedRoot !== event.requestedRoot;
+      const noNewLocalWrites = depotRoot === event.requestedRoot;
+      const noLocalPendingChanges = depotRoot === serverRoot;
+
+      const shouldAdoptRoot =
+        (mergeChangedRoot && noNewLocalWrites) || (fromBroadcast && noLocalPendingChanges);
+
+      if (shouldAdoptRoot) {
+        set({ depotRoot: event.committedRoot });
+      }
+
+      // Always update serverRoot (reuses existing logic for pending diff)
+      get().updateServerRoot(event.committedRoot);
+
+      // Refresh directory view when we adopted a new root
+      if (shouldAdoptRoot) {
+        get().refresh();
+      }
+
+      // Broadcast to other tabs (unless this event came from broadcast)
+      if (!fromBroadcast && bc) {
+        const msg: DepotRootBroadcast = {
+          type: "root-committed",
+          depotId: event.depotId,
+          committedRoot: event.committedRoot,
+          requestedRoot: event.requestedRoot,
+        };
+        bc.postMessage(msg);
+      }
+    },
+
+    dispose: () => {
+      for (const cleanup of cleanups) cleanup();
+      cleanups.length = 0;
+    },
+
     // ── File operations ──
     createFolder: async (name: string) => {
       const { client, depotId, depotRoot, currentPath, beforeCommit, scheduleCommit } = get();
@@ -1168,6 +1293,25 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     openDialog: (type, targetItem) => set({ dialogState: { type, targetItem } }),
     closeDialog: () => set({ dialogState: { type: "none" } }),
   }));
+
+  // ── Wire BroadcastChannel listener ──
+  if (bc) {
+    bc.onmessage = (ev: MessageEvent<DepotRootBroadcast>) => {
+      if (ev.data?.type === "root-committed") {
+        store.getState().onRootCommitted(ev.data, true);
+      }
+    };
+  }
+
+  // ── Wire commit subscription ──
+  if (opts.subscribeCommit) {
+    const unsub = opts.subscribeCommit((event) => {
+      store.getState().onRootCommitted(event);
+    });
+    cleanups.push(unsub);
+  }
+
+  return store;
 };
 
 /** Map FsError (from @casfa/fs) to ExplorerError */
