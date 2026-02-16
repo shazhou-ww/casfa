@@ -103,6 +103,12 @@ export type SyncErrorEvent = {
 export type SyncCommitEvent = {
   depotId: string;
   committedRoot: string;
+  /**
+   * The root that was originally requested for commit.
+   * When `committedRoot !== requestedRoot`, a 3-way merge produced a new root.
+   * The UI should update its local depotRoot accordingly.
+   */
+  requestedRoot: string;
 };
 
 /**
@@ -389,7 +395,11 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
         if (serverRoot === entry.targetRoot) {
           memQueue.delete(entry.depotId);
           await queueStore.remove(entry.depotId);
-          emitCommit({ depotId: entry.depotId, committedRoot: entry.targetRoot });
+          emitCommit({
+            depotId: entry.depotId,
+            committedRoot: entry.targetRoot,
+            requestedRoot: entry.targetRoot,
+          });
           continue;
         }
 
@@ -449,7 +459,11 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
             }
             memQueue.delete(entry.depotId);
             await queueStore.remove(entry.depotId);
-            emitCommit({ depotId: entry.depotId, committedRoot: rootToCommit });
+            emitCommit({
+              depotId: entry.depotId,
+              committedRoot: rootToCommit,
+              requestedRoot: entry.targetRoot,
+            });
             break;
           }
 
@@ -473,7 +487,11 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
                 committed = true;
                 memQueue.delete(entry.depotId);
                 await queueStore.remove(entry.depotId);
-                emitCommit({ depotId: entry.depotId, committedRoot: entry.targetRoot });
+                emitCommit({
+                  depotId: entry.depotId,
+                  committedRoot: entry.targetRoot,
+                  requestedRoot: entry.targetRoot,
+                });
               } else {
                 failPermanently(entry, lwwResult.error);
               }
@@ -508,7 +526,11 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
                 committed = true;
                 memQueue.delete(entry.depotId);
                 await queueStore.remove(entry.depotId);
-                emitCommit({ depotId: entry.depotId, committedRoot: entry.targetRoot });
+                emitCommit({
+                  depotId: entry.depotId,
+                  committedRoot: entry.targetRoot,
+                  requestedRoot: entry.targetRoot,
+                });
               } else {
                 failPermanently(entry, lwwResult.error);
               }
@@ -535,7 +557,11 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
               committed = true;
               memQueue.delete(entry.depotId);
               await queueStore.remove(entry.depotId);
-              emitCommit({ depotId: entry.depotId, committedRoot: entry.targetRoot });
+              emitCommit({
+                depotId: entry.depotId,
+                committedRoot: entry.targetRoot,
+                requestedRoot: entry.targetRoot,
+              });
             } else {
               failPermanently(entry, lwwResult.error);
             }
@@ -558,7 +584,11 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
           if (lwwResult.ok) {
             memQueue.delete(entry.depotId);
             await queueStore.remove(entry.depotId);
-            emitCommit({ depotId: entry.depotId, committedRoot: entry.targetRoot });
+            emitCommit({
+              depotId: entry.depotId,
+              committedRoot: entry.targetRoot,
+              requestedRoot: entry.targetRoot,
+            });
           } else {
             failPermanently(entry, lwwResult.error);
           }
