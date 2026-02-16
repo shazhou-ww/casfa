@@ -40,7 +40,8 @@
       "@casfa/storage-http": ["./packages/storage-http/src/index.ts"],
       "@casfa/storage-indexeddb": ["./packages/storage-indexeddb/src/index.ts"],
       "@casfa/storage-cached": ["./packages/storage-cached/src/index.ts"],
-      "@casfa/port-rpc": ["./packages/port-rpc/src/index.ts"]
+      "@casfa/port-rpc": ["./packages/port-rpc/src/index.ts"],
+      "@casfa/dag-diff": ["./packages/dag-diff/src/index.ts"]
     },
 
     // Best practices
