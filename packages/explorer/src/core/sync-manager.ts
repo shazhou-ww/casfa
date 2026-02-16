@@ -6,6 +6,10 @@
  * Layer 1 (CAS Node Sync) is fully idempotent and handled by BufferedHttpStorage.
  * Layer 2 (Depot Commit Sync) is stateful, has conflict risk, and is managed here.
  *
+ * When a `mergeHandler` is provided, conflicts trigger 3-way merge + retry
+ * instead of blind LWW overwrite. The merge handler encapsulates:
+ *   pullRemoteTree → dagMerge → applyMergeOps
+ *
  * Persistence is injected via SyncQueueStore so the core logic is
  * platform-agnostic and testable without IndexedDB.
  *
@@ -65,14 +69,19 @@ export type SyncQueueStore = {
   remove(depotId: string): Promise<void>;
 };
 
-export type SyncState = "idle" | "recovering" | "syncing" | "error" | "conflict";
+export type SyncState = "idle" | "recovering" | "syncing" | "merging" | "error" | "conflict";
 
 export type ConflictEvent = {
   depotId: string;
   localRoot: string;
   serverRoot: string | null;
-  /** Current resolution strategy */
-  resolution: "lww-overwrite";
+  /** Resolution strategy used */
+  resolution:
+    | "lww-overwrite"         // old behavior or fallback
+    | "3way-merge-success"    // merge succeeded
+    | "3way-merge-failed";    // merge failed, fell back to LWW or gave up
+  /** New root after merge (only when resolution = "3way-merge-success") */
+  mergedRoot?: string;
 };
 
 /**
@@ -96,6 +105,25 @@ export type SyncCommitEvent = {
   committedRoot: string;
 };
 
+/**
+ * Optional merge handler for 3-way conflict resolution.
+ *
+ * Encapsulates: pullRemoteTree → dagMerge → applyMergeOps.
+ * The SyncManager calls this when a conflict is detected and a merge handler
+ * is configured.
+ *
+ * @returns Merged root key on success, or null if merge cannot be completed.
+ */
+export type MergeHandler = (params: {
+  depotId: string;
+  /** Common ancestor root (base) */
+  baseRoot: string;
+  /** Our local changes root */
+  oursRoot: string;
+  /** Server's current root (theirs) */
+  theirsRoot: string;
+}) => Promise<string | null>;
+
 export type SyncManagerConfig = {
   /** Layer 1: storage with flush() — used to sync buffered CAS nodes before committing */
   storage: FlushableStorage;
@@ -105,6 +133,16 @@ export type SyncManagerConfig = {
   queueStore: SyncQueueStore;
   /** Debounce delay in ms (default: 2000) */
   debounceMs?: number;
+  /**
+   * Optional merge handler for 3-way conflict resolution.
+   * When provided, conflicts trigger merge + retry instead of LWW overwrite.
+   */
+  mergeHandler?: MergeHandler;
+  /**
+   * Max merge-commit retry attempts when repeated conflicts occur (default: 3).
+   * After exhausting, falls back to LWW overwrite.
+   */
+  maxMergeAttempts?: number;
 };
 
 export type SyncManager = {
@@ -163,13 +201,38 @@ const DEFAULT_DEBOUNCE_MS = 2000;
 const MAX_RETRY_COUNT = 10;
 const MIN_RETRY_DELAY = 1000;
 const MAX_RETRY_DELAY = 60_000;
+const DEFAULT_MAX_MERGE_ATTEMPTS = 3;
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Extract the server's current root from a 409 Conflict error.
+ * Returns null if the error is not a conflict or not structured correctly.
+ */
+function extractConflictRoot(error: { code: string; message: string; status?: number; details?: unknown }): string | null {
+  if (error.status !== 409) return null;
+  const details = error.details as { error?: { code?: string; currentRoot?: string } } | undefined;
+  if (details?.error?.code === "CONFLICT" && typeof details.error.currentRoot === "string") {
+    return details.error.currentRoot;
+  }
+  return null;
+}
 
 // ============================================================================
 // Factory
 // ============================================================================
 
 export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
-  const { storage, client, queueStore, debounceMs = DEFAULT_DEBOUNCE_MS } = config;
+  const {
+    storage,
+    client,
+    queueStore,
+    debounceMs = DEFAULT_DEBOUNCE_MS,
+    mergeHandler,
+    maxMergeAttempts = DEFAULT_MAX_MERGE_ATTEMPTS,
+  } = config;
 
   // -- State --
   let state: SyncState = "idle";
@@ -307,7 +370,7 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
         // Layer 1: flush all buffered CAS nodes to remote
         await storage.flush();
 
-        // Layer 2: commit — check current server state
+        // Layer 2: check current server state
         const result = await client.depots.get(entry.depotId);
         if (!result.ok) {
           console.error(`[SyncManager] depots.get failed for ${entry.depotId}:`, result.error);
@@ -325,33 +388,179 @@ export const createSyncManager = (config: SyncManagerConfig): SyncManager => {
           continue;
         }
 
-        // Conflict detection
-        if (entry.lastKnownServerRoot !== null && serverRoot !== entry.lastKnownServerRoot) {
+        // ── Merge-aware commit ──
+        let rootToCommit = entry.targetRoot;
+        let expectedRoot: string | null | undefined = entry.lastKnownServerRoot;
+        let didMerge = false;
+
+        // Pre-merge: if server has changed and merge handler is available, merge first
+        if (
+          mergeHandler &&
+          expectedRoot !== null &&
+          serverRoot !== null &&
+          serverRoot !== expectedRoot
+        ) {
+          setState("merging");
+          try {
+            const mergedRoot = await mergeHandler({
+              depotId: entry.depotId,
+              baseRoot: expectedRoot,
+              oursRoot: entry.targetRoot,
+              theirsRoot: serverRoot,
+            });
+            if (mergedRoot) {
+              rootToCommit = mergedRoot;
+              expectedRoot = serverRoot;
+              didMerge = true;
+              // Flush merged nodes to remote before commit
+              await storage.flush();
+            }
+            // else: merge failed, will attempt LWW below
+          } catch (mergeErr) {
+            console.warn(
+              `[SyncManager] pre-merge failed for ${entry.depotId}:`,
+              mergeErr
+            );
+            // Fall through to commit attempt
+          }
+          setState("syncing");
+        }
+
+        // Commit with optimistic lock (when merge handler is available)
+        let committed = false;
+        for (let attempt = 0; attempt < maxMergeAttempts && !committed; attempt++) {
+          const commitResult = await client.depots.commit(entry.depotId, {
+            root: rootToCommit,
+            ...(mergeHandler ? { expectedRoot: expectedRoot ?? undefined } : {}),
+          });
+
+          if (commitResult.ok) {
+            committed = true;
+            if (didMerge) {
+              emitConflict({
+                depotId: entry.depotId,
+                localRoot: entry.targetRoot,
+                serverRoot,
+                resolution: "3way-merge-success",
+                mergedRoot: rootToCommit,
+              });
+            }
+            memQueue.delete(entry.depotId);
+            await queueStore.remove(entry.depotId);
+            emitCommit({ depotId: entry.depotId, committedRoot: rootToCommit });
+            break;
+          }
+
+          // Check for conflict (409)
+          const conflictRoot = extractConflictRoot(commitResult.error);
+          if (!conflictRoot || !mergeHandler || !expectedRoot) {
+            // Not a conflict, or no way to merge → fail
+            if (!mergeHandler) {
+              // No merge support — old LWW behavior
+              emitConflict({
+                depotId: entry.depotId,
+                localRoot: entry.targetRoot,
+                serverRoot,
+                resolution: "lww-overwrite",
+              });
+              // Retry without expectedRoot (LWW overwrite)
+              const lwwResult = await client.depots.commit(entry.depotId, {
+                root: entry.targetRoot,
+              });
+              if (lwwResult.ok) {
+                committed = true;
+                memQueue.delete(entry.depotId);
+                await queueStore.remove(entry.depotId);
+                emitCommit({ depotId: entry.depotId, committedRoot: entry.targetRoot });
+              } else {
+                failPermanently(entry, lwwResult.error);
+              }
+              break;
+            }
+            failPermanently(entry, commitResult.error);
+            break;
+          }
+
+          // ── Merge on conflict ──
+          setState("merging");
+          try {
+            const mergedRoot = await mergeHandler({
+              depotId: entry.depotId,
+              baseRoot: expectedRoot,
+              oursRoot: rootToCommit,
+              theirsRoot: conflictRoot,
+            });
+
+            if (!mergedRoot) {
+              // Merge failed → LWW fallback
+              emitConflict({
+                depotId: entry.depotId,
+                localRoot: entry.targetRoot,
+                serverRoot: conflictRoot,
+                resolution: "3way-merge-failed",
+              });
+              const lwwResult = await client.depots.commit(entry.depotId, {
+                root: entry.targetRoot,
+              });
+              if (lwwResult.ok) {
+                committed = true;
+                memQueue.delete(entry.depotId);
+                await queueStore.remove(entry.depotId);
+                emitCommit({ depotId: entry.depotId, committedRoot: entry.targetRoot });
+              } else {
+                failPermanently(entry, lwwResult.error);
+              }
+              break;
+            }
+
+            rootToCommit = mergedRoot;
+            expectedRoot = conflictRoot;
+            didMerge = true;
+            await storage.flush();
+          } catch (mergeErr) {
+            console.error(`[SyncManager] merge failed for ${entry.depotId}:`, mergeErr);
+            emitConflict({
+              depotId: entry.depotId,
+              localRoot: entry.targetRoot,
+              serverRoot: conflictRoot,
+              resolution: "3way-merge-failed",
+            });
+            // LWW fallback
+            const lwwResult = await client.depots.commit(entry.depotId, {
+              root: entry.targetRoot,
+            });
+            if (lwwResult.ok) {
+              committed = true;
+              memQueue.delete(entry.depotId);
+              await queueStore.remove(entry.depotId);
+              emitCommit({ depotId: entry.depotId, committedRoot: entry.targetRoot });
+            } else {
+              failPermanently(entry, lwwResult.error);
+            }
+            break;
+          }
+          setState("syncing");
+        }
+
+        // Max merge attempts exhausted → LWW fallback
+        if (!committed) {
           emitConflict({
             depotId: entry.depotId,
             localRoot: entry.targetRoot,
             serverRoot,
-            resolution: "lww-overwrite",
+            resolution: "3way-merge-failed",
           });
+          const lwwResult = await client.depots.commit(entry.depotId, {
+            root: entry.targetRoot,
+          });
+          if (lwwResult.ok) {
+            memQueue.delete(entry.depotId);
+            await queueStore.remove(entry.depotId);
+            emitCommit({ depotId: entry.depotId, committedRoot: entry.targetRoot });
+          } else {
+            failPermanently(entry, lwwResult.error);
+          }
         }
-
-        // LWW commit
-        const commitResult = await client.depots.commit(entry.depotId, {
-          root: entry.targetRoot,
-        });
-        if (!commitResult.ok) {
-          console.error(
-            `[SyncManager] depots.commit failed for ${entry.depotId}:`,
-            commitResult.error
-          );
-          failPermanently(entry, commitResult.error);
-          continue;
-        }
-
-        // Success — remove from queue
-        memQueue.delete(entry.depotId);
-        await queueStore.remove(entry.depotId);
-        emitCommit({ depotId: entry.depotId, committedRoot: entry.targetRoot });
       } catch (err) {
         if (isNetworkError(err)) {
           // Network failure (fetch TypeError) — retry with backoff

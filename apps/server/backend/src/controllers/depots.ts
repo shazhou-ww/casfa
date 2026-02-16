@@ -15,7 +15,7 @@ import {
 } from "@casfa/protocol";
 import type { StorageProvider } from "@casfa/storage-core";
 import type { Context } from "hono";
-import { DEFAULT_MAX_HISTORY, type DepotsDb, SYSTEM_MAX_HISTORY } from "../db/depots.ts";
+import { DEFAULT_MAX_HISTORY, DepotConflictError, type DepotsDb, SYSTEM_MAX_HISTORY } from "../db/depots.ts";
 import type { OwnershipV2Db } from "../db/ownership-v2.ts";
 import type { AccessTokenAuthContext, DepotHistoryEntry, Env } from "../types.ts";
 
@@ -160,7 +160,7 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
         return c.json({ error: "Depot not found" }, 404);
       }
 
-      const { root: newRoot } = DepotCommitSchema.parse(await c.req.json());
+      const { root: newRoot, expectedRoot } = DepotCommitSchema.parse(await c.req.json());
 
       // Convert node key to CB32 storage key for storage/ownership lookups
       const storageKey = nodeKeyToStorageKey(newRoot);
@@ -193,13 +193,36 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
         }
       }
 
-      // Store root as node key format (node:XXXX) in the depot
-      const depot = await depotsDb.commit(realm, depotId, newRoot);
-      if (!depot) {
-        return c.json({ error: "Depot not found" }, 404);
-      }
+      // Store old root for response
+      const previousRoot = existingDepot.root ?? null;
 
-      return c.json(formatDepotResponse(depot));
+      try {
+        // Store root as node key format (node:XXXX) in the depot
+        const depot = await depotsDb.commit(realm, depotId, newRoot, expectedRoot);
+        if (!depot) {
+          return c.json({ error: "Depot not found" }, 404);
+        }
+
+        return c.json({
+          ...formatDepotResponse(depot),
+          previousRoot,
+        });
+      } catch (err) {
+        if (err instanceof DepotConflictError) {
+          return c.json(
+            {
+              error: {
+                code: "CONFLICT",
+                message: "Depot root has changed since expectedRoot",
+                currentRoot: err.currentRoot,
+                expectedRoot: err.expectedRoot,
+              },
+            },
+            409
+          );
+        }
+        throw err;
+      }
     },
 
     delete: async (c) => {

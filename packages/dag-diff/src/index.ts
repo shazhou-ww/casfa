@@ -19,6 +19,7 @@
 
 export { dagDiff } from "./diff.ts";
 export { dagMerge } from "./merge.ts";
+export { pullRemoteTree } from "./pull.ts";
 export { dagDiffStream, createDiffStream } from "./stream.ts";
 export type {
   AddedEntry,
@@ -33,6 +34,8 @@ export type {
   MergeResult,
   ModifiedEntry,
   MovedEntry,
+  PullOptions,
+  PullResult,
   RawDiffEntry,
   RemovedEntry,
   TypeChange,

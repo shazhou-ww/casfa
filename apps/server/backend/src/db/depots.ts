@@ -34,6 +34,22 @@ export const MAIN_DEPOT_NAME = "main";
 export const DEFAULT_MAX_HISTORY = 20;
 export const SYSTEM_MAX_HISTORY = 100;
 
+/**
+ * Thrown when depot commit fails due to optimistic lock mismatch.
+ * The server's current root differs from the client's expectedRoot.
+ */
+export class DepotConflictError extends Error {
+  readonly currentRoot: string | null;
+  readonly expectedRoot: string | null;
+
+  constructor(currentRoot: string | null, expectedRoot: string | null) {
+    super(`Depot root conflict: expected ${expectedRoot ?? "(null)"}, got ${currentRoot ?? "(null)"}`);
+    this.name = "DepotConflictError";
+    this.currentRoot = currentRoot;
+    this.expectedRoot = expectedRoot;
+  }
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -99,8 +115,13 @@ export type DepotsDb = {
     options: UpdateDepotOptions
   ) => Promise<ExtendedDepot | null>;
 
-  /** Commit a new root version */
-  commit: (realm: string, depotId: string, newRoot: string) => Promise<ExtendedDepot | null>;
+  /** Commit a new root version (with optional optimistic lock) */
+  commit: (
+    realm: string,
+    depotId: string,
+    newRoot: string,
+    expectedRoot?: string | null,
+  ) => Promise<ExtendedDepot | null>;
 
   /** Delete a depot */
   delete: (realm: string, depotId: string) => Promise<boolean>;
@@ -302,7 +323,8 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
   const commit = async (
     realm: string,
     depotId: string,
-    newRoot: string
+    newRoot: string,
+    expectedRoot?: string | null,
   ): Promise<ExtendedDepot | null> => {
     const now = Date.now();
 
@@ -311,6 +333,14 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
     if (!current) return null;
 
     const oldRoot = current.root;
+
+    // ── Optimistic lock check (application-level, before DynamoDB CAS) ──
+    if (expectedRoot !== undefined) {
+      const currentRoot = current.root ?? null;
+      if (currentRoot !== expectedRoot) {
+        throw new DepotConflictError(currentRoot, expectedRoot);
+      }
+    }
 
     // Build new history: remove newRoot if exists, add oldRoot at front with timestamp
     let newHistory = current.history.filter((h) => h.root !== newRoot);
@@ -321,22 +351,52 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
       newHistory = newHistory.slice(0, current.maxHistory);
     }
 
-    const result = await client.send(
-      new UpdateCommand({
-        TableName: tableName,
-        Key: { realm, key: toLegacyDepotKey(depotId) },
-        UpdateExpression: "SET #root = :root, history = :history, updatedAt = :now",
-        ExpressionAttributeNames: { "#root": "root" },
-        ExpressionAttributeValues: {
-          ":root": newRoot,
-          ":history": newHistory,
-          ":now": now,
-        },
-        ReturnValues: "ALL_NEW",
-      })
-    );
+    // Build CAS ConditionExpression to prevent TOCTOU race between
+    // the get() above and the update below.
+    let conditionExpression: string;
+    const exprValues: Record<string, unknown> = {
+      ":root": newRoot,
+      ":history": newHistory,
+      ":now": now,
+    };
 
-    return toExtendedDepot(result.Attributes as Record<string, unknown>);
+    if (expectedRoot !== undefined) {
+      if (expectedRoot === null) {
+        // Expect depot has no root yet (first commit)
+        conditionExpression = "(attribute_not_exists(#root) OR #root = :expectedRoot)";
+        exprValues[":expectedRoot"] = null;
+      } else {
+        conditionExpression = "#root = :expectedRoot";
+        exprValues[":expectedRoot"] = expectedRoot;
+      }
+    } else {
+      // No CAS — backward-compatible: just check depot exists
+      conditionExpression = "attribute_exists(realm)";
+    }
+
+    try {
+      const result = await client.send(
+        new UpdateCommand({
+          TableName: tableName,
+          Key: { realm, key: toLegacyDepotKey(depotId) },
+          UpdateExpression: "SET #root = :root, history = :history, updatedAt = :now",
+          ExpressionAttributeNames: { "#root": "root" },
+          ExpressionAttributeValues: exprValues,
+          ConditionExpression: conditionExpression,
+          ReturnValues: "ALL_NEW",
+        })
+      );
+
+      return toExtendedDepot(result.Attributes as Record<string, unknown>);
+    } catch (error: unknown) {
+      const err = error as { name?: string };
+      if (err.name === "ConditionalCheckFailedException" && expectedRoot !== undefined) {
+        // DynamoDB CAS failed — re-read to get actual current root
+        const refreshed = await get(realm, depotId);
+        throw new DepotConflictError(refreshed?.root ?? null, expectedRoot);
+      }
+      throw error;
+    }
   };
 
   const deleteDepot = async (realm: string, depotId: string): Promise<boolean> => {

@@ -59,6 +59,15 @@ export type UpdateDepot = z.infer<typeof UpdateDepotSchema>;
 export const DepotCommitSchema = z.object({
   /** New root node key (must already exist in storage) */
   root: z.string().regex(NODE_KEY_REGEX, "Invalid node key format"),
+  /**
+   * Optimistic lock: expected current root before this commit.
+   * - `undefined` → backward-compatible, skip CAS check
+   * - `null`      → expect depot has no root yet (first commit)
+   * - `"nod_xxx"` → expect depot root is exactly this value
+   *
+   * If server root ≠ expectedRoot → 409 Conflict.
+   */
+  expectedRoot: z.string().regex(NODE_KEY_REGEX).nullable().optional(),
 });
 
 export type DepotCommit = z.infer<typeof DepotCommitSchema>;
