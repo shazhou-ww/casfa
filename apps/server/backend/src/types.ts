@@ -163,13 +163,18 @@ export type RealmUsage = {
 // Depot Types
 // ============================================================================
 
+export type DepotHistoryEntry = {
+  root: string;
+  timestamp: number;
+};
+
 export type Depot = {
   realm: string;
   depotId: string;
   title: string;
   root: string;
   maxHistory: number;
-  history: string[];
+  history: DepotHistoryEntry[];
   createdAt: number;
   updatedAt: number;
 };

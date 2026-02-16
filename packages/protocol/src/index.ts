@@ -169,6 +169,7 @@ export type {
   DepotCommit,
   DepotDetail,
   DepotListItem,
+  HistoryEntry,
   ListDepotsQuery,
   UpdateDepot,
 } from "./depot.ts";
@@ -182,6 +183,7 @@ export {
   DepotDetailSchema,
   // Response schemas
   DepotListItemSchema,
+  HistoryEntrySchema,
   ListDepotsQuerySchema,
   MAX_HISTORY_LIMIT,
   MAX_TITLE_LENGTH,

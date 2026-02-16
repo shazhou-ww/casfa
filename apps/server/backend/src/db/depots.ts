@@ -312,9 +312,9 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
 
     const oldRoot = current.root;
 
-    // Build new history: remove newRoot if exists, add oldRoot at front
-    let newHistory = current.history.filter((h) => h !== newRoot);
-    newHistory = [oldRoot, ...newHistory];
+    // Build new history: remove newRoot if exists, add oldRoot at front with timestamp
+    let newHistory = current.history.filter((h) => h.root !== newRoot);
+    newHistory = [{ root: oldRoot, timestamp: now }, ...newHistory];
 
     // Truncate to maxHistory
     if (newHistory.length > current.maxHistory) {
