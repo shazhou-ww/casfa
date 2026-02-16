@@ -298,7 +298,7 @@ export type DepotRecord = {
   // 版本信息
   root: string; // 当前根节点 hash
   maxHistory: number;
-  history: string[]; // 历史根节点列表
+  history: Array<{ root: string; timestamp: number }>; // 历史根节点列表（含时间戳）
 
   // 创建者追踪
   creatorIssuerId: string; // 创建该 Depot 的 Token 的 issuer ID

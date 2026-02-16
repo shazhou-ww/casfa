@@ -97,6 +97,16 @@ export const DepotListItemSchema = z.object({
 export type DepotListItem = z.infer<typeof DepotListItemSchema>;
 
 /**
+ * Single history entry: root hash + commit timestamp
+ */
+export const HistoryEntrySchema = z.object({
+  root: z.string(),
+  timestamp: z.number(),
+});
+
+export type HistoryEntry = z.infer<typeof HistoryEntrySchema>;
+
+/**
  * Depot detail schema (for GET /api/realm/{realmId}/depots/:depotId)
  * Includes creatorIssuerId for visibility tracking
  */
@@ -105,7 +115,7 @@ export const DepotDetailSchema = z.object({
   title: z.string().nullable(),
   root: z.string().nullable(),
   maxHistory: z.number().int(),
-  history: z.array(z.string()),
+  history: z.array(HistoryEntrySchema),
   /** The Issuer ID that created this depot (Token or User ID) */
   creatorIssuerId: z.string(),
   createdAt: z.number(),
@@ -122,7 +132,7 @@ export const CreateDepotResponseSchema = z.object({
   title: z.string().nullable(),
   root: z.null(),
   maxHistory: z.number().int(),
-  history: z.array(z.string()),
+  history: z.array(HistoryEntrySchema),
   creatorIssuerId: z.string(),
   createdAt: z.number(),
   updatedAt: z.number(),

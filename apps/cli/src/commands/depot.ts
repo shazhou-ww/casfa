@@ -112,7 +112,7 @@ export function registerDepotCommands(program: Command): void {
             lines.push("");
             lines.push("History:");
             for (const h of depot.history) {
-              lines.push(`  ${h}`);
+              lines.push(`  ${h.root}  (${new Date(h.timestamp).toISOString()})`);
             }
           }
 
