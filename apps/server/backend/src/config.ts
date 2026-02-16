@@ -112,12 +112,32 @@ export const loadFeaturesConfig = (): FeaturesConfig => ({
 // App Config (combined)
 // ============================================================================
 
+export type RedisConfig = {
+  enabled: boolean;
+  url: string;
+  /** Key prefix (supports multi-env sharing of same Redis instance) */
+  keyPrefix: string;
+  /** Connection timeout (ms) */
+  connectTimeoutMs: number;
+  /** Per-command timeout (ms) */
+  commandTimeoutMs: number;
+};
+
+export const loadRedisConfig = (): RedisConfig => ({
+  enabled: process.env.REDIS_ENABLED === "true",
+  url: process.env.REDIS_URL ?? "redis://localhost:6379",
+  keyPrefix: process.env.REDIS_KEY_PREFIX ?? "cas:",
+  connectTimeoutMs: Number.parseInt(process.env.REDIS_CONNECT_TIMEOUT_MS ?? "2000", 10),
+  commandTimeoutMs: Number.parseInt(process.env.REDIS_COMMAND_TIMEOUT_MS ?? "500", 10),
+});
+
 export type AppConfig = {
   server: ServerConfig;
   db: DbConfig;
   storage: StorageConfig;
   cognito: CognitoConfig;
   features: FeaturesConfig;
+  redis: RedisConfig;
 };
 
 export const loadConfig = (): AppConfig => ({
@@ -126,4 +146,5 @@ export const loadConfig = (): AppConfig => ({
   storage: loadStorageConfig(),
   cognito: loadCognitoConfig(),
   features: loadFeaturesConfig(),
+  redis: loadRedisConfig(),
 });

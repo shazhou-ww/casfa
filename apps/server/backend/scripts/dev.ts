@@ -6,19 +6,19 @@
  * This script starts both the backend API server and the frontend Vite dev server.
  *
  * Usage:
- *   bun run backend/scripts/dev.ts                     # Default: AWS services (Cognito + S3) + frontend
+ *   bun run backend/scripts/dev.ts                     # Default: Docker (DynamoDB + Redis) + fs storage + Cognito auth
  *   bun run backend/scripts/dev.ts --preset e2e        # All in-memory + mock auth (for tests)
- *   bun run backend/scripts/dev.ts --preset local      # Persistent DB + fs storage + mock auth
- *   bun run backend/scripts/dev.ts --preset dev        # Connect to AWS services (default)
+ *   bun run backend/scripts/dev.ts --preset local      # Persistent DB + fs storage + Cognito auth (same as default)
+ *   bun run backend/scripts/dev.ts --preset dev        # Connect to AWS services (Cognito + S3)
  *   bun run backend/scripts/dev.ts --no-frontend       # Backend only
  *
  *   # Custom configuration:
  *   bun run backend/scripts/dev.ts --db memory --storage memory --auth mock
  *
  * Presets:
- *   e2e   - All in-memory (DynamoDB port 8701) + mock JWT, no frontend
- *   local - Persistent DynamoDB (port 8700) + fs storage + mock JWT
- *   dev   - Connect to real AWS services (Cognito + S3) (default)
+ *   e2e   - All in-memory (DynamoDB port 8701) + mock JWT (for tests)
+ *   local - Persistent DynamoDB (port 8700) + Redis (port 6379) + fs storage + Cognito auth (default)
+ *   dev   - Connect to real AWS services (Cognito + S3)
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -77,7 +77,7 @@ const presets: Record<PresetType, Partial<DevConfig>> = {
   local: {
     db: "persistent",
     storage: "fs",
-    auth: "mock",
+    auth: "cognito",
   },
   dev: {
     db: "aws",
@@ -130,12 +130,12 @@ async function promptYesNo(question: string): Promise<boolean> {
 }
 
 /**
- * Start a DynamoDB container using docker compose
+ * Start a docker compose service
  */
-function startDynamoDBContainer(containerName: string): boolean {
-  console.log(`\nStarting ${containerName} container...`);
+function startDockerService(serviceName: string): boolean {
+  console.log(`\nStarting ${serviceName} container...`);
 
-  const result = spawnSync("docker", ["compose", "up", "-d", containerName], {
+  const result = spawnSync("docker", ["compose", "up", "-d", serviceName], {
     cwd: process.cwd(),
     encoding: "utf-8",
     shell: true,
@@ -198,6 +198,18 @@ function buildEnvVars(config: DevConfig): Record<string, string> {
   } else if (config.auth === "cognito") {
     // When using Cognito, remove mock JWT secret
     delete env.MOCK_JWT_SECRET;
+  }
+
+  // Redis configuration (enabled for local Docker presets)
+  if (config.db !== "aws") {
+    const redisPort = config.db === "memory" ? 6380 : 6379;
+    env.REDIS_ENABLED = "true";
+    env.REDIS_URL = `redis://localhost:${redisPort}`;
+  } else {
+    // AWS preset: Redis only if explicitly configured via env
+    if (!env.REDIS_URL) {
+      env.REDIS_ENABLED = "false";
+    }
   }
 
   return env;
@@ -286,8 +298,8 @@ const program = new Command();
 program
   .name("dev")
   .description("CASFA v2 Development Server with configurable options")
-  .option("--db <type>", "DynamoDB type: memory (8701), persistent (8700), aws", "aws")
-  .option("--storage <type>", "Storage type: memory, fs, s3", "s3")
+  .option("--db <type>", "DynamoDB type: memory (8701), persistent (8700), aws", "persistent")
+  .option("--storage <type>", "Storage type: memory, fs, s3", "fs")
   .option("--auth <type>", "Auth type: mock, cognito", "cognito")
   .option("--preset <name>", "Use preset configuration: e2e, local, dev")
   .option("--port <number>", "Server port", "8801")
@@ -326,6 +338,7 @@ program
     console.log(`  Storage:  ${config.storage}`);
     console.log(`  Auth:     ${config.auth}`);
     console.log(`  Port:     ${config.port}`);
+    console.log(`  Redis:    ${config.db !== "aws" ? "redis://localhost:6379" : "disabled"}`);
     console.log(`  Frontend: ${noFrontend ? "disabled" : "http://localhost:8901"}`);
     console.log();
 
@@ -359,7 +372,7 @@ program
         }
 
         // Start the container
-        if (!startDynamoDBContainer(containerName)) {
+        if (!startDockerService(containerName)) {
           console.error(`\nFailed to start ${containerName} container.`);
           console.error("Make sure Docker is running.");
           process.exit(1);
@@ -397,6 +410,17 @@ program
         console.log("Tables created successfully!");
       } else {
         console.log("All tables exist.");
+      }
+      console.log();
+
+      // Start Redis container alongside DynamoDB
+      const redisContainer = config.db === "memory" ? "redis-test" : "redis";
+      const redisPort = config.db === "memory" ? 6380 : 6379;
+      console.log(`Starting Redis (${redisContainer}) on port ${redisPort}...`);
+      if (!startDockerService(redisContainer)) {
+        console.warn(`⚠️  Failed to start ${redisContainer} — Redis caching will be disabled.`);
+      } else {
+        console.log("Redis is ready!");
       }
       console.log();
     }
