@@ -8,7 +8,7 @@ import { createS3Storage } from "@casfa/storage-s3";
 import { handle } from "hono/aws-lambda";
 import { createApp, createNodeKeyProvider } from "./app.ts";
 import { createCognitoJwtVerifier } from "./auth/index.ts";
-import { createDbInstances } from "./bootstrap.ts";
+import { createDbInstances, createRedis } from "./bootstrap.ts";
 import { loadConfig } from "./config.ts";
 
 // ============================================================================
@@ -16,7 +16,8 @@ import { loadConfig } from "./config.ts";
 // ============================================================================
 
 const config = loadConfig();
-const db = createDbInstances(config);
+const redis = createRedis(config);
+const db = createDbInstances(config, redis);
 
 const storage = createS3Storage({
   bucket: config.storage.bucket,

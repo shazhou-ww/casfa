@@ -103,9 +103,10 @@ if (userIdInput) {
 }
 
 // Configure DynamoDB client
-// When --aws is used, default to the production table name with stage suffix
+// When --aws is used, connect to AWS directly (production table).
+// Otherwise, default to local persistent DynamoDB endpoint.
 const tableName = process.env.TOKENS_TABLE ?? (useAws ? "cas-tokens-prod" : "cas-tokens");
-const endpoint = useAws ? undefined : process.env.DYNAMODB_ENDPOINT;
+const endpoint = useAws ? undefined : (process.env.DYNAMODB_ENDPOINT ?? "http://localhost:8700");
 
 console.log("=".repeat(60));
 console.log("CASFA v2 - Set Admin");
@@ -116,9 +117,14 @@ console.log(`Database: ${endpoint ? `Local (${endpoint})` : "AWS"}`);
 console.log();
 
 // Create DynamoDB client
+// When using a local endpoint, provide dummy credentials to prevent
+// the AWS SDK from using the SSO profile (which would connect to real AWS).
 const ddbClient = new DynamoDBClient({
   region: process.env.AWS_REGION ?? "us-east-1",
-  ...(endpoint && { endpoint }),
+  ...(endpoint && {
+    endpoint,
+    credentials: { accessKeyId: "local", secretAccessKey: "local" },
+  }),
 });
 
 const docClient = DynamoDBDocumentClient.from(ddbClient);

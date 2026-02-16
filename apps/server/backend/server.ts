@@ -22,7 +22,7 @@ import { createS3Storage } from "@casfa/storage-s3";
 import { serveStatic } from "hono/bun";
 import { createApp, createNodeKeyProvider } from "./src/app.ts";
 import { createCognitoJwtVerifier, createMockJwtVerifier } from "./src/auth/index.ts";
-import { createDbInstances } from "./src/bootstrap.ts";
+import { createDbInstances, createRedis } from "./src/bootstrap.ts";
 import { loadConfig } from "./src/config.ts";
 
 // ============================================================================
@@ -45,8 +45,11 @@ const config = loadConfig();
 // Create Dependencies
 // ============================================================================
 
-// Create DB instances (uses DYNAMODB_ENDPOINT if set)
-const db = createDbInstances(config);
+// Create Redis client (returns null when disabled)
+const redis = createRedis(config);
+
+// Create DB instances with optional Redis cache layer
+const db = createDbInstances(config, redis);
 
 // Create storage based on STORAGE_TYPE
 const createStorage = () => {
@@ -145,6 +148,7 @@ console.log(`[CASFA v2] Starting server...`);
 console.log(`[CASFA v2] Listening on http://localhost:${port}`);
 console.log(`[CASFA v2] Storage: ${getStorageDescription()}`);
 console.log(`[CASFA v2] Auth: ${getAuthDescription()}`);
+console.log(`[CASFA v2] Redis: ${redis ? config.redis.url : "disabled"}`);
 if (process.env.DYNAMODB_ENDPOINT) {
   console.log(`[CASFA v2] DynamoDB: ${process.env.DYNAMODB_ENDPOINT}`);
 }

@@ -2,20 +2,74 @@
 
 ## Overview
 
-We use Redis to cache **immutable data only** to reduce DynamoDB and S3 read pressure. Two categories of data are cached:
+We use Redis to cache **immutable data** and **high-frequency mutable data** to reduce DynamoDB / S3 read pressure and lower P99 latency. Three tiers of data are cached:
 
-1. **Ownership existence** — boolean checks (`hasOwnership`, `hasAnyOwnership`) that reduce DynamoDB reads
-2. **CAS node metadata** — decoded node structure (`kind`, `size`, `children`, `contentType`) that eliminates S3 GetObject + decode overhead
+1. **Immutable (no TTL)** — Ownership existence checks, CAS node metadata. Content-addressed, never changes. No invalidation needed.
+2. **Semi-stable (short TTL + write invalidation)** — Delegate records (every auth request), Depot records (every depot operation). Rarely change; invalidated on write.
+3. **Optimistic (very short TTL)** — Usage / quota checks (every upload). High write frequency but tolerates stale reads.
 
-Since all cached data is content-addressed and immutable, there is **no cache invalidation logic** — reads fill the cache on miss, and the system falls through to the backing store when Redis is unavailable.
+The system falls through to the backing store when Redis is unavailable — Redis is a pure optimization layer.
+
+## Data Classification & Strategy
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     IMMUTABLE (no TTL)                          │
+│  一旦写入，内容永远不变，可无限期缓存                              │
+│                                                                 │
+│  • Ownership 记录 (own:* → DynamoDB bypass)                     │
+│  • CAS Node metadata (node:meta:* → S3 bypass)                  │
+│  • ScopeSetNode 内容 (content-addressed children)               │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                  SEMI-STABLE (TTL + write invalidation)          │
+│  变更不频繁，短 TTL 缓存 + 写操作时主动 DEL                       │
+│                                                                 │
+│  • Delegate 记录 (dlg:* — every auth request, TTL = 30s)        │
+│  • Depot 记录 (dpt:* — every depot op, TTL = 10s)               │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                  OPTIMISTIC (very short TTL)                     │
+│  每次上传都更新，容忍秒级不一致                                    │
+│                                                                 │
+│  • Usage / Quota (usg:* — every upload, TTL = 5s)               │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                  NOT CACHED                                     │
+│  强一致性要求或缓存价值低                                         │
+│                                                                 │
+│  • RefCount (conditional update，缓存会破坏一致性)               │
+│  • TokenRecords (一次性使用标记，极少读取)                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Cache Strategy Matrix
+
+| Priority | Data | Redis Key | TTL | Strategy | Reason |
+|----------|------|-----------|-----|----------|--------|
+| **P0** | `hasOwnership(hash, dlgId)` | `own:{hash}:{dlgId}` | ∞ | Cache-Aside + write pre-warm | **最热路径**: upload N×M 次, read 每次. Immutable |
+| **P0** | `hasAnyOwnership(hash)` | `own:any:{hash}` | ∞ | Cache-Aside + write pre-warm | 每次 `chunks.get`. Immutable |
+| **P0** | Node metadata | `node:meta:{key}` | ∞ | Cache-Aside + write pre-warm | S3 GetObject + decode 开销大. Immutable |
+| **P1** | `delegatesDb.get(id)` | `dlg:{id}` | 30s | Cache-Aside + write DEL | **每个认证请求**. Token rotation/revoke 时失效 |
+| **P2** | `depotsDb.get(realm, id)` | `dpt:{realm}:{id}` | 10s | Cache-Aside + write DEL | 每次 depot 操作. Commit 时失效 |
+| **P2** | ScopeSetNode | `ssn:{id}` | 1h | Cache-Aside | Content-addressed, 只有 refCount 变 |
+| **P3** | `usageDb.getUsage(realm)` | `usg:{realm}` | 5s | Cache-Aside (乐观) | 每次上传 quota check, 容忍短暂过期 |
+| — | RefCount | — | — | 不缓存 | Conditional update 需强一致性 |
+| — | TokenRecords | — | — | 不缓存 | 一次性使用 |
 
 ## Architecture
 
 ```
                      ┌─────────────────────────────────┐
                      │         Redis Cache              │
-                     │  own:*   → DynamoDB bypass       │
-                     │  node:*  → S3 bypass             │
+                     │  own:*     → DynamoDB bypass     │
+                     │  node:*    → S3 bypass           │
+                     │  dlg:*     → DynamoDB bypass     │
+                     │  dpt:*     → DynamoDB bypass     │
+                     │  usg:*     → DynamoDB bypass     │
                      └─────────────────────────────────┘
                               ▲           │
                          miss │           │ hit
@@ -26,14 +80,21 @@ Request → API Handler → cache lookup → return cached
                     backing store query
                     (DynamoDB or S3)
                               │
-                   positive? → write to Redis
+                   result? → write to Redis (with TTL if mutable)
                               │
                         return result
+
+                    ┌──── Write Path ────┐
+                    │ Immutable: SET     │
+                    │ Mutable:   DEL     │
+                    └────────────────────┘
 ```
 
-- **Positive results** are cached permanently (no TTL).
-- **Negative results** (record/node does not exist) are **never cached** — they may be created later.
-- **Redis failures** are silently swallowed — all operations fall through to the backing store. Redis is a pure optimization layer; the system is fully functional without it.
+- **Immutable data**: cached permanently (no TTL). Only positive results cached.
+- **Semi-stable data**: cached with short TTL. Write operations issue `DEL` to invalidate.
+- **Optimistic data**: cached with very short TTL. No explicit invalidation — TTL handles staleness.
+- **Negative results** (record does not exist) are **never cached** — they may be created later.
+- **Redis failures** are silently swallowed — all operations fall through to the backing store.
 
 ## Cached Methods
 
@@ -135,25 +196,137 @@ const hasOwnershipBatch = async (nodeHash: string, delegateIds: string[]): Promi
 
 This reduces the worst-case from **16 serial Redis round-trips to 1** for cached nodes.
 
+### 3. Delegate Records (DynamoDB → Redis, TTL = 30s)
+
+Cached in a new `cached-delegates.ts` wrapper. Delegates are the **single most frequently read entity** — `delegatesDb.get()` is called on **every authenticated request** by `accessTokenMiddleware`.
+
+| Method | Cache Key | Cached Value | TTL | Cache Fill | Invalidation |
+|---|---|---|---|---|---|
+| `get(delegateId)` | `dlg:{delegateId}` | Full delegate JSON | 30s | Read-path cache-aside | `revoke()`, `rotateTokens()` → `DEL` |
+| `revoke(...)` | — | — | — | — | `DEL dlg:{delegateId}` after DynamoDB update |
+| `rotateTokens(...)` | — | — | — | — | `DEL dlg:{delegateId}` after DynamoDB update |
+| `create(...)` | — | — | — | — | No cache action (not yet queried) |
+| `listChildren(...)` | — | — | — | — | **Not cached** (list, infrequent) |
+| `getRootByRealm(...)` | — | — | — | — | **Not cached** (GSI query, infrequent) |
+
+**Why TTL = 30s:**
+- Token rotation happens at most once per refresh cycle (≥ minutes apart)
+- Revocation is rare and time-sensitive, so we also issue explicit `DEL`
+- 30s balances hit rate vs staleness — a revoked delegate is honored within 30s worst case
+- Each Lambda invocation handles ~1 request, so the cache primarily benefits **cross-invocation warm starts** and **burst traffic within the TTL window**
+
+**Implementation sketch:**
+
+```typescript
+// cached-delegates.ts
+export const withDelegateCache = (
+  db: DelegatesDb,
+  cache: CacheProvider,
+  prefix: string,
+  ttl = 30
+): DelegatesDb => ({
+  ...db,
+
+  get: async (delegateId) => {
+    const key = `${prefix}dlg:${delegateId}`;
+    const cached = await cacheGet(cache, key);
+    if (cached) return JSON.parse(cached);
+
+    const result = await db.get(delegateId);
+    if (result) {
+      cacheSet(cache, key, JSON.stringify(result), ttl).catch(() => {});
+    }
+    return result;
+  },
+
+  revoke: async (...args) => {
+    await db.revoke(...args);
+    const [delegateId] = args;
+    cacheDel(cache, `${prefix}dlg:${delegateId}`).catch(() => {});
+  },
+
+  rotateTokens: async (...args) => {
+    await db.rotateTokens(...args);
+    const [delegateId] = args;
+    cacheDel(cache, `${prefix}dlg:${delegateId}`).catch(() => {});
+  },
+});
+```
+
+### 4. Depot Records (DynamoDB → Redis, TTL = 10s)
+
+Cached in a new `cached-depots.ts` wrapper. `depotsDb.get()` is called on every depot read, commit, and filesystem operation.
+
+| Method | Cache Key | Cached Value | TTL | Cache Fill | Invalidation |
+|---|---|---|---|---|---|
+| `get(realm, depotId)` | `dpt:{realm}:{depotId}` | Full depot JSON | 10s | Read-path cache-aside | `commit()`, `update()`, `delete()` → `DEL` |
+| `getByName(realm, name)` | `dpt:n:{realm}:{name}` | Full depot JSON | 10s | Read-path cache-aside | `commit()`, `update()`, `delete()` → `DEL` both keys |
+| `commit(...)` | — | — | — | — | `DEL dpt:{realm}:{depotId}` + `DEL dpt:n:{realm}:{name}` |
+| `update(...)` | — | — | — | — | `DEL dpt:{realm}:{depotId}` + `DEL dpt:n:{realm}:{name}` |
+| `delete(...)` | — | — | — | — | `DEL dpt:{realm}:{depotId}` + `DEL dpt:n:{realm}:{name}` |
+| `list(...)` | — | — | — | — | **Not cached** (list query, paginated) |
+| `create(...)` | — | — | — | — | No cache action |
+
+**Why TTL = 10s:**
+- Depot `root` changes on every `commit` — explicit `DEL` ensures immediate consistency
+- 10s TTL is a safety net for edge cases (e.g., direct DynamoDB edits)
+- Commits are relatively infrequent (user-initiated), so cache hit rate is still high between commits
+
+### 5. Usage / Quota (DynamoDB → Redis, TTL = 5s)
+
+Cached in a new `cached-usage.ts` wrapper. `usageDb.getUsage()` is called on every upload for quota check.
+
+| Method | Cache Key | Cached Value | TTL | Cache Fill | Notes |
+|---|---|---|---|---|---|
+| `getUsage(realm)` | `usg:{realm}` | JSON `{ physicalBytes, logicalBytes, nodeCount, quotaLimit }` | 5s | Read-path cache-aside | **Optimistic** — stale reads tolerated |
+| `checkQuota(realm)` | uses `getUsage` | — | — | — | Inherits caching from `getUsage` |
+| `updateUsage(...)` | — | — | — | — | **No invalidation** — TTL handles it |
+| `getUserQuota(realm)` | `usg:q:{realm}` | JSON | 5s | Read-path cache-aside | Less frequent, also optimistic |
+
+**Why no explicit invalidation:**
+- `updateUsage` is called on every upload — DEL'ing the cache on every write would negate caching
+- 5s TTL means the quota check can be at most 5s stale
+- Worst case: a few extra nodes uploaded before quota enforcement kicks in — acceptable
+- DynamoDB `updateUsage` uses atomic `ADD`, so the authoritative count is always correct
+
 ## Local Development
 
 ### Prerequisites
 
-Docker must be running.
+Docker must be running. `bun run dev` automatically starts all Docker services (DynamoDB + Redis) via `docker compose`.
+
+### Commands
+
+```bash
+bun run dev           # Default: Docker (DynamoDB + Redis) + fs storage + mock auth + frontend
+bun run dev:aws       # Connect to real AWS services (Cognito + S3), no local Docker
+bun run dev:minimal   # All in-memory (no Docker), no frontend — for quick tests
+```
 
 ### Presets
 
-| Preset | Redis behavior | Notes |
-|---|---|---|
-| `local` | `redis://localhost:6379` via docker-compose | Auto-starts `redis` container alongside `dynamodb` |
-| `e2e` | Disabled (`REDIS_ENABLED=false`) | Tests run without Redis |
-| `e2e:redis` | `redis://localhost:6380` via docker-compose | E2E with Redis enabled (uses `redis-test` container) |
-| `dev` / `aws` | From environment variable `REDIS_URL` | Connects to remote Redis |
+| Preset | Command | DynamoDB | Redis | Storage | Auth |
+|---|---|---|---|---|---|
+| (default) | `bun run dev` | `persistent` (port 8700) | `redis://localhost:6379` | fs | mock |
+| `local` | `--preset local` | `persistent` (port 8700) | `redis://localhost:6379` | fs | mock |
+| `e2e` | `--preset e2e` | `memory` (port 8701) | `redis://localhost:6380` | memory | mock |
+| `dev` | `--preset dev` | AWS | disabled | s3 | cognito |
+
+The dev script auto-starts the corresponding Docker containers:
+- Default/local: `dynamodb` + `redis`
+- E2E: `dynamodb-test` + `redis-test`
+- Dev (AWS): no Docker services
 
 ### Docker Compose Services
 
 ```yaml
-# redis for local development (persistent)
+# DynamoDB (persistent, port 8700) — daily development
+dynamodb:
+
+# DynamoDB (in-memory, port 8701) — E2E tests
+dynamodb-test:
+
+# Redis (persistent, port 6379) — daily development
 redis:
   image: redis:7-alpine
   container_name: casfa-redis
@@ -161,30 +334,31 @@ redis:
     - "6379:6379"
   volumes:
     - redis-data:/data
-  restart: unless-stopped
 
-# redis for e2e tests (no persistence, isolated port)
+# Redis (ephemeral, port 6380) — E2E tests
 redis-test:
   image: redis:7-alpine
   container_name: casfa-redis-test
   ports:
     - "6380:6379"
   command: redis-server --save ""
-  restart: "no"
 ```
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `REDIS_URL` | `redis://localhost:6379` | Redis connection URL |
 | `REDIS_ENABLED` | `true` | Set to `false` to disable Redis entirely |
+| `REDIS_URL` | `redis://localhost:6379` | Redis connection URL |
+| `REDIS_KEY_PREFIX` | `cas:` | Key prefix (allows multi-env sharing) |
+| `REDIS_CONNECT_TIMEOUT_MS` | `2000` | Connection timeout |
+| `REDIS_COMMAND_TIMEOUT_MS` | `500` | Per-command timeout |
 | `REDIS_LOG_LEVEL` | (none) | Set to `debug` to log cache hit/miss to stdout |
 
 ### Verifying Redis is Working
 
 ```bash
-# Start redis container
+# bun run dev auto-starts Redis, but you can also manage manually:
 docker compose up -d redis
 
 # Connect with redis-cli
@@ -194,8 +368,7 @@ docker exec -it casfa-redis redis-cli
 docker exec -it casfa-redis redis-cli MONITOR
 
 # Check cached keys
-docker exec -it casfa-redis redis-cli KEYS "own:*"
-docker exec -it casfa-redis redis-cli KEYS "node:meta:*"
+docker exec -it casfa-redis redis-cli KEYS "cas:*"
 ```
 
 ## Production (AWS)
@@ -266,28 +439,33 @@ Key settings rationale:
 
 ```
 backend/src/db/
-├── redis-client.ts    # Redis connection singleton, graceful degradation
-├── cache.ts           # Cache utilities: cacheGet, cacheSet, cacheMGet
-├── node-cache.ts      # Node metadata cache: getNodeMeta, setNodeMeta, buildNodeMeta
-├── ownership-v2.ts    # Updated with Redis caching
-├── client.ts          # DynamoDB client (unchanged)
+├── redis-client.ts       # Redis connection singleton, graceful degradation
+├── cache.ts              # Cache utilities: cacheGet, cacheSet, cacheDel, cacheMGet
+├── node-cache.ts         # Node metadata cache: getNodeMeta, setNodeMeta, buildNodeMeta
+├── cached-delegates.ts   # withDelegateCache wrapper (TTL=30s + write DEL)
+├── cached-depots.ts      # withDepotCache wrapper (TTL=10s + write DEL)
+├── cached-usage.ts       # withUsageCache wrapper (TTL=5s, optimistic)
+├── ownership-v2.ts       # Updated with Redis caching (immutable, no TTL)
+├── client.ts             # DynamoDB client (unchanged)
 └── ...
 
 backend/src/
-├── config.ts          # Extended with RedisConfig
-├── bootstrap.ts       # Creates Redis client, injects into ownershipV2Db & controllers
-└── app.ts             # Updated: resolveNode uses node-cache
+├── config.ts             # Extended with RedisConfig
+├── bootstrap.ts          # Creates Redis client, injects cache wrappers into all DB modules
+└── app.ts                # Updated: resolveNode uses node-cache
 ```
 
 ### Key Design Decisions
 
-1. **Immutable-only caching** — Two types: ownership boolean existence (`own:*`) and CAS node decoded metadata (`node:meta:*`). Both are content-addressed and immutable. No cache invalidation needed, no consistency bugs possible.
+1. **Three-tier caching** — Immutable data (no TTL), semi-stable data (short TTL + write invalidation), optimistic data (very short TTL). Each tier has clear consistency guarantees.
 2. **No negative caching** — Avoids the need to invalidate when new records/nodes are created. Trade-off: repeated misses hit DynamoDB/S3, acceptable for current load.
 3. **Graceful degradation** — Every Redis call is wrapped in try-catch. If Redis is down, unavailable, or disabled, the system behaves identically to pre-cache behavior.
-4. **No TTL** — Ownership records and CAS nodes are content-addressed. Once cached, they are valid forever. Redis memory is bounded by the number of unique records/nodes queried. (See GC considerations below.)
-5. **`getOwnership` excluded** — Metadata fields (`uploadedBy`, `size`, `createdAt`) can be overwritten by concurrent `BatchWriteItem` calls. Only boolean existence is truly immutable.
-6. **Batch `MGET` for chain lookups** — `hasOwnershipBatch` sends one `MGET` for all chain members, reducing N serial round-trips to 1.
-7. **Node metadata size guard (8 KB)** — Large dict nodes with hundreds of children are not cached, bounding per-key memory. The S3 read for these is amortized by their rarity.
+4. **Immutable = no TTL** — Ownership records and CAS nodes are content-addressed. Once cached, they are valid forever. Redis memory is bounded by the number of unique records/nodes queried. (See GC considerations below.)
+5. **Semi-stable = TTL + DEL on write** — Delegate and Depot records change infrequently. Short TTL provides a safety net; explicit DEL on `revoke`, `rotateTokens`, `commit` ensures prompt invalidation.
+6. **`getOwnership` excluded** — Metadata fields (`uploadedBy`, `size`, `createdAt`) can be overwritten by concurrent `BatchWriteItem` calls. Only boolean existence is truly immutable.
+7. **Batch `MGET` for chain lookups** — `hasOwnershipBatch` sends one `MGET` for all chain members, reducing N serial round-trips to 1.
+8. **Node metadata size guard (8 KB)** — Large dict nodes with hundreds of children are not cached, bounding per-key memory. The S3 read for these is amortized by their rarity.
+9. **Quota is optimistic** — `usageDb.getUsage` is cached with 5s TTL. Concurrent uploads may briefly exceed quota by a few nodes, which is acceptable for our use case.
 
 ## Observability
 
@@ -313,10 +491,42 @@ backend/src/
 | Test Suite | Redis | Purpose |
 |---|---|---|
 | Unit tests (`bun test`) | Mocked | Test cache-aside logic, `MGET` batching, error fallback |
-| E2E (`--preset e2e`) | Disabled | Validate system works without Redis (baseline correctness) |
-| E2E + Redis (`--preset e2e:redis`) | `redis-test` on port 6380 | Validate caching doesn't break behavior; verify cache fills |
+| E2E (`--preset e2e`) | `redis-test` on port 6380 | Validate caching behavior with ephemeral Redis |
+| E2E no-cache | `REDIS_ENABLED=false` | Validate system works without Redis (baseline correctness) |
 
-The `e2e:redis` preset uses the `redis-test` container (in-memory, no persistence) which starts clean each run. CI should run both `e2e` and `e2e:redis` to ensure correctness on both paths.
+The `e2e` preset uses the `redis-test` container (in-memory, no persistence) which starts clean each run. CI should run both with and without `REDIS_ENABLED` to ensure correctness on both paths.
+
+## Expected Impact
+
+### Upload Request (PUT node, 4 children, chain depth = 3)
+
+| Operation | Without cache (DynamoDB) | With cache |
+|---|---|---|
+| `hasOwnership` (per child × chain) | 4 × 3 = **12** GetItem | ≤ 12 Redis GET (hit rate > 90%) |
+| `checkQuota` / `getUsage` | 1 GetItem | 1 Redis GET (TTL 5s) |
+| **DynamoDB reads saved** | **13** | **≈ 12** (only misses go to DDB) |
+
+### Read Request (GET node)
+
+| Operation | Without cache | With cache |
+|---|---|---|
+| `hasAnyOwnership` | 1 DynamoDB Query | 1 Redis GET |
+| `storage.get` | 1 S3 GET | 1 S3 GET (large blobs stay in S3) |
+| **DynamoDB reads saved** | — | **1** |
+
+### Auth Middleware (every authenticated request)
+
+| Operation | Without cache | With cache |
+|---|---|---|
+| `delegatesDb.get` | 1 DynamoDB GetItem | 1 Redis GET (TTL 30s, hit rate > 95%) |
+
+### Depot Commit
+
+| Operation | Without cache | With cache |
+|---|---|---|
+| `depotsDb.get` | 1 GetItem | 1 Redis GET (TTL 10s) |
+| `hasOwnership` (per chain) | 3 GetItem | 3 Redis GET |
+| **DynamoDB reads saved** | — | **4** |
 
 ## Future Considerations
 
@@ -346,6 +556,51 @@ This is preferred over preemptive TTL because:
 ### Other
 
 - **Negative caching**: If DynamoDB read pressure from repeated misses becomes significant, we can add short-TTL (30s) negative caching. This would require invalidating negative keys in `addOwnership`.
-- **Scope set-node caching**: `scope-set-nodes` children fields are also immutable candidates for caching if read pressure increases.
+- **Scope set-node caching**: `scope-set-nodes` children fields are also immutable candidates for caching if read pressure increases. (Currently P2 priority — can be added alongside delegate caching.)
 - **ElastiCache Serverless migration**: Start with `cache.t4g.micro` for dev/staging, migrate to Serverless when traffic justifies the minimum baseline cost.
 - **Redis memory monitoring**: CloudWatch alarms on `BytesUsedForCache` / `DatabaseMemoryUsagePercentage` to catch unbounded growth.
+- **Delegate cache pub/sub invalidation**: For multi-instance deployments, consider Redis pub/sub to broadcast delegate revocations to all instances. Currently not needed (single Lambda function).
+
+## Implementation Plan
+
+### Phase 1: Infrastructure (1–2 days)
+
+- [ ] `config.ts` — add `RedisConfig` + `loadRedisConfig()`
+- [ ] `redis-client.ts` — Redis connection singleton with ioredis
+- [ ] `cache.ts` — `cacheGet`, `cacheSet`, `cacheDel`, `cacheMGet` utilities
+- [ ] `docker-compose.yml` — add `redis` + `redis-test` services
+- [ ] `.env.example` — add Redis configuration variables
+- [ ] Dev script presets — wire up Redis enable/disable per preset
+
+### Phase 2: P0 — Ownership + Node Metadata Caching (1–2 days)
+
+- [ ] `ownership-v2.ts` — integrate Redis caching for `hasOwnership`, `hasAnyOwnership`, `addOwnership` pre-warm
+- [ ] `node-cache.ts` — implement node metadata cache with 8 KB size guard
+- [ ] `chunks.ts` — wire up node metadata cache on GET/PUT
+- [ ] E2E tests — validate cache hit/miss, upload/claim correctness
+
+### Phase 3: P1 — Delegate Caching (1 day)
+
+- [ ] `cached-delegates.ts` — `withDelegateCache` wrapper (TTL=30s, DEL on revoke/rotate)
+- [ ] `bootstrap.ts` — inject cached wrapper into `delegatesDb`
+- [ ] Test auth middleware latency with cache hit vs miss
+- [ ] Test revocation propagation within TTL window
+
+### Phase 4: P2 — Depot + ScopeSetNode Caching (1 day)
+
+- [ ] `cached-depots.ts` — `withDepotCache` wrapper (TTL=10s, DEL on commit/update/delete)
+- [ ] ScopeSetNode caching (TTL=1h, content-addressed)
+- [ ] E2E — commit flow, depot list correctness
+
+### Phase 5: P3 — Usage / Quota Caching (0.5 day)
+
+- [ ] `cached-usage.ts` — `withUsageCache` wrapper (TTL=5s, no write invalidation)
+- [ ] Verify quota enforcement under concurrent uploads
+
+### Phase 6: Production Deployment (1–2 days)
+
+- [ ] SAM template — ElastiCache Serverless resource + VPC config
+- [ ] Security groups (Lambda ↔ ElastiCache)
+- [ ] VPC Endpoints (DynamoDB, S3, Cognito)
+- [ ] Gradual rollout: `REDIS_ENABLED=true` with monitoring
+- [ ] CloudWatch dashboards + alarms (hit rate, error rate, memory)

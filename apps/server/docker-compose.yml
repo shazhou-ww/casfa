@@ -19,5 +19,25 @@ services:
     command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
     restart: "no"
 
+  # Redis - for local development (persistent)
+  redis:
+    image: redis:7-alpine
+    container_name: casfa-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+  # Redis - for E2E tests (no persistence, isolated port)
+  redis-test:
+    image: redis:7-alpine
+    container_name: casfa-redis-test
+    ports:
+      - "6380:6379"
+    command: ["redis-server", "--save", ""]
+    restart: "no"
+
 volumes:
   dynamodb-data:
+  redis-data:

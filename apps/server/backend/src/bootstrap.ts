@@ -5,7 +5,12 @@
  * Used by both server.ts (local dev) and handler.ts (Lambda).
  */
 
+import type { Redis } from "ioredis";
 import type { AppConfig } from "./config.ts";
+import { withDelegateCache } from "./db/cached-delegates.ts";
+import { withDepotCache } from "./db/cached-depots.ts";
+import { withOwnershipCache } from "./db/cached-ownership.ts";
+import { withUsageCache } from "./db/cached-usage.ts";
 import {
   type AuthCodesDb,
   createAuthCodesDb,
@@ -27,6 +32,7 @@ import {
   type UserRolesDb,
 } from "./db/index.ts";
 import { createLocalUsersDb, type LocalUsersDb } from "./db/local-users.ts";
+import { createRedisClient } from "./db/redis-client.ts";
 
 // ============================================================================
 // Types
@@ -50,17 +56,38 @@ export type DbInstances = {
 // ============================================================================
 
 /**
- * Create all database instances based on configuration
+ * Create Redis client from config. Returns null when disabled.
  */
-export const createDbInstances = (config: AppConfig): DbInstances => ({
-  authCodesDb: createAuthCodesDb({ tableName: config.db.tokensTable }),
-  delegatesDb: createDelegatesDb({ tableName: config.db.tokensTable }),
-  oauthClientsDb: createOAuthClientsDb({ tableName: config.db.tokensTable }),
-  scopeSetNodesDb: createScopeSetNodesDb({ tableName: config.db.tokensTable }),
-  ownershipV2Db: createOwnershipV2Db({ tableName: config.db.tokensTable }),
-  depotsDb: createDepotsDb({ tableName: config.db.casRealmTable }),
-  refCountDb: createRefCountDb({ tableName: config.db.refCountTable }),
-  usageDb: createUsageDb({ tableName: config.db.usageTable }),
-  userRolesDb: createUserRolesDb({ tableName: config.db.tokensTable }),
-  localUsersDb: createLocalUsersDb({ tableName: config.db.tokensTable }),
-});
+export const createRedis = (config: AppConfig): Redis | null => {
+  return createRedisClient(config.redis);
+};
+
+/**
+ * Create all database instances based on configuration,
+ * optionally wrapping with Redis cache layers.
+ */
+export const createDbInstances = (config: AppConfig, redis?: Redis | null): DbInstances => {
+  const r = redis ?? null;
+  const prefix = config.redis.keyPrefix;
+
+  // Raw DB instances (direct DynamoDB access)
+  const rawDelegatesDb = createDelegatesDb({ tableName: config.db.tokensTable });
+  const rawOwnershipV2Db = createOwnershipV2Db({ tableName: config.db.tokensTable });
+  const rawDepotsDb = createDepotsDb({ tableName: config.db.casRealmTable });
+  const rawUsageDb = createUsageDb({ tableName: config.db.usageTable });
+
+  return {
+    authCodesDb: createAuthCodesDb({ tableName: config.db.tokensTable }),
+    oauthClientsDb: createOAuthClientsDb({ tableName: config.db.tokensTable }),
+    scopeSetNodesDb: createScopeSetNodesDb({ tableName: config.db.tokensTable }),
+    refCountDb: createRefCountDb({ tableName: config.db.refCountTable }),
+    userRolesDb: createUserRolesDb({ tableName: config.db.tokensTable }),
+    localUsersDb: createLocalUsersDb({ tableName: config.db.tokensTable }),
+
+    // Cached wrappers (no-op when redis is null)
+    delegatesDb: withDelegateCache(rawDelegatesDb, r, prefix),
+    ownershipV2Db: withOwnershipCache(rawOwnershipV2Db, r, prefix),
+    depotsDb: withDepotCache(rawDepotsDb, r, prefix),
+    usageDb: withUsageCache(rawUsageDb, r, prefix),
+  };
+};
