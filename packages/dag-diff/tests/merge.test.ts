@@ -3,20 +3,20 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { blake3 } from "@noble/hashes/blake3";
 import {
-  type KeyProvider,
-  type StorageProvider,
   computeSizeFlagByte,
+  EMPTY_DICT_KEY,
   encodeDictNode,
   encodeFileNode,
-  hashToKey,
-  EMPTY_DICT_KEY,
-  isWellKnownNode,
   getWellKnownNodeData,
+  hashToKey,
+  isWellKnownNode,
+  type KeyProvider,
+  type StorageProvider,
 } from "@casfa/core";
-import { dagMerge } from "../src/index.ts";
+import { blake3 } from "@noble/hashes/blake3";
 import type { MergeOp, MergeResult } from "../src/index.ts";
+import { dagMerge } from "../src/index.ts";
 
 // ---------------------------------------------------------------------------
 // Test helpers (same as dag-diff.test.ts)
@@ -57,7 +57,7 @@ const keyProvider = createKeyProvider();
 async function storeDict(
   storage: MemoryStorage,
   childNames: string[],
-  children: Uint8Array[],
+  children: Uint8Array[]
 ): Promise<string> {
   const encoded = await encodeDictNode({ children, childNames }, keyProvider);
   const key = hashToKey(encoded.hash);
@@ -68,13 +68,10 @@ async function storeDict(
 async function storeFile(
   storage: MemoryStorage,
   content: string,
-  contentType = "text/plain",
+  contentType = "text/plain"
 ): Promise<{ key: string; hash: Uint8Array }> {
   const data = new TextEncoder().encode(content);
-  const encoded = await encodeFileNode(
-    { data, contentType, fileSize: data.length },
-    keyProvider,
-  );
+  const encoded = await encodeFileNode({ data, contentType, fileSize: data.length }, keyProvider);
   const key = hashToKey(encoded.hash);
   await storage.put(key, encoded.bytes);
   return { key, hash: encoded.hash };
@@ -255,7 +252,7 @@ describe("dagMerge", () => {
 
   test("both added same path, different keys → LWW (theirs newer)", async () => {
     const storage = createMemoryStorage();
-    const { key: kOurs, hash: hOurs } = await storeFile(storage, "ours-version");
+    const { hash: hOurs } = await storeFile(storage, "ours-version");
     const { key: kTheirs, hash: hTheirs } = await storeFile(storage, "theirs-version");
 
     const base = EMPTY_DICT_KEY;
@@ -284,7 +281,7 @@ describe("dagMerge", () => {
   test("both added same path, different keys → LWW (ours newer)", async () => {
     const storage = createMemoryStorage();
     const { key: kOurs, hash: hOurs } = await storeFile(storage, "ours-version");
-    const { key: kTheirs, hash: hTheirs } = await storeFile(storage, "theirs-version");
+    const { hash: hTheirs } = await storeFile(storage, "theirs-version");
 
     const base = EMPTY_DICT_KEY;
     const ours = await storeDict(storage, ["new.txt"], [hOurs]);
@@ -314,7 +311,7 @@ describe("dagMerge", () => {
   test("both modified same file to different keys → LWW", async () => {
     const storage = createMemoryStorage();
     const { hash: hBase } = await storeFile(storage, "base-content");
-    const { key: kOurs, hash: hOurs } = await storeFile(storage, "ours-edit");
+    const { hash: hOurs } = await storeFile(storage, "ours-edit");
     const { key: kTheirs, hash: hTheirs } = await storeFile(storage, "theirs-edit");
 
     const base = await storeDict(storage, ["f.txt"], [hBase]);
@@ -347,7 +344,7 @@ describe("dagMerge", () => {
   test("ours modified, theirs removed → LWW (theirs newer → remove)", async () => {
     const storage = createMemoryStorage();
     const { hash: hBase } = await storeFile(storage, "base-content");
-    const { key: kOurs, hash: hOurs } = await storeFile(storage, "ours-edit");
+    const { hash: hOurs } = await storeFile(storage, "ours-edit");
 
     const base = await storeDict(storage, ["f.txt"], [hBase]);
     const ours = await storeDict(storage, ["f.txt"], [hOurs]);
@@ -425,7 +422,7 @@ describe("dagMerge", () => {
     const storage = createMemoryStorage();
     const { hash: hBase } = await storeFile(storage, "base");
     const { key: kOurs, hash: hOurs } = await storeFile(storage, "ours");
-    const { key: kTheirs, hash: hTheirs } = await storeFile(storage, "theirs");
+    const { hash: hTheirs } = await storeFile(storage, "theirs");
 
     const base = await storeDict(storage, ["f.txt"], [hBase]);
     const ours = await storeDict(storage, ["f.txt"], [hOurs]);
@@ -457,27 +454,24 @@ describe("dagMerge", () => {
     const { hash: hB } = await storeFile(storage, "b-new");
 
     // base: src/a.ts
-    const baseSrcHash = (await encodeDictNode(
-      { children: [hA1], childNames: ["a.ts"] },
-      keyProvider,
-    )).hash;
-    const baseSrc = await storeDict(storage, ["a.ts"], [hA1]);
+    const baseSrcHash = (
+      await encodeDictNode({ children: [hA1], childNames: ["a.ts"] }, keyProvider)
+    ).hash;
+    const _baseSrc = await storeDict(storage, ["a.ts"], [hA1]);
     const base = await storeDict(storage, ["src"], [baseSrcHash]);
 
     // ours: src/a.ts(v2)
-    const oursSrcHash = (await encodeDictNode(
-      { children: [hA2], childNames: ["a.ts"] },
-      keyProvider,
-    )).hash;
-    const oursSrc = await storeDict(storage, ["a.ts"], [hA2]);
+    const oursSrcHash = (
+      await encodeDictNode({ children: [hA2], childNames: ["a.ts"] }, keyProvider)
+    ).hash;
+    const _oursSrc = await storeDict(storage, ["a.ts"], [hA2]);
     const ours = await storeDict(storage, ["src"], [oursSrcHash]);
 
     // theirs: src/a.ts(v1), src/b.ts(new)
-    const theirsSrcHash = (await encodeDictNode(
-      { children: [hA1, hB], childNames: ["a.ts", "b.ts"] },
-      keyProvider,
-    )).hash;
-    const theirsSrc = await storeDict(storage, ["a.ts", "b.ts"], [hA1, hB]);
+    const theirsSrcHash = (
+      await encodeDictNode({ children: [hA1, hB], childNames: ["a.ts", "b.ts"] }, keyProvider)
+    ).hash;
+    const _theirsSrc = await storeDict(storage, ["a.ts", "b.ts"], [hA1, hB]);
     const theirs = await storeDict(storage, ["src"], [theirsSrcHash]);
 
     const result = await dagMerge(base, ours, theirs, {
@@ -510,25 +504,21 @@ describe("dagMerge", () => {
     const { hash: hF } = await storeFile(storage, "fileF-theirs");
 
     // base: keep.txt, c.txt(v1), d.txt
-    const base = await storeDict(
-      storage,
-      ["c.txt", "d.txt", "keep.txt"],
-      [hC1, hD, hKeep],
-    );
+    const base = await storeDict(storage, ["c.txt", "d.txt", "keep.txt"], [hC1, hD, hKeep]);
 
     // ours: keep.txt, a.txt(added), c.txt(ours-edit), e.txt(added)
     // (d.txt removed by ours)
     const ours = await storeDict(
       storage,
       ["a.txt", "c.txt", "e.txt", "keep.txt"],
-      [hA, hC2, hE, hKeep],
+      [hA, hC2, hE, hKeep]
     );
 
     // theirs: keep.txt, b.txt(added), c.txt(theirs-edit), d.txt(unchanged), f.txt(added)
     const theirs = await storeDict(
       storage,
       ["b.txt", "c.txt", "d.txt", "f.txt", "keep.txt"],
-      [hB, hC3, hD, hF, hKeep],
+      [hB, hC3, hD, hF, hKeep]
     );
 
     const result = await dagMerge(base, ours, theirs, {

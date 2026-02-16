@@ -3,19 +3,19 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { blake3 } from "@noble/hashes/blake3";
 import {
-  type KeyProvider,
-  type StorageProvider,
   computeSizeFlagByte,
+  decodeNode,
+  EMPTY_DICT_KEY,
   encodeDictNode,
   encodeFileNode,
-  hashToKey,
-  EMPTY_DICT_KEY,
-  isWellKnownNode,
   getWellKnownNodeData,
-  decodeNode,
+  hashToKey,
+  isWellKnownNode,
+  type KeyProvider,
+  type StorageProvider,
 } from "@casfa/core";
+import { blake3 } from "@noble/hashes/blake3";
 import { pullRemoteTree } from "../src/pull.ts";
 
 // ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ const keyProvider = createKeyProvider();
 async function storeDict(
   storage: MemoryStorage,
   childNames: string[],
-  children: Uint8Array[],
+  children: Uint8Array[]
 ): Promise<{ key: string; hash: Uint8Array }> {
   const encoded = await encodeDictNode({ children, childNames }, keyProvider);
   const key = hashToKey(encoded.hash);
@@ -68,13 +68,10 @@ async function storeDict(
 async function storeFile(
   storage: MemoryStorage,
   content: string,
-  contentType = "text/plain",
+  contentType = "text/plain"
 ): Promise<{ key: string; hash: Uint8Array }> {
   const data = new TextEncoder().encode(content);
-  const encoded = await encodeFileNode(
-    { data, contentType, fileSize: data.length },
-    keyProvider,
-  );
+  const encoded = await encodeFileNode({ data, contentType, fileSize: data.length }, keyProvider);
   const key = hashToKey(encoded.hash);
   await storage.put(key, encoded.bytes);
   return { key, hash: encoded.hash };
@@ -150,10 +147,11 @@ describe("pullRemoteTree", () => {
     const remote = createMemoryStorage();
     const remoteFileA = await storeFile(remote, "content-A");
     const remoteFileB = await storeFile(remote, "content-B");
-    const remoteRoot = await storeDict(remote, ["a.txt", "b.txt"], [
-      remoteFileA.hash,
-      remoteFileB.hash,
-    ]);
+    const remoteRoot = await storeDict(
+      remote,
+      ["a.txt", "b.txt"],
+      [remoteFileA.hash, remoteFileB.hash]
+    );
 
     const fetchNode = createRemoteFetcher(remote, remoteRoot.key);
 
@@ -188,9 +186,9 @@ describe("pullRemoteTree", () => {
     const rNew = await storeFile(remote, "new-content");
     const remoteRoot = await storeDict(remote, ["dir", "new.txt"], [rDir.hash, rNew.hash]);
 
-    let fetchCount = 0;
+    let _fetchCount = 0;
     const fetchNode = async (navPath: string) => {
-      fetchCount++;
+      _fetchCount++;
       return createRemoteFetcher(remote, remoteRoot.key)(navPath);
     };
 

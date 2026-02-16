@@ -124,9 +124,9 @@ export type LwwResolution = {
   winner: "ours" | "theirs";
   /** What kind of conflict was resolved */
   conflict:
-    | "both-added"      // both added same path with different keys
-    | "both-modified"   // both modified same path to different keys
-    | "modify-remove";  // one modified, other removed
+    | "both-added" // both added same path with different keys
+    | "both-modified" // both modified same path to different keys
+    | "modify-remove"; // one modified, other removed
   oursNodeKey: string | null;
   theirsNodeKey: string | null;
 };

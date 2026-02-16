@@ -5,8 +5,8 @@
  * the entire subtree into individual file/dir entries.
  */
 
-import { decodeNode, hashToKey, isWellKnownNode, getWellKnownNodeData } from "@casfa/core";
-import type { StorageProvider, CasNode } from "@casfa/core";
+import type { CasNode, StorageProvider } from "@casfa/core";
+import { decodeNode, getWellKnownNodeData, hashToKey, isWellKnownNode } from "@casfa/core";
 import type { AddedEntry, DiffEntryKind, RemovedEntry } from "./types.ts";
 
 type Side = "added" | "removed";
@@ -46,7 +46,7 @@ export async function* collectLeaves(
   storage: StorageProvider,
   nodeKey: string,
   basePath: string,
-  side: Side,
+  side: Side
 ): AsyncGenerator<AddedEntry | RemovedEntry> {
   const node = await fetchNode(storage, nodeKey);
 
@@ -56,7 +56,7 @@ export async function* collectLeaves(
 
   if (node.kind === "successor") {
     throw new Error(
-      `Unexpected successor-node encountered at path "${basePath}" (key: ${nodeKey})`,
+      `Unexpected successor-node encountered at path "${basePath}" (key: ${nodeKey})`
     );
   }
 

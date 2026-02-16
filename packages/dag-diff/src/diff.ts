@@ -26,7 +26,7 @@ import type {
 export async function dagDiff(
   oldRootKey: string,
   newRootKey: string,
-  options: DagDiffOptions,
+  options: DagDiffOptions
 ): Promise<DiffResult> {
   const { stream, isTruncated } = createDiffStream(oldRootKey, newRootKey, options);
 
@@ -171,8 +171,8 @@ function detectMoves(raw: RawDiffEntry[]): DiffEntry[] {
     const tb = typeOrder[b.type];
     if (ta !== tb) return ta - tb;
 
-    const pa = a.type === "moved" ? a.pathsFrom[0] ?? "" : a.path;
-    const pb = b.type === "moved" ? b.pathsFrom[0] ?? "" : b.path;
+    const pa = a.type === "moved" ? (a.pathsFrom[0] ?? "") : a.path;
+    const pb = b.type === "moved" ? (b.pathsFrom[0] ?? "") : b.path;
     return pa.localeCompare(pb);
   });
 

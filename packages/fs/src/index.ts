@@ -40,7 +40,7 @@ export {
   storageKeyToHash,
 } from "./helpers.ts";
 export { buildCasContext, readLargeFile, streamLargeFile, writeLargeFile } from "./large-file.ts";
-export { applyMergeOps, type ApplyMergeResult, type MergeOp as FsMergeOp } from "./merge-apply.ts";
+export { type ApplyMergeResult, applyMergeOps, type MergeOp as FsMergeOp } from "./merge-apply.ts";
 export type { ReadOps } from "./read-ops.ts";
 
 export type { TreeOps } from "./tree-ops.ts";

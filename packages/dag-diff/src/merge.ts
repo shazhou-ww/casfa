@@ -21,16 +21,7 @@
  */
 
 import { dagDiffStream } from "./stream.ts";
-import type {
-  AddedEntry,
-  LwwResolution,
-  MergeOp,
-  MergeOptions,
-  MergeResult,
-  ModifiedEntry,
-  RawDiffEntry,
-  RemovedEntry,
-} from "./types.ts";
+import type { LwwResolution, MergeOp, MergeOptions, MergeResult, RawDiffEntry } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -50,7 +41,7 @@ export async function dagMerge(
   baseRootKey: string,
   oursRootKey: string,
   theirsRootKey: string,
-  options: MergeOptions,
+  options: MergeOptions
 ): Promise<MergeResult> {
   const { storage, oursTimestamp, theirsTimestamp, maxDepth, maxEntries } = options;
 
@@ -124,7 +115,11 @@ export async function dagMerge(
 async function collectRawDiff(
   oldKey: string,
   newKey: string,
-  options: { storage: import("@casfa/core").StorageProvider; maxDepth?: number; maxEntries?: number },
+  options: {
+    storage: import("@casfa/core").StorageProvider;
+    maxDepth?: number;
+    maxEntries?: number;
+  }
 ): Promise<RawDiffEntry[]> {
   const entries: RawDiffEntry[] = [];
   for await (const entry of dagDiffStream(oldKey, newKey, options)) {
@@ -171,7 +166,7 @@ function resolveConflict(
   path: string,
   ours: RawDiffEntry,
   theirs: RawDiffEntry,
-  oursWins: boolean,
+  oursWins: boolean
 ): { op: MergeOp | null; resolution: LwwResolution | null } {
   const oursKey = getNewKey(ours);
   const theirsKey = getNewKey(theirs);
@@ -212,7 +207,11 @@ function resolveConflict(
 async function applyOneSide(
   baseKey: string,
   changedKey: string,
-  options: { storage: import("@casfa/core").StorageProvider; maxDepth?: number; maxEntries?: number },
+  options: {
+    storage: import("@casfa/core").StorageProvider;
+    maxDepth?: number;
+    maxEntries?: number;
+  }
 ): Promise<MergeResult> {
   const entries = await collectRawDiff(baseKey, changedKey, options);
   const operations = entries.map(rawEntryToOp);

@@ -16,11 +16,11 @@
 
 import {
   type CasNode,
-  type StorageProvider,
   decodeNode,
   getWellKnownNodeData,
   hashToKey,
   isWellKnownNode,
+  type StorageProvider,
 } from "@casfa/core";
 import type { PullOptions, PullResult } from "./types.ts";
 
@@ -34,7 +34,7 @@ import type { PullOptions, PullResult } from "./types.ts";
  */
 function tryGetLocal(
   storage: StorageProvider,
-  storageKey: string,
+  storageKey: string
 ): Promise<Uint8Array | null> | Uint8Array | null {
   if (isWellKnownNode(storageKey)) {
     return getWellKnownNodeData(storageKey) ?? null;
@@ -64,7 +64,7 @@ function tryGetLocal(
 export async function pullRemoteTree(
   baseRootKey: string,
   remoteRootKey: string,
-  options: PullOptions,
+  options: PullOptions
 ): Promise<PullResult> {
   const { storage, fetchNode } = options;
 
@@ -83,11 +83,7 @@ export async function pullRemoteTree(
    * @param remoteKey  - storage key of the remote node
    * @param navPath    - navigation index path from remote root (e.g. "~0/~2")
    */
-  async function walk(
-    baseKey: string | null,
-    remoteKey: string,
-    navPath: string,
-  ): Promise<void> {
+  async function walk(baseKey: string | null, remoteKey: string, navPath: string): Promise<void> {
     // Hash short-circuit: if base hash equals remote hash, all children are identical
     if (baseKey === remoteKey) {
       nodesSkipped++;
