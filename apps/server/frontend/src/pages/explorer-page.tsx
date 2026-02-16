@@ -72,13 +72,38 @@ export function ExplorerPage() {
 
     const unsubs = [
       appClient.onConflict((event) => {
-        setConflictToast(
-          `Conflict detected on depot ${event.depotId.slice(0, 8)}… — overwriting with local version.`
-        );
+        const depotShort = event.depotId.slice(0, 8);
+        if (event.resolution === "3way-merge-success") {
+          setConflictToast(`Depot ${depotShort}… — conflict resolved via 3-way merge.`);
+        } else if (event.resolution === "3way-merge-failed") {
+          setConflictToast(`Depot ${depotShort}… — merge failed, overwriting with local version.`);
+        } else {
+          setConflictToast(
+            `Conflict detected on depot ${depotShort}… — overwriting with local version.`
+          );
+        }
       }),
       appClient.onCommit((event) => {
         pendingRootsRef.current.delete(event.depotId);
-        explorerStoreRef.current?.getState().updateServerRoot(event.committedRoot);
+        const store = explorerStoreRef.current?.getState();
+        if (!store) return;
+
+        // If merge produced a different root (committedRoot !== requestedRoot)
+        // and no new local writes happened (depotRoot === requestedRoot),
+        // update depotRoot to the merged result and refresh the directory.
+        if (
+          event.committedRoot !== event.requestedRoot &&
+          store.depotRoot === event.requestedRoot &&
+          store.depotId === event.depotId
+        ) {
+          store.updateDepotRoot(event.committedRoot);
+        }
+        store.updateServerRoot(event.committedRoot);
+
+        // Refresh directory view when merge changed the root
+        if (event.committedRoot !== event.requestedRoot && store.depotId === event.depotId) {
+          store.refresh();
+        }
       }),
     ];
 

@@ -239,6 +239,7 @@ export function createSyncCoordinator(config: SyncCoordinatorConfig): SyncCoordi
             payload: {
               depotId: entry.depotId,
               committedRoot: entry.targetRoot,
+              requestedRoot: entry.targetRoot,
             },
           });
           continue;
@@ -278,6 +279,7 @@ export function createSyncCoordinator(config: SyncCoordinatorConfig): SyncCoordi
           payload: {
             depotId: entry.depotId,
             committedRoot: entry.targetRoot,
+            requestedRoot: entry.targetRoot,
           },
         });
       } catch (err) {
