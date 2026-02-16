@@ -36,6 +36,7 @@
       "@casfa/explorer": ["./packages/explorer/src/index.ts"],
       "@casfa/explorer/core/sync-manager": ["./packages/explorer/src/core/sync-manager.ts"],
       "@casfa/explorer/core/sync-coordinator": ["./packages/explorer/src/core/sync-coordinator.ts"],
+      "@casfa/explorer/core/merge-handler": ["./packages/explorer/src/core/merge-handler.ts"],
       "@casfa/fs": ["./packages/fs/src/index.ts"],
       "@casfa/storage-http": ["./packages/storage-http/src/index.ts"],
       "@casfa/storage-indexeddb": ["./packages/storage-indexeddb/src/index.ts"],

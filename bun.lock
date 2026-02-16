@@ -144,6 +144,7 @@
       },
       "peerDependencies": {
         "@casfa/client": "workspace:*",
+        "@casfa/core": "workspace:*",
         "@casfa/explorer": "workspace:*",
         "@casfa/port-rpc": "workspace:*",
       },
@@ -227,6 +228,7 @@
       "peerDependencies": {
         "@casfa/client": "workspace:*",
         "@casfa/core": "workspace:*",
+        "@casfa/dag-diff": "workspace:*",
         "@casfa/encoding": "workspace:*",
         "@casfa/fs": "workspace:*",
         "@casfa/protocol": "workspace:*",

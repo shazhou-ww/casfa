@@ -41,6 +41,11 @@ export {
   type ExplorerStore,
   type ExplorerStoreApi,
 } from "./core/explorer-store.ts";
+// ── Merge Handler ──
+export {
+  type CreateMergeHandlerOpts,
+  createMergeHandler,
+} from "./core/merge-handler.ts";
 // ── Sync Coordinator (SW) ──
 export {
   createSyncCoordinator,
