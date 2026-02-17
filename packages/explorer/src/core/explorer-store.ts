@@ -132,7 +132,7 @@ export type ExplorerActions = {
   goUp: () => Promise<void>;
 
   // ── Tree sidebar (Iter 3) ──
-  expandTreeNode: (path: string) => Promise<void>;
+  expandTreeNode: (path: string, force?: boolean) => Promise<void>;
   collapseTreeNode: (path: string) => void;
   setSidebarWidth: (width: number) => void;
   toggleSidebar: () => void;
@@ -621,8 +621,9 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
         // Refresh tree node cache for current path
         const { depotId } = get();
         if (depotId) {
-          // Invalidate children of expanded tree nodes along the path so
-          // expandTreeNode will re-fetch them with the (possibly new) depotRoot.
+          // Force re-fetch expanded tree nodes along the current path.
+          // We keep existing children visible (no children: null) to avoid
+          // a visual flash; expandTreeNode(…, true) replaces them atomically.
           const keysToRefresh: string[] = [];
           const depotKey = `depot:${depotId}`;
           keysToRefresh.push(depotKey);
@@ -633,20 +634,12 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
               keysToRefresh.push(acc);
             }
           }
-          const invalidateMap = new Map(get().treeNodes);
-          for (const key of keysToRefresh) {
-            const n = invalidateMap.get(key);
-            if (n?.isExpanded && n.children !== null) {
-              invalidateMap.set(key, { ...n, children: null });
-            }
-          }
-          set({ treeNodes: invalidateMap });
 
-          // Re-expand each invalidated node in order (root → leaf)
+          // Re-expand each node in order (root → leaf), forcing re-fetch
           for (const key of keysToRefresh) {
             const n = get().treeNodes.get(key);
             if (n?.isExpanded) {
-              await get().expandTreeNode(key);
+              await get().expandTreeNode(key, true);
             }
           }
         }
@@ -758,20 +751,20 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     canGoUp: () => get().currentPath !== "",
 
     // ── Tree sidebar (Iter 3) ──
-    expandTreeNode: async (path: string) => {
+    expandTreeNode: async (path: string, force?: boolean) => {
       const { treeNodes } = get();
       const node = treeNodes.get(path);
 
-      // Already expanded with loaded children — nothing to do
-      if (node?.isExpanded && node.children !== null && !node.isLoading) return;
+      // Already expanded with loaded children — nothing to do (unless forced)
+      if (!force && node?.isExpanded && node.children !== null && !node.isLoading) return;
 
       // ── Depot node: select depot + load root directories ──
       if (node?.type === "depot" && node.depotId) {
         const depotIdToSelect = node.depotId;
 
-        // Mark this depot as expanded + loading
+        // Mark this depot as expanded + loading (skip loading indicator on force-refresh)
         const newMap = new Map(treeNodes);
-        newMap.set(path, { ...node, isExpanded: true, isLoading: true });
+        newMap.set(path, { ...node, isExpanded: true, isLoading: !force });
         set({ treeNodes: newMap });
 
         // Select the depot if not already selected or root not loaded
@@ -844,7 +837,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
       const newMap = new Map(treeNodes);
       const existing = newMap.get(path);
       if (existing) {
-        newMap.set(path, { ...existing, isExpanded: true, isLoading: true });
+        newMap.set(path, { ...existing, isExpanded: true, isLoading: !force });
       } else {
         const name = relativePath ? relativePath.split("/").pop()! : "root";
         newMap.set(path, {

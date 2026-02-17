@@ -17,6 +17,7 @@ import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import VideoFileIcon from "@mui/icons-material/VideoFile";
 import { Box, CircularProgress, Skeleton, Typography } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useDeferredLoading } from "../hooks/use-deferred-loading.ts";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import { useHighlightMatch } from "../hooks/use-search.ts";
 import type { ExplorerItem } from "../types.ts";
@@ -181,13 +182,14 @@ export function FileGrid({
   cutPaths,
 }: FileGridProps) {
   const t = useExplorerT();
-  const isLoading = useExplorerStore((s) => s.isLoading);
+  const rawLoading = useExplorerStore((s) => s.isLoading);
   const hasMore = useExplorerStore((s) => s.hasMore);
   const loadMore = useExplorerStore((s) => s.loadMore);
   const navigate = useExplorerStore((s) => s.navigate);
   const selectedItems = useExplorerStore((s) => s.selectedItems);
   const setSelectedItems = useExplorerStore((s) => s.setSelectedItems);
   const getSortedItems = useExplorerStore((s) => s.getSortedItems);
+  const isLoading = useDeferredLoading(rawLoading);
   const searchTerm = useExplorerStore((s) => s.searchTerm);
   const focusIndex = useExplorerStore((s) => s.focusIndex);
   const lastSelectedIndex = useExplorerStore((s) => s.lastSelectedIndex);
