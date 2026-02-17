@@ -27,6 +27,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useDeferredLoading } from "../hooks/use-deferred-loading.ts";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import type { TreeNode } from "../types.ts";
 import { CreateDepotDialog } from "./CreateDepotDialog.tsx";
@@ -49,7 +50,8 @@ export function DirectoryTree({ onNavigate }: DirectoryTreeProps) {
   const sidebarCollapsed = useExplorerStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useExplorerStore((s) => s.toggleSidebar);
   const permissions = useExplorerStore((s) => s.permissions);
-  const depotsLoading = useExplorerStore((s) => s.depotsLoading);
+  const rawDepotsLoading = useExplorerStore((s) => s.depotsLoading);
+  const depotsLoading = useDeferredLoading(rawDepotsLoading);
 
   // ── Depot management dialogs ──
   const [createOpen, setCreateOpen] = useState(false);
@@ -346,6 +348,7 @@ function TreeNodeItem({
   const latestNode = treeNodes.get(node.path) ?? node;
   const isActive = activeTreeKey === latestNode.path;
   const isDepot = latestNode.type === "depot";
+  const showNodeLoading = useDeferredLoading(latestNode.isLoading ?? false);
 
   return (
     <>
@@ -381,7 +384,7 @@ function TreeNodeItem({
             flexShrink: 0,
           }}
         >
-          {latestNode.isLoading ? (
+          {showNodeLoading ? (
             <CircularProgress size={12} />
           ) : latestNode.isExpanded ? (
             <ExpandMoreIcon sx={{ fontSize: 16 }} />
