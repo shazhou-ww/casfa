@@ -117,6 +117,7 @@ const messages: Record<ExplorerTextKey, string> = {
   "detail.type": "类型",
   "detail.nodeKey": "节点密钥",
   "detail.childCount": "子项数",
+  "detail.refCount": "引用计数",
   "detail.noSelection": "未选择项目",
   "detail.multipleSelected": "已选择 {count} 个项目",
   "detail.totalSize": "总大小",
@@ -143,6 +144,22 @@ const messages: Record<ExplorerTextKey, string> = {
   // 上传增强 (Iter 4)
   "upload.cancelAll": "取消全部",
   "upload.overallProgress": "总体进度",
+  // Depot 历史 (Iter 5)
+  "depot.historyTab": "历史记录",
+  "depot.infoTab": "基本信息",
+  "depot.historyEmpty": "暂无历史",
+  "depot.historyCurrent": "当前版本",
+  "depot.historyRollback": "回滚到此版本",
+  "depot.historyRollbackConfirm": "确定要回滚到 {time} 的版本吗？这将创建一个新的提交指向该版本。",
+  "depot.historyRollbackSuccess": "回滚成功",
+  "depot.historyRollbackError": "回滚失败",
+  "depot.historyDiffAdded": "新增",
+  "depot.historyDiffRemoved": "删除",
+  "depot.historyDiffModified": "修改",
+  "depot.historyDiffMoved": "移动",
+  "depot.historyDiffTruncated": "……还有更多变更",
+  "depot.historyDiffNone": "无差异信息",
+  "depot.historyRollingBack": "正在回滚…",
 };
 
 /**

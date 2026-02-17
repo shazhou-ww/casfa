@@ -9,8 +9,8 @@
 import CloseIcon from "@mui/icons-material/Close";
 import FolderIcon from "@mui/icons-material/Folder";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
-import { Box, Divider, Drawer, IconButton, Tooltip, Typography } from "@mui/material";
-import { useMemo } from "react";
+import { Box, CircularProgress, Divider, Drawer, IconButton, Tooltip, Typography } from "@mui/material";
+import { useEffect, useMemo, useState } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import type { ExplorerItem } from "../types.ts";
 import { formatSize } from "../utils/format-size.ts";
@@ -35,7 +35,17 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SingleItemDetail({ item, t }: { item: ExplorerItem; t: ReturnType<typeof useExplorerT> }) {
+function SingleItemDetail({
+  item,
+  t,
+  refCount,
+  refCountLoading,
+}: {
+  item: ExplorerItem;
+  t: ReturnType<typeof useExplorerT>;
+  refCount: number | null;
+  refCountLoading: boolean;
+}) {
   return (
     <>
       <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
@@ -68,6 +78,21 @@ function SingleItemDetail({ item, t }: { item: ExplorerItem; t: ReturnType<typeo
       )}
 
       {item.nodeKey && <DetailRow label={t("detail.nodeKey")} value={item.nodeKey} />}
+
+      {item.nodeKey && (
+        <Box sx={{ mb: 1.5 }}>
+          <Typography variant="caption" color="text.secondary" fontWeight={600}>
+            {t("detail.refCount")}
+          </Typography>
+          {refCountLoading ? (
+            <CircularProgress size={14} sx={{ display: "block", mt: 0.5 }} />
+          ) : (
+            <Typography variant="body2" sx={{ wordBreak: "break-all", userSelect: "text" }}>
+              {refCount !== null ? String(refCount) : "\u2014"}
+            </Typography>
+          )}
+        </Box>
+      )}
     </>
   );
 }
@@ -78,10 +103,47 @@ export function DetailPanel({ width = PANEL_WIDTH }: DetailPanelProps) {
   const toggleDetailPanel = useExplorerStore((s) => s.toggleDetailPanel);
   const selectedItems = useExplorerStore((s) => s.selectedItems);
   const currentPath = useExplorerStore((s) => s.currentPath);
+  const client = useExplorerStore((s) => s.client);
+
+  const [refCount, setRefCount] = useState<number | null>(null);
+  const [refCountLoading, setRefCountLoading] = useState(false);
 
   const totalSize = useMemo(() => {
     return selectedItems.reduce((sum, item) => sum + (item.size ?? 0), 0);
   }, [selectedItems]);
+
+  // Fetch refCount when a single item with nodeKey is selected
+  useEffect(() => {
+    const singleItem = selectedItems.length === 1 ? selectedItems[0] : null;
+    const nodeKey = singleItem?.nodeKey;
+    if (!nodeKey || !detailPanelOpen) {
+      setRefCount(null);
+      return;
+    }
+
+    let cancelled = false;
+    setRefCountLoading(true);
+    client.nodes
+      .getMetadata(nodeKey)
+      .then((result) => {
+        if (cancelled) return;
+        if (result.ok && result.data.refCount !== undefined) {
+          setRefCount(result.data.refCount);
+        } else {
+          setRefCount(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setRefCount(null);
+      })
+      .finally(() => {
+        if (!cancelled) setRefCountLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedItems, detailPanelOpen, client]);
 
   const renderContent = () => {
     if (selectedItems.length === 0) {
@@ -96,7 +158,7 @@ export function DetailPanel({ width = PANEL_WIDTH }: DetailPanelProps) {
     }
 
     if (selectedItems.length === 1) {
-      return <SingleItemDetail item={selectedItems[0]!} t={t} />;
+      return <SingleItemDetail item={selectedItems[0]!} t={t} refCount={refCount} refCountLoading={refCountLoading} />;
     }
 
     // Multiple selection

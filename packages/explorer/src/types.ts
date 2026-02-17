@@ -483,6 +483,7 @@ export type ExplorerTextKey =
   | "detail.type"
   | "detail.nodeKey"
   | "detail.childCount"
+  | "detail.refCount"
   | "detail.noSelection"
   | "detail.multipleSelected"
   | "detail.totalSize"
@@ -508,4 +509,20 @@ export type ExplorerTextKey =
   | "dnd.copyItems"
   // Upload (Iter 4)
   | "upload.cancelAll"
-  | "upload.overallProgress";
+  | "upload.overallProgress"
+  // Depot history (Iter 5)
+  | "depot.historyTab"
+  | "depot.infoTab"
+  | "depot.historyEmpty"
+  | "depot.historyCurrent"
+  | "depot.historyRollback"
+  | "depot.historyRollbackConfirm"
+  | "depot.historyRollbackSuccess"
+  | "depot.historyRollbackError"
+  | "depot.historyDiffAdded"
+  | "depot.historyDiffRemoved"
+  | "depot.historyDiffModified"
+  | "depot.historyDiffMoved"
+  | "depot.historyDiffTruncated"
+  | "depot.historyDiffNone"
+  | "depot.historyRollingBack";
