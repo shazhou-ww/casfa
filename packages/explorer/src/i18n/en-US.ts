@@ -117,6 +117,7 @@ const messages: Record<ExplorerTextKey, string> = {
   "detail.type": "Type",
   "detail.nodeKey": "Node Key",
   "detail.childCount": "Children",
+  "detail.refCount": "Ref Count",
   "detail.noSelection": "No item selected",
   "detail.multipleSelected": "{count} items selected",
   "detail.totalSize": "Total size",
@@ -143,6 +144,22 @@ const messages: Record<ExplorerTextKey, string> = {
   // Upload enhancements (Iter 4)
   "upload.cancelAll": "Cancel all",
   "upload.overallProgress": "Overall progress",
+  // Depot history (Iter 5)
+  "depot.historyTab": "History",
+  "depot.infoTab": "Info",
+  "depot.historyEmpty": "No history",
+  "depot.historyCurrent": "Current",
+  "depot.historyRollback": "Rollback to this version",
+  "depot.historyRollbackConfirm": "Are you sure you want to rollback to the version from {time}? This will create a new commit pointing to that version.",
+  "depot.historyRollbackSuccess": "Rolled back successfully",
+  "depot.historyRollbackError": "Failed to rollback",
+  "depot.historyDiffAdded": "Added",
+  "depot.historyDiffRemoved": "Removed",
+  "depot.historyDiffModified": "Modified",
+  "depot.historyDiffMoved": "Moved",
+  "depot.historyDiffTruncated": "…and more changes",
+  "depot.historyDiffNone": "No diff available",
+  "depot.historyRollingBack": "Rolling back…",
 };
 
 /**

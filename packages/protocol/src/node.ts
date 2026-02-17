@@ -53,6 +53,7 @@ const BaseNodeMetadataSchema = z.object({
   key: z.string(),
   kind: NodeKindSchema,
   payloadSize: z.number().int().nonnegative(),
+  refCount: z.number().int().nonnegative().optional(),
 });
 
 /**

@@ -337,7 +337,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
     },
 
     getMetadata: async (c) => {
-      const _realm = getRealm(c);
+      const realm = getRealm(c);
       const nodeKey = decodeURIComponent(c.req.param("key"));
       const key = toStorageKey(nodeKey);
 
@@ -396,6 +396,10 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
         const node = decodeNode(bytes);
         // nodeKey is already provided by the request
 
+        // Fetch refcount for this node in the current realm
+        const refCountRecord = await refCountDb.getRefCount(realm, key);
+        const refCount = refCountRecord?.count;
+
         if (node.kind === "dict") {
           // d-node: directory
           const children: Record<string, string> = {};
@@ -413,6 +417,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
             kind: "dict",
             payloadSize: node.size,
             children,
+            refCount,
           });
         }
 
@@ -425,6 +430,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
             payloadSize: node.size,
             contentType: node.fileInfo?.contentType ?? "application/octet-stream",
             successor,
+            refCount,
           });
         }
 
@@ -436,6 +442,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
             kind: "successor",
             payloadSize: node.size,
             successor,
+            refCount,
           });
         }
 
