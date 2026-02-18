@@ -64,17 +64,38 @@ stack_name = "casfa-staging"
 resolve_s3 = true
 s3_prefix = "casfa-sam-staging"
 region = "us-east-1"
+profile = "AdministratorAccess-914369185440"
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = false
 
 parameter_overrides = [
-  "CognitoUserPoolId=",
-  "CognitoClientId=",
+  # ── Cognito (shared User Pool, shared prod App Client) ──
+  "CognitoUserPoolId=us-east-1_gMTKxXOKo",
+  "CognitoClientId=rrr40170csj0160ptr9lusi3k",
   "CognitoRegion=us-east-1",
-  "CognitoHostedUiUrl=",
+  "CognitoHostedUiUrl=https://casfa-auth.auth.us-east-1.amazoncognito.com",
+
+  # ── Domain ──
+  # "CustomDomainName=staging.casfa.shazhou.me",
+  # "AcmCertificateArn=<staging-cert-arn>",
+  # "HostedZoneId=Z02459572I8BNRDEU4P1F",
+
+  # ── Environment ──
   "StageName=staging",
-  "LambdaMemorySize=256",
+
+  # ── S3 (share prod CAS bucket) ──
+  "ExternalCasBucketName=casfa-storage-prod-914369185440",
+
+  # ── Lambda (match prod for realistic staging) ──
+  "LambdaMemorySize=512",
+  "LambdaTimeout=30",
+
+  # ── Throttling ──
   "ApiThrottlingRate=50",
   "ApiThrottlingBurst=100",
   "WafRateLimit=500",
+
+  # ── Server ──
+  "CasNodeLimit=4194304",
+  "CasMaxPayloadSize=10485760",
 ]
