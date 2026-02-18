@@ -212,10 +212,14 @@ Resources:
           # Server
           CAS_NODE_LIMIT: !Ref CasNodeLimit
           CAS_MAX_PAYLOAD_SIZE: !Ref CasMaxPayloadSize
+          # When a custom domain is set, use it as the canonical base URL.
+          # Otherwise leave empty — the handler derives it from the Host header.
+          # (Referencing CloudFrontDistribution or CasfaHttpApi here would
+          # create a circular dependency with SAM's auto-generated resources.)
           CAS_BASE_URL: !If
             - HasCustomDomain
             - !Sub "https://${CustomDomainName}"
-            - !Sub "https://${CloudFrontDistribution.DomainName}"
+            - ""
       Policies:
         # DynamoDB access
         - DynamoDBCrudPolicy:
