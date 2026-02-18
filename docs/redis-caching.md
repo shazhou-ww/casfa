@@ -307,15 +307,15 @@ bun run dev:minimal   # All in-memory (no Docker), no frontend — for quick tes
 
 | Preset | Command | DynamoDB | Redis | Storage | Auth |
 |---|---|---|---|---|---|
-| (default) | `bun run dev` | `persistent` (port 8700) | `redis://localhost:6379` | fs | mock |
-| `local` | `--preset local` | `persistent` (port 8700) | `redis://localhost:6379` | fs | mock |
-| `e2e` | `--preset e2e` | `memory` (port 8701) | `redis://localhost:6380` | memory | mock |
-| `dev` | `--preset dev` | AWS | disabled | s3 | cognito |
+| (default) | `bun run dev` | `persistent` (port 8700) | `redis://localhost:6379` | fs | cognito |
+| `dev` | `--preset dev` | `persistent` (port 8700) | `redis://localhost:6379` | fs | cognito |
+| `test` | `--preset test` | `memory` (port 8701) | `redis://localhost:6380` | memory | mock |
+| `aws` | `--preset aws` | AWS | disabled | s3 | cognito |
 
 The dev script auto-starts the corresponding Docker containers:
-- Default/local: `dynamodb` + `redis`
-- E2E: `dynamodb-test` + `redis-test`
-- Dev (AWS): no Docker services
+- Default/dev: `dynamodb` + `redis`
+- Test: `dynamodb-test` + `redis-test`
+- AWS: no Docker services
 
 ### Docker Compose Services
 
@@ -491,10 +491,10 @@ backend/src/
 | Test Suite | Redis | Purpose |
 |---|---|---|
 | Unit tests (`bun test`) | Mocked | Test cache-aside logic, `MGET` batching, error fallback |
-| E2E (`--preset e2e`) | `redis-test` on port 6380 | Validate caching behavior with ephemeral Redis |
+| E2E (`--preset test`) | `redis-test` on port 6380 | Validate caching behavior with ephemeral Redis |
 | E2E no-cache | `REDIS_ENABLED=false` | Validate system works without Redis (baseline correctness) |
 
-The `e2e` preset uses the `redis-test` container (in-memory, no persistence) which starts clean each run. CI should run both with and without `REDIS_ENABLED` to ensure correctness on both paths.
+The `test` preset uses the `redis-test` container (in-memory, no persistence) which starts clean each run. CI should run both with and without `REDIS_ENABLED` to ensure correctness on both paths.
 
 ## Expected Impact
 

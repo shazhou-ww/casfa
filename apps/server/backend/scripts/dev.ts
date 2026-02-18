@@ -7,18 +7,18 @@
  *
  * Usage:
  *   bun run backend/scripts/dev.ts                     # Default: Docker (DynamoDB + Redis) + fs storage + Cognito auth
- *   bun run backend/scripts/dev.ts --preset e2e        # All in-memory + mock auth (for tests)
- *   bun run backend/scripts/dev.ts --preset local      # Persistent DB + fs storage + Cognito auth (same as default)
- *   bun run backend/scripts/dev.ts --preset dev        # Connect to AWS services (Cognito + S3)
- *   bun run backend/scripts/dev.ts --no-frontend       # Backend only
+ *   bun run backend/scripts/dev.ts --preset test        # All in-memory + mock auth (for tests)
+ *   bun run backend/scripts/dev.ts --preset dev         # Persistent DB + fs storage + Cognito auth (same as default)
+ *   bun run backend/scripts/dev.ts --preset aws         # Connect to AWS services (Cognito + S3)
+ *   bun run backend/scripts/dev.ts --no-frontend        # Backend only
  *
  *   # Custom configuration:
  *   bun run backend/scripts/dev.ts --db memory --storage memory --auth mock
  *
  * Presets:
- *   e2e   - All in-memory (DynamoDB port 8701) + mock JWT (for tests)
- *   local - Persistent DynamoDB (port 8700) + Redis (port 6379) + fs storage + Cognito auth (default)
- *   dev   - Connect to real AWS services (Cognito + S3)
+ *   test  - All in-memory (DynamoDB port 8701) + mock JWT (for tests)
+ *   dev   - Persistent DynamoDB (port 8700) + Redis (port 6379) + fs storage + Cognito auth (default)
+ *   aws   - Connect to real AWS services (Cognito + S3)
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -57,7 +57,7 @@ import { createAllTables, createClient, listTables } from "./create-local-tables
 type DbType = "memory" | "persistent" | "aws";
 type StorageType = "memory" | "fs" | "s3";
 type AuthType = "mock" | "cognito";
-type PresetType = "e2e" | "local" | "dev";
+type PresetType = "test" | "dev" | "aws";
 
 interface DevConfig {
   db: DbType;
@@ -69,17 +69,17 @@ interface DevConfig {
 
 // Preset configurations
 const presets: Record<PresetType, Partial<DevConfig>> = {
-  e2e: {
+  test: {
     db: "memory",
     storage: "memory",
     auth: "mock",
   },
-  local: {
+  dev: {
     db: "persistent",
     storage: "fs",
     auth: "cognito",
   },
-  dev: {
+  aws: {
     db: "aws",
     storage: "s3",
     auth: "cognito",
@@ -205,6 +205,10 @@ function buildEnvVars(config: DevConfig): Record<string, string> {
     const redisPort = config.db === "memory" ? 6380 : 6379;
     env.REDIS_ENABLED = "true";
     env.REDIS_URL = `redis://localhost:${redisPort}`;
+    // Use separate key prefix for test to avoid collisions
+    if (config.db === "memory") {
+      env.REDIS_KEY_PREFIX = "cas:test:";
+    }
   } else {
     // AWS preset: Redis only if explicitly configured via env
     if (!env.REDIS_URL) {
@@ -301,7 +305,7 @@ program
   .option("--db <type>", "DynamoDB type: memory (8701), persistent (8700), aws", "persistent")
   .option("--storage <type>", "Storage type: memory, fs, s3", "fs")
   .option("--auth <type>", "Auth type: mock, cognito", "cognito")
-  .option("--preset <name>", "Use preset configuration: e2e, local, dev")
+  .option("--preset <name>", "Use preset configuration: test, dev, aws")
   .option("--port <number>", "Server port", "8801")
   .option("--no-frontend", "Skip starting the frontend Vite dev server", false)
   .option("--skip-tables", "Skip table creation/verification", false)
@@ -323,7 +327,7 @@ program
       const preset = presets[options.preset as PresetType];
       if (!preset) {
         console.error(`Unknown preset: ${options.preset}`);
-        console.error("Available presets: e2e, local, dev");
+        console.error("Available presets: test, dev, aws");
         process.exit(1);
       }
       config = { ...config, ...preset };
@@ -338,7 +342,7 @@ program
     console.log(`  Storage:  ${config.storage}`);
     console.log(`  Auth:     ${config.auth}`);
     console.log(`  Port:     ${config.port}`);
-    console.log(`  Redis:    ${config.db !== "aws" ? "redis://localhost:6379" : "disabled"}`);
+    console.log(`  Redis:    ${config.db !== "aws" ? `redis://localhost:${config.db === "memory" ? 6380 : 6379}` : "disabled"}`);
     console.log(`  Frontend: ${noFrontend ? "disabled" : "http://localhost:8901"}`);
     console.log();
 

@@ -89,6 +89,12 @@ Parameters:
     Type: String
     Description: S3 key prefix for CAS blob storage
     Default: "cas/v1/"
+  ExternalCasBucketName:
+    Type: String
+    Description: >-
+      Name of an existing S3 bucket for CAS storage (e.g. from prod stack).
+      Leave empty to create a new bucket in this stack.
+    Default: ""
 
   # ── Server Config ──
   CasNodeLimit:
@@ -110,6 +116,7 @@ Conditions:
   CreateDnsRecord: !And
     - !Condition HasCustomDomain
     - !Condition HasHostedZone
+  CreateCasBucket: !Equals [!Ref ExternalCasBucketName, ""]
 
 # =============================================================================
 # Globals
@@ -183,9 +190,11 @@ Resources:
             Method: ANY
       Environment:
         Variables:
-          # Storage
-          CAS_STORAGE_TYPE: s3
-          CAS_BUCKET: !Ref CasStorageBucket
+          # Storage (handler.ts hardcodes S3; STORAGE_TYPE not needed in Lambda)
+          CAS_BUCKET: !If
+            - CreateCasBucket
+            - !Ref CasStorageBucket
+            - !Ref ExternalCasBucketName
           CAS_PREFIX: !Ref CasStoragePrefix
           CAS_REGION: !Ref AWS::Region
           # DynamoDB
@@ -198,6 +207,8 @@ Resources:
           CASFA_COGNITO_CLIENT_ID: !Ref CognitoClientId
           COGNITO_REGION: !Ref CognitoRegion
           COGNITO_HOSTED_UI_URL: !Ref CognitoHostedUiUrl
+          # Redis (disabled initially; enable when ElastiCache is provisioned)
+          REDIS_ENABLED: "false"
           # Server
           CAS_NODE_LIMIT: !Ref CasNodeLimit
           CAS_MAX_PAYLOAD_SIZE: !Ref CasMaxPayloadSize
@@ -217,7 +228,10 @@ Resources:
             TableName: !Ref UsageTable
         # S3 access
         - S3CrudPolicy:
-            BucketName: !Ref CasStorageBucket
+            BucketName: !If
+              - CreateCasBucket
+              - !Ref CasStorageBucket
+              - !Ref ExternalCasBucketName
         # Cognito (for admin operations)
         - Statement:
             - Effect: Allow
@@ -436,9 +450,10 @@ Resources:
   # S3 Buckets
   # ===========================================================================
 
-  # ── CAS Blob Storage ──
+  # ── CAS Blob Storage (created only when ExternalCasBucketName is empty) ──
   CasStorageBucket:
     Type: AWS::S3::Bucket
+    Condition: CreateCasBucket
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
@@ -729,7 +744,10 @@ Outputs:
 
   CasStorageBucketName:
     Description: CAS blob storage S3 bucket name
-    Value: !Ref CasStorageBucket
+    Value: !If
+      - CreateCasBucket
+      - !Ref CasStorageBucket
+      - !Ref ExternalCasBucketName
 
   TokensTableName:
     Description: DynamoDB tokens table name
