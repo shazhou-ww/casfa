@@ -96,7 +96,7 @@ export const TokenListItemSchema = z.object({
   type: TokenTypeSchema,
   createdAt: z.number(),
   expiresAt: z.number(),
-  revokedAt: z.number().optional(),
+  revokedAt: z.number().nullable(),
 });
 
 export type TokenListItem = z.infer<typeof TokenListItemSchema>;
@@ -120,7 +120,7 @@ export const TokenDetailSchema = z.object({
   scope: z.string().nullable(),
   createdAt: z.number(),
   expiresAt: z.number(),
-  revokedAt: z.number().optional(),
+  revokedAt: z.number().nullable(),
 });
 
 export type TokenDetail = z.infer<typeof TokenDetailSchema>;

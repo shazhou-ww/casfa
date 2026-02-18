@@ -53,7 +53,7 @@ const BaseNodeMetadataSchema = z.object({
   key: z.string(),
   kind: NodeKindSchema,
   payloadSize: z.number().int().nonnegative(),
-  refCount: z.number().int().nonnegative().optional(),
+  refCount: z.number().int().nonnegative(),
 });
 
 /**
@@ -72,7 +72,7 @@ export type DictNodeMetadata = z.infer<typeof DictNodeMetadataSchema>;
 export const FileNodeMetadataSchema = BaseNodeMetadataSchema.extend({
   kind: z.literal("file"),
   contentType: z.string(),
-  successor: z.string().optional(),
+  successor: z.string().nullable(),
 });
 
 export type FileNodeMetadata = z.infer<typeof FileNodeMetadataSchema>;
@@ -82,7 +82,7 @@ export type FileNodeMetadata = z.infer<typeof FileNodeMetadataSchema>;
  */
 export const SuccessorNodeMetadataSchema = BaseNodeMetadataSchema.extend({
   kind: z.literal("successor"),
-  successor: z.string().optional(),
+  successor: z.string().nullable(),
 });
 
 export type SuccessorNodeMetadata = z.infer<typeof SuccessorNodeMetadataSchema>;

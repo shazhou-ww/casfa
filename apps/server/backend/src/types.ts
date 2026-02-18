@@ -166,20 +166,20 @@ export type RealmUsage = {
 export type CommitDiffEntry = {
   type: "added" | "removed" | "modified" | "moved";
   path: string;
-  kind?: "file" | "dir";
+  kind: "file" | "dir" | null;
   /** Destination path for moved entries */
-  pathTo?: string;
+  pathTo: string | null;
 };
 
 export type DepotHistoryEntry = {
   root: string;
   /** The root this version was derived from (null for first commit / unknown) */
-  parentRoot?: string | null;
+  parentRoot: string | null;
   timestamp: number;
   /** Up to 5 diff entries summarising changes from parentRoot → root */
-  diff?: CommitDiffEntry[];
+  diff: CommitDiffEntry[] | null;
   /** Whether the diff was truncated */
-  diffTruncated?: boolean;
+  diffTruncated: boolean;
 };
 
 export type Depot = {

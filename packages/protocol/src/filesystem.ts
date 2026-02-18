@@ -72,12 +72,12 @@ export const FsStatResponseSchema = z.object({
   type: FsNodeTypeSchema,
   name: z.string(),
   key: z.string(),
-  /** File size in bytes (file only) */
-  size: z.number().int().nonnegative().optional(),
-  /** MIME type (file only) */
-  contentType: z.string().optional(),
-  /** Number of direct children (dir only) */
-  childCount: z.number().int().nonnegative().optional(),
+  /** File size in bytes (null for directories) */
+  size: z.number().int().nonnegative().nullable(),
+  /** MIME type (null for directories) */
+  contentType: z.string().nullable(),
+  /** Number of direct children (null for files) */
+  childCount: z.number().int().nonnegative().nullable(),
 });
 
 export type FsStatResponse = z.infer<typeof FsStatResponseSchema>;
@@ -93,12 +93,12 @@ export const FsLsChildSchema = z.object({
   index: z.number().int().nonnegative(),
   type: FsNodeTypeSchema,
   key: z.string(),
-  /** File size in bytes (file only) */
-  size: z.number().int().nonnegative().optional(),
-  /** MIME type (file only) */
-  contentType: z.string().optional(),
-  /** Number of direct children (dir only) */
-  childCount: z.number().int().nonnegative().optional(),
+  /** File size in bytes (null for directories) */
+  size: z.number().int().nonnegative().nullable(),
+  /** MIME type (null for directories) */
+  contentType: z.string().nullable(),
+  /** Number of direct children (null for files) */
+  childCount: z.number().int().nonnegative().nullable(),
 });
 
 export type FsLsChild = z.infer<typeof FsLsChildSchema>;

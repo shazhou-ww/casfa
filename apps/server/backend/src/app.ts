@@ -228,6 +228,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     fsService,
     storage,
     ownershipV2Db,
+    refCountDb,
     usageDb,
     delegatesDb,
     scopeSetNodesDb,

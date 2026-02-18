@@ -123,12 +123,12 @@ export const PollRequestResponseSchema = z.object({
   requestId: z.string(),
   /** Current status */
   status: AuthRequestStatusSchema,
-  /** Access Token Base64 (only present when status is "approved") */
-  tokenBase64: z.string().optional(),
-  /** Token expiration time (only present when status is "approved") */
-  expiresAt: z.number().optional(),
-  /** Denial reason (only present when status is "denied") */
-  reason: z.string().optional(),
+  /** Access Token Base64 (null unless status is "approved") */
+  tokenBase64: z.string().nullable(),
+  /** Token expiration time (null unless status is "approved") */
+  expiresAt: z.number().nullable(),
+  /** Denial reason (null unless status is "denied") */
+  reason: z.string().nullable(),
 });
 
 export type PollRequestResponse = z.infer<typeof PollRequestResponseSchema>;

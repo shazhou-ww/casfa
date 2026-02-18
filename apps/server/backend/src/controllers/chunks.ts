@@ -257,6 +257,23 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
             childRef.physicalSize,
             childRef.logicalSize
           );
+        } else {
+          // Child has no refcount record yet — create one.
+          // This happens for well-known nodes (e.g. empty d-node) or nodes
+          // that were claimed/owned but never went through the PUT path.
+          const childData = isWellKnownNode(childKey)
+            ? getWellKnownNodeData(childKey)
+            : await storage.get(childKey);
+          if (childData) {
+            let childLogicalSize = 0;
+            try {
+              const childNode = decodeNode(childData);
+              if (childNode.kind !== "dict") {
+                childLogicalSize = childNode.fileInfo?.fileSize ?? childData.length;
+              }
+            } catch {}
+            await refCountDb.incrementRef(realm, childKey, childData.length, childLogicalSize);
+          }
         }
       }
 
@@ -346,6 +363,9 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
       if (wellKnownData) {
         // Re-use the same decode logic below by assigning bytes
         const bytes = wellKnownData;
+        // Well-known nodes can still have per-realm refcount (from parent references)
+        const wkRefRecord = await refCountDb.getRefCount(realm, key);
+        const wkRefCount = wkRefRecord?.count ?? 0;
         try {
           const node = decodeNode(bytes);
           if (node.kind === "dict") {
@@ -364,16 +384,18 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
               kind: "dict",
               payloadSize: node.size,
               children,
+              refCount: wkRefCount,
             });
           }
           if (node.kind === "file") {
-            const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : undefined;
+            const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : null;
             return c.json<FileNodeMetadata>({
               key: nodeKey,
               kind: "file",
               payloadSize: node.size,
               contentType: node.fileInfo?.contentType ?? "application/octet-stream",
               successor,
+              refCount: wkRefCount,
             });
           }
         } catch {}
@@ -398,7 +420,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
 
         // Fetch refcount for this node in the current realm
         const refCountRecord = await refCountDb.getRefCount(realm, key);
-        const refCount = refCountRecord?.count;
+        const refCount = refCountRecord?.count ?? 0;
 
         if (node.kind === "dict") {
           // d-node: directory
@@ -423,7 +445,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
 
         if (node.kind === "file") {
           // f-node: file
-          const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : undefined;
+          const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : null;
           return c.json<FileNodeMetadata>({
             key: nodeKey,
             kind: "file",
@@ -436,7 +458,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
 
         if (node.kind === "successor") {
           // s-node: continuation
-          const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : undefined;
+          const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : null;
           return c.json<SuccessorNodeMetadata>({
             key: nodeKey,
             kind: "successor",
@@ -489,6 +511,7 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
     },
 
     getMetadataNavigated: async (c) => {
+      const realm = getRealm(c);
       const nodeKey = decodeURIComponent(c.req.param("key"));
       const nav = await navigateToTarget(c, nodeKey, storage, toStorageKey);
       if (!nav.ok) return c.json({ error: nav.error, message: nav.message }, nav.status);
@@ -500,6 +523,8 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
 
       try {
         const node = decodeNode(bytes);
+        const navRefRecord = await refCountDb.getRefCount(realm, nav.storageKey);
+        const navRefCount = navRefRecord?.count ?? 0;
         if (node.kind === "dict") {
           const children: Record<string, string> = {};
           if (node.children && node.childNames) {
@@ -516,25 +541,28 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
             kind: "dict",
             payloadSize: node.size,
             children,
+            refCount: navRefCount,
           });
         }
         if (node.kind === "file") {
-          const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : undefined;
+          const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : null;
           return c.json<FileNodeMetadata>({
             key: nav.nodeKey,
             kind: "file",
             payloadSize: node.size,
             contentType: node.fileInfo?.contentType ?? "application/octet-stream",
             successor,
+            refCount: navRefCount,
           });
         }
         if (node.kind === "successor") {
-          const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : undefined;
+          const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : null;
           return c.json<SuccessorNodeMetadata>({
             key: nav.nodeKey,
             kind: "successor",
             payloadSize: node.size,
             successor,
+            refCount: navRefCount,
           });
         }
         return c.json({ error: "invalid_node", message: "Unknown node kind" }, 400);

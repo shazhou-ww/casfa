@@ -88,7 +88,7 @@ export const createDepotsController = (deps: DepotsControllerDeps): DepotsContro
 
       return c.json({
         depots: result.depots.map(formatDepotResponse),
-        nextCursor: result.nextKey,
+        nextCursor: result.nextKey ?? null,
         hasMore: result.hasMore,
       });
     },

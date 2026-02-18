@@ -114,9 +114,9 @@ export const CommitDiffEntrySchema = z.object({
   /** Affected path (source path for moved entries) */
   path: z.string(),
   /** Node kind */
-  kind: z.enum(["file", "dir"]).optional(),
+  kind: z.enum(["file", "dir"]).nullable(),
   /** Destination path (only for moved entries) */
-  pathTo: z.string().optional(),
+  pathTo: z.string().nullable(),
 });
 
 export type CommitDiffEntry = z.infer<typeof CommitDiffEntrySchema>;
@@ -133,12 +133,12 @@ export const MAX_COMMIT_DIFF_ENTRIES = 5;
 export const HistoryEntrySchema = z.object({
   root: z.string(),
   /** The root this version was derived from (null for first commit / unknown) */
-  parentRoot: z.string().nullable().optional(),
+  parentRoot: z.string().nullable(),
   timestamp: z.number(),
   /** Up to 5 diff entries summarising changes from parentRoot → root */
-  diff: z.array(CommitDiffEntrySchema).optional(),
+  diff: z.array(CommitDiffEntrySchema).nullable(),
   /** Whether the diff was truncated (more than MAX_COMMIT_DIFF_ENTRIES changes) */
-  diffTruncated: z.boolean().optional(),
+  diffTruncated: z.boolean(),
 });
 
 export type HistoryEntry = z.infer<typeof HistoryEntrySchema>;

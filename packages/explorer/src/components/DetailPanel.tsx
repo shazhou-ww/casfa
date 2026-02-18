@@ -9,7 +9,15 @@
 import CloseIcon from "@mui/icons-material/Close";
 import FolderIcon from "@mui/icons-material/Folder";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
-import { Box, CircularProgress, Divider, Drawer, IconButton, Tooltip, Typography } from "@mui/material";
+import {
+  Box,
+  CircularProgress,
+  Divider,
+  Drawer,
+  IconButton,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import type { ExplorerItem } from "../types.ts";
@@ -68,7 +76,7 @@ function SingleItemDetail({
       {item.isDirectory ? (
         <DetailRow
           label={t("detail.childCount")}
-          value={item.childCount !== undefined ? String(item.childCount) : "\u2014"}
+          value={item.childCount !== null ? String(item.childCount) : "\u2014"}
         />
       ) : (
         <>
@@ -127,7 +135,7 @@ export function DetailPanel({ width = PANEL_WIDTH }: DetailPanelProps) {
       .getMetadata(nodeKey)
       .then((result) => {
         if (cancelled) return;
-        if (result.ok && result.data.refCount !== undefined) {
+        if (result.ok) {
           setRefCount(result.data.refCount);
         } else {
           setRefCount(null);
@@ -158,7 +166,14 @@ export function DetailPanel({ width = PANEL_WIDTH }: DetailPanelProps) {
     }
 
     if (selectedItems.length === 1) {
-      return <SingleItemDetail item={selectedItems[0]!} t={t} refCount={refCount} refCountLoading={refCountLoading} />;
+      return (
+        <SingleItemDetail
+          item={selectedItems[0]!}
+          t={t}
+          refCount={refCount}
+          refCountLoading={refCountLoading}
+        />
+      );
     }
 
     // Multiple selection
