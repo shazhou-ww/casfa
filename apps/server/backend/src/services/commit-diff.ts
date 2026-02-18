@@ -22,11 +22,11 @@ export type CommitDiffResult = {
 function toCommitDiffEntry(entry: DiffEntry): CommitDiffEntry {
   switch (entry.type) {
     case "added":
-      return { type: "added", path: entry.path, kind: entry.kind };
+      return { type: "added", path: entry.path, kind: entry.kind, pathTo: null };
     case "removed":
-      return { type: "removed", path: entry.path, kind: entry.kind };
+      return { type: "removed", path: entry.path, kind: entry.kind, pathTo: null };
     case "modified":
-      return { type: "modified", path: entry.path };
+      return { type: "modified", path: entry.path, kind: null, pathTo: null };
     case "moved":
       return {
         type: "moved",

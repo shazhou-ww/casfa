@@ -151,15 +151,15 @@ export const createDelegatesController = (deps: DelegatesControllerDeps): Delega
     return c.json({
       delegates: filtered.map((d) => ({
         delegateId: d.delegateId,
-        name: d.name,
+        name: d.name ?? null,
         depth: d.depth,
         canUpload: d.canUpload,
         canManageDepot: d.canManageDepot,
         isRevoked: d.isRevoked,
         createdAt: d.createdAt,
-        expiresAt: d.expiresAt,
+        expiresAt: d.expiresAt ?? null,
       })),
-      nextCursor: result.nextCursor,
+      nextCursor: result.nextCursor ?? null,
     });
   };
 
@@ -191,22 +191,20 @@ export const createDelegatesController = (deps: DelegatesControllerDeps): Delega
 
     return c.json({
       delegateId: delegate.delegateId,
-      name: delegate.name,
+      name: delegate.name ?? null,
       realm: delegate.realm,
       parentId: delegate.parentId,
       chain: delegate.chain,
       depth: delegate.depth,
       canUpload: delegate.canUpload,
       canManageDepot: delegate.canManageDepot,
-      delegatedDepots: delegate.delegatedDepots,
-      scopeNodeHash: delegate.scopeNodeHash
-        ? storageKeyToNodeKey(delegate.scopeNodeHash)
-        : undefined,
-      scopeSetNodeId: delegate.scopeSetNodeId,
-      expiresAt: delegate.expiresAt,
+      delegatedDepots: delegate.delegatedDepots ?? null,
+      scopeNodeHash: delegate.scopeNodeHash ? storageKeyToNodeKey(delegate.scopeNodeHash) : null,
+      scopeSetNodeId: delegate.scopeSetNodeId ?? null,
+      expiresAt: delegate.expiresAt ?? null,
       isRevoked: delegate.isRevoked,
-      revokedAt: delegate.revokedAt,
-      revokedBy: delegate.revokedBy,
+      revokedAt: delegate.revokedAt ?? null,
+      revokedBy: delegate.revokedBy ?? null,
       createdAt: delegate.createdAt,
     });
   };

@@ -84,8 +84,8 @@ export type BatchClaimRequest = z.infer<typeof BatchClaimRequestSchema>;
 export const BatchClaimResultSchema = z.object({
   key: z.string(),
   ok: z.boolean(),
-  alreadyOwned: z.boolean().optional(),
-  error: z.string().optional(),
+  alreadyOwned: z.boolean(),
+  error: z.string().nullable(),
 });
 export type BatchClaimResult = z.infer<typeof BatchClaimResultSchema>;
 

@@ -25,7 +25,7 @@ export type IconCategory =
 /**
  * Determine the icon category for a file.
  */
-export function getIconCategory(isDirectory: boolean, contentType?: string): IconCategory {
+export function getIconCategory(isDirectory: boolean, contentType?: string | null): IconCategory {
   if (isDirectory) return "folder";
   if (!contentType) return "file";
 

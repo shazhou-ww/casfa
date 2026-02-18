@@ -22,6 +22,7 @@ import type { ServerConfig } from "../config.ts";
 import type { DelegatesDb } from "../db/delegates.ts";
 import type { DepotsDb } from "../db/depots.ts";
 import type { OwnershipV2Db } from "../db/ownership-v2.ts";
+import type { RefCountDb } from "../db/refcount.ts";
 import type { ScopeSetNodesDb } from "../db/scope-set-nodes.ts";
 import type { UsageDb } from "../db/usage.ts";
 import { computeCommitDiff } from "../services/commit-diff.ts";
@@ -136,6 +137,7 @@ export type McpHandlerDeps = {
   fsService: FsService;
   storage: StorageProvider;
   ownershipV2Db: OwnershipV2Db;
+  refCountDb: RefCountDb;
   usageDb: UsageDb;
   delegatesDb: DelegatesDb;
   scopeSetNodesDb: ScopeSetNodesDb;
@@ -156,6 +158,7 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
     fsService,
     storage,
     ownershipV2Db,
+    refCountDb,
     usageDb,
     delegatesDb,
     scopeSetNodesDb,
@@ -468,27 +471,47 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
             }
           }
         }
-        return toolResult({ key: currentNodeKey, kind: "dict", payloadSize: node.size, children });
+        const refRecord = isWellKnownNode(storageKey)
+          ? null
+          : await refCountDb.getRefCount(realm, storageKey);
+        const refCount = refRecord?.count ?? 0;
+        return toolResult({
+          key: currentNodeKey,
+          kind: "dict",
+          payloadSize: node.size,
+          children,
+          refCount,
+        });
       }
 
       if (node.kind === "file") {
-        const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : undefined;
+        const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : null;
+        const refRecord = isWellKnownNode(storageKey)
+          ? null
+          : await refCountDb.getRefCount(realm, storageKey);
+        const refCount = refRecord?.count ?? 0;
         return toolResult({
           key: currentNodeKey,
           kind: "file",
           payloadSize: node.size,
           contentType: node.fileInfo?.contentType ?? "application/octet-stream",
-          successor: successor ?? null,
+          successor,
+          refCount,
         });
       }
 
       if (node.kind === "successor") {
-        const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : undefined;
+        const successor = node.children?.[0] ? hashToNodeKey(node.children[0]) : null;
+        const refRecord = isWellKnownNode(storageKey)
+          ? null
+          : await refCountDb.getRefCount(realm, storageKey);
+        const refCount = refRecord?.count ?? 0;
         return toolResult({
           key: currentNodeKey,
           kind: "successor",
           payloadSize: node.size,
-          successor: successor ?? null,
+          successor,
+          refCount,
         });
       }
 

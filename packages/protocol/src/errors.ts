@@ -124,8 +124,8 @@ export const ErrorResponseSchema = z.object({
   error: z.string(),
   /** Human-readable error message */
   message: z.string(),
-  /** Additional error details (optional) */
-  details: z.record(z.unknown()).optional(),
+  /** Additional error details */
+  details: z.record(z.unknown()).nullable(),
 });
 
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;

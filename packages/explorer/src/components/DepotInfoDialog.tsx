@@ -7,6 +7,7 @@
  * only a new entry is prepended to the history array.
  */
 
+import type { CommitDiffEntry, DepotDetail, HistoryEntry } from "@casfa/protocol";
 import AddIcon from "@mui/icons-material/Add";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -15,7 +16,6 @@ import EditIcon from "@mui/icons-material/Edit";
 import RestoreIcon from "@mui/icons-material/Restore";
 import {
   Box,
-  Button,
   Chip,
   CircularProgress,
   Collapse,
@@ -29,7 +29,6 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import type { CommitDiffEntry, DepotDetail, HistoryEntry } from "@casfa/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 
@@ -134,13 +133,7 @@ const DIFF_ICONS: Record<string, typeof AddIcon> = {
   moved: DriveFileMoveIcon,
 };
 
-function DiffEntryRow({
-  entry,
-  typeLabel,
-}: {
-  entry: CommitDiffEntry;
-  typeLabel: string;
-}) {
+function DiffEntryRow({ entry, typeLabel }: { entry: CommitDiffEntry; typeLabel: string }) {
   const Icon = DIFF_ICONS[entry.type] ?? EditIcon;
   const color = DIFF_COLORS[entry.type] ?? "text.secondary";
   const kindSuffix = entry.kind === "dir" ? "/" : "";
@@ -348,7 +341,11 @@ function HistoryEntryItem({
       <Collapse in={expanded}>
         <Box sx={{ pl: 4, pb: 1 }}>
           {entry.diff?.map((diff, i) => (
-            <DiffEntryRow key={`${diff.path}-${i}`} entry={diff} typeLabel={diffTypeLabel(diff.type)} />
+            <DiffEntryRow
+              key={`${diff.path}-${i}`}
+              entry={diff}
+              typeLabel={diffTypeLabel(diff.type)}
+            />
           ))}
           {entry.diffTruncated && (
             <Typography
@@ -486,10 +483,7 @@ export function DepotInfoDialog({ open, depotId, onClose }: DepotInfoDialogProps
             {/* ── Info tab ── */}
             {tab === 0 && (
               <Box sx={{ py: 1 }}>
-                <InfoRow
-                  label={t("depot.infoTitle")}
-                  value={info.title || t("depot.untitled")}
-                />
+                <InfoRow label={t("depot.infoTitle")} value={info.title || t("depot.untitled")} />
                 <InfoRow label={t("depot.infoId")} value={info.depotId} mono copiable />
                 <InfoRow
                   label={t("depot.infoRoot")}
@@ -498,18 +492,9 @@ export function DepotInfoDialog({ open, depotId, onClose }: DepotInfoDialogProps
                   copiable={!!info.root}
                 />
                 <InfoRow label={t("depot.infoMaxHistory")} value={String(info.maxHistory)} />
-                <InfoRow
-                  label={t("depot.infoHistoryCount")}
-                  value={String(info.history.length)}
-                />
-                <InfoRow
-                  label={t("depot.infoCreatedAt")}
-                  value={formatDateTime(info.createdAt)}
-                />
-                <InfoRow
-                  label={t("depot.infoUpdatedAt")}
-                  value={formatDateTime(info.updatedAt)}
-                />
+                <InfoRow label={t("depot.infoHistoryCount")} value={String(info.history.length)} />
+                <InfoRow label={t("depot.infoCreatedAt")} value={formatDateTime(info.createdAt)} />
+                <InfoRow label={t("depot.infoUpdatedAt")} value={formatDateTime(info.updatedAt)} />
               </Box>
             )}
 

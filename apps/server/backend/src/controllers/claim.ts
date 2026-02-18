@@ -198,7 +198,7 @@ export const createClaimController = (deps: ClaimControllerDeps): ClaimControlle
         // Already owned? (idempotent)
         const alreadyOwned = await ownershipDb.hasOwnership(entryStorageKey, delegateId);
         if (alreadyOwned) {
-          results.push({ key: nodeKey, ok: true, alreadyOwned: true });
+          results.push({ key: nodeKey, ok: true, alreadyOwned: true, error: null });
           anySucceeded = true;
           continue;
         }
@@ -207,7 +207,7 @@ export const createClaimController = (deps: ClaimControllerDeps): ClaimControlle
           // PoP claim
           const content = await getNodeContent(realmId, entryStorageKey);
           if (content === null) {
-            results.push({ key: nodeKey, ok: false, error: "NODE_NOT_FOUND" });
+            results.push({ key: nodeKey, ok: false, alreadyOwned: false, error: "NODE_NOT_FOUND" });
             anyFailed = true;
             continue;
           }
@@ -216,13 +216,13 @@ export const createClaimController = (deps: ClaimControllerDeps): ClaimControlle
             auth.delegate.depth > 0 &&
             !verifyPoP(entry.pop, auth.tokenBytes, content, popContext)
           ) {
-            results.push({ key: nodeKey, ok: false, error: "INVALID_POP" });
+            results.push({ key: nodeKey, ok: false, alreadyOwned: false, error: "INVALID_POP" });
             anyFailed = true;
             continue;
           }
 
           await ownershipDb.addOwnership(entryStorageKey, chain, delegateId, "", content.length);
-          results.push({ key: nodeKey, ok: true, alreadyOwned: false });
+          results.push({ key: nodeKey, ok: true, alreadyOwned: false, error: null });
           anySucceeded = true;
         } else if ("from" in entry && "path" in entry) {
           // Path-based claim
@@ -235,6 +235,7 @@ export const createClaimController = (deps: ClaimControllerDeps): ClaimControlle
             results.push({
               key: nodeKey,
               ok: false,
+              alreadyOwned: false,
               error: `Not authorized to access 'from' node ${fromKey}`,
             });
             anyFailed = true;
@@ -244,7 +245,7 @@ export const createClaimController = (deps: ClaimControllerDeps): ClaimControlle
           // Walk path from `from` to target
           const walkResult = await walkIndexPath(fromStorageKey, entry.path, storage);
           if (!walkResult.ok) {
-            results.push({ key: nodeKey, ok: false, error: walkResult.error });
+            results.push({ key: nodeKey, ok: false, alreadyOwned: false, error: walkResult.error });
             anyFailed = true;
             continue;
           }
@@ -255,6 +256,7 @@ export const createClaimController = (deps: ClaimControllerDeps): ClaimControlle
             results.push({
               key: nodeKey,
               ok: false,
+              alreadyOwned: false,
               error: `Path leads to ${walkedNodeKey}, not ${nodeKey}`,
             });
             anyFailed = true;
@@ -264,22 +266,28 @@ export const createClaimController = (deps: ClaimControllerDeps): ClaimControlle
           // Get content for ownership write (need size)
           const content = await getNodeContent(realmId, entryStorageKey);
           if (content === null) {
-            results.push({ key: nodeKey, ok: false, error: "NODE_NOT_FOUND" });
+            results.push({ key: nodeKey, ok: false, alreadyOwned: false, error: "NODE_NOT_FOUND" });
             anyFailed = true;
             continue;
           }
 
           await ownershipDb.addOwnership(entryStorageKey, chain, delegateId, "", content.length);
-          results.push({ key: nodeKey, ok: true, alreadyOwned: false });
+          results.push({ key: nodeKey, ok: true, alreadyOwned: false, error: null });
           anySucceeded = true;
         } else {
-          results.push({ key: nodeKey, ok: false, error: "Invalid claim entry format" });
+          results.push({
+            key: nodeKey,
+            ok: false,
+            alreadyOwned: false,
+            error: "Invalid claim entry format",
+          });
           anyFailed = true;
         }
       } catch (err) {
         results.push({
           key: nodeKey,
           ok: false,
+          alreadyOwned: false,
           error: err instanceof Error ? err.message : "Internal error",
         });
         anyFailed = true;

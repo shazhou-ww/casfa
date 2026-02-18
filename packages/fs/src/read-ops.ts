@@ -41,6 +41,8 @@ export const createReadOps = (ctx: FsContext, tree: TreeOps) => {
         type: "dir",
         name,
         key: storageKeyToNodeKey(hash),
+        size: null,
+        contentType: null,
         childCount: node.children?.length ?? 0,
       };
     }
@@ -51,6 +53,7 @@ export const createReadOps = (ctx: FsContext, tree: TreeOps) => {
         key: storageKeyToNodeKey(hash),
         size: node.fileInfo?.fileSize ?? node.size,
         contentType: node.fileInfo?.contentType ?? "application/octet-stream",
+        childCount: null,
       };
     }
 
@@ -61,6 +64,7 @@ export const createReadOps = (ctx: FsContext, tree: TreeOps) => {
       key: storageKeyToNodeKey(hash),
       size: node.size,
       contentType: "application/octet-stream",
+      childCount: null,
     };
   };
 
@@ -203,6 +207,9 @@ export const createReadOps = (ctx: FsContext, tree: TreeOps) => {
         index: i,
         type: childNode?.kind === "dict" ? "dir" : "file",
         key: storageKeyToNodeKey(childStorageKey),
+        size: null,
+        contentType: null,
+        childCount: null,
       };
 
       if (childNode) {

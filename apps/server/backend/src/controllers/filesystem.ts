@@ -52,7 +52,7 @@ const fsErrorResponse = (c: Context<Env>, err: FsError) => {
     {
       error: err.code,
       message: err.message,
-      ...(err.details ? { details: err.details } : {}),
+      details: err.details ?? null,
     },
     err.status as 400
   );

@@ -150,7 +150,8 @@ const messages: Record<ExplorerTextKey, string> = {
   "depot.historyEmpty": "No history",
   "depot.historyCurrent": "Current",
   "depot.historyRollback": "Rollback to this version",
-  "depot.historyRollbackConfirm": "Are you sure you want to rollback to the version from {time}? This will create a new commit pointing to that version.",
+  "depot.historyRollbackConfirm":
+    "Are you sure you want to rollback to the version from {time}? This will create a new commit pointing to that version.",
   "depot.historyRollbackSuccess": "Rolled back successfully",
   "depot.historyRollbackError": "Failed to rollback",
   "depot.historyDiffAdded": "Added",

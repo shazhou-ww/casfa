@@ -37,7 +37,7 @@ export const statusToErrorCode = (status: number): string => {
 export const createErrorFromResponse = async (response: Response): Promise<ClientError> => {
   const code = statusToErrorCode(response.status);
   let message = response.statusText;
-  let details: unknown;
+  let details: unknown = null;
 
   try {
     const body = (await response.json()) as Record<string, unknown>;

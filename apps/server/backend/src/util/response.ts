@@ -21,7 +21,7 @@ export const jsonResponse = <T>(c: Context, status: number, body: T) => {
  * Create an error response
  */
 export const errorResponse = (c: Context, status: number, error: string, details?: unknown) => {
-  return c.json({ error, details }, status as 400, CORS_HEADERS);
+  return c.json({ error, details: details ?? null }, status as 400, CORS_HEADERS);
 };
 
 /**

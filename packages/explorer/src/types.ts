@@ -20,14 +20,14 @@ export type ExplorerItem = {
   path: string;
   /** Whether this item is a directory */
   isDirectory: boolean;
-  /** File size in bytes (file only) */
-  size?: number;
-  /** MIME content type (file only) */
-  contentType?: string;
+  /** File size in bytes (file only, null for directories) */
+  size: number | null;
+  /** MIME content type (file only, null for directories) */
+  contentType: string | null;
   /** CAS node key (nod_XXXX) */
   nodeKey?: string;
-  /** Number of children (directory only) */
-  childCount?: number;
+  /** Number of children (directory only, null for files) */
+  childCount: number | null;
   /** Index in the parent directory */
   index?: number;
   /** Sync status — "pending" means locally modified but not yet committed to server */

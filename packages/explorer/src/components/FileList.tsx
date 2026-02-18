@@ -36,7 +36,7 @@ import { useHighlightMatch } from "../hooks/use-search.ts";
 import type { ExplorerItem, SortField } from "../types.ts";
 import { getIconCategory, ICON_COLORS } from "../utils/icon-map.ts";
 
-function formatFileSize(bytes: number | undefined): string {
+function formatFileSize(bytes: number | null | undefined): string {
   if (bytes === undefined || bytes === null) return "\u2014";
   if (bytes === 0) return "0 B";
   const units = ["B", "KB", "MB", "GB"];

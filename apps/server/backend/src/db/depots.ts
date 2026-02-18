@@ -355,11 +355,9 @@ export const createDepotsDb = (config: DepotsDbConfig): DepotsDb => {
       root: newRoot,
       parentRoot: oldRoot ?? null,
       timestamp: now,
+      diff: diff ? diff.entries : null,
+      diffTruncated: diff ? diff.truncated : false,
     };
-    if (diff) {
-      currentEntry.diff = diff.entries;
-      currentEntry.diffTruncated = diff.truncated;
-    }
 
     newHistory = [currentEntry as (typeof newHistory)[0], ...newHistory];
 

@@ -28,7 +28,7 @@ import { fetchWithAuth } from "../utils/http.ts";
 
 export type ListDelegatesResponse = {
   delegates: DelegateListItem[];
-  nextCursor?: string;
+  nextCursor: string | null;
 };
 
 // ============================================================================

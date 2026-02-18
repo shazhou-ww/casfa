@@ -47,14 +47,14 @@ export const CreateDelegateResponseSchema = z.object({
   /** New delegate details */
   delegate: z.object({
     delegateId: z.string(),
-    name: z.string().optional(),
+    name: z.string().nullable(),
     realm: z.string(),
     parentId: z.string(),
     depth: z.number().int().min(0),
     canUpload: z.boolean(),
     canManageDepot: z.boolean(),
-    delegatedDepots: z.array(z.string()).optional(),
-    expiresAt: z.number().optional(),
+    delegatedDepots: z.array(z.string()).nullable(),
+    expiresAt: z.number().nullable(),
     createdAt: z.number(),
   }),
   /** Refresh Token (base64-encoded 24-byte binary) — store securely */
@@ -75,20 +75,20 @@ export type CreateDelegateResponse = z.infer<typeof CreateDelegateResponseSchema
  */
 export const DelegateDetailSchema = z.object({
   delegateId: z.string(),
-  name: z.string().optional(),
+  name: z.string().nullable(),
   realm: z.string(),
   parentId: z.string().nullable(),
   chain: z.array(z.string()),
   depth: z.number().int().min(0),
   canUpload: z.boolean(),
   canManageDepot: z.boolean(),
-  delegatedDepots: z.array(z.string()).optional(),
-  scopeNodeHash: z.string().optional(),
-  scopeSetNodeId: z.string().optional(),
-  expiresAt: z.number().optional(),
+  delegatedDepots: z.array(z.string()).nullable(),
+  scopeNodeHash: z.string().nullable(),
+  scopeSetNodeId: z.string().nullable(),
+  expiresAt: z.number().nullable(),
   isRevoked: z.boolean(),
-  revokedAt: z.number().optional(),
-  revokedBy: z.string().optional(),
+  revokedAt: z.number().nullable(),
+  revokedBy: z.string().nullable(),
   createdAt: z.number(),
 });
 export type DelegateDetail = z.infer<typeof DelegateDetailSchema>;
@@ -115,13 +115,13 @@ export type ListDelegatesQuery = z.infer<typeof ListDelegatesQuerySchema>;
  */
 export const DelegateListItemSchema = z.object({
   delegateId: z.string(),
-  name: z.string().optional(),
+  name: z.string().nullable(),
   depth: z.number().int().min(0),
   canUpload: z.boolean(),
   canManageDepot: z.boolean(),
   isRevoked: z.boolean(),
   createdAt: z.number(),
-  expiresAt: z.number().optional(),
+  expiresAt: z.number().nullable(),
 });
 export type DelegateListItem = z.infer<typeof DelegateListItemSchema>;
 
@@ -130,7 +130,7 @@ export type DelegateListItem = z.infer<typeof DelegateListItemSchema>;
  */
 export const ListDelegatesResponseSchema = z.object({
   delegates: z.array(DelegateListItemSchema),
-  nextCursor: z.string().optional(),
+  nextCursor: z.string().nullable(),
 });
 export type ListDelegatesResponse = z.infer<typeof ListDelegatesResponseSchema>;
 

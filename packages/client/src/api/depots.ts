@@ -23,15 +23,15 @@ import { fetchWithAuth } from "../utils/http.ts";
 
 export type ListDepotsResponse = {
   depots: DepotListItem[];
-  nextCursor?: string;
+  nextCursor: string | null;
 };
 
 export type CommitDiffEntry = {
   type: "added" | "removed" | "modified" | "moved";
   path: string;
-  kind?: "file" | "dir";
+  kind: "file" | "dir" | null;
   /** Destination path for moved entries */
-  pathTo?: string;
+  pathTo: string | null;
 };
 
 export type CommitDepotResponse = {
