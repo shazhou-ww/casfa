@@ -36,3 +36,7 @@ tsconfig.build.json
 
 # Finder (MacOS) folder config
 .DS_Store
+
+# Vim swap files
+*.swp
+*.swo
