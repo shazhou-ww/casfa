@@ -2,12 +2,13 @@
  * <TextPreview /> - Text/code file preview with line numbers.
  * (Iter 4)
  *
- * Prefers fetching from casUrl (/cas/:nodeKey) when available,
- * which benefits from SW caching. Falls back to reading from blob.
+ * Fetches text from /cas/:nodeKey with auth headers (via
+ * useCasText hook below). Falls back to reading from blob.
  */
 
 import { Box, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
+import { useExplorerStore } from "../hooks/use-explorer-context.ts";
 
 type TextPreviewProps = {
   casUrl?: string | null;
@@ -15,38 +16,64 @@ type TextPreviewProps = {
   maxLines?: number;
 };
 
-export function TextPreview({ casUrl, blob, maxLines = 200 }: TextPreviewProps) {
-  const [lines, setLines] = useState<string[]>([]);
-  const [truncated, setTruncated] = useState(false);
+/** Fetch text from casUrl with auth, falling back to blob.text(). */
+function useCasText(
+  casUrl: string | null | undefined,
+  fallbackBlob: Blob | undefined,
+): string | null {
+  const client = useExplorerStore((s) => s.client);
+  const [text, setText] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    const processText = (text: string) => {
-      if (cancelled) return;
-      const allLines = text.split("\n");
-      if (allLines.length > maxLines) {
-        setLines(allLines.slice(0, maxLines));
-        setTruncated(true);
-      } else {
-        setLines(allLines);
-        setTruncated(false);
-      }
-    };
+    (async () => {
+      if (casUrl) {
+        try {
+          const token = await client.getAccessToken();
+          const headers: HeadersInit = {};
+          if (token) headers.Authorization = `Bearer ${token.tokenBase64}`;
 
-    if (casUrl) {
-      fetch(casUrl)
-        .then((r) => r.text())
-        .then(processText)
-        .catch(() => {
-          if (!cancelled) setLines(["Failed to load content"]);
-        });
-    } else if (blob) {
-      blob.text().then(processText);
-    }
+          const res = await fetch(casUrl, { headers });
+          if (cancelled) return;
+          if (res.ok) {
+            const t = await res.text();
+            if (!cancelled) setText(t);
+            return;
+          }
+        } catch {
+          if (cancelled) return;
+        }
+      }
+      // Fallback to blob
+      if (fallbackBlob) {
+        const t = await fallbackBlob.text();
+        if (!cancelled) setText(t);
+      }
+    })();
 
     return () => { cancelled = true; };
-  }, [casUrl, blob, maxLines]);
+  }, [casUrl, fallbackBlob, client]);
+
+  return text;
+}
+
+export function TextPreview({ casUrl, blob, maxLines = 200 }: TextPreviewProps) {
+  const rawText = useCasText(casUrl, blob);
+  const [lines, setLines] = useState<string[]>([]);
+  const [truncated, setTruncated] = useState(false);
+
+  useEffect(() => {
+    if (rawText === null) return;
+    const allLines = rawText.split("\n");
+    if (allLines.length > maxLines) {
+      setLines(allLines.slice(0, maxLines));
+      setTruncated(true);
+    } else {
+      setLines(allLines);
+      setTruncated(false);
+    }
+  }, [rawText, maxLines]);
 
   const gutterWidth = String(lines.length).length;
 
