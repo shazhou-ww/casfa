@@ -1,0 +1,8 @@
+{
+  "json.schemas": [
+    {
+      "fileMatch": [".changeset/config.json"],
+      "url": "https://unpkg.com/@changesets/config@3.1.2/schema.json"
+    }
+  ]
+}
