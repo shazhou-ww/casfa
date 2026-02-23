@@ -18,11 +18,11 @@ export const MAX_PREVIEW_SIZE = 10 * 1024 * 1024;
 export const builtinProviders: PreviewProvider[] = [
   {
     match: (contentType: string) => contentType.startsWith("image/"),
-    render: ({ item, blob }) => <ImagePreview blob={blob} alt={item.name} />,
+    render: ({ item, blob, casUrl }) => <ImagePreview casUrl={casUrl} blob={blob} alt={item.name} />,
   },
   {
     match: (contentType: string) => contentType.startsWith("text/"),
-    render: ({ blob }) => <TextPreview blob={blob} maxLines={200} />,
+    render: ({ blob, casUrl }) => <TextPreview casUrl={casUrl} blob={blob} maxLines={200} />,
   },
   {
     match: (contentType: string) =>
@@ -31,15 +31,15 @@ export const builtinProviders: PreviewProvider[] = [
       contentType === "application/typescript" ||
       contentType === "application/xml" ||
       contentType === "application/x-yaml",
-    render: ({ blob }) => <TextPreview blob={blob} maxLines={200} />,
+    render: ({ blob, casUrl }) => <TextPreview casUrl={casUrl} blob={blob} maxLines={200} />,
   },
   {
     match: (contentType: string) => contentType.startsWith("audio/"),
-    render: ({ blob }) => <AudioPreview blob={blob} />,
+    render: ({ blob, casUrl }) => <AudioPreview casUrl={casUrl} blob={blob} />,
   },
   {
     match: (contentType: string) => contentType.startsWith("video/"),
-    render: ({ blob }) => <VideoPreview blob={blob} />,
+    render: ({ blob, casUrl }) => <VideoPreview casUrl={casUrl} blob={blob} />,
   },
 ];
 
