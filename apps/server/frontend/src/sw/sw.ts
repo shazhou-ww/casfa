@@ -52,12 +52,18 @@ import {
 } from "@casfa/core";
 import { createSyncCoordinator } from "@casfa/explorer/core/sync-coordinator";
 import { hashToNodeKey, nodeKeyToStorageKey, storageKeyToNodeKey } from "@casfa/protocol";
+import { createIndexedDBStorage } from "@casfa/storage-indexeddb";
 import { createSyncQueueStore } from "../lib/sync-queue-store.ts";
 
 console.log("[SW] Script loaded, origin:", self.location.origin);
 
 const BASE_URL = self.location.origin;
 const tokenStorage: TokenStorageProvider = createIndexedDBTokenStorage("root");
+
+// ── Shared IndexedDB storage — same DB as the main thread ──
+// Reads from IndexedDB first so freshly-uploaded (but not yet synced) nodes
+// are available immediately in the SW fetch handler.
+const idbStorage = createIndexedDBStorage();
 
 // ── Broadcast helper ──
 function broadcast(msg: unknown): void {
@@ -269,23 +275,42 @@ self.addEventListener("fetch", (event) => {
 });
 
 /**
- * Create a read-only CasContext backed by the CasfaClient's nodes API.
- * Includes a per-request in-memory cache so nodes fetched during B-Tree
+ * Create a read-only CasContext backed by IndexedDB (local cache) + CasfaClient API (remote).
+ *
+ * Reads from IndexedDB first — this is the same database the main thread writes to
+ * when uploading files (via CachedStorage). This ensures freshly-uploaded nodes that
+ * haven't been synced to the server yet are still available for immediate serving.
+ *
+ * Falls back to the server API on IndexedDB miss, and writes the result back to
+ * IndexedDB for future reads.
+ *
+ * Also includes a per-request in-memory cache so nodes fetched during B-Tree
  * traversal are not re-fetched.
  */
 function createReadonlyContext(cl: CasfaClient): CasContext {
-  const cache = new Map<string, Uint8Array>();
+  const memCache = new Map<string, Uint8Array>();
 
   const storage: StorageProvider = {
     get: async (storageKey: string) => {
-      const cached = cache.get(storageKey);
-      if (cached) return cached;
+      // 1. In-memory per-request cache
+      const mem = memCache.get(storageKey);
+      if (mem) return mem;
 
+      // 2. IndexedDB (shared with main thread — has freshly-uploaded nodes)
+      const idbData = await idbStorage.get(storageKey);
+      if (idbData) {
+        memCache.set(storageKey, idbData);
+        return idbData;
+      }
+
+      // 3. Remote server API (fallback)
       const nodeKey = storageKeyToNodeKey(storageKey);
       const result = await cl.nodes.get(nodeKey);
       if (!result.ok) return null;
 
-      cache.set(storageKey, result.data);
+      memCache.set(storageKey, result.data);
+      // Write-back to IndexedDB for future reads
+      idbStorage.put(storageKey, result.data).catch(() => {});
       return result.data;
     },
     put: async () => {
