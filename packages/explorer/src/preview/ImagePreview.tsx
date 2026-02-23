@@ -1,15 +1,14 @@
 /**
  * <ImagePreview /> - Image file preview.
- * (Iter 4)
+ * (Iter 5)
  *
- * Fetches image content from /cas/:nodeKey with auth headers via
- * useCasBlobUrl hook, then displays via blob: URL.  Falls back to
- * the blob prop when casUrl is unavailable.
+ * Uses /cas/:nodeKey URL directly as <img src>. The Service Worker
+ * intercepts the request, handles auth and multi-block reassembly.
+ * Falls back to blob: URL when casUrl is unavailable.
  */
 
 import { Box } from "@mui/material";
-import { useState } from "react";
-import { useCasBlobUrl } from "./use-cas-blob-url.ts";
+import { useEffect, useRef, useState } from "react";
 
 type ImagePreviewProps = {
   /** CAS content URL — e.g. /cas/nod_XXX */
@@ -21,9 +20,26 @@ type ImagePreviewProps = {
 
 export function ImagePreview({ casUrl, blob, alt }: ImagePreviewProps) {
   const [scale, setScale] = useState(1);
-  const url = useCasBlobUrl(casUrl, blob);
+  const blobUrlRef = useRef("");
 
-  if (!url) return null;
+  // Create blob URL only when casUrl is unavailable
+  const [fallbackUrl, setFallbackUrl] = useState("");
+  useEffect(() => {
+    if (casUrl || !blob) {
+      setFallbackUrl("");
+      return;
+    }
+    const u = URL.createObjectURL(blob);
+    blobUrlRef.current = u;
+    setFallbackUrl(u);
+    return () => {
+      URL.revokeObjectURL(u);
+      blobUrlRef.current = "";
+    };
+  }, [casUrl, blob]);
+
+  const src = casUrl || fallbackUrl;
+  if (!src) return null;
 
   return (
     <Box
@@ -38,7 +54,7 @@ export function ImagePreview({ casUrl, blob, alt }: ImagePreviewProps) {
     >
       <Box
         component="img"
-        src={url}
+        src={src}
         alt={alt}
         onWheel={(e) => {
           if (e.ctrlKey || e.metaKey) {

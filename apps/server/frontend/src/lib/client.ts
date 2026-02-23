@@ -82,6 +82,7 @@ export function getAppClient(): Promise<AppClient> {
         realm,
         // In dev mode, point to the TS source so Vite can transform it on the fly
         swUrl: import.meta.env.DEV ? "/src/sw/sw.ts" : "/sw.js",
+        swScope: "/",
         tokenStorage: localStorageProvider,
         onAuthRequired: () => {
           window.location.href = "/login";
