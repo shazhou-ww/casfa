@@ -13,8 +13,8 @@ import { PdfPreview } from "./PdfPreview.tsx";
 import { TextPreview } from "./TextPreview.tsx";
 import { VideoPreview } from "./VideoPreview.tsx";
 
-/** Max file size for automatic preview (10 MB) */
-export const MAX_PREVIEW_SIZE = 10 * 1024 * 1024;
+/** Max file size for automatic preview (50 MB) */
+export const MAX_PREVIEW_SIZE = 50 * 1024 * 1024;
 
 export const builtinProviders: PreviewProvider[] = [
   {
