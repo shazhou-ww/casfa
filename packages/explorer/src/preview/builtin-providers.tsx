@@ -9,6 +9,7 @@
 import type { PreviewProvider } from "../types.ts";
 import { AudioPreview } from "./AudioPreview.tsx";
 import { ImagePreview } from "./ImagePreview.tsx";
+import { PdfPreview } from "./PdfPreview.tsx";
 import { TextPreview } from "./TextPreview.tsx";
 import { VideoPreview } from "./VideoPreview.tsx";
 
@@ -42,6 +43,10 @@ export const builtinProviders: PreviewProvider[] = [
   {
     match: (contentType: string) => contentType.startsWith("video/"),
     render: ({ blob, casUrl }) => <VideoPreview casUrl={casUrl} blob={blob} />,
+  },
+  {
+    match: (contentType: string) => contentType === "application/pdf",
+    render: ({ blob, casUrl }) => <PdfPreview casUrl={casUrl} blob={blob} />,
   },
 ];
 
