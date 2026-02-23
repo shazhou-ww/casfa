@@ -1,6 +1,6 @@
 {
   "name": "@casfa/encoding",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Encoding utilities for CASFA — Crockford Base32, Base64URL, hex, and formatting",
   "type": "module",
   "main": "./dist/index.js",

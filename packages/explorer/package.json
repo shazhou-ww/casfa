@@ -77,5 +77,8 @@
       "--target=browser",
       "--production"
     ]
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

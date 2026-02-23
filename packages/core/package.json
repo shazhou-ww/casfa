@@ -1,6 +1,6 @@
 {
   "name": "@casfa/core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "CAS binary format encoding/decoding - self-similar B-Tree node structure",
   "type": "module",
   "main": "./dist/index.js",
