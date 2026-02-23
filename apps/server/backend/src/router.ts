@@ -371,6 +371,20 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   app.route("/api/realm", realmRouter);
 
   // ============================================================================
+  // CAS Content Serving — /cas/:key[/~0/~1/...]
+  //
+  // Serves decoded CAS content:
+  //   d-node → JSON children listing
+  //   f-node → file content with proper MIME type (single-block only)
+  //   s-node → 422 error
+  //
+  // Auth: same as nodes/raw (accessToken + nodeAuth)
+  // ============================================================================
+
+  app.get("/cas/:key", deps.accessTokenMiddleware, deps.nodeAuthMiddleware, deps.chunks.getCasContent);
+  app.get("/cas/:key/*", deps.accessTokenMiddleware, deps.nodeAuthMiddleware, deps.chunks.getCasContentNavigated);
+
+  // ============================================================================
   // Static File Serving (local dev only — production uses S3 + CloudFront)
   // ============================================================================
 
@@ -384,7 +398,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
     // prevents them from falling back to the correct root discovery URL.
     const spaFallback = deps.serveStaticFallbackMiddleware;
     app.use("*", async (c, next) => {
-      if (c.req.path.startsWith("/.well-known/")) {
+      if (c.req.path.startsWith("/.well-known/") || c.req.path.startsWith("/cas/")) {
         await next();
         return;
       }

@@ -43,6 +43,10 @@ export type ChunksController = {
   getNavigated: (c: Context<Env>) => Promise<Response>;
   /** GET /nodes/metadata/:key/~0/~1/... — navigate then return metadata */
   getMetadataNavigated: (c: Context<Env>) => Promise<Response>;
+  /** GET /cas/:key — serve decoded content (d-node→JSON, f-node→file, s-node→error) */
+  getCasContent: (c: Context<Env>) => Promise<Response>;
+  /** GET /cas/:key/~0/~1/... — navigate then serve decoded content */
+  getCasContentNavigated: (c: Context<Env>) => Promise<Response>;
 };
 
 type ChunksControllerDeps = {
@@ -570,8 +574,128 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
         return c.json({ error: "invalid_node", message: "Failed to decode node" }, 400);
       }
     },
+
+    getCasContent: async (c) => {
+      const nodeKey = decodeURIComponent(c.req.param("key"));
+      const key = toStorageKey(nodeKey);
+
+      // Well-known nodes
+      const wellKnownData = getWellKnownNodeData(key);
+      const bytes = wellKnownData ?? (await storage.get(key));
+      if (!bytes) {
+        return c.json({ error: "not_found", message: "Node not found" }, 404);
+      }
+
+      return serveCasContent(c, nodeKey, bytes);
+    },
+
+    getCasContentNavigated: async (c) => {
+      const nodeKey = decodeURIComponent(c.req.param("key"));
+      const nav = await navigateToTarget(c, nodeKey, storage, toStorageKey);
+      if (!nav.ok) return c.json({ error: nav.error, message: nav.message }, nav.status);
+
+      const bytes = await storage.get(nav.storageKey);
+      if (!bytes) {
+        return c.json({ error: "not_found", message: "Navigated node content not found" }, 404);
+      }
+
+      return serveCasContent(c, nav.nodeKey, bytes);
+    },
   };
 };
+
+// ============================================================================
+// CAS content serving helper
+// ============================================================================
+
+/**
+ * Serve decoded CAS content based on node type:
+ * - d-node (dict): JSON object with children names → node keys
+ * - f-node (file): raw file content with proper Content-Type (single-block only)
+ * - s-node (successor): error — not directly servable
+ * - set: error — not directly servable
+ */
+function serveCasContent(
+  c: Context<Env>,
+  nodeKey: string,
+  bytes: Uint8Array
+): Response {
+  let node: ReturnType<typeof decodeNode>;
+  try {
+    node = decodeNode(bytes);
+  } catch {
+    return c.json({ error: "invalid_node", message: "Failed to decode node" }, 400) as unknown as Response;
+  }
+
+  const immutableCache = "public, max-age=31536000, immutable";
+
+  switch (node.kind) {
+    case "dict": {
+      const children: Record<string, string> = {};
+      if (node.children && node.childNames) {
+        for (let i = 0; i < node.childNames.length; i++) {
+          const name = node.childNames[i];
+          const childHash = node.children[i];
+          if (name && childHash) {
+            children[name] = hashToNodeKey(childHash);
+          }
+        }
+      }
+      return c.json(
+        { type: "dict", key: nodeKey, children },
+        200,
+        { "Cache-Control": immutableCache }
+      ) as unknown as Response;
+    }
+
+    case "file": {
+      // Only single-block files are supported
+      if (node.children && node.children.length > 0) {
+        return c.json(
+          {
+            error: "multi_block_unsupported",
+            message: "Multi-block files cannot be served via /cas/. Use the nodes/raw API to reassemble.",
+          },
+          422
+        ) as unknown as Response;
+      }
+
+      const contentType = node.fileInfo?.contentType || "application/octet-stream";
+      const data = node.data ?? new Uint8Array(0);
+
+      return new Response(data, {
+        status: 200,
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": String(data.length),
+          "Cache-Control": immutableCache,
+          "X-CAS-Key": nodeKey,
+        },
+      });
+    }
+
+    case "successor":
+      return c.json(
+        {
+          error: "unsupported_node_type",
+          message: "Successor nodes cannot be served directly via /cas/",
+        },
+        422
+      ) as unknown as Response;
+
+    case "set":
+      return c.json(
+        {
+          error: "unsupported_node_type",
+          message: "Set nodes cannot be served directly via /cas/",
+        },
+        422
+      ) as unknown as Response;
+
+    default:
+      return c.json({ error: "invalid_node", message: "Unknown node kind" }, 400) as unknown as Response;
+  }
+}
 
 // ============================================================================
 // Navigation helper

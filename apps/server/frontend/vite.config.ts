@@ -35,6 +35,10 @@ export default defineConfig({
         // Do NOT use changeOrigin here — preserve the original Host header
         // so the backend can construct correct URLs for OAuth metadata
       },
+      "/cas": {
+        target: "http://localhost:8801",
+        changeOrigin: true,
+      },
     },
   },
 });
