@@ -3,6 +3,7 @@ services:
   dynamodb:
     image: amazon/dynamodb-local:latest
     container_name: dynamodb
+    user: root
     ports:
       - "8700:8000"
     command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/data"]
@@ -14,6 +15,7 @@ services:
   dynamodb-test:
     image: amazon/dynamodb-local:latest
     container_name: dynamodb-test
+    user: root
     ports:
       - "8701:8000"
     command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]

@@ -4,7 +4,7 @@
  */
 
 import { Box } from "@mui/material";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type ImagePreviewProps = {
   blob: Blob;
@@ -13,12 +13,16 @@ type ImagePreviewProps = {
 
 export function ImagePreview({ blob, alt }: ImagePreviewProps) {
   const [scale, setScale] = useState(1);
-  const url = useMemo(() => URL.createObjectURL(blob), [blob]);
+  const [url, setUrl] = useState("");
 
-  // Revoke ObjectURL on unmount to prevent memory leaks
+  // Create and revoke ObjectURL in the same effect to avoid StrictMode
+  // double-invoke race: useMemo runs once but useEffect cleanup runs twice,
+  // revoking the URL before the image can load.
   useEffect(() => {
-    return () => URL.revokeObjectURL(url);
-  }, [url]);
+    const objectUrl = URL.createObjectURL(blob);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [blob]);
 
   return (
     <Box
