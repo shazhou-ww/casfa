@@ -2,11 +2,11 @@
  * <VideoPreview /> - Video file preview with HTML5 player.
  * (Iter 4)
  *
- * Uses /cas/:nodeKey URL when available; falls back to blob URL.
+ * Fetches content from /cas/:nodeKey with auth headers via useCasBlobUrl.
  */
 
 import { Box } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useCasBlobUrl } from "./use-cas-blob-url.ts";
 
 type VideoPreviewProps = {
   casUrl?: string | null;
@@ -14,20 +14,7 @@ type VideoPreviewProps = {
 };
 
 export function VideoPreview({ casUrl, blob }: VideoPreviewProps) {
-  const [url, setUrl] = useState("");
-
-  useEffect(() => {
-    if (casUrl) {
-      setUrl(casUrl);
-      return;
-    }
-    if (blob) {
-      const objectUrl = URL.createObjectURL(blob);
-      setUrl(objectUrl);
-      return () => URL.revokeObjectURL(objectUrl);
-    }
-    setUrl("");
-  }, [casUrl, blob]);
+  const url = useCasBlobUrl(casUrl, blob);
 
   if (!url) return null;
 
