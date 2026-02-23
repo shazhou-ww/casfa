@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthGuard } from "./components/auth-guard.tsx";
 import { Layout } from "./components/layout.tsx";
+import { CasPreviewPage } from "./pages/cas-preview-page.tsx";
 import { ExplorerPage } from "./pages/explorer-page.tsx";
 import { LoginPage } from "./pages/login-page.tsx";
 import { OAuthAuthorizePage } from "./pages/oauth-authorize.tsx";
@@ -13,6 +14,10 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
       <Route path="/oauth/authorize" element={<OAuthAuthorizePage />} />
+
+      {/* CAS content preview — auth handled by SW fetch interceptor */}
+      <Route path="/preview/:key" element={<CasPreviewPage />} />
+      <Route path="/preview/:key/*" element={<CasPreviewPage />} />
 
       {/* Protected routes — require authentication */}
       <Route element={<AuthGuard />}>
