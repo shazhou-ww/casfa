@@ -53,7 +53,7 @@ async function waitForActive(reg: ServiceWorkerRegistration): Promise<ServiceWor
 }
 
 export async function createSWClient(config: AppClientConfig): Promise<AppClient> {
-  const timeoutMs = config.rpcTimeoutMs ?? 30_000;
+  const timeoutMs = config.rpcTimeoutMs ?? 120_000;
 
   // ── 1. Register SW and wait for activation ──
   const swUrl = config.swUrl ?? "/sw.js";

@@ -27,7 +27,7 @@ export type RPCFn<TMsg extends RPCMessage = RPCMessage> = (msg: TMsg) => Promise
 
 /** Options for createRPC. */
 export type CreateRPCOptions = {
-  /** Timeout in milliseconds. Default: 30_000 (30s). */
+  /** Timeout in milliseconds. Default: 120_000 (120s). */
   timeoutMs?: number;
 };
 
@@ -75,7 +75,7 @@ export function createRPC<TMsg extends RPCMessage = RPCMessage>(
   port: MessagePort,
   options: CreateRPCOptions = {}
 ): RPCFn<TMsg> {
-  const { timeoutMs = 30_000 } = options;
+  const { timeoutMs = 120_000 } = options;
 
   let nextId = 0;
   const pending = new Map<

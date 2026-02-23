@@ -125,6 +125,6 @@ export type AppClientConfig = {
   /** SW scope (default: derived from swUrl path). Only used in SW mode. */
   swScope?: string;
 
-  /** RPC timeout in ms (default: 30000). Only used in SW mode. */
+  /** RPC timeout in ms (default: 120000). Only used in SW mode. */
   rpcTimeoutMs?: number;
 };

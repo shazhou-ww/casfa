@@ -49,6 +49,12 @@ export type BufferedHttpStorageConfig = {
   onSyncEnd?: (result: SyncResult) => void;
   /** Called for each key during flush: uploading → done / error */
   onKeySync?: (key: string, status: "uploading" | "done" | "error", error?: unknown) => void;
+  /**
+   * Maximum number of concurrent upload/claim operations per topological level.
+   * Prevents overwhelming the network / RPC channel when flushing many blocks.
+   * Default: 8.
+   */
+  maxConcurrency?: number;
 };
 
 /**
@@ -154,6 +160,39 @@ export const topoSortLevels = (
 };
 
 // ============================================================================
+// Concurrency Limiter
+// ============================================================================
+
+/**
+ * Run async tasks with bounded concurrency (like p-limit).
+ * Returns PromiseSettledResult[] matching the input order.
+ */
+async function mapSettledConcurrent<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  concurrency: number
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const i = nextIndex++;
+      try {
+        const value = await fn(items[i]!);
+        results[i] = { status: "fulfilled", value };
+      } catch (reason) {
+        results[i] = { status: "rejected", reason };
+      }
+    }
+  };
+
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
+// ============================================================================
 // Factory
 // ============================================================================
 
@@ -171,6 +210,7 @@ export const createBufferedHttpStorage = (
   config: BufferedHttpStorageConfig
 ): BufferedHttpStorageProvider => {
   const { getChildKeys, onSyncStart, onSyncEnd, onKeySync } = config;
+  const maxConcurrency = config.maxConcurrency ?? 8;
 
   /** Buffered entries awaiting flush */
   const buffer = new Map<string, Uint8Array>();
@@ -225,11 +265,12 @@ export const createBufferedHttpStorage = (
       const levels = topoSortLevels(toProcess, getChildKeys);
 
       for (const level of levels) {
-        // Phase A: claim unowned entries
+        // Phase A: claim unowned entries (concurrency-limited)
         const claimEntries = level.filter((e) => toClaimKeys.has(e.key));
         if (claimEntries.length > 0) {
-          const results = await Promise.allSettled(
-            claimEntries.map(async (entry) => {
+          const results = await mapSettledConcurrent(
+            claimEntries,
+            async (entry) => {
               onKeySync?.(entry.key, "uploading");
               try {
                 await http.claim(entry.key, entry.value);
@@ -239,7 +280,8 @@ export const createBufferedHttpStorage = (
                 onKeySync?.(entry.key, "error", err);
                 throw err;
               }
-            })
+            },
+            maxConcurrency
           );
           for (const [i, result] of results.entries()) {
             if (result.status === "fulfilled") {
@@ -250,11 +292,12 @@ export const createBufferedHttpStorage = (
           }
         }
 
-        // Phase B: put missing entries (children already claimed/uploaded)
+        // Phase B: put missing entries (concurrency-limited)
         const putEntries = level.filter((e) => !toClaimKeys.has(e.key));
         if (putEntries.length > 0) {
-          const results = await Promise.allSettled(
-            putEntries.map(async (entry) => {
+          const results = await mapSettledConcurrent(
+            putEntries,
+            async (entry) => {
               onKeySync?.(entry.key, "uploading");
               try {
                 await http.put(entry.key, entry.value);
@@ -264,7 +307,8 @@ export const createBufferedHttpStorage = (
                 onKeySync?.(entry.key, "error", err);
                 throw err;
               }
-            })
+            },
+            maxConcurrency
           );
           for (const [i, result] of results.entries()) {
             if (result.status === "fulfilled") {
@@ -276,6 +320,15 @@ export const createBufferedHttpStorage = (
         }
       }
     } finally {
+      // Re-add failed entries to the buffer so they can be retried on next flush
+      if (failed.length > 0) {
+        const failedKeys = new Set(failed.map((f) => f.key));
+        for (const entry of entries) {
+          if (failedKeys.has(entry.key) && !buffer.has(entry.key)) {
+            buffer.set(entry.key, entry.value);
+          }
+        }
+      }
       onSyncEnd?.({ synced, skipped, failed });
     }
 
