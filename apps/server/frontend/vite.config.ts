@@ -1,10 +1,28 @@
 import { resolve } from "node:path";
 import react from "@vitejs/plugin-react-swc";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
+
+/**
+ * Vite plugin that adds `Service-Worker-Allowed: /` header to the SW script
+ * response, allowing the SW registered from /src/sw/sw.ts to control scope "/".
+ */
+function swAllowedScope(): Plugin {
+  return {
+    name: "sw-allowed-scope",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url?.startsWith("/src/sw/")) {
+          res.setHeader("Service-Worker-Allowed", "/");
+        }
+        next();
+      });
+    },
+  };
+}
 
 export default defineConfig({
   root: __dirname,
-  plugins: [react()],
+  plugins: [react(), swAllowedScope()],
   resolve: {
     // Resolve workspace packages to TypeScript source (via the "bun" export
     // condition) so we skip their dist builds which may inline transitive deps.

@@ -59,6 +59,7 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
   const swUrl = config.swUrl ?? "/sw.js";
   const reg = await navigator.serviceWorker.register(swUrl, {
     type: "module",
+    scope: config.swScope,
   });
   const sw = await waitForActive(reg);
 

@@ -43,8 +43,18 @@ declare global {
 import { type CasfaClient, createClient, type TokenStorageProvider } from "@casfa/client";
 import type { ConnectAckMessage } from "@casfa/client-bridge";
 import { createIndexedDBTokenStorage, createMessageHandler } from "@casfa/client-sw";
+import {
+  type CasContext,
+  getNode,
+  hashToKey,
+  openFileStream,
+  type StorageProvider,
+} from "@casfa/core";
 import { createSyncCoordinator } from "@casfa/explorer/core/sync-coordinator";
+import { hashToNodeKey, nodeKeyToStorageKey, storageKeyToNodeKey } from "@casfa/protocol";
 import { createSyncQueueStore } from "../lib/sync-queue-store.ts";
+
+console.log("[SW] Script loaded, origin:", self.location.origin);
 
 const BASE_URL = self.location.origin;
 const tokenStorage: TokenStorageProvider = createIndexedDBTokenStorage("root");
@@ -91,13 +101,16 @@ const handleMessage = createMessageHandler({
 // ============================================================================
 
 self.addEventListener("install", () => {
+  console.log("[SW] Installing");
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
+  console.log("[SW] Activating");
   event.waitUntil(
     (async () => {
       await self.clients.claim();
+      console.log("[SW] Claimed clients");
       // Try to recover client from persisted tokens
       const recovered = await recoverClient();
       if (recovered) {
@@ -217,11 +230,11 @@ self.addEventListener("periodicsync", (event) => {
 });
 
 // ============================================================================
-// CAS Content Caching — /cas/:key[/~0/~1/...]
+// CAS Content Serving — /cas/:key[/~0/~1/...]
 //
-// Intercepts fetch requests to /cas/ and applies a cache-first strategy.
-// CAS content is immutable (content-addressed), so cached entries never need
-// invalidation.  The JWT auth token is injected automatically from SW state.
+// Intercepts fetch requests to /cas/ and serves content using @casfa/core.
+// Supports multi-block files via B-Tree traversal (readFile / openFileStream).
+// Uses cache-first strategy — CAS content is immutable (content-addressed).
 // ============================================================================
 
 const CAS_CACHE_NAME = "casfa-cas-content";
@@ -234,10 +247,81 @@ self.addEventListener("fetch", (event) => {
     return; // Let the browser handle it normally
   }
 
+  console.log("[SW] Intercepted /cas/ fetch:", url.pathname);
   event.respondWith(handleCasFetch(event.request, url));
 });
 
+/**
+ * Create a read-only CasContext backed by the CasfaClient's nodes API.
+ * Includes a per-request in-memory cache so nodes fetched during B-Tree
+ * traversal are not re-fetched.
+ */
+function createReadonlyContext(cl: CasfaClient): CasContext {
+  const cache = new Map<string, Uint8Array>();
+
+  const storage: StorageProvider = {
+    get: async (storageKey: string) => {
+      const cached = cache.get(storageKey);
+      if (cached) return cached;
+
+      const nodeKey = storageKeyToNodeKey(storageKey);
+      const result = await cl.nodes.get(nodeKey);
+      if (!result.ok) return null;
+
+      cache.set(storageKey, result.data);
+      return result.data;
+    },
+    put: async () => {
+      // Read-only — no-op
+    },
+  };
+
+  // KeyProvider is only needed for writes; provide a stub
+  const key = {
+    computeKey: async (_data: Uint8Array) => new Uint8Array(16),
+  };
+
+  return { storage, key };
+}
+
+/**
+ * Navigate ~N index path through dict/file nodes.
+ * Returns the final node's storage key, or null on failure.
+ */
+async function navigatePath(
+  ctx: CasContext,
+  startStorageKey: string,
+  segments: string[]
+): Promise<{ storageKey: string } | { error: string; status: number }> {
+  let currentKey = startStorageKey;
+
+  for (const seg of segments) {
+    if (!/^~\d+$/.test(seg)) {
+      return { error: `Invalid navigation segment: ${seg}`, status: 400 };
+    }
+    const index = Number.parseInt(seg.slice(1), 10);
+
+    const node = await getNode(ctx, currentKey);
+    if (!node) {
+      return { error: "Node not found during navigation", status: 404 };
+    }
+
+    if (!node.children || index >= node.children.length) {
+      return {
+        error: `Child index ${index} out of bounds (${node.children?.length ?? 0} children)`,
+        status: 404,
+      };
+    }
+
+    currentKey = hashToKey(node.children[index]!);
+  }
+
+  return { storageKey: currentKey };
+}
+
 async function handleCasFetch(request: Request, url: URL): Promise<Response> {
+  console.log("[SW] handleCasFetch:", url.pathname, "client:", !!client);
+
   // Use pathname as cache key (ignores auth headers — CAS content is immutable)
   const cacheKey = new Request(url.pathname, { method: "GET" });
 
@@ -245,51 +329,145 @@ async function handleCasFetch(request: Request, url: URL): Promise<Response> {
   const cache = await caches.open(CAS_CACHE_NAME);
   const cached = await cache.match(cacheKey);
   if (cached) {
+    console.log("[SW] Cache hit:", url.pathname);
     return cached;
   }
 
-  // 2. Get auth token from SW state
-  let token: string | undefined;
-  try {
-    const state = await tokenStorage.load();
-    if (state?.user?.accessToken) {
-      token = state.user.accessToken;
-    }
-  } catch {
-    // Token unavailable — try without auth (will likely get 401)
+  // 2. Ensure client is available
+  if (!client) {
+    console.warn("[SW] No client — returning 401");
+    return new Response(
+      JSON.stringify({ error: "not_authenticated", message: "Service Worker not authenticated" }),
+      { status: 401, headers: { "Content-Type": "application/json" } }
+    );
   }
 
-  // 3. Fetch from backend with auth
-  const headers = new Headers(request.headers);
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
+  // 3. Parse nodeKey and optional navigation path from URL
+  //    /cas/nod_XXX          → serve node directly
+  //    /cas/nod_XXX/~0/~1    → navigate then serve
+  const pathAfterCas = url.pathname.slice("/cas/".length);
+  const parts = pathAfterCas.split("/");
+  const nodeKey = decodeURIComponent(parts[0] ?? "");
+  const navSegments = parts.slice(1).filter(Boolean);
 
-  const fetchRequest = new Request(request.url, {
-    method: "GET",
-    headers,
-    // Credentials are not needed — we inject the Bearer token ourselves
-    credentials: "omit",
-  });
-
-  let response: Response;
-  try {
-    response = await fetch(fetchRequest);
-  } catch {
-    return new Response(JSON.stringify({ error: "network_error", message: "Failed to fetch CAS content" }), {
-      status: 503,
+  if (!nodeKey) {
+    return new Response(JSON.stringify({ error: "invalid_request", message: "Missing node key" }), {
+      status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  // 4. Cache successful responses (clone before consuming)
-  if (response.ok) {
-    const cloned = response.clone();
-    // Write to cache in the background — don't block the response
-    cache.put(cacheKey, cloned).catch(() => {});
-  }
+  try {
+    const ctx = createReadonlyContext(client);
+    let targetStorageKey = nodeKeyToStorageKey(nodeKey);
 
-  return response;
+    // 4. Navigate path if ~N segments are present
+    if (navSegments.length > 0) {
+      const nav = await navigatePath(ctx, targetStorageKey, navSegments);
+      if ("error" in nav) {
+        return new Response(JSON.stringify({ error: "navigation_failed", message: nav.error }), {
+          status: nav.status,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      targetStorageKey = nav.storageKey;
+    }
+
+    // 5. Decode root node to determine type and content-type
+    const node = await getNode(ctx, targetStorageKey);
+    console.log("[SW] getNode result:", targetStorageKey, node ? node.kind : "null");
+    if (!node) {
+      return new Response(JSON.stringify({ error: "not_found", message: "Node not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const immutableCache = "public, max-age=31536000, immutable";
+    const targetNodeKey = storageKeyToNodeKey(targetStorageKey);
+
+    switch (node.kind) {
+      case "dict": {
+        // Serve dict as JSON mapping childName → nodeKey
+        const children: Record<string, string> = {};
+        if (node.children && node.childNames) {
+          for (let i = 0; i < node.childNames.length; i++) {
+            const name = node.childNames[i];
+            const childHash = node.children[i];
+            if (name && childHash) {
+              children[name] = hashToNodeKey(childHash);
+            }
+          }
+        }
+        const body = JSON.stringify({ type: "dict", key: targetNodeKey, children });
+        const response = new Response(body, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": immutableCache,
+            "X-CAS-Key": targetNodeKey,
+          },
+        });
+        cache.put(cacheKey, response.clone()).catch(() => {});
+        return response;
+      }
+
+      case "file": {
+        const contentType = node.fileInfo?.contentType || "application/octet-stream";
+
+        // Use streaming for multi-block files (B-Tree traversal)
+        const stream = openFileStream(ctx, targetStorageKey);
+        const response = new Response(stream, {
+          status: 200,
+          headers: {
+            "Content-Type": contentType,
+            "Cache-Control": immutableCache,
+            "X-CAS-Key": targetNodeKey,
+          },
+        });
+
+        // Cache the response (must tee for caching while returning)
+        // For simplicity, we don't cache streamed responses inline —
+        // instead, re-fetch from the in-memory ctx cache would be instant.
+        // We DO cache the final response so subsequent requests hit the SW cache.
+        cache.put(cacheKey, response.clone()).catch(() => {});
+        return response;
+      }
+
+      case "successor":
+        return new Response(
+          JSON.stringify({
+            error: "unsupported_node_type",
+            message: "Successor nodes cannot be served directly",
+          }),
+          { status: 422, headers: { "Content-Type": "application/json" } }
+        );
+
+      case "set":
+        return new Response(
+          JSON.stringify({
+            error: "unsupported_node_type",
+            message: "Set nodes cannot be served directly",
+          }),
+          { status: 422, headers: { "Content-Type": "application/json" } }
+        );
+
+      default:
+        return new Response(
+          JSON.stringify({ error: "invalid_node", message: "Unknown node kind" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+    }
+  } catch (err) {
+    console.error("[SW] handleCasFetch error:", err);
+    return new Response(
+      JSON.stringify({
+        error: "internal_error",
+        message: err instanceof Error ? err.message : "Failed to serve CAS content",
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
 }
 
 // ============================================================================

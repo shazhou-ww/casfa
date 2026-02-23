@@ -122,6 +122,9 @@ export type AppClientConfig = {
   /** SW script URL (default: "/sw.js"). Only used in SW mode. */
   swUrl?: string | URL;
 
+  /** SW scope (default: derived from swUrl path). Only used in SW mode. */
+  swScope?: string;
+
   /** RPC timeout in ms (default: 30000). Only used in SW mode. */
   rpcTimeoutMs?: number;
 };

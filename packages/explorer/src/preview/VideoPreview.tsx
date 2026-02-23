@@ -1,12 +1,13 @@
 /**
  * <VideoPreview /> - Video file preview with HTML5 player.
- * (Iter 4)
+ * (Iter 5)
  *
- * Fetches content from /cas/:nodeKey with auth headers via useCasBlobUrl.
+ * Uses /cas/:nodeKey URL directly as <video src>. The Service Worker
+ * intercepts the request, handles auth and multi-block reassembly.
  */
 
 import { Box } from "@mui/material";
-import { useCasBlobUrl } from "./use-cas-blob-url.ts";
+import { useEffect, useRef, useState } from "react";
 
 type VideoPreviewProps = {
   casUrl?: string | null;
@@ -14,9 +15,25 @@ type VideoPreviewProps = {
 };
 
 export function VideoPreview({ casUrl, blob }: VideoPreviewProps) {
-  const url = useCasBlobUrl(casUrl, blob);
+  const blobUrlRef = useRef("");
+  const [fallbackUrl, setFallbackUrl] = useState("");
 
-  if (!url) return null;
+  useEffect(() => {
+    if (casUrl || !blob) {
+      setFallbackUrl("");
+      return;
+    }
+    const u = URL.createObjectURL(blob);
+    blobUrlRef.current = u;
+    setFallbackUrl(u);
+    return () => {
+      URL.revokeObjectURL(u);
+      blobUrlRef.current = "";
+    };
+  }, [casUrl, blob]);
+
+  const src = casUrl || fallbackUrl;
+  if (!src) return null;
 
   return (
     <Box
@@ -31,7 +48,7 @@ export function VideoPreview({ casUrl, blob }: VideoPreviewProps) {
       {/* biome-ignore lint/a11y/useMediaCaption: preview player, captions not applicable */}
       <video
         controls
-        src={url}
+        src={src}
         style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
       />
     </Box>

@@ -18,7 +18,9 @@ export const MAX_PREVIEW_SIZE = 10 * 1024 * 1024;
 export const builtinProviders: PreviewProvider[] = [
   {
     match: (contentType: string) => contentType.startsWith("image/"),
-    render: ({ item, blob, casUrl }) => <ImagePreview casUrl={casUrl} blob={blob} alt={item.name} />,
+    render: ({ item, blob, casUrl }) => (
+      <ImagePreview casUrl={casUrl} blob={blob} alt={item.name} />
+    ),
   },
   {
     match: (contentType: string) => contentType.startsWith("text/"),

@@ -1,14 +1,14 @@
 /**
  * <TextPreview /> - Text/code file preview with line numbers.
- * (Iter 4)
+ * (Iter 5)
  *
- * Fetches text from /cas/:nodeKey with auth headers (via
- * useCasText hook below). Falls back to reading from blob.
+ * Fetches text from /cas/:nodeKey. The Service Worker intercepts the
+ * request and handles auth + multi-block reassembly.
+ * Falls back to reading from blob prop.
  */
 
 import { Box, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
-import { useExplorerStore } from "../hooks/use-explorer-context.ts";
 
 type TextPreviewProps = {
   casUrl?: string | null;
@@ -16,12 +16,11 @@ type TextPreviewProps = {
   maxLines?: number;
 };
 
-/** Fetch text from casUrl with auth, falling back to blob.text(). */
+/** Fetch text from casUrl (SW handles auth), falling back to blob.text(). */
 function useCasText(
   casUrl: string | null | undefined,
-  fallbackBlob: Blob | undefined,
+  fallbackBlob: Blob | undefined
 ): string | null {
-  const client = useExplorerStore((s) => s.client);
   const [text, setText] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,11 +29,7 @@ function useCasText(
     (async () => {
       if (casUrl) {
         try {
-          const token = await client.getAccessToken();
-          const headers: HeadersInit = {};
-          if (token) headers.Authorization = `Bearer ${token.tokenBase64}`;
-
-          const res = await fetch(casUrl, { headers });
+          const res = await fetch(casUrl);
           if (cancelled) return;
           if (res.ok) {
             const t = await res.text();
@@ -52,8 +47,10 @@ function useCasText(
       }
     })();
 
-    return () => { cancelled = true; };
-  }, [casUrl, fallbackBlob, client]);
+    return () => {
+      cancelled = true;
+    };
+  }, [casUrl, fallbackBlob]);
 
   return text;
 }
