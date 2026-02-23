@@ -1,6 +1,6 @@
 {
   "name": "@casfa/cas-uri",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "CAS URI parsing and formatting for content-addressable storage",
   "type": "module",
   "main": "./dist/index.js",

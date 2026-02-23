@@ -342,7 +342,9 @@ program
     console.log(`  Storage:  ${config.storage}`);
     console.log(`  Auth:     ${config.auth}`);
     console.log(`  Port:     ${config.port}`);
-    console.log(`  Redis:    ${config.db !== "aws" ? `redis://localhost:${config.db === "memory" ? 6380 : 6379}` : "disabled"}`);
+    console.log(
+      `  Redis:    ${config.db !== "aws" ? `redis://localhost:${config.db === "memory" ? 6380 : 6379}` : "disabled"}`
+    );
     console.log(`  Frontend: ${noFrontend ? "disabled" : "http://localhost:8901"}`);
     console.log();
 

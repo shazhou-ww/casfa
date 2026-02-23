@@ -1,6 +1,6 @@
 {
   "name": "@casfa/client",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "CASFA client library with unified authorization strategies",
   "type": "module",
   "main": "./dist/index.js",
