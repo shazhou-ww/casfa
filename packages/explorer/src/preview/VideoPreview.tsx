@@ -4,18 +4,20 @@
  */
 
 import { Box } from "@mui/material";
-import { useEffect, useMemo } from "react";
+import { useEffect, useState } from "react";
 
 type VideoPreviewProps = {
   blob: Blob;
 };
 
 export function VideoPreview({ blob }: VideoPreviewProps) {
-  const url = useMemo(() => URL.createObjectURL(blob), [blob]);
+  const [url, setUrl] = useState("");
 
   useEffect(() => {
-    return () => URL.revokeObjectURL(url);
-  }, [url]);
+    const objectUrl = URL.createObjectURL(blob);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [blob]);
 
   return (
     <Box
