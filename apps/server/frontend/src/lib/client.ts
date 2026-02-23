@@ -12,10 +12,7 @@
  */
 
 import type { TokenState, TokenStorageProvider } from "@casfa/client";
-import {
-  type AppClient,
-  createAppClient as createAppClientFactory,
-} from "@casfa/client-bridge";
+import { type AppClient, createAppClient as createAppClientFactory } from "@casfa/client-bridge";
 import { flushBufferedStorage, getKeyProvider, getStorage } from "./storage.ts";
 import { createSyncQueueStore } from "./sync-queue-store.ts";
 

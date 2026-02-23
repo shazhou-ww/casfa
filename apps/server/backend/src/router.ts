@@ -381,8 +381,18 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   // Auth: same as nodes/raw (accessToken + nodeAuth)
   // ============================================================================
 
-  app.get("/cas/:key", deps.accessTokenMiddleware, deps.nodeAuthMiddleware, deps.chunks.getCasContent);
-  app.get("/cas/:key/*", deps.accessTokenMiddleware, deps.nodeAuthMiddleware, deps.chunks.getCasContentNavigated);
+  app.get(
+    "/cas/:key",
+    deps.accessTokenMiddleware,
+    deps.nodeAuthMiddleware,
+    deps.chunks.getCasContent
+  );
+  app.get(
+    "/cas/:key/*",
+    deps.accessTokenMiddleware,
+    deps.nodeAuthMiddleware,
+    deps.chunks.getCasContentNavigated
+  );
 
   // ============================================================================
   // Static File Serving (local dev only — production uses S3 + CloudFront)
