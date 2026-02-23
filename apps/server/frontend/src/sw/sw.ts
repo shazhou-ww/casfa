@@ -217,6 +217,82 @@ self.addEventListener("periodicsync", (event) => {
 });
 
 // ============================================================================
+// CAS Content Caching — /cas/:key[/~0/~1/...]
+//
+// Intercepts fetch requests to /cas/ and applies a cache-first strategy.
+// CAS content is immutable (content-addressed), so cached entries never need
+// invalidation.  The JWT auth token is injected automatically from SW state.
+// ============================================================================
+
+const CAS_CACHE_NAME = "casfa-cas-content";
+
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+
+  // Only intercept same-origin /cas/ requests
+  if (url.origin !== self.location.origin || !url.pathname.startsWith("/cas/")) {
+    return; // Let the browser handle it normally
+  }
+
+  event.respondWith(handleCasFetch(event.request, url));
+});
+
+async function handleCasFetch(request: Request, url: URL): Promise<Response> {
+  // Use pathname as cache key (ignores auth headers — CAS content is immutable)
+  const cacheKey = new Request(url.pathname, { method: "GET" });
+
+  // 1. Check cache first
+  const cache = await caches.open(CAS_CACHE_NAME);
+  const cached = await cache.match(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  // 2. Get auth token from SW state
+  let token: string | undefined;
+  try {
+    const state = await tokenStorage.load();
+    if (state?.user?.accessToken) {
+      token = state.user.accessToken;
+    }
+  } catch {
+    // Token unavailable — try without auth (will likely get 401)
+  }
+
+  // 3. Fetch from backend with auth
+  const headers = new Headers(request.headers);
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const fetchRequest = new Request(request.url, {
+    method: "GET",
+    headers,
+    // Credentials are not needed — we inject the Bearer token ourselves
+    credentials: "omit",
+  });
+
+  let response: Response;
+  try {
+    response = await fetch(fetchRequest);
+  } catch {
+    return new Response(JSON.stringify({ error: "network_error", message: "Failed to fetch CAS content" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // 4. Cache successful responses (clone before consuming)
+  if (response.ok) {
+    const cloned = response.clone();
+    // Write to cache in the background — don't block the response
+    cache.put(cacheKey, cloned).catch(() => {});
+  }
+
+  return response;
+}
+
+// ============================================================================
 // Network Recovery
 // ============================================================================
 
