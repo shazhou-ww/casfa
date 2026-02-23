@@ -89,6 +89,8 @@ const handleMessage = createMessageHandler({
   },
   setClient: (c: CasfaClient) => {
     client = c;
+    // Reset init promise so ensureClient() won't overwrite the new client
+    clientInitPromise = null;
   },
   baseUrl: BASE_URL,
   tokenStorage,
@@ -111,26 +113,11 @@ self.addEventListener("activate", (event) => {
     (async () => {
       await self.clients.claim();
       console.log("[SW] Claimed clients");
-      // Try to recover client from persisted tokens
-      const recovered = await recoverClient();
-      if (recovered) {
-        client = recovered;
-        syncCoordinator.setClient(recovered);
+      // Initialize client (shared with connect/fetch handlers)
+      await ensureClient();
+      // If recovery succeeded, restore pending sync queue
+      if (client?.getState().user) {
         await syncCoordinator.recover();
-      } else {
-        // Create a base client so public endpoints (oauth.getConfig, etc.)
-        // work via RPC even before the user is authenticated.
-        try {
-          client = await createClient({
-            baseUrl: BASE_URL,
-            realm: "",
-            tokenStorage,
-            onAuthRequired: () => broadcast({ type: "auth-required" }),
-          });
-        } catch {
-          // Server may be unreachable — client stays null.
-          // The connect handler will retry lazily.
-        }
       }
       // Register Periodic Background Sync (progressive enhancement)
       if (self.registration.periodicSync) {
@@ -165,6 +152,47 @@ async function recoverClient(): Promise<CasfaClient | null> {
   }
 }
 
+/**
+ * Ensure a CasfaClient is available.
+ *
+ * Uses a cached promise so concurrent calls (activate + connect + fetch)
+ * share a single initialization and never race against each other.
+ *
+ * After SW idle-kill and restart, `activate` does not re-fire, so `client`
+ * is null. This helper first tries to recover a fully-authenticated client
+ * from persisted tokens (which carries the correct realm), and only falls
+ * back to a base client with `realm: ""` if no stored user is found.
+ */
+let clientInitPromise: Promise<void> | null = null;
+
+function ensureClient(): Promise<void> {
+  if (client) return Promise.resolve();
+  if (!clientInitPromise) {
+    clientInitPromise = (async () => {
+      // Try recovery first so realm is set correctly
+      const recovered = await recoverClient();
+      if (recovered) {
+        client = recovered;
+        syncCoordinator.setClient(recovered);
+        return;
+      }
+
+      // No stored user — create a base client for public endpoints
+      try {
+        client = await createClient({
+          baseUrl: BASE_URL,
+          realm: "",
+          tokenStorage,
+          onAuthRequired: () => broadcast({ type: "auth-required" }),
+        });
+      } catch {
+        // Server unreachable — client stays null
+      }
+    })();
+  }
+  return clientInitPromise;
+}
+
 // ============================================================================
 // Connection handling
 // ============================================================================
@@ -175,18 +203,7 @@ self.addEventListener("message", (event) => {
     if (!port) return;
 
     // Ensure a client exists (lazy init if SW was restarted after idle-kill)
-    const ready = client
-      ? Promise.resolve()
-      : createClient({
-          baseUrl: BASE_URL,
-          realm: "",
-          tokenStorage,
-          onAuthRequired: () => broadcast({ type: "auth-required" }),
-        })
-          .then((c) => {
-            client = c;
-          })
-          .catch(() => {});
+    const ready = ensureClient();
 
     event.waitUntil(
       ready.then(() => {
@@ -248,7 +265,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   console.log("[SW] Intercepted /cas/ fetch:", url.pathname);
-  event.respondWith(handleCasFetch(event.request, url));
+  event.respondWith(ensureClient().then(() => handleCasFetch(event.request, url)));
 });
 
 /**
@@ -333,7 +350,8 @@ async function handleCasFetch(request: Request, url: URL): Promise<Response> {
     return cached;
   }
 
-  // 2. Ensure client is available
+  // 2. Ensure client is available (may need lazy recovery after SW restart)
+  await ensureClient();
   if (!client) {
     console.warn("[SW] No client — returning 401");
     return new Response(
