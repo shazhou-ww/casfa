@@ -15,7 +15,6 @@ import type { TokenState, TokenStorageProvider } from "@casfa/client";
 import {
   type AppClient,
   createAppClient as createAppClientFactory,
-  createDirectClient,
 } from "@casfa/client-bridge";
 import { flushBufferedStorage, getKeyProvider, getStorage } from "./storage.ts";
 import { createSyncQueueStore } from "./sync-queue-store.ts";
@@ -78,11 +77,11 @@ export function getAppClient(): Promise<AppClient> {
         }
       }
 
-      const create = import.meta.env.DEV ? createDirectClient : createAppClientFactory;
-
-      return create({
+      return createAppClientFactory({
         baseUrl: "",
         realm,
+        // In dev mode, point to the TS source so Vite can transform it on the fly
+        swUrl: import.meta.env.DEV ? "/src/sw/sw.ts" : "/sw.js",
         tokenStorage: localStorageProvider,
         onAuthRequired: () => {
           window.location.href = "/login";
