@@ -615,16 +615,15 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
  * - s-node (successor): error — not directly servable
  * - set: error — not directly servable
  */
-function serveCasContent(
-  c: Context<Env>,
-  nodeKey: string,
-  bytes: Uint8Array
-): Response {
+function serveCasContent(c: Context<Env>, nodeKey: string, bytes: Uint8Array): Response {
   let node: ReturnType<typeof decodeNode>;
   try {
     node = decodeNode(bytes);
   } catch {
-    return c.json({ error: "invalid_node", message: "Failed to decode node" }, 400) as unknown as Response;
+    return c.json(
+      { error: "invalid_node", message: "Failed to decode node" },
+      400
+    ) as unknown as Response;
   }
 
   const immutableCache = "public, max-age=31536000, immutable";
@@ -641,11 +640,9 @@ function serveCasContent(
           }
         }
       }
-      return c.json(
-        { type: "dict", key: nodeKey, children },
-        200,
-        { "Cache-Control": immutableCache }
-      ) as unknown as Response;
+      return c.json({ type: "dict", key: nodeKey, children }, 200, {
+        "Cache-Control": immutableCache,
+      }) as unknown as Response;
     }
 
     case "file": {
@@ -654,7 +651,8 @@ function serveCasContent(
         return c.json(
           {
             error: "multi_block_unsupported",
-            message: "Multi-block files cannot be served via /cas/. Use the nodes/raw API to reassemble.",
+            message:
+              "Multi-block files cannot be served via /cas/. Use the nodes/raw API to reassemble.",
           },
           422
         ) as unknown as Response;
@@ -693,7 +691,10 @@ function serveCasContent(
       ) as unknown as Response;
 
     default:
-      return c.json({ error: "invalid_node", message: "Unknown node kind" }, 400) as unknown as Response;
+      return c.json(
+        { error: "invalid_node", message: "Unknown node kind" },
+        400
+      ) as unknown as Response;
   }
 }
 
