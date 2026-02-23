@@ -86,6 +86,8 @@ export type PreviewRenderProps = {
   item: ExplorerItem;
   blob: Blob;
   contentType: string;
+  /** CAS content URL — e.g. /cas/nod_XXXX (served with proper MIME type, cached by SW) */
+  casUrl: string | null;
 };
 
 // ============================================================================

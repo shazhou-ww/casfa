@@ -1,22 +1,29 @@
 /**
  * <TextPreview /> - Text/code file preview with line numbers.
  * (Iter 4)
+ *
+ * Prefers fetching from casUrl (/cas/:nodeKey) when available,
+ * which benefits from SW caching. Falls back to reading from blob.
  */
 
 import { Box, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
 
 type TextPreviewProps = {
-  blob: Blob;
+  casUrl?: string | null;
+  blob?: Blob;
   maxLines?: number;
 };
 
-export function TextPreview({ blob, maxLines = 200 }: TextPreviewProps) {
+export function TextPreview({ casUrl, blob, maxLines = 200 }: TextPreviewProps) {
   const [lines, setLines] = useState<string[]>([]);
   const [truncated, setTruncated] = useState(false);
 
   useEffect(() => {
-    blob.text().then((text) => {
+    let cancelled = false;
+
+    const processText = (text: string) => {
+      if (cancelled) return;
       const allLines = text.split("\n");
       if (allLines.length > maxLines) {
         setLines(allLines.slice(0, maxLines));
@@ -25,8 +32,21 @@ export function TextPreview({ blob, maxLines = 200 }: TextPreviewProps) {
         setLines(allLines);
         setTruncated(false);
       }
-    });
-  }, [blob, maxLines]);
+    };
+
+    if (casUrl) {
+      fetch(casUrl)
+        .then((r) => r.text())
+        .then(processText)
+        .catch(() => {
+          if (!cancelled) setLines(["Failed to load content"]);
+        });
+    } else if (blob) {
+      blob.text().then(processText);
+    }
+
+    return () => { cancelled = true; };
+  }, [casUrl, blob, maxLines]);
 
   const gutterWidth = String(lines.length).length;
 

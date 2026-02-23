@@ -4,6 +4,10 @@
  *
  * Loads file content via localFs.read() and renders through
  * matched preview providers (custom first, then built-in).
+ *
+ * When the item has a nodeKey, a CAS URL (/cas/:nodeKey) is also
+ * provided so media previews can use it directly as src — benefiting
+ * from SW caching without needing blob URLs.
  */
 
 import CloseIcon from "@mui/icons-material/Close";
@@ -40,6 +44,9 @@ export function PreviewPanel({ item, onClose, previewProviders }: PreviewPanelPr
   const [blob, setBlob] = useState<Blob | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Construct CAS URL from item's nodeKey (if available)
+  const casUrl = item?.nodeKey ? `/cas/${item.nodeKey}` : null;
 
   useEffect(() => {
     if (!item || !depotRoot || item.isDirectory) {
@@ -165,7 +172,7 @@ export function PreviewPanel({ item, onClose, previewProviders }: PreviewPanelPr
 
         {!loading && !error && blob && provider && (
           <Box sx={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto" }}>
-            {provider.render({ item, blob, contentType })}
+            {provider.render({ item, blob, contentType, casUrl })}
           </Box>
         )}
 
