@@ -181,7 +181,7 @@ export type TestHelpers = {
   // ========================================================================
 
   /** Create a mock JWT token for a user (userUuid is the Cognito-style UUID) */
-  createUserToken: (userUuid: string, options?: { exp?: number }) => string;
+  createUserToken: (userUuid: string, options?: { exp?: number }) => Promise<string>;
 
   /** Create an authorized user with a JWT token */
   createTestUser: (
@@ -335,7 +335,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
     // User JWT Helpers
     // ========================================================================
 
-    createUserToken: (userId: string, options?: { exp?: number }) => {
+    createUserToken: async (userId: string, options?: { exp?: number }) => {
       const exp = options?.exp ?? Math.floor(Date.now() / 1000) + 3600; // 1 hour default
       return createMockJwt(mockJwtSecret, { sub: userId, exp });
     },
@@ -359,7 +359,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
       }
 
       // Create JWT token (sub is UUID, like Cognito)
-      const token = helpers.createUserToken(userUuid);
+      const token = await helpers.createUserToken(userUuid);
 
       return {
         userId, // user:base32 format (what the system uses internally)

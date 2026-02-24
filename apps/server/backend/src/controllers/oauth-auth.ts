@@ -15,10 +15,31 @@
  * The authorization_endpoint in metadata points to /oauth/authorize (frontend),
  * not to the API. The frontend page calls GET /api/auth/authorize to validate
  * params, then POSTs to approve.
+ *
+ * Delegates OAuth protocol logic to `@casfa/oauth-provider`:
+ * - Metadata generation → `generateAuthServerMetadata` / `generateProtectedResourceMetadata`
+ * - Authorization request validation → `validateAuthorizationRequest`
+ * - Scope mapping → `mapScopes`
+ * - Client registration → `registerClient`
+ * - Redirect URI matching → `isRedirectUriAllowed`
  */
 
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { verifyPkceChallenge } from "@casfa/client-auth-crypto";
 import type { Delegate } from "@casfa/delegate";
+import {
+  generateAuthServerMetadata,
+  generateProtectedResourceMetadata,
+  isRedirectUriAllowed,
+  mapScopes,
+  registerClient,
+  resolveClient as resolveClientFromStore,
+  type AuthServerConfig,
+  type ClientStore,
+  type OAuthClient,
+  type ScopeDefinition,
+  validateAuthorizationRequest,
+} from "@casfa/oauth-provider";
 import type { Context } from "hono";
 import type { ServerConfig } from "../config.ts";
 import type { AuthCodesDb, GrantedPermissions } from "../db/auth-codes.ts";
@@ -59,42 +80,38 @@ export type OAuthAuthController = {
 // Constants
 // ============================================================================
 
-/** Authorization code validity: 10 minutes */
-const AUTH_CODE_TTL_MS = 10 * 60 * 1000;
-
 /** Default access token TTL: 1 hour */
 const DEFAULT_AT_TTL_SECONDS = 3600;
 
-type OAuthClient = {
-  clientId: string;
-  clientName: string;
-  redirectUris: string[];
-  grantTypes: string[];
-  tokenEndpointAuthMethod: "none";
-};
+/** Authorization code TTL: 10 minutes */
+const AUTH_CODE_TTL_MS = 10 * 60 * 1000;
 
 /**
  * Hardcoded well-known clients.
  * Dynamic clients are persisted in DynamoDB via oauthClientsDb.
  */
-const HARDCODED_CLIENTS: Record<string, OAuthClient> = {
-  "vscode-casfa-mcp": {
-    clientId: "vscode-casfa-mcp",
-    clientName: "VS Code CASFA MCP",
-    redirectUris: ["http://127.0.0.1:*"],
-    grantTypes: ["authorization_code", "refresh_token"],
-    tokenEndpointAuthMethod: "none",
-  },
-};
+const HARDCODED_CLIENTS = new Map<string, OAuthClient>([
+  [
+    "vscode-casfa-mcp",
+    {
+      clientId: "vscode-casfa-mcp",
+      clientName: "VS Code CASFA MCP",
+      redirectUris: ["http://127.0.0.1:*"],
+      grantTypes: ["authorization_code", "refresh_token"],
+      tokenEndpointAuthMethod: "none",
+      createdAt: 0,
+    },
+  ],
+]);
 
 /** Supported OAuth scopes */
-const VALID_SCOPES = new Set(["cas:read", "cas:write", "depot:manage"]);
+const SCOPE_DEFINITIONS: ScopeDefinition[] = [
+  { name: "cas:read", description: "Read content from your CAS storage" },
+  { name: "cas:write", description: "Upload and write content to your CAS storage" },
+  { name: "depot:manage", description: "Create and manage depots" },
+];
 
-const SCOPE_DESCRIPTIONS: Record<string, string> = {
-  "cas:read": "Read content from your CAS storage",
-  "cas:write": "Upload and write content to your CAS storage",
-  "depot:manage": "Create and manage depots",
-};
+const SUPPORTED_SCOPE_NAMES = SCOPE_DEFINITIONS.map((s) => s.name);
 
 // ============================================================================
 // Controller Factory
@@ -103,47 +120,43 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
 export const createOAuthAuthController = (deps: OAuthAuthControllerDeps): OAuthAuthController => {
   const { serverConfig, authCodesDb, delegatesDb, oauthClientsDb } = deps;
 
-  /**
-   * Resolve a client by ID: check hardcoded first, then DynamoDB.
-   * For `dyn_` prefixed clients not yet in DB (e.g. registered before
-   * DynamoDB persistence was added), auto-accept with permissive defaults
-   * and persist for future lookups. This is safe because dynamic clients
-   * are always public (no client_secret) per MCP/OAuth 2.1 spec.
-   */
-  const resolveClient = async (clientId: string): Promise<OAuthClient | null> => {
-    const hardcoded = HARDCODED_CLIENTS[clientId];
-    if (hardcoded) return hardcoded;
-
-    const record = await oauthClientsDb.get(clientId);
-    if (record) {
+  // ── ClientStore adapter for @casfa/oauth-provider ──
+  const clientStore: ClientStore = {
+    get: async (clientId: string): Promise<OAuthClient | null> => {
+      const record = await oauthClientsDb.get(clientId);
+      if (!record) {
+        // Auto-accept previously-registered dyn_ clients not yet in DB
+        if (clientId.startsWith("dyn_")) {
+          const newClient: OAuthClient = {
+            clientId,
+            clientName: "MCP Client",
+            redirectUris: ["http://127.0.0.1:*", "http://localhost:*"],
+            grantTypes: ["authorization_code", "refresh_token"],
+            tokenEndpointAuthMethod: "none",
+            createdAt: Date.now(),
+          };
+          await oauthClientsDb.put({ ...newClient, tokenEndpointAuthMethod: "none" });
+          return newClient;
+        }
+        return null;
+      }
       return {
         clientId: record.clientId,
         clientName: record.clientName,
         redirectUris: record.redirectUris,
         grantTypes: record.grantTypes,
         tokenEndpointAuthMethod: record.tokenEndpointAuthMethod,
+        createdAt: record.createdAt,
       };
-    }
-
-    // Auto-accept previously-registered dyn_ clients that aren't in DB yet
-    if (clientId.startsWith("dyn_")) {
-      const newClient: OAuthClient = {
-        clientId,
-        clientName: "MCP Client",
-        redirectUris: ["http://127.0.0.1:*", "http://localhost:*"],
-        grantTypes: ["authorization_code", "refresh_token"],
-        tokenEndpointAuthMethod: "none",
-      };
-      // Persist so next lookup is fast
-      await oauthClientsDb.put({
-        ...newClient,
-        createdAt: Date.now(),
-      });
-      return newClient;
-    }
-
-    return null;
+    },
+    save: async (client: OAuthClient): Promise<void> => {
+      await oauthClientsDb.put({ ...client, tokenEndpointAuthMethod: "none" });
+    },
   };
+
+  /** Resolve a client by ID: hardcoded first, then store. */
+  const resolveClient = (clientId: string) =>
+    resolveClientFromStore(clientId, clientStore, HARDCODED_CLIENTS);
 
   // ──────────────────────────────────────────────────────────────────────────
   // Phase 0: OAuth Authorization Server Metadata (RFC 8414)
@@ -153,20 +166,19 @@ export const createOAuthAuthController = (deps: OAuthAuthControllerDeps): OAuthA
     const host = c.req.header("Host");
     const proto = c.req.header("X-Forwarded-Proto") ?? "http";
     const baseUrl = host ? `${proto}://${host}` : serverConfig.baseUrl;
-    const issuer = `${baseUrl}/api/auth`;
 
-    return c.json({
-      issuer,
-      // Points to frontend route — browser opens this directly
-      authorization_endpoint: `${baseUrl}/oauth/authorize`,
-      token_endpoint: `${baseUrl}/api/auth/token`,
-      registration_endpoint: `${baseUrl}/api/auth/register`,
-      token_endpoint_auth_methods_supported: ["none"],
-      grant_types_supported: ["authorization_code", "refresh_token"],
-      response_types_supported: ["code"],
-      code_challenge_methods_supported: ["S256"],
-      scopes_supported: ["cas:read", "cas:write", "depot:manage"],
-    });
+    const config: AuthServerConfig = {
+      issuer: `${baseUrl}/api/auth`,
+      authorizationEndpoint: `${baseUrl}/oauth/authorize`,
+      tokenEndpoint: `${baseUrl}/api/auth/token`,
+      registrationEndpoint: `${baseUrl}/api/auth/register`,
+      supportedGrantTypes: ["authorization_code", "refresh_token"],
+      supportedResponseTypes: ["code"],
+      codeChallengeMethodsSupported: ["S256"],
+      supportedScopes: SCOPE_DEFINITIONS,
+    };
+
+    return c.json(generateAuthServerMetadata(config));
   };
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -178,12 +190,13 @@ export const createOAuthAuthController = (deps: OAuthAuthControllerDeps): OAuthA
     const proto = c.req.header("X-Forwarded-Proto") ?? "http";
     const baseUrl = host ? `${proto}://${host}` : serverConfig.baseUrl;
 
-    return c.json({
-      resource: `${baseUrl}/api/mcp`,
-      authorization_servers: [baseUrl],
-      scopes_supported: ["cas:read", "cas:write", "depot:manage"],
-      bearer_methods_supported: ["header"],
-    });
+    return c.json(
+      generateProtectedResourceMetadata({
+        resource: `${baseUrl}/api/mcp`,
+        authorizationServers: [baseUrl],
+        scopesSupported: SUPPORTED_SCOPE_NAMES,
+      })
+    );
   };
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -197,75 +210,30 @@ export const createOAuthAuthController = (deps: OAuthAuthControllerDeps): OAuthA
    * No auth required — this is a public validation endpoint.
    */
   const authorizeInfo = async (c: Context<Env>): Promise<Response> => {
-    const params = {
-      responseType: c.req.query("response_type"),
-      clientId: c.req.query("client_id"),
-      redirectUri: c.req.query("redirect_uri"),
-      scope: c.req.query("scope"),
-      state: c.req.query("state"),
-      codeChallenge: c.req.query("code_challenge"),
-      codeChallengeMethod: c.req.query("code_challenge_method"),
-    };
+    const result = await validateAuthorizationRequest(
+      {
+        responseType: c.req.query("response_type"),
+        clientId: c.req.query("client_id"),
+        redirectUri: c.req.query("redirect_uri"),
+        scope: c.req.query("scope"),
+        state: c.req.query("state"),
+        codeChallenge: c.req.query("code_challenge"),
+        codeChallengeMethod: c.req.query("code_challenge_method"),
+      },
+      {
+        resolveClient,
+        supportedScopes: SUPPORTED_SCOPE_NAMES,
+      }
+    );
 
-    // Validate response_type
-    if (params.responseType !== "code") {
+    if (!result.ok) {
       return c.json(
-        { error: "unsupported_response_type", error_description: "Only 'code' is supported" },
-        400
+        { error: result.error.code, error_description: result.error.message },
+        result.error.statusCode as 400
       );
     }
 
-    // Validate client_id
-    if (!params.clientId) {
-      return c.json({ error: "invalid_request", error_description: "Missing client_id" }, 400);
-    }
-    const client = await resolveClient(params.clientId);
-    if (!client) {
-      return c.json({ error: "invalid_client", error_description: "Unknown client_id" }, 400);
-    }
-
-    // Validate redirect_uri
-    if (!params.redirectUri) {
-      return c.json({ error: "invalid_request", error_description: "Missing redirect_uri" }, 400);
-    }
-    if (!isRedirectUriAllowed(params.redirectUri, client.redirectUris)) {
-      return c.json(
-        { error: "invalid_request", error_description: "redirect_uri not allowed for this client" },
-        400
-      );
-    }
-
-    // Validate scope
-    if (!params.scope) {
-      return c.json({ error: "invalid_request", error_description: "Missing scope" }, 400);
-    }
-    const scopes = params.scope.split(" ").filter(Boolean);
-    const invalidScopes = scopes.filter((s) => !VALID_SCOPES.has(s));
-    if (invalidScopes.length > 0) {
-      return c.json(
-        {
-          error: "invalid_scope",
-          error_description: `Unknown scopes: ${invalidScopes.join(", ")}`,
-        },
-        400
-      );
-    }
-
-    // Validate state
-    if (!params.state) {
-      return c.json({ error: "invalid_request", error_description: "Missing state" }, 400);
-    }
-
-    // Validate PKCE
-    if (!params.codeChallenge || params.codeChallengeMethod !== "S256") {
-      return c.json(
-        {
-          error: "invalid_request",
-          error_description: "PKCE required: code_challenge with method S256",
-        },
-        400
-      );
-    }
+    const { client, scopes, state, redirectUri, codeChallenge } = result.value;
 
     // All params valid — return client info + scope descriptions
     return c.json({
@@ -275,12 +243,13 @@ export const createOAuthAuthController = (deps: OAuthAuthControllerDeps): OAuthA
       },
       scopes: scopes.map((s) => ({
         name: s,
-        description: SCOPE_DESCRIPTIONS[s] || s,
+        description:
+          SCOPE_DEFINITIONS.find((d) => d.name === s)?.description ?? s,
       })),
-      state: params.state,
-      redirectUri: params.redirectUri,
-      codeChallenge: params.codeChallenge,
-      codeChallengeMethod: params.codeChallengeMethod,
+      state,
+      redirectUri,
+      codeChallenge,
+      codeChallengeMethod: "S256",
     });
   };
 
@@ -330,8 +299,16 @@ export const createOAuthAuthController = (deps: OAuthAuthControllerDeps): OAuthA
       return c.json({ error: "invalid_request", error_description: "Invalid redirect_uri" }, 400);
     }
 
-    // Map scopes → permissions, then narrow by user selections
-    const scopePermissions = mapScopesToPermissions(scopes);
+    // Map scopes → permissions via @casfa/oauth-provider, then narrow by user selections
+    type Perms = { canUpload: boolean; canManageDepot: boolean };
+    const scopePermissions = mapScopes<Perms>(
+      scopes,
+      {
+        "cas:write": { canUpload: true },
+        "depot:manage": { canManageDepot: true },
+      },
+      { canUpload: false, canManageDepot: false }
+    );
     const finalPermissions: GrantedPermissions = {
       canUpload: scopePermissions.canUpload && (grantedPermissions?.canUpload ?? true),
       canManageDepot:
@@ -445,9 +422,9 @@ export const createOAuthAuthController = (deps: OAuthAuthControllerDeps): OAuthA
       return c.json({ error: "invalid_grant", error_description: "client_id mismatch" }, 400);
     }
 
-    // 3. Verify PKCE: base64url(SHA256(code_verifier)) === code_challenge
-    const expectedChallenge = createHash("sha256").update(code_verifier).digest("base64url");
-    if (expectedChallenge !== authCode.codeChallenge) {
+    // 3. Verify PKCE via @casfa/client-auth-crypto
+    const pkceValid = await verifyPkceChallenge(code_verifier, authCode.codeChallenge);
+    if (!pkceValid) {
       return c.json({ error: "invalid_grant", error_description: "PKCE verification failed" }, 400);
     }
 
@@ -555,59 +532,34 @@ export const createOAuthAuthController = (deps: OAuthAuthControllerDeps): OAuthA
       grant_types?: string[];
     };
 
-    // Validate redirect_uris
-    if (!redirect_uris || redirect_uris.length === 0) {
+    const result = await registerClient(
+      {
+        clientName: client_name ?? "MCP Client",
+        redirectUris: redirect_uris ?? [],
+        grantTypes: grant_types,
+      },
+      clientStore,
+      {
+        generateClientId: () => `dyn_${randomBytes(16).toString("base64url")}`,
+      }
+    );
+
+    if (!result.ok) {
       return c.json(
-        { error: "invalid_client_metadata", error_description: "redirect_uris is required" },
-        400
+        { error: result.error.code, error_description: result.error.message },
+        result.error.statusCode as 400
       );
     }
 
-    // Only allow localhost and https redirect URIs per MCP spec
-    for (const uri of redirect_uris) {
-      try {
-        const parsed = new URL(uri);
-        const isLocalhost = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
-        const isHttps = parsed.protocol === "https:";
-        if (!isLocalhost && !isHttps) {
-          return c.json(
-            {
-              error: "invalid_client_metadata",
-              error_description: `redirect_uri must be localhost or HTTPS: ${uri}`,
-            },
-            400
-          );
-        }
-      } catch {
-        return c.json(
-          { error: "invalid_client_metadata", error_description: `Invalid redirect_uri: ${uri}` },
-          400
-        );
-      }
-    }
-
-    // Generate a dynamic client ID
-    const clientId = `dyn_${randomBytes(16).toString("base64url")}`;
-    const now = Date.now();
-
-    // Persist to DynamoDB
-    await oauthClientsDb.put({
-      clientId,
-      clientName: client_name ?? "MCP Client",
-      redirectUris: redirect_uris,
-      grantTypes: grant_types ?? ["authorization_code", "refresh_token"],
-      tokenEndpointAuthMethod: "none",
-      createdAt: now,
-    });
-
+    const client = result.value;
     return c.json(
       {
-        client_id: clientId,
-        client_name: client_name ?? "MCP Client",
-        redirect_uris,
-        grant_types: grant_types ?? ["authorization_code", "refresh_token"],
-        token_endpoint_auth_method: "none",
-        client_id_issued_at: Math.floor(now / 1000),
+        client_id: client.clientId,
+        client_name: client.clientName,
+        redirect_uris: client.redirectUris,
+        grant_types: client.grantTypes,
+        token_endpoint_auth_method: client.tokenEndpointAuthMethod,
+        client_id_issued_at: Math.floor(client.createdAt / 1000),
       },
       201
     );
@@ -622,48 +574,3 @@ export const createOAuthAuthController = (deps: OAuthAuthControllerDeps): OAuthA
     register,
   };
 };
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/**
- * Check if a redirect_uri matches the client's allowed patterns.
- * Supports wildcards for port numbers (e.g., "http://127.0.0.1:*").
- */
-function isRedirectUriAllowed(uri: string, allowedPatterns: string[]): boolean {
-  for (const pattern of allowedPatterns) {
-    if (pattern === uri) return true;
-    if (pattern.includes(":*")) {
-      const prefix = pattern.split(":*")[0]!;
-      if (uri.startsWith(`${prefix}:`)) {
-        try {
-          const parsed = new URL(uri);
-          const patternParsed = new URL(pattern.replace(":*", ":0"));
-          if (
-            parsed.protocol === patternParsed.protocol &&
-            parsed.hostname === patternParsed.hostname
-          ) {
-            return true;
-          }
-        } catch {
-          // Invalid URL, skip
-        }
-      }
-    }
-  }
-  return false;
-}
-
-/**
- * Map OAuth scope strings to delegate permission flags.
- */
-function mapScopesToPermissions(scopes: string[]): {
-  canUpload: boolean;
-  canManageDepot: boolean;
-} {
-  return {
-    canUpload: scopes.includes("cas:write"),
-    canManageDepot: scopes.includes("depot:manage"),
-  };
-}

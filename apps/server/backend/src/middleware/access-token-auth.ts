@@ -92,22 +92,17 @@ const handleJwtAuth = async (
   jwtVerifier: JwtVerifier,
   userRolesDb: UserRolesDb
 ): Promise<Response | undefined> => {
-  // 1. Verify JWT
-  let result;
-  try {
-    result = await jwtVerifier(token);
-  } catch {
-    return c.json({ error: "UNAUTHORIZED", message: "JWT verification failed" }, 401);
+  // 1. Verify JWT — Result-based API (never throws)
+  const result = await jwtVerifier(token);
+
+  if (!result.ok) {
+    return c.json({ error: "UNAUTHORIZED", message: result.error.message }, 401);
   }
 
-  if (!result) {
-    return c.json({ error: "UNAUTHORIZED", message: "Invalid JWT" }, 401);
-  }
-
-  const { userId, exp } = result;
+  const { subject: userId, expiresAt } = result.value;
 
   // 2. Check JWT expiration
-  if (exp && exp * 1000 < Date.now()) {
+  if (expiresAt && expiresAt * 1000 < Date.now()) {
     return c.json({ error: "TOKEN_EXPIRED", message: "JWT has expired" }, 401);
   }
 
