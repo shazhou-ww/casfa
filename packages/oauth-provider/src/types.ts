@@ -134,13 +134,13 @@ export type AuthorizationCode<TGrant = Record<string, unknown>> = {
  * Raw authorization request parameters (from query string).
  */
 export type AuthorizationRequestParams = {
-  responseType: string;
-  clientId: string;
-  redirectUri: string;
+  responseType?: string;
+  clientId?: string;
+  redirectUri?: string;
   state?: string;
   scope?: string;
-  codeChallenge: string;
-  codeChallengeMethod: string;
+  codeChallenge?: string;
+  codeChallengeMethod?: string;
 };
 
 /**

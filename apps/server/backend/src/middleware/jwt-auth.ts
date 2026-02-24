@@ -2,26 +2,20 @@
  * JWT Authentication Middleware
  *
  * Verifies User JWT tokens for Token management and user operations.
- * Based on docs/delegate-token-refactor/impl/03-middleware-refactor.md
+ * Uses `@casfa/oauth-consumer`'s `JwtVerifier` (Result-based API).
  */
 
+import type { JwtVerifier } from "@casfa/oauth-consumer";
 import type { MiddlewareHandler } from "hono";
 import type { UserRolesDb } from "../db/user-roles.ts";
 import type { Env, JwtAuthContext } from "../types.ts";
 
+// Re-export JwtVerifier so existing imports from this module still work
+export type { JwtVerifier } from "@casfa/oauth-consumer";
+
 // ============================================================================
 // Types
 // ============================================================================
-
-/**
- * JWT Verifier callback type
- *
- * Verifies a JWT token and returns user info.
- * Returns null if verification fails.
- */
-export type JwtVerifier = (
-  token: string
-) => Promise<{ userId: string; exp?: number; email?: string; name?: string } | null>;
 
 export type JwtAuthMiddlewareDeps = {
   jwtVerifier: JwtVerifier;
@@ -54,32 +48,28 @@ export const createJwtAuthMiddleware = (deps: JwtAuthMiddlewareDeps): Middleware
 
     const token = parts[1]!;
 
-    // JWT verification
-    try {
-      const result = await jwtVerifier(token);
-      if (!result) {
-        return c.json({ error: "UNAUTHORIZED", message: "Invalid JWT" }, 401);
-      }
-
-      const { userId, exp, email, name } = result;
-
-      // Get user role
-      const role = await userRolesDb.getRole(userId);
-
-      const auth: JwtAuthContext = {
-        type: "jwt",
-        userId,
-        realm: userId,
-        email,
-        name,
-        role,
-        expiresAt: exp ? exp * 1000 : Date.now() + 3600000,
-      };
-
-      c.set("auth", auth);
-      return next();
-    } catch {
-      return c.json({ error: "UNAUTHORIZED", message: "JWT verification failed" }, 401);
+    // JWT verification — Result-based API (never throws)
+    const result = await jwtVerifier(token);
+    if (!result.ok) {
+      return c.json({ error: "UNAUTHORIZED", message: result.error.message }, 401);
     }
+
+    const { subject: userId, expiresAt, email, name } = result.value;
+
+    // Get user role
+    const role = await userRolesDb.getRole(userId);
+
+    const auth: JwtAuthContext = {
+      type: "jwt",
+      userId,
+      realm: userId,
+      email,
+      name,
+      role,
+      expiresAt: expiresAt ? expiresAt * 1000 : Date.now() + 3600000,
+    };
+
+    c.set("auth", auth);
+    return next();
   };
 };

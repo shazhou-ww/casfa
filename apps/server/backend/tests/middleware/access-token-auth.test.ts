@@ -126,9 +126,15 @@ function createMockUserRolesDb(overrides?: Partial<UserRolesDb>): UserRolesDb {
 }
 
 function createMockJwtVerifier(
-  result: { userId: string; exp?: number } | null = {
-    userId: TEST_USER_ID,
-    exp: Math.floor(Date.now() / 1000) + 3600,
+  result:
+    | { ok: true; value: { subject: string; expiresAt: number; rawClaims: Record<string, unknown> } }
+    | { ok: false; error: { code: string; message: string; statusCode: number } } = {
+    ok: true,
+    value: {
+      subject: TEST_USER_ID,
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      rawClaims: { sub: TEST_USER_ID },
+    },
   }
 ): JwtVerifier {
   return mock(async () => result);
@@ -219,8 +225,9 @@ describe("AccessTokenMiddleware", () => {
     it("returns 401 when JWT verification fails (invalid signature)", async () => {
       const deps: AccessTokenMiddlewareDeps = {
         delegatesDb: createMockDelegatesDb(),
-        jwtVerifier: mock(async () => {
-          throw new Error("signature mismatch");
+        jwtVerifier: createMockJwtVerifier({
+          ok: false,
+          error: { code: "invalid_token", message: "signature mismatch", statusCode: 401 },
         }),
         userRolesDb: createMockUserRolesDb(),
       };
@@ -238,7 +245,10 @@ describe("AccessTokenMiddleware", () => {
     it("returns 401 when JWT verification returns null", async () => {
       const deps: AccessTokenMiddlewareDeps = {
         delegatesDb: createMockDelegatesDb(),
-        jwtVerifier: createMockJwtVerifier(null),
+        jwtVerifier: createMockJwtVerifier({
+          ok: false,
+          error: { code: "invalid_token", message: "Invalid token", statusCode: 401 },
+        }),
         userRolesDb: createMockUserRolesDb(),
       };
       const middleware = createAccessTokenMiddleware(deps);
@@ -256,8 +266,12 @@ describe("AccessTokenMiddleware", () => {
       const deps: AccessTokenMiddlewareDeps = {
         delegatesDb: createMockDelegatesDb(),
         jwtVerifier: createMockJwtVerifier({
-          userId: TEST_USER_ID,
-          exp: 1, // expired (epoch second 1)
+          ok: true,
+          value: {
+            subject: TEST_USER_ID,
+            expiresAt: 1, // expired (epoch second 1)
+            rawClaims: { sub: TEST_USER_ID },
+          },
         }),
         userRolesDb: createMockUserRolesDb(),
       };

@@ -7,7 +7,7 @@
  */
 
 import type { Context } from "hono";
-import { createMockJwt } from "../auth/index.ts";
+import { createMockJwt, createMockJwtVerifier } from "../auth/index.ts";
 import type { LocalUsersDb } from "../db/local-users.ts";
 import type { UserRolesDb } from "../db/user-roles.ts";
 import type { Env } from "../types.ts";
@@ -53,19 +53,24 @@ const verifyPassword = async (password: string, hash: string): Promise<boolean> 
 export const createLocalAuthController = (deps: LocalAuthControllerDeps): LocalAuthController => {
   const { localUsersDb, userRolesDb, mockJwtSecret } = deps;
 
-  const issueTokens = (userId: string) => {
+  /** Mock JWT verifier for refresh token verification */
+  const mockVerifier = createMockJwtVerifier(mockJwtSecret);
+
+  const issueTokens = async (userId: string) => {
     const now = Math.floor(Date.now() / 1000);
-    const accessToken = createMockJwt(mockJwtSecret, {
-      sub: userId,
-      exp: now + 3600, // 1 hour
-      iat: now,
-    });
-    const refreshToken = createMockJwt(mockJwtSecret, {
-      sub: userId,
-      exp: now + 86400 * 30, // 30 days
-      iat: now,
-      type: "refresh",
-    });
+    const [accessToken, refreshToken] = await Promise.all([
+      createMockJwt(mockJwtSecret, {
+        sub: userId,
+        exp: now + 3600, // 1 hour
+        iat: now,
+      }),
+      createMockJwt(mockJwtSecret, {
+        sub: userId,
+        exp: now + 86400 * 30, // 30 days
+        iat: now,
+        type: "refresh",
+      }),
+    ]);
     return { accessToken, refreshToken, expiresIn: 3600 };
   };
 
@@ -100,7 +105,7 @@ export const createLocalAuthController = (deps: LocalAuthControllerDeps): LocalA
       await userRolesDb.setRole(userId, "admin");
 
       // Issue tokens
-      const tokens = issueTokens(userId);
+      const tokens = await issueTokens(userId);
 
       return c.json(
         {
@@ -130,7 +135,7 @@ export const createLocalAuthController = (deps: LocalAuthControllerDeps): LocalA
       }
 
       // Issue tokens
-      const tokens = issueTokens(user.userId);
+      const tokens = await issueTokens(user.userId);
 
       return c.json({
         userId: user.userId,
@@ -144,53 +149,27 @@ export const createLocalAuthController = (deps: LocalAuthControllerDeps): LocalA
       const body = await c.req.json();
       const { refreshToken } = body;
 
-      // Decode and verify the refresh token
-      try {
-        const parts = refreshToken.split(".");
-        if (parts.length !== 3) {
-          return c.json({ error: "INVALID_TOKEN", message: "Invalid refresh token" }, 401);
-        }
-
-        // Verify using the mock JWT verifier inline
-        const { createHmac } = await import("node:crypto");
-        const [headerB64, payloadB64, signatureB64] = parts;
-        const signatureInput = `${headerB64}.${payloadB64}`;
-        const expectedSignature = createHmac("sha256", mockJwtSecret)
-          .update(signatureInput)
-          .digest("base64url");
-
-        if (signatureB64 !== expectedSignature) {
-          return c.json({ error: "INVALID_TOKEN", message: "Invalid refresh token" }, 401);
-        }
-
-        // Decode payload
-        const padding = payloadB64.length % 4 === 0 ? "" : "=".repeat(4 - (payloadB64.length % 4));
-        const payloadJson = Buffer.from(
-          payloadB64.replace(/-/g, "+").replace(/_/g, "/") + padding,
-          "base64"
-        ).toString("utf-8");
-        const payload = JSON.parse(payloadJson);
-
-        if (!payload.sub || payload.type !== "refresh") {
-          return c.json({ error: "INVALID_TOKEN", message: "Not a refresh token" }, 401);
-        }
-
-        if (payload.exp && payload.exp * 1000 < Date.now()) {
-          return c.json({ error: "TOKEN_EXPIRED", message: "Refresh token expired" }, 401);
-        }
-
-        // Issue new access token
-        const now = Math.floor(Date.now() / 1000);
-        const accessToken = createMockJwt(mockJwtSecret, {
-          sub: payload.sub,
-          exp: now + 3600,
-          iat: now,
-        });
-
-        return c.json({ accessToken, expiresIn: 3600 });
-      } catch {
+      // Verify refresh token using @casfa/oauth-consumer's mock verifier
+      const result = await mockVerifier(refreshToken);
+      if (!result.ok) {
         return c.json({ error: "INVALID_TOKEN", message: "Invalid refresh token" }, 401);
       }
+
+      // Verify it's a refresh token (has type: "refresh" claim)
+      const claims = result.value.rawClaims;
+      if (claims.type !== "refresh") {
+        return c.json({ error: "INVALID_TOKEN", message: "Not a refresh token" }, 401);
+      }
+
+      // Issue new access token
+      const now = Math.floor(Date.now() / 1000);
+      const accessToken = await createMockJwt(mockJwtSecret, {
+        sub: result.value.subject,
+        exp: now + 3600,
+        iat: now,
+      });
+
+      return c.json({ accessToken, expiresIn: 3600 });
     },
   };
 };

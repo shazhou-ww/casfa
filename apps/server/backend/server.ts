@@ -83,7 +83,7 @@ const createJwtVerifier = () => {
     return createCognitoJwtVerifier(config.cognito);
   }
   // No JWT verification - always reject (stored tokens only mode)
-  return async () => null;
+  return async () => ({ ok: false as const, error: { code: "no_verifier", message: "No JWT verifier configured", statusCode: 401 } });
 };
 
 const jwtVerifier = createJwtVerifier();
