@@ -127,7 +127,10 @@ function createMockUserRolesDb(overrides?: Partial<UserRolesDb>): UserRolesDb {
 
 function createMockJwtVerifier(
   result:
-    | { ok: true; value: { subject: string; expiresAt: number; rawClaims: Record<string, unknown> } }
+    | {
+        ok: true;
+        value: { subject: string; expiresAt: number; rawClaims: Record<string, unknown> };
+      }
     | { ok: false; error: { code: string; message: string; statusCode: number } } = {
     ok: true,
     value: {

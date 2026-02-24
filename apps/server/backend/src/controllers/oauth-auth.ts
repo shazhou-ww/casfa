@@ -28,15 +28,15 @@ import { randomBytes } from "node:crypto";
 import { verifyPkceChallenge } from "@casfa/client-auth-crypto";
 import type { Delegate } from "@casfa/delegate";
 import {
+  type AuthServerConfig,
+  type ClientStore,
   generateAuthServerMetadata,
   generateProtectedResourceMetadata,
   isRedirectUriAllowed,
   mapScopes,
+  type OAuthClient,
   registerClient,
   resolveClient as resolveClientFromStore,
-  type AuthServerConfig,
-  type ClientStore,
-  type OAuthClient,
   type ScopeDefinition,
   validateAuthorizationRequest,
 } from "@casfa/oauth-provider";
@@ -243,8 +243,7 @@ export const createOAuthAuthController = (deps: OAuthAuthControllerDeps): OAuthA
       },
       scopes: scopes.map((s) => ({
         name: s,
-        description:
-          SCOPE_DEFINITIONS.find((d) => d.name === s)?.description ?? s,
+        description: SCOPE_DEFINITIONS.find((d) => d.name === s)?.description ?? s,
       })),
       state,
       redirectUri,
