@@ -116,6 +116,16 @@ URL 中的 `~N` 导航段 / FS `?path=` 中的 `~N` 段提供从 `nodeId` 向下
 | POST | `/api/oauth/refresh` | 刷新 JWT Token | 无 |
 | GET | `/api/oauth/me` | 获取当前用户信息 | User JWT |
 
+### Local Auth（本地认证，`AUTH_MODE=local` 时启用）
+
+[详细文档](./01-oauth.md#local-auth本地认证)
+
+| 方法 | 路径 | 描述 | 认证 |
+|------|------|------|------|
+| POST | `/api/local/register` | 用户注册 | 无 |
+| POST | `/api/local/login` | 用户登录 | 无 |
+| POST | `/api/local/refresh` | 刷新 JWT Token | 无 |
+
 ### Auth API
 
 [详细文档](./02-auth.md)
@@ -217,6 +227,21 @@ URL 中的 `~N` 导航段 / FS `?path=` 中的 `~N` 段提供从 `nodeId` 向下
 |------|------|------|------|
 | GET | `/api/realm/{realmId}` | 获取 Realm 端点信息 | AT 或 JWT |
 | GET | `/api/realm/{realmId}/usage` | 获取使用统计 | AT 或 JWT |
+
+### MCP API
+
+| 方法 | 路径 | 描述 | 认证 |
+|------|------|------|------|
+| POST | `/api/mcp` | MCP JSON-RPC 端点 | AT 或 JWT |
+
+### CAS 内容服务（decoded 内容访问）
+
+以 decoded 形式提供 CAS 内容：d-node 返回 JSON children listing，f-node 返回带 MIME 类型的文件内容，s-node 返回 422 错误。
+
+| 方法 | 路径 | 描述 | 认证 |
+|------|------|------|------|
+| GET | `/cas/:key` | 直接读取 decoded CAS 内容 | AT 或 JWT |
+| GET | `/cas/:key/~0/~1/...` | 导航读取 decoded CAS 内容 | AT 或 JWT |
 
 ## 错误响应
 

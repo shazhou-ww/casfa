@@ -2,7 +2,11 @@
 
 用于用户身份认证的 API 端点。OAuth 认证后获取的 User JWT 用于管理操作和 Root Delegate 的数据访问。
 
+CASFA 支持两种用户认证方式：Cognito OAuth 和 Local Auth（本地注册/登录）。两者均返回 User JWT，后续流程完全一致。
+
 ## 端点列表
+
+### Cognito OAuth
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
@@ -11,6 +15,16 @@
 | POST | `/api/oauth/login` | 用户登录（邮箱密码） | 无 |
 | POST | `/api/oauth/refresh` | 刷新 JWT Token | 无 |
 | GET | `/api/oauth/me` | 获取当前用户信息 | User JWT |
+
+### Local Auth（本地认证）
+
+仅在 `AUTH_MODE=local` 时启用。
+
+| 方法 | 路径 | 描述 | 认证 |
+|------|------|------|------|
+| POST | `/api/local/register` | 用户注册 | 无 |
+| POST | `/api/local/login` | 用户登录 | 无 |
+| POST | `/api/local/refresh` | 刷新 JWT Token | 无 |
 
 ---
 
@@ -237,3 +251,41 @@ User JWT 用于以下操作：
 | `unauthorized` | 未授权用户，无法创建 Root Delegate |
 | `authorized` | 已授权用户，可以创建 Root Delegate 和管理 Token |
 | `admin` | 管理员，可以管理所有用户 |
+
+---
+
+## Local Auth（本地认证）
+
+仅在 `AUTH_MODE=local` 时启用，用于开发或私有部署。与 Cognito OAuth 互斥。
+
+### POST /api/local/register
+
+注册新用户。
+
+#### 请求
+
+```json
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+```
+
+#### 响应
+
+```json
+{
+  "accessToken": "...",
+  "idToken": "...",
+  "refreshToken": "...",
+  "expiresIn": 3600
+}
+```
+
+### POST /api/local/login
+
+用户登录。请求/响应格式与 `POST /api/oauth/login` 一致。
+
+### POST /api/local/refresh
+
+刷新 JWT Token。请求/响应格式与 `POST /api/oauth/refresh` 一致。
