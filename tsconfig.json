@@ -42,7 +42,9 @@
       "@casfa/storage-indexeddb": ["./packages/storage-indexeddb/src/index.ts"],
       "@casfa/storage-cached": ["./packages/storage-cached/src/index.ts"],
       "@casfa/port-rpc": ["./packages/port-rpc/src/index.ts"],
-      "@casfa/dag-diff": ["./packages/dag-diff/src/index.ts"]
+      "@casfa/dag-diff": ["./packages/dag-diff/src/index.ts"],
+      "@casfa/oauth-consumer": ["./packages/oauth-consumer/src/index.ts"],
+      "@casfa/oauth-provider": ["./packages/oauth-provider/src/index.ts"]
     },
 
     // Best practices

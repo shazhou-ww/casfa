@@ -29,6 +29,7 @@
 
 | 文档 | 描述 | 状态 |
 |------|------|------|
+| [oauth-packages/](./oauth-packages/README.md) | 双向 OAuth 逻辑提取为 `@casfa/oauth-consumer` + `@casfa/oauth-provider` 公共包 | 📋 待实现 |
 | [shared-component-extraction.md](./shared-component-extraction.md) | 单仓库重复代码分析与共享组件抽取 | 🔨 进行中 |
 | [storage-has-removal.md](./storage-has-removal.md) | 从 StorageProvider 接口移除 `has()` 的 RFC | 📋 RFC |
 | [id-format-unification.md](./id-format-unification.md) | ID 格式统一为 `prefix_[CrockfordBase32]{26}` | ✅ 已完成 |
