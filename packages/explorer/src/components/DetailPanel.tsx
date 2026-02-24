@@ -121,11 +121,12 @@ export function DetailPanel({ width = PANEL_WIDTH }: DetailPanelProps) {
   }, [selectedItems]);
 
   // Fetch refCount when a single item with nodeKey is selected
+  const nodeKey = selectedItems.length === 1 ? selectedItems[0]?.nodeKey : undefined;
+
   useEffect(() => {
-    const singleItem = selectedItems.length === 1 ? selectedItems[0] : null;
-    const nodeKey = singleItem?.nodeKey;
     if (!nodeKey || !detailPanelOpen) {
       setRefCount(null);
+      setRefCountLoading(false);
       return;
     }
 
@@ -151,7 +152,7 @@ export function DetailPanel({ width = PANEL_WIDTH }: DetailPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [selectedItems, detailPanelOpen, client]);
+  }, [nodeKey, detailPanelOpen, client]);
 
   const renderContent = () => {
     if (selectedItems.length === 0) {
