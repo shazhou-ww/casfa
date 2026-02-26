@@ -32,6 +32,7 @@ import type { Context } from "hono";
 import type { OwnershipV2Db } from "../db/ownership-v2.ts";
 import type { RefCountDb } from "../db/refcount.ts";
 import type { UsageDb } from "../db/usage.ts";
+import type { ExtensionService } from "../services/extensions/index.ts";
 import type { AccessTokenAuthContext, Env } from "../types.ts";
 
 export type ChunksController = {
@@ -55,6 +56,7 @@ type ChunksControllerDeps = {
   ownershipV2Db: OwnershipV2Db;
   refCountDb: RefCountDb;
   usageDb: UsageDb;
+  extensionService?: ExtensionService;
 };
 
 export const createChunksController = (deps: ChunksControllerDeps): ChunksController => {
@@ -288,6 +290,16 @@ export const createChunksController = (deps: ChunksControllerDeps): ChunksContro
           logicalBytes: logicalSize,
           nodeCount: 1,
         });
+      }
+
+      // Generate on-create extension derived data (fire-and-forget safe)
+      if (deps.extensionService) {
+        try {
+          const node = decodeNode(bytes);
+          await deps.extensionService.onNodeCreated(storageKey, node);
+        } catch {
+          // Extension generation failure must not block node upload
+        }
       }
 
       return c.json<NodeUploadResponse>({

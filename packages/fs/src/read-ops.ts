@@ -202,29 +202,49 @@ export const createReadOps = (ctx: FsContext, tree: TreeOps) => {
     const clampedLimit = Math.min(Math.max(limit, 1), 1000);
     const endIndex = Math.min(startIndex + clampedLimit, total);
 
-    const children: FsLsChild[] = [];
+    // Collect storage keys for the current page
+    const pageKeys: string[] = [];
     for (let i = startIndex; i < endIndex; i++) {
+      pageKeys.push(hashToStorageKey(childHashes[i]!));
+    }
+
+    // Try batch metadata lookup first (avoids per-child S3 fetches)
+    const metaMap = ctx.getChildrenMeta ? await ctx.getChildrenMeta(pageKeys) : null;
+
+    const children: FsLsChild[] = [];
+    for (let idx = 0; idx < pageKeys.length; idx++) {
+      const i = startIndex + idx;
       const childName = childNames[i]!;
-      const childHashBytes = childHashes[i]!;
-      const childStorageKey = hashToStorageKey(childHashBytes);
-      const childNode = await tree.getAndDecodeNode(childStorageKey);
+      const childStorageKey = pageKeys[idx]!;
 
       const child: FsLsChild = {
         name: childName,
         index: i,
-        type: childNode?.kind === "dict" ? "dir" : "file",
+        type: "file",
         key: storageKeyToNodeKey(childStorageKey),
         size: null,
         contentType: null,
         childCount: null,
       };
 
-      if (childNode) {
-        if (childNode.kind === "dict") {
-          child.childCount = childNode.children?.length ?? 0;
-        } else if (childNode.kind === "file") {
-          child.size = childNode.fileInfo?.fileSize ?? childNode.data?.length ?? 0;
-          child.contentType = childNode.fileInfo?.contentType ?? "application/octet-stream";
+      // Use batch metadata when available
+      const meta = metaMap?.get(childStorageKey);
+      if (meta) {
+        child.type = meta.kind === "dict" ? "dir" : "file";
+        child.size = meta.size;
+        child.contentType = meta.contentType;
+        child.childCount = meta.childCount;
+      } else {
+        // Fallback: fetch and decode the child node individually
+        const childNode = await tree.getAndDecodeNode(childStorageKey);
+        if (childNode) {
+          child.type = childNode.kind === "dict" ? "dir" : "file";
+          if (childNode.kind === "dict") {
+            child.childCount = childNode.children?.length ?? 0;
+          } else if (childNode.kind === "file") {
+            child.size = childNode.fileInfo?.fileSize ?? childNode.data?.length ?? 0;
+            child.contentType = childNode.fileInfo?.contentType ?? "application/octet-stream";
+          }
         }
       }
 

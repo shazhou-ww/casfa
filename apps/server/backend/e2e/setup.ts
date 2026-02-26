@@ -33,6 +33,7 @@ import {
   createAuthCodesDb,
   createDelegatesDb,
   createDepotsDb,
+  createNodeDerivedDb,
   createOAuthClientsDb,
   createOwnershipV2Db,
   createRefCountDb,
@@ -297,6 +298,7 @@ export const startTestServer = async (options?: { port?: number }): Promise<Test
     localUsersDb: createLocalUsersDb({ tableName: config.db.tokensTable }),
     authCodesDb: createAuthCodesDb({ tableName: config.db.tokensTable }),
     oauthClientsDb: createOAuthClientsDb({ tableName: config.db.tokensTable }),
+    nodeDerivedDb: createNodeDerivedDb({ tableName: config.db.tokensTable }),
   };
 
   // Create storage

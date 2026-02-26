@@ -16,6 +16,7 @@ import {
   createAuthCodesDb,
   createDelegatesDb,
   createDepotsDb,
+  createNodeDerivedDb,
   createOAuthClientsDb,
   createOwnershipV2Db,
   createRefCountDb,
@@ -24,6 +25,7 @@ import {
   createUserRolesDb,
   type DelegatesDb,
   type DepotsDb,
+  type NodeDerivedDb,
   type OAuthClientsDb,
   type OwnershipV2Db,
   type RefCountDb,
@@ -49,6 +51,7 @@ export type DbInstances = {
   usageDb: UsageDb;
   userRolesDb: UserRolesDb;
   localUsersDb: LocalUsersDb;
+  nodeDerivedDb: NodeDerivedDb;
 };
 
 // ============================================================================
@@ -83,6 +86,9 @@ export const createDbInstances = (config: AppConfig, redis?: Redis | null): DbIn
     refCountDb: createRefCountDb({ tableName: config.db.refCountTable }),
     userRolesDb: createUserRolesDb({ tableName: config.db.tokensTable }),
     localUsersDb: createLocalUsersDb({ tableName: config.db.tokensTable }),
+
+    // Node derived data (extension-generated metadata)
+    nodeDerivedDb: createNodeDerivedDb({ tableName: config.db.tokensTable }),
 
     // Cached wrappers (no-op when redis is null)
     delegatesDb: withDelegateCache(rawDelegatesDb, r, prefix),

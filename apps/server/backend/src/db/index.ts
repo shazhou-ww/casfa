@@ -65,3 +65,6 @@ export {
 
 // Usage
 export { createUsageDb, type ResourceType, type UsageDb } from "./usage.ts";
+
+// Node Derived Data (extension-generated metadata)
+export { createNodeDerivedDb, type DerivedRecord, type NodeDerivedDb } from "./node-derived.ts";

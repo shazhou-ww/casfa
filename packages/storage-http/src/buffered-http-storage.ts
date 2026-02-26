@@ -355,11 +355,14 @@ export const createBufferedHttpStorage = (
     },
 
     async flush(): Promise<void> {
-      // Coalesce concurrent flush calls
+      // Wait for any in-progress flush to complete first
       if (activeFlush) {
         await activeFlush;
-        return;
+        // Don't return — fall through to check if new entries were buffered
+        // while the previous flush was in progress
       }
+      // Nothing left to flush
+      if (buffer.size === 0) return;
       try {
         activeFlush = doFlush();
         await activeFlush;

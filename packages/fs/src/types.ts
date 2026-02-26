@@ -55,6 +55,32 @@ export type FsContext = {
    * If not provided, only `nod_` keys are supported.
    */
   resolveNodeKey?: (nodeKey: string) => Promise<string | FsError>;
+
+  /**
+   * Optional batch metadata provider for directory children.
+   *
+   * When provided, `ls()` uses this to retrieve child metadata (kind, size,
+   * contentType, childCount) in a single batch call instead of fetching
+   * each child node individually from storage.
+   *
+   * Server implementations typically back this with a DynamoDB extension
+   * lookup. Missing keys fall back to the per-node fetch path.
+   */
+  getChildrenMeta?: (storageKeys: string[]) => Promise<Map<string, ChildMeta>>;
+};
+
+/**
+ * Lightweight metadata for a child node.
+ * Used by `ls()` to avoid fetching the full CAS blob for each child.
+ */
+export type ChildMeta = {
+  kind: "file" | "dict";
+  /** File size in bytes (null for directories) */
+  size: number | null;
+  /** MIME content type (null for directories) */
+  contentType: string | null;
+  /** Number of direct children (null for files) */
+  childCount: number | null;
 };
 
 /** Information passed to the onNodeStored hook */

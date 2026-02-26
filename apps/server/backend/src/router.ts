@@ -57,6 +57,7 @@ import type { ChunksController } from "./controllers/chunks.ts";
 import type { ClaimController } from "./controllers/claim.ts";
 import type { DelegatesController } from "./controllers/delegates.ts";
 import type { DepotsController } from "./controllers/depots.ts";
+import type { ExtensionsController } from "./controllers/extensions.ts";
 import type { FilesystemController } from "./controllers/filesystem.ts";
 import type { HealthController } from "./controllers/health.ts";
 import type { InfoController } from "./controllers/info.ts";
@@ -83,6 +84,7 @@ export type RouterDeps = {
   chunks: ChunksController;
   depots: DepotsController;
   filesystem: FilesystemController;
+  extensions: ExtensionsController;
   mcp: McpController;
   oauthAuth: OAuthAuthController;
   delegates: DelegatesController;
@@ -283,6 +285,12 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
     deps.canUploadMiddleware,
     validatedJson(ClaimNodeRequestSchema),
     deps.claim.claim
+  );
+
+  // ---- Node extensions: /nodes/ext/:name/batch ----
+  realmRouter.post(
+    "/:realmId/nodes/ext/:name/batch",
+    deps.extensions.batchGet
   );
 
   // ---- Filesystem operations: /nodes/fs/:key/{op} ----
