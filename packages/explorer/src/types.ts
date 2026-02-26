@@ -289,6 +289,10 @@ export type CasfaExplorerProps = {
   extraToolbarItems?: ExplorerToolbarItem[];
   /** Content-type based file preview providers */
   previewProviders?: PreviewProvider[];
+  /** Viewer URL — when set, PreviewPanel renders an iframe with this URL */
+  viewerUrl?: string | null;
+  /** Callback to change viewerUrl (controlled mode) */
+  onViewerUrlChange?: (url: string | null) => void;
 
   // ── Lifecycle hooks ──
   /**
@@ -527,4 +531,7 @@ export type ExplorerTextKey =
   | "depot.historyDiffMoved"
   | "depot.historyDiffTruncated"
   | "depot.historyDiffNone"
-  | "depot.historyRollingBack";
+  | "depot.historyRollingBack"
+  // Viewer (Iter 6)
+  | "menu.openWith"
+  | "preview.viewer";

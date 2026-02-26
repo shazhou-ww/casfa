@@ -160,8 +160,9 @@ const messages: Record<ExplorerTextKey, string> = {
   "depot.historyDiffMoved": "Moved",
   "depot.historyDiffTruncated": "…and more changes",
   "depot.historyDiffNone": "No diff available",
-  "depot.historyRollingBack": "Rolling back…",
-};
+  "depot.historyRollingBack": "Rolling back…",  // Viewer (Iter 6)
+  "menu.openWith": "Open with\u2026",
+  "preview.viewer": "Viewer",};
 
 /**
  * Create the English translation function.

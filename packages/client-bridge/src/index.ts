@@ -30,3 +30,9 @@ export type {
   SyncErrorEvent,
   SyncState,
 } from "./types.ts";
+export type {
+  AddCustomViewerInput,
+  UpdateCustomViewerInput,
+  ViewerInfo,
+  ViewerMethods,
+} from "./viewer-types.ts";

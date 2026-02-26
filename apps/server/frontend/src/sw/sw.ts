@@ -42,6 +42,7 @@ declare global {
 
 import { type CasfaClient, createClient, type TokenStorageProvider } from "@casfa/client";
 import type { ConnectAckMessage } from "@casfa/client-bridge";
+import type { PortMessage } from "@casfa/client-bridge";
 import { createIndexedDBTokenStorage, createMessageHandler } from "@casfa/client-sw";
 import {
   type CasContext,
@@ -60,6 +61,7 @@ import { createIndexedDBStorage } from "@casfa/storage-indexeddb";
 import { createSyncQueueStore } from "../lib/sync-queue-store.ts";
 import { getKeyProvider } from "../lib/storage.ts";
 import { initBuiltinViewers } from "./builtin-viewers.ts";
+import { createViewerService, type ViewerService } from "./viewer-service.ts";
 
 console.log("[SW] Script loaded, origin:", self.location.origin);
 
@@ -109,6 +111,52 @@ const handleMessage = createMessageHandler({
   broadcast,
   syncCoordinator,
 });
+
+// ── Viewer service (lazy init — uses keyProvider + virtualNodes) ──
+let viewerService: ViewerService | null = null;
+
+function getViewerService(): ViewerService {
+  if (!viewerService) {
+    viewerService = createViewerService(getKeyProvider(), virtualNodes);
+  }
+  return viewerService;
+}
+
+// ── Inline RPC helpers (avoid adding @casfa/port-rpc dependency) ────────────
+
+function respond(port: MessagePort, id: number, result: unknown): void {
+  port.postMessage({ type: "rpc-response", id, result });
+}
+
+function respondError(port: MessagePort, id: number, code: string, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  port.postMessage({ type: "rpc-response", id, error: { code, message } });
+}
+
+/**
+ * Extended message handler: intercepts "viewers" namespace RPC calls
+ * before delegating to the generic CasfaClient message handler.
+ */
+async function handleExtendedMessage(msg: PortMessage, port: MessagePort): Promise<void> {
+  if (msg.type === "rpc" && msg.target === "viewers") {
+    console.log("[SW] viewers RPC received:", msg.method, "id:", msg.id);
+    try {
+      const svc = getViewerService();
+      const fn = (svc as unknown as Record<string, unknown>)[msg.method];
+      if (typeof fn !== "function") {
+        throw new Error(`Unknown viewers method: ${msg.method}`);
+      }
+      const result = await fn.apply(svc, msg.args);
+      console.log("[SW] viewers RPC responding id:", msg.id, "result items:", Array.isArray(result) ? result.length : typeof result);
+      respond(port, msg.id, result);
+    } catch (err) {
+      console.error("[SW] viewers RPC error id:", msg.id, err);
+      respondError(port, msg.id, "rpc_error", err);
+    }
+    return;
+  }
+  return handleMessage(msg, port);
+}
 
 // ============================================================================
 // Lifecycle
@@ -231,7 +279,7 @@ self.addEventListener("message", (event) => {
         port.postMessage(ack);
 
         // Wire up message handler for this port
-        port.onmessage = (e) => handleMessage(e.data, port);
+        port.onmessage = (e) => handleExtendedMessage(e.data, port);
         port.start();
       })
     );
@@ -644,6 +692,7 @@ async function handleBuiltinViewersList(): Promise<Response> {
           name: v.name,
           description: v.description,
           nodeKey: v.nodeKey,
+          contentTypes: v.contentTypes,
         })),
       }),
       {

@@ -160,6 +160,9 @@ const messages: Record<ExplorerTextKey, string> = {
   "depot.historyDiffTruncated": "……还有更多变更",
   "depot.historyDiffNone": "无差异信息",
   "depot.historyRollingBack": "正在回滚…",
+  // 查看器 (Iter 6)
+  "menu.openWith": "打开方式…",
+  "preview.viewer": "查看器",
 };
 
 /**

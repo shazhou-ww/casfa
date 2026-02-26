@@ -41,6 +41,8 @@ export interface BuiltinViewer {
   storageKey: string;
   /** Node key (nod_XXX) of the viewer d-node */
   nodeKey: string;
+  /** Supported content type patterns (e.g. "image/*", "text/*") */
+  contentTypes: string[];
 }
 
 const textEncoder = new TextEncoder();
@@ -108,6 +110,7 @@ export async function initBuiltinViewers(
     description: "Grid view of images from the target directory",
     storageKey: galleryKey,
     nodeKey: storageKeyToNodeKey(galleryKey),
+    contentTypes: ["image/*"],
   });
 
   // --- Slideshow ---
@@ -122,6 +125,7 @@ export async function initBuiltinViewers(
     description: "Fullscreen slideshow of images with autoplay and keyboard controls",
     storageKey: slideshowKey,
     nodeKey: storageKeyToNodeKey(slideshowKey),
+    contentTypes: ["image/*"],
   });
 
   // --- Text Viewer ---
@@ -136,6 +140,7 @@ export async function initBuiltinViewers(
     description: "Browse and read text files from the target directory",
     storageKey: textViewerKey,
     nodeKey: storageKeyToNodeKey(textViewerKey),
+    contentTypes: ["text/*"],
   });
 
   builtinViewers = viewers;

@@ -75,6 +75,9 @@ export function CasfaExplorer(props: CasfaExplorerProps) {
             renderNodeIcon={props.renderNodeIcon}
             extraContextMenuItems={props.extraContextMenuItems}
             extraToolbarItems={props.extraToolbarItems}
+            previewProviders={props.previewProviders}
+            viewerUrl={props.viewerUrl}
+            onViewerUrlChange={props.onViewerUrlChange}
           />
         </Box>
       </ExplorerI18nContext.Provider>
