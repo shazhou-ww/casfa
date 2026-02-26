@@ -32,6 +32,7 @@ async function build(): Promise<void> {
     outdir: outDir,
     format: "esm",
     target: "node",
+    conditions: ["bun"],
     external: ["@aws-sdk/*"],
     naming: "[name].js",
   });

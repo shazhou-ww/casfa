@@ -1,9 +1,5 @@
 {
   "servers": {
-    "casfa-local": {
-      "type": "http",
-      "url": "http://localhost:8901/api/mcp"
-    },
     "casfa": {
       "type": "http",
       "url": "https://casfa.shazhou.me/api/mcp"
