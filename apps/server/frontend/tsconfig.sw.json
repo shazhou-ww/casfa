@@ -4,6 +4,6 @@
     "lib": ["ESNext", "WebWorker"],
     "types": []
   },
-  "include": ["src/sw/**/*.ts", "src/lib/sync-queue-store.ts"],
+  "include": ["src/sw/**/*.ts", "src/lib/sync-queue-store.ts", "src/lib/storage.ts"],
   "exclude": ["node_modules"]
 }
