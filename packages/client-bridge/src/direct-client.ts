@@ -150,6 +150,7 @@ export async function createDirectClient(config: AppClientConfig): Promise<AppCl
         addCustom: notAvailable,
         removeCustom: notAvailable,
         updateCustom: notAvailable,
+        readManifest: notAvailable,
       } as import("./viewer-types.ts").ViewerMethods;
     },
     getState() {

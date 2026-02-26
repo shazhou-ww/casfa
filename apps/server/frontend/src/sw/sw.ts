@@ -480,10 +480,30 @@ async function navigatePath(
 //   /page/{virtualRoot}/{path}      → normal name navigation
 // ============================================================================
 
-/** Bootstrap HTML served for index.html at virtual composed roots */
+/** Bootstrap HTML served for index.html at virtual composed roots.
+ *
+ * Loads manifest.json first to discover the entry script path (default: index.js).
+ * Exposes the parsed manifest as `window.__CASFA_VIEWER_MANIFEST` so the entry
+ * script can read viewer metadata without a second fetch.
+ */
 const BOOTSTRAP_HTML = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body><script type="module" src="index.js"></script></body></html>`;
+<body><script type="module">
+(async()=>{
+  try{
+    const r=await fetch('manifest.json');
+    if(!r.ok)throw new Error('manifest.json not found');
+    const m=await r.json();
+    window.__CASFA_VIEWER_MANIFEST=m;
+    const entry=m.entry||'index.js';
+    const s=document.createElement('script');
+    s.type='module';s.src=entry;
+    document.head.appendChild(s);
+  }catch(e){
+    document.body.innerHTML='<p style="color:red;font-family:system-ui;">Failed to load viewer: '+e.message+'</p>';
+  }
+})();
+</script></body></html>`;
 
 /**
  * Create a CasContext that reads from virtualNodes overlay + IDB + remote.

@@ -8,6 +8,9 @@
  * When the item has a nodeKey, a CAS URL (/cas/:nodeKey) is also
  * provided so media previews can use it directly as src — benefiting
  * from SW caching without needing blob URLs.
+ *
+ * Viewer mode: when viewerUrl is set, renders the viewer in an iframe
+ * and fetches the viewer's manifest.json to display name/icon in the title bar.
  */
 
 import CloseIcon from "@mui/icons-material/Close";
@@ -26,6 +29,12 @@ import { pathToSegments } from "../core/path-segments.ts";
 import { useExplorerStore, useExplorerT } from "../hooks/use-explorer-context.ts";
 import { findPreviewProvider, MAX_PREVIEW_SIZE } from "../preview/builtin-providers.tsx";
 import type { ExplorerItem, PreviewProvider } from "../types.ts";
+
+/** Minimal manifest shape used for title bar rendering */
+type ViewerManifestInfo = {
+  name: string;
+  icon?: string;
+};
 
 type PreviewPanelProps = {
   /** The item to preview */
@@ -46,12 +55,47 @@ export function PreviewPanel({ item, onClose, previewProviders, viewerUrl }: Pre
   const [blob, setBlob] = useState<Blob | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [manifestInfo, setManifestInfo] = useState<ViewerManifestInfo | null>(null);
 
   // Viewer mode: iframe-based rendering via /view composition URL
   const isViewerMode = !!viewerUrl;
 
   // Construct CAS URL from item's nodeKey (if available)
   const casUrl = item?.nodeKey ? `/cas/${item.nodeKey}` : null;
+
+  // Fetch viewer manifest.json for title bar rendering
+  useEffect(() => {
+    if (!isViewerMode || !viewerUrl) {
+      setManifestInfo(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const params = new URL(viewerUrl, location.origin).searchParams;
+        const viewerNodeKey = params.get("viewer");
+        if (!viewerNodeKey) return;
+
+        const res = await fetch(`/page/${encodeURIComponent(viewerNodeKey)}/manifest.json`);
+        if (!res.ok || cancelled) return;
+        const manifest = await res.json();
+        if (cancelled) return;
+        if (manifest?.casfa === "viewer") {
+          setManifestInfo({
+            name: manifest.name,
+            icon: manifest.icon,
+          });
+        }
+      } catch {
+        // Ignore — fall back to generic title
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isViewerMode, viewerUrl]);
 
   useEffect(() => {
     // Skip blob loading in viewer mode — iframe handles everything
@@ -110,7 +154,22 @@ export function PreviewPanel({ item, onClose, previewProviders, viewerUrl }: Pre
 
   const contentType = item?.contentType || "application/octet-stream";
   const provider = isViewerMode ? null : findPreviewProvider(contentType, previewProviders);
-  const dialogTitle = isViewerMode ? t("preview.viewer") : (item?.name ?? "");
+  const dialogTitle = isViewerMode
+    ? (manifestInfo?.name ?? t("preview.viewer"))
+    : (item?.name ?? "");
+
+  // Build icon URL: /page/{viewerNodeKey}/{iconPath}
+  let iconUrl: string | null = null;
+  if (isViewerMode && viewerUrl && manifestInfo?.icon) {
+    try {
+      const viewerNodeKey = new URL(viewerUrl, location.origin).searchParams.get("viewer");
+      if (viewerNodeKey) {
+        iconUrl = `/page/${encodeURIComponent(viewerNodeKey)}/${encodeURIComponent(manifestInfo.icon)}`;
+      }
+    } catch {
+      // ignore
+    }
+  }
 
   return (
     <Dialog
@@ -132,9 +191,19 @@ export function PreviewPanel({ item, onClose, previewProviders, viewerUrl }: Pre
           py: 1,
         }}
       >
-        <Typography variant="subtitle1" component="span" noWrap sx={{ flex: 1 }}>
-          {dialogTitle}
-        </Typography>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, flex: 1, minWidth: 0 }}>
+          {iconUrl && (
+            <Box
+              component="img"
+              src={iconUrl}
+              alt=""
+              sx={{ width: 20, height: 20, flexShrink: 0, objectFit: "contain" }}
+            />
+          )}
+          <Typography variant="subtitle1" component="span" noWrap sx={{ flex: 1 }}>
+            {dialogTitle}
+          </Typography>
+        </Box>
         <IconButton size="small" onClick={handleClose}>
           <CloseIcon />
         </IconButton>

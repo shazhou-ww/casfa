@@ -534,4 +534,5 @@ export type ExplorerTextKey =
   | "depot.historyRollingBack"
   // Viewer (Iter 6)
   | "menu.openWith"
+  | "menu.addAsViewer"
   | "preview.viewer";

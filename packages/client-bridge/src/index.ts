@@ -34,5 +34,6 @@ export type {
   AddCustomViewerInput,
   UpdateCustomViewerInput,
   ViewerInfo,
+  ViewerManifest,
   ViewerMethods,
 } from "./viewer-types.ts";

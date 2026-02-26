@@ -262,23 +262,36 @@ function ViewerCard({
   viewer: ViewerInfo;
   onRemove?: (id: string) => void;
 }) {
+  // Build icon URL from viewer's icon path (if specified)
+  const iconUrl = viewer.icon
+    ? `/page/${encodeURIComponent(viewer.nodeKey)}/${encodeURIComponent(viewer.icon)}`
+    : null;
+
   return (
     <Card variant="outlined" sx={{ px: 2, py: 1.5 }}>
       <CardContent sx={{ p: 0, "&:last-child": { pb: 0 } }}>
         <Box display="flex" alignItems="center" gap={1.5}>
-          <Avatar
-            sx={{
-              width: 32,
-              height: 32,
-              bgcolor: viewer.isBuiltin ? "primary.main" : "info.main",
-            }}
-          >
-            {viewer.isBuiltin ? (
-              <VisibilityIcon sx={{ fontSize: 18 }} />
-            ) : (
-              <OpenInBrowserIcon sx={{ fontSize: 18 }} />
-            )}
-          </Avatar>
+          {iconUrl ? (
+            <Avatar
+              src={iconUrl}
+              variant="rounded"
+              sx={{ width: 32, height: 32 }}
+            />
+          ) : (
+            <Avatar
+              sx={{
+                width: 32,
+                height: 32,
+                bgcolor: viewer.isBuiltin ? "primary.main" : "info.main",
+              }}
+            >
+              {viewer.isBuiltin ? (
+                <VisibilityIcon sx={{ fontSize: 18 }} />
+              ) : (
+                <OpenInBrowserIcon sx={{ fontSize: 18 }} />
+              )}
+            </Avatar>
+          )}
           <Box flex={1} minWidth={0}>
             <Typography variant="body2" fontWeight={600} noWrap>
               {viewer.name}

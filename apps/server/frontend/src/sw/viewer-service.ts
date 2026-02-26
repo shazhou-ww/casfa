@@ -7,6 +7,7 @@
  */
 
 import type { KeyProvider } from "@casfa/core";
+import type { ViewerManifest } from "@casfa/client-bridge";
 import { initBuiltinViewers, type BuiltinViewer } from "./builtin-viewers.ts";
 import { createViewerStore, type CustomViewerEntry, type ViewerStore } from "./viewer-store.ts";
 
@@ -28,6 +29,8 @@ export interface ViewerInfo {
   nodeKey: string;
   /** Whether this is a built-in viewer */
   isBuiltin: boolean;
+  /** Relative path to icon image inside the viewer d-node (optional) */
+  icon?: string;
 }
 
 /** Input for adding a custom viewer */
@@ -40,6 +43,8 @@ export interface AddCustomViewerInput {
   contentTypes: string[];
   /** CAS node key of the viewer d-node (nod_XXX) */
   nodeKey: string;
+  /** Relative path to icon image (optional) */
+  icon?: string;
 }
 
 /** Input for updating a custom viewer */
@@ -52,6 +57,8 @@ export interface UpdateCustomViewerInput {
   contentTypes?: string[];
   /** New node key */
   nodeKey?: string;
+  /** New icon path */
+  icon?: string;
 }
 
 // ============================================================================
@@ -71,6 +78,8 @@ export interface ViewerService {
   removeCustom(id: string): Promise<void>;
   /** Update a custom viewer */
   updateCustom(id: string, updates: UpdateCustomViewerInput): Promise<ViewerInfo>;
+  /** Read manifest.json from a CAS d-node; returns null if not a viewer */
+  readManifest(nodeKey: string): Promise<ViewerManifest | null>;
 }
 
 function builtinToInfo(v: BuiltinViewer): ViewerInfo {
@@ -92,6 +101,7 @@ function customToInfo(e: CustomViewerEntry): ViewerInfo {
     contentTypes: e.contentTypes,
     nodeKey: e.nodeKey,
     isBuiltin: false,
+    icon: e.icon,
   };
 }
 
@@ -130,6 +140,7 @@ export function createViewerService(
         description: input.description ?? "",
         contentTypes: input.contentTypes,
         nodeKey: input.nodeKey,
+        icon: input.icon,
         createdAt: Date.now(),
       };
       await store.put(entry);
@@ -151,9 +162,24 @@ export function createViewerService(
         ...(updates.description !== undefined && { description: updates.description }),
         ...(updates.contentTypes !== undefined && { contentTypes: updates.contentTypes }),
         ...(updates.nodeKey !== undefined && { nodeKey: updates.nodeKey }),
+        ...(updates.icon !== undefined && { icon: updates.icon }),
       };
       await store.put(updated);
       return customToInfo(updated);
+    },
+
+    async readManifest(nodeKey: string): Promise<ViewerManifest | null> {
+      try {
+        // Fetch manifest.json from the d-node via /page/ route
+        const res = await fetch(`/page/${encodeURIComponent(nodeKey)}/manifest.json`);
+        if (!res.ok) return null;
+        const manifest = await res.json();
+        // Validate the marker field
+        if (manifest?.casfa !== "viewer") return null;
+        return manifest as ViewerManifest;
+      } catch {
+        return null;
+      }
     },
   };
 }
