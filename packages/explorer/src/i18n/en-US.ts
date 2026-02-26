@@ -162,6 +162,7 @@ const messages: Record<ExplorerTextKey, string> = {
   "depot.historyDiffNone": "No diff available",
   "depot.historyRollingBack": "Rolling back…",  // Viewer (Iter 6)
   "menu.openWith": "Open with\u2026",
+  "menu.addAsViewer": "Add as Viewer",
   "preview.viewer": "Viewer",};
 
 /**

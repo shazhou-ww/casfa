@@ -23,6 +23,8 @@ export interface CustomViewerEntry {
   contentTypes: string[];
   /** CAS node key of the viewer d-node (nod_XXX) */
   nodeKey: string;
+  /** Relative path to icon image inside the viewer d-node (optional) */
+  icon?: string;
   /** Timestamp when the viewer was added */
   createdAt: number;
 }

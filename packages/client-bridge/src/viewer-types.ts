@@ -6,6 +6,31 @@
  */
 
 // ============================================================================
+// Manifest
+// ============================================================================
+
+/**
+ * CASFA Viewer manifest — stored as `manifest.json` in a viewer d-node.
+ *
+ * The `casfa` field MUST be `"viewer"` to identify the manifest.
+ * The viewer bootstrap HTML loads this manifest first, then the entry script.
+ */
+export type ViewerManifest = {
+  /** Marker field — must be "viewer" */
+  casfa: "viewer";
+  /** Display name of the viewer */
+  name: string;
+  /** Short description (optional) */
+  description?: string;
+  /** Relative path to entry JS file (default: "index.js") */
+  entry?: string;
+  /** Relative path to an icon image file (optional) */
+  icon?: string;
+  /** Supported content type patterns (e.g. ["image/*", "text/*"]) */
+  contentTypes: string[];
+};
+
+// ============================================================================
 // Data types
 // ============================================================================
 
@@ -23,14 +48,17 @@ export type ViewerInfo = {
   nodeKey: string;
   /** Whether this is a built-in viewer */
   isBuiltin: boolean;
+  /** Relative path to the icon image inside the viewer d-node (optional) */
+  icon?: string;
 };
 
-/** Input for adding a custom viewer */
+/** Input for adding a custom viewer — derived from manifest.json */
 export type AddCustomViewerInput = {
   name: string;
   description?: string;
   contentTypes: string[];
   nodeKey: string;
+  icon?: string;
 };
 
 /** Input for updating a custom viewer */
@@ -39,6 +67,7 @@ export type UpdateCustomViewerInput = {
   description?: string;
   contentTypes?: string[];
   nodeKey?: string;
+  icon?: string;
 };
 
 // ============================================================================
@@ -59,4 +88,6 @@ export type ViewerMethods = {
   removeCustom(id: string): Promise<void>;
   /** Update a custom viewer by id */
   updateCustom(id: string, updates: UpdateCustomViewerInput): Promise<ViewerInfo>;
+  /** Read manifest.json from a CAS d-node; returns null if not a viewer */
+  readManifest(nodeKey: string): Promise<ViewerManifest | null>;
 };

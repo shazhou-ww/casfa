@@ -26,8 +26,15 @@ import { useCallback, useEffect, useState } from "react";
 import type { ViewerInfo } from "@casfa/client-bridge";
 
 // ============================================================================
-// Content type matching
+// Helpers
 // ============================================================================
+
+/** Build icon URL from viewer icon path */
+function viewerIconUrl(viewer: ViewerInfo): string | null {
+  return viewer.icon
+    ? `/page/${encodeURIComponent(viewer.nodeKey)}/${encodeURIComponent(viewer.icon)}`
+    : null;
+}
 
 /**
  * Check if a content type matches a pattern.
@@ -45,6 +52,49 @@ function matchContentType(pattern: string, contentType: string): boolean {
 function viewerMatchesContentType(viewer: ViewerInfo, contentType: string | null): boolean {
   if (!contentType || viewer.contentTypes.length === 0) return false;
   return viewer.contentTypes.some((pattern) => matchContentType(pattern, contentType));
+}
+
+// ============================================================================
+// Viewer list item
+// ============================================================================
+
+function ViewerListItem({
+  viewer,
+  onSelect,
+}: {
+  viewer: ViewerInfo;
+  onSelect: (v: ViewerInfo) => void;
+}) {
+  const iconSrc = viewerIconUrl(viewer);
+  return (
+    <ListItemButton onClick={() => onSelect(viewer)}>
+      <ListItemAvatar>
+        {iconSrc ? (
+          <Avatar src={iconSrc} variant="rounded" />
+        ) : (
+          <Avatar sx={{ bgcolor: viewer.isBuiltin ? "primary.main" : "secondary.main" }}>
+            {viewer.isBuiltin ? <VisibilityIcon /> : <OpenInBrowserIcon />}
+          </Avatar>
+        )}
+      </ListItemAvatar>
+      <ListItemText
+        primary={viewer.name}
+        secondaryTypographyProps={{ component: "div" }}
+        secondary={
+          <>
+            {viewer.description}
+            {viewer.contentTypes.length > 0 && (
+              <span style={{ display: "block", marginTop: 4 }}>
+                {viewer.contentTypes.map((ct) => (
+                  <Chip key={ct} label={ct} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
+                ))}
+              </span>
+            )}
+          </>
+        }
+      />
+    </ListItemButton>
+  );
 }
 
 // ============================================================================
@@ -151,29 +201,7 @@ export function ViewerPickerDialog({
         )}
 
         {matching.map((viewer) => (
-          <ListItemButton key={viewer.id} onClick={() => handleSelect(viewer)}>
-            <ListItemAvatar>
-              <Avatar sx={{ bgcolor: viewer.isBuiltin ? "primary.main" : "secondary.main" }}>
-                {viewer.isBuiltin ? <VisibilityIcon /> : <OpenInBrowserIcon />}
-              </Avatar>
-            </ListItemAvatar>
-            <ListItemText
-              primary={viewer.name}
-              secondaryTypographyProps={{ component: "div" }}
-              secondary={
-                <>
-                  {viewer.description}
-                  {viewer.contentTypes.length > 0 && (
-                    <span style={{ display: "block", marginTop: 4 }}>
-                      {viewer.contentTypes.map((ct) => (
-                        <Chip key={ct} label={ct} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
-                      ))}
-                    </span>
-                  )}
-                </>
-              }
-            />
-          </ListItemButton>
+          <ViewerListItem key={viewer.id} viewer={viewer} onSelect={handleSelect} />
         ))}
 
         {other.length > 0 && (
@@ -187,29 +215,7 @@ export function ViewerPickerDialog({
               Other viewers
             </Typography>
             {other.map((viewer) => (
-              <ListItemButton key={viewer.id} onClick={() => handleSelect(viewer)}>
-                <ListItemAvatar>
-                  <Avatar sx={{ bgcolor: viewer.isBuiltin ? "primary.main" : "secondary.main" }}>
-                    {viewer.isBuiltin ? <VisibilityIcon /> : <OpenInBrowserIcon />}
-                  </Avatar>
-                </ListItemAvatar>
-                <ListItemText
-                  primary={viewer.name}
-                  secondaryTypographyProps={{ component: "div" }}
-                  secondary={
-                    <>
-                      {viewer.description}
-                      {viewer.contentTypes.length > 0 && (
-                        <span style={{ display: "block", marginTop: 4 }}>
-                          {viewer.contentTypes.map((ct) => (
-                            <Chip key={ct} label={ct} size="small" sx={{ mr: 0.5, mb: 0.5 }} />
-                          ))}
-                        </span>
-                      )}
-                    </>
-                  }
-                />
-              </ListItemButton>
+              <ViewerListItem key={viewer.id} viewer={viewer} onSelect={handleSelect} />
             ))}
           </>
         )}

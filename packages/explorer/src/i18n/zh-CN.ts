@@ -162,6 +162,7 @@ const messages: Record<ExplorerTextKey, string> = {
   "depot.historyRollingBack": "正在回滚…",
   // 查看器 (Iter 6)
   "menu.openWith": "打开方式…",
+  "menu.addAsViewer": "添加为查看器",
   "preview.viewer": "查看器",
 };
 

@@ -24,6 +24,7 @@ import {
   Error as ErrorIcon,
   ExpandLess,
   ExpandMore,
+  Extension as ExtensionIcon,
   OpenInBrowser as OpenInBrowserIcon,
   Replay as ReplayIcon,
   Warning as WarningIcon,
@@ -68,6 +69,7 @@ export function ExplorerPage() {
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [viewerPickerOpen, setViewerPickerOpen] = useState(false);
   const [viewerPickerTarget, setViewerPickerTarget] = useState<ExplorerItem | null>(null);
+  const [viewerToast, setViewerToast] = useState<string | null>(null);
 
   const fetchViewers = useCallback(async (): Promise<ViewerInfo[]> => {
     if (!appClient) return [];
@@ -85,6 +87,30 @@ export function ExplorerPage() {
     [viewerPickerTarget]
   );
 
+  const handleAddAsViewer = useCallback(
+    async (item: ExplorerItem) => {
+      if (!appClient || !item.nodeKey) return;
+      try {
+        const manifest = await appClient.viewers.readManifest(item.nodeKey);
+        if (!manifest) {
+          setViewerToast("Not a viewer — manifest.json missing or invalid.");
+          return;
+        }
+        await appClient.viewers.addCustom({
+          name: manifest.name,
+          description: manifest.description,
+          contentTypes: manifest.contentTypes,
+          nodeKey: item.nodeKey,
+          icon: manifest.icon,
+        });
+        setViewerToast(`Viewer "${manifest.name}" added successfully.`);
+      } catch (err) {
+        setViewerToast(`Failed to add viewer: ${err instanceof Error ? err.message : "unknown error"}`);
+      }
+    },
+    [appClient]
+  );
+
   const extraContextMenuItems: ExplorerMenuItem[] = useMemo(
     () => [
       {
@@ -98,8 +124,18 @@ export function ExplorerPage() {
           setViewerPickerOpen(true);
         },
       },
+      {
+        key: "add-as-viewer",
+        label: "Add as Viewer",
+        icon: <ExtensionIcon fontSize="small" />,
+        onClick: (items: ExplorerItem[]) => {
+          const target = items[0];
+          if (!target?.isDirectory || !target.nodeKey) return;
+          handleAddAsViewer(target);
+        },
+      },
     ],
-    []
+    [handleAddAsViewer]
   );
 
   // Local cache of pending roots — keeps getSyncPendingRoot synchronous.
@@ -222,6 +258,13 @@ export function ExplorerPage() {
         onClose={() => setConflictToast(null)}
         message={conflictToast}
         anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+      />
+      <Snackbar
+        open={!!viewerToast}
+        autoHideDuration={4000}
+        onClose={() => setViewerToast(null)}
+        message={viewerToast}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       />
     </Box>
   );
