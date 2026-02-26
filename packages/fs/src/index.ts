@@ -23,8 +23,9 @@
  * @packageDocumentation
  */
 
-import { createReadOps } from "./read-ops.ts";
+import { buildTree, createReadOps } from "./read-ops.ts";
 import { createTreeOps } from "./tree-ops.ts";
+import type { FsTreeOptions } from "./tree-types.ts";
 import type { FsContext } from "./types.ts";
 import { type AuthorizeLinkFn, createWriteOps } from "./write-ops.ts";
 
@@ -42,8 +43,16 @@ export {
 export { buildCasContext, readLargeFile, streamLargeFile, writeLargeFile } from "./large-file.ts";
 export { type ApplyMergeResult, applyMergeOps, type MergeOp as FsMergeOp } from "./merge-apply.ts";
 export type { ReadOps } from "./read-ops.ts";
+export { buildTree } from "./read-ops.ts";
 
 export type { TreeOps } from "./tree-ops.ts";
+export type {
+  FsTreeDir,
+  FsTreeFile,
+  FsTreeNode,
+  FsTreeOptions,
+  FsTreeResponse,
+} from "./tree-types.ts";
 export {
   type FsContext,
   type FsError,
@@ -82,5 +91,8 @@ export const createFsService = (opts: CreateFsServiceOpts) => {
     resolveNodeKey: tree.resolveNodeKey,
     /** Exposed for advanced usage (direct tree manipulation) */
     tree,
+    /** Build a recursive directory tree with BFS + budget truncation */
+    buildTree: (rootNodeKey: string, opts?: FsTreeOptions) =>
+      buildTree(ctx, tree, rootNodeKey, opts),
   };
 };
