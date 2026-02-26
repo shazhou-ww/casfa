@@ -244,6 +244,9 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
         case "fs_read":
           result = await handleFsRead(realm, args);
           break;
+        case "fs_tree":
+          result = await handleFsTree(realm, args);
+          break;
 
         // ── Node Metadata ────────────────────────────────────────────
         case "node_metadata":
@@ -398,6 +401,26 @@ export const createMcpController = (deps: McpHandlerDeps): McpController => {
       contentType: result.contentType,
       content: text,
     });
+  };
+
+  // ── fs_tree ──────────────────────────────────────────────────────────
+
+  const handleFsTree = async (realm: string, args: Record<string, unknown>) => {
+    const nodeKey = args.nodeKey as string;
+    if (!nodeKey) return toolError("Missing required parameter: nodeKey");
+
+    const parsed = parsePath(args.path as string | undefined);
+    if (!parsed.ok) return toolError(`Error: INVALID_PATH — ${parsed.error}`);
+
+    const opts: { path?: PathSegment[]; depth?: number; maxEntries?: number } = {};
+    if (parsed.segments.length > 0) opts.path = parsed.segments;
+    if (typeof args.depth === "number") opts.depth = args.depth;
+    if (typeof args.maxEntries === "number") opts.maxEntries = args.maxEntries;
+
+    const result = await fsService.tree(realm, nodeKey, opts);
+    if (isFsError(result)) return toolError(`Error: ${result.code} — ${result.message}`);
+
+    return toolResult(result);
   };
 
   // ── node_metadata ────────────────────────────────────────────────────

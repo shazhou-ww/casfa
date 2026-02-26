@@ -135,6 +135,38 @@ export const MCP_TOOLS: McpTool[] = [
     annotations: { readOnlyHint: true, idempotentHint: true },
   },
 
+  {
+    name: "fs_tree",
+    description:
+      "Get a recursive directory tree with BFS traversal and budget-based truncation. Returns a nested JSON structure showing the full hierarchy: directories with child count, files with MIME type and size. Directories beyond the depth limit or entry budget are marked 'collapsed: true'. Much more efficient than recursive fs_ls — use this as the first step when exploring a depot's structure.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        nodeKey: {
+          type: "string",
+          description: "Root node identifier: depot ID (dpt_xxx) or node key (nod_xxx)",
+        },
+        path: {
+          type: "string",
+          description:
+            "Subdirectory path to start from (e.g., 'src/components'). Omit for root.",
+        },
+        depth: {
+          type: "number",
+          description:
+            "Max recursion depth (default 3, -1 for unlimited). Directories beyond this depth are collapsed.",
+        },
+        maxEntries: {
+          type: "number",
+          description:
+            "Max total entries in the result (default 500, max 5000). When budget is exhausted, remaining directories are collapsed.",
+        },
+      },
+      required: ["nodeKey"],
+    },
+    annotations: { readOnlyHint: true, idempotentHint: true },
+  },
+
   // ── Read: Node Metadata ──────────────────────────────────────────────
   {
     name: "node_metadata",

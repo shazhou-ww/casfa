@@ -17,6 +17,8 @@ import {
   type FsService as CoreFsService,
   createFsService as createCoreFsService,
   type FsContext,
+  type FsTreeOptions,
+  type FsTreeResponse,
 } from "@casfa/fs";
 import type {
   FsCpResponse,
@@ -108,6 +110,11 @@ export type FsService = {
     auth?: AccessTokenAuthContext
   ): Promise<FsRewriteResponse | FsError>;
   resolveNodeKey(realm: string, nodeKey: string): Promise<string | FsError>;
+  tree(
+    realm: string,
+    rootNodeKey: string,
+    opts?: FsTreeOptions
+  ): Promise<FsTreeResponse | FsError>;
 };
 
 type FsError = import("./types.ts").FsError;
@@ -286,6 +293,10 @@ export const createFsService = (deps: FsServiceDeps): FsService => {
 
     resolveNodeKey: (realm, nodeKey) => {
       return getReadService(realm).resolveNodeKey(nodeKey);
+    },
+
+    tree: (realm, rootNodeKey, opts?) => {
+      return getReadService(realm).buildTree(rootNodeKey, opts);
     },
   };
 };
