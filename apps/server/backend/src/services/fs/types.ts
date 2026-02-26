@@ -12,6 +12,7 @@ import type { OwnershipV2Db } from "../../db/ownership-v2.ts";
 import type { RefCountDb } from "../../db/refcount.ts";
 import type { ScopeSetNodesDb } from "../../db/scope-set-nodes.ts";
 import type { UsageDb } from "../../db/usage.ts";
+import type { ExtensionService } from "../extensions/index.ts";
 
 // Re-export from @casfa/fs for backward compat
 export { type FsError, fsError, isFsError } from "@casfa/fs";
@@ -32,4 +33,6 @@ export type FsServiceDeps = {
   nodeLimit?: number;
   /** Max file size for write operations (default: no limit) */
   maxFileSize?: number;
+  /** Extension service for derived data (on-create hooks + batch metadata) */
+  extensionService?: ExtensionService;
 };

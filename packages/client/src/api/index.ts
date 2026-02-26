@@ -39,6 +39,8 @@ export {
 export { fetchServiceInfo, healthCheck } from "./info.ts";
 // Node API
 export {
+  type BatchExtensionResponse,
+  batchGetExtension,
   checkNodes,
   getNode,
   getNodeMetadata,

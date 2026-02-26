@@ -34,6 +34,11 @@ export type NodeMethods = {
   claim: (nodeKey: string, pop: string) => Promise<FetchResult<ClaimNodeResponse>>;
   /** Batch claim ownership of nodes (PoP + path-based) */
   batchClaim: (params: BatchClaimRequest) => Promise<FetchResult<BatchClaimResponse>>;
+  /** Batch-get extension derived data for multiple nodes */
+  batchGetExtension: <T = Record<string, unknown>>(
+    extensionName: string,
+    keys: string[]
+  ) => Promise<FetchResult<api.BatchExtensionResponse<T>>>;
 };
 
 export type NodeDeps = {
@@ -68,5 +73,10 @@ export const createNodeMethods = ({ baseUrl, realm, tokenSelector }: NodeDeps): 
 
     batchClaim: (params) =>
       requireAccess((t) => api.batchClaimNodes(baseUrl, realm, t.tokenBase64, params)),
+
+    batchGetExtension: <T = Record<string, unknown>>(extensionName: string, keys: string[]) =>
+      requireAccess((t) =>
+        api.batchGetExtension<T>(baseUrl, realm, t.tokenBase64, extensionName, keys)
+      ),
   };
 };

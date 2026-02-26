@@ -30,6 +30,11 @@ export { type AdminController, createAdminController } from "./admin.ts";
 export { type ChunksController, createChunksController } from "./chunks.ts";
 export { createDepotsController, type DepotsController } from "./depots.ts";
 export {
+  createExtensionsController,
+  type ExtensionsController,
+  type ExtensionsControllerDeps,
+} from "./extensions.ts";
+export {
   createFilesystemController,
   type FilesystemController,
   type FilesystemControllerDeps,

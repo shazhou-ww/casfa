@@ -11,7 +11,7 @@
  */
 
 import type { PathSegment } from "@casfa/cas-uri";
-import { isWellKnownNode } from "@casfa/core";
+import { decodeNode, isWellKnownNode } from "@casfa/core";
 import {
   type AuthorizeLinkFn,
   type FsService as CoreFsService,
@@ -134,6 +134,7 @@ export const createFsService = (deps: FsServiceDeps): FsService => {
     scopeSetNodesDb,
     nodeLimit,
     maxFileSize,
+    extensionService,
   } = deps;
 
   // --------------------------------------------------------------------------
@@ -174,6 +175,16 @@ export const createFsService = (deps: FsServiceDeps): FsService => {
           nodeCount: 1,
         });
       }
+
+      // Generate on-create extension derived data
+      if (extensionService) {
+        try {
+          const node = decodeNode(info.bytes);
+          await extensionService.onNodeCreated(info.storageKey, node);
+        } catch {
+          // Extension failure must not block node storage
+        }
+      }
     },
 
     resolveNodeKey: async (nodeKey: string) => {
@@ -186,6 +197,33 @@ export const createFsService = (deps: FsServiceDeps): FsService => {
       }
       return { code: "INVALID_ROOT", status: 400, message: `Invalid nodeKey format: ${nodeKey}` };
     },
+
+    // Batch metadata provider for ls optimization
+    getChildrenMeta: extensionService
+      ? async (storageKeys) => {
+          const META_EXT = "meta";
+          const result = await extensionService.batchGetDerived(storageKeys, META_EXT);
+          // Convert Record<string, unknown> → ChildMeta
+          const mapped = new Map<string, import("@casfa/fs").ChildMeta>();
+          for (const [key, data] of result) {
+            const d = data as {
+              kind?: string;
+              size?: number | null;
+              contentType?: string | null;
+              childCount?: number | null;
+            };
+            if (d.kind === "file" || d.kind === "dict") {
+              mapped.set(key, {
+                kind: d.kind,
+                size: d.size ?? null,
+                contentType: d.contentType ?? null,
+                childCount: d.childCount ?? null,
+              });
+            }
+          }
+          return mapped;
+        }
+      : undefined,
   });
 
   /**

@@ -54,6 +54,7 @@ export type {
   FsTreeResponse,
 } from "./tree-types.ts";
 export {
+  type ChildMeta,
   type FsContext,
   type FsError,
   fsError,

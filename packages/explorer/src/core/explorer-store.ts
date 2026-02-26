@@ -7,8 +7,9 @@
 
 import type { CasfaClient } from "@casfa/client";
 import type { KeyProvider, StorageProvider } from "@casfa/core";
-import { createFsService, type FsService, isFsError } from "@casfa/fs";
+import { type ChildMeta, createFsService, type FsService, isFsError } from "@casfa/fs";
 import type { DepotListItem, FsLsChild } from "@casfa/protocol";
+import { nodeKeyToStorageKey, storageKeyToNodeKey } from "@casfa/protocol";
 import { createStore } from "zustand/vanilla";
 import type {
   ClipboardData,
@@ -357,6 +358,8 @@ function nextUploadId(): string {
 }
 
 export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
+  // In-flight guard for selectDepot — prevents duplicate calls during StrictMode re-mount
+  let selectDepotInFlight: string | null = null;
   // Build local @casfa/fs service — all tree operations (read & write) run locally.
   // Nodes are fetched/stored via CachedStorage (IndexedDB + HTTP).
   // After write operations, the new root is committed to the server via depot API.
@@ -368,6 +371,34 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
       storage: opts.storage,
       key: opts.key,
       ...(serverNodeLimit ? { nodeLimit: serverNodeLimit } : {}),
+
+      // Batch metadata provider — avoids fetching each child node individually
+      // during ls(). Uses the server's extension API to batch-query "meta"
+      // derived data (kind, size, contentType, childCount).
+      getChildrenMeta: async (storageKeys) => {
+        if (storageKeys.length === 0) return new Map();
+        const nodeKeys = storageKeys.map(storageKeyToNodeKey);
+        const result = await opts.client.nodes.batchGetExtension<{
+          kind: "file" | "dict";
+          size: number | null;
+          contentType: string | null;
+          childCount: number | null;
+        }>("meta", nodeKeys);
+        if (!result.ok) return new Map();
+
+        const mapped = new Map<string, ChildMeta>();
+        for (const [nodeKey, data] of Object.entries(result.data.data)) {
+          if (data.kind === "file" || data.kind === "dict") {
+            mapped.set(nodeKeyToStorageKey(nodeKey), {
+              kind: data.kind,
+              size: data.size ?? null,
+              contentType: data.contentType ?? null,
+              childCount: data.childCount ?? null,
+            });
+          }
+        }
+        return mapped;
+      },
     },
   });
 
@@ -423,6 +454,7 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
     // ── Depot actions ──
     loadDepots: async () => {
+      if (get().depotsLoading) return; // prevent duplicate in-flight calls
       set({ depotsLoading: true });
       const { client } = get();
       try {
@@ -487,26 +519,33 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
 
     selectDepot: async (depotId: string) => {
       const { client } = get();
-      // Fetch depot detail to get root node key
-      const result = await client.depots.get(depotId);
-      if (result.ok) {
-        const serverRoot = result.data.root;
-        // Check if SyncManager has a pending root that hasn't been committed yet
-        const pendingRoot = (await opts.getSyncPendingRoot?.(depotId)) ?? null;
-        const effectiveRoot = pendingRoot ?? serverRoot;
-        set({
-          depotId,
-          depotRoot: effectiveRoot,
-          serverRoot,
-          pendingPaths: new Set<string>(),
-          currentPath: "",
-          items: [],
-          cursor: null,
-          hasMore: false,
-          totalItems: 0,
-        });
-        // Load root directory
-        await get().navigate("");
+      // Prevent duplicate in-flight calls for the same depot (e.g. StrictMode re-mount)
+      if (selectDepotInFlight === depotId) return;
+      selectDepotInFlight = depotId;
+      try {
+        // Fetch depot detail to get root node key
+        const result = await client.depots.get(depotId);
+        if (result.ok) {
+          const serverRoot = result.data.root;
+          // Check if SyncManager has a pending root that hasn't been committed yet
+          const pendingRoot = (await opts.getSyncPendingRoot?.(depotId)) ?? null;
+          const effectiveRoot = pendingRoot ?? serverRoot;
+          set({
+            depotId,
+            depotRoot: effectiveRoot,
+            serverRoot,
+            pendingPaths: new Set<string>(),
+            currentPath: "",
+            items: [],
+            cursor: null,
+            hasMore: false,
+            totalItems: 0,
+          });
+          // Load root directory
+          await get().navigate("");
+        }
+      } finally {
+        selectDepotInFlight = null;
       }
     },
 
@@ -1256,8 +1295,8 @@ export const createExplorerStore = (opts: CreateExplorerStoreOpts) => {
     closeDialog: () => set({ dialogState: { type: "none" } }),
   }));
 
-  // ── Initial connection (BroadcastChannel + commit subscription) ──
-  store.getState().connect();
+  // Connection is handled by CasfaExplorer's useEffect (connect on mount,
+  // dispose on unmount) — no need to call connect() here.
 
   return store;
 };

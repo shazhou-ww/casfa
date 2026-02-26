@@ -5,7 +5,7 @@
  * All dependencies must be injected - no fallback logic.
  */
 
-import { isWellKnownNode } from "@casfa/core";
+import { decodeNode, isWellKnownNode } from "@casfa/core";
 import type { PopContext } from "@casfa/proof";
 import type { StorageProvider } from "@casfa/storage-core";
 import { blake3 } from "@noble/hashes/blake3";
@@ -19,6 +19,7 @@ import {
   createClaimController,
   createDelegatesController,
   createDepotsController,
+  createExtensionsController,
   createFilesystemController,
   createHealthController,
   createInfoController,
@@ -46,6 +47,11 @@ import { createNodeAuthMiddleware } from "./middleware/node-auth.ts";
 import { createRouter } from "./router.ts";
 // Services
 import { createFsService } from "./services/fs/index.ts";
+import {
+  createExtensionRegistry,
+  createExtensionService,
+} from "./services/extensions/index.ts";
+import { metaExtension } from "./services/extensions/meta-extension.ts";
 import type { Env } from "./types.ts";
 import { toCrockfordBase32 } from "./util/encoding.ts";
 import type { CombinedKeyProvider } from "./util/hash-provider.ts";
@@ -116,6 +122,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     usageDb,
     userRolesDb,
     localUsersDb,
+    nodeDerivedDb,
   } = db;
 
   // Middleware
@@ -161,12 +168,32 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     usageDb,
     serverConfig: config.server,
   });
+
+  // Extension service — generates & caches derived data for CAS nodes
+  const extensionRegistry = createExtensionRegistry();
+  extensionRegistry.register(metaExtension);
+
+  const extensionService = createExtensionService({
+    registry: extensionRegistry,
+    derivedDb: nodeDerivedDb,
+    getAndDecodeNode: async (storageKey) => {
+      const bytes = await storage.get(storageKey);
+      if (!bytes) return null;
+      try {
+        return decodeNode(bytes);
+      } catch {
+        return null;
+      }
+    },
+  });
+
   const chunks = createChunksController({
     storage,
     keyProvider,
     ownershipV2Db,
     refCountDb,
     usageDb,
+    extensionService,
   });
   const depots = createDepotsController({
     depotsDb,
@@ -219,8 +246,12 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     scopeSetNodesDb,
     nodeLimit: config.server.nodeLimit,
     maxFileSize: config.server.nodeLimit,
+    extensionService,
   });
   const filesystem = createFilesystemController({ fsService });
+
+  // Extensions controller
+  const extensions = createExtensionsController({ extensionService });
 
   // MCP controller (depends on fsService)
   const mcp = createMcpController({
@@ -246,6 +277,7 @@ export const createApp = (deps: AppDependencies): Hono<Env> => {
     chunks,
     depots,
     filesystem,
+    extensions,
     delegates,
     claim,
     refreshToken,

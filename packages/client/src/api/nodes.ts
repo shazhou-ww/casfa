@@ -21,6 +21,12 @@ export type NodeUploadResult = {
   status: "created" | "exists";
 };
 
+/** Response from batch extension query */
+export type BatchExtensionResponse<T = Record<string, unknown>> = {
+  /** Map of nodeKey → extension-generated data */
+  data: Record<string, T>;
+};
+
 // ============================================================================
 // Access Token APIs
 // ============================================================================
@@ -199,4 +205,28 @@ export const putNode = async (
       },
     };
   }
+};
+
+/**
+ * Batch-get extension derived data for multiple nodes.
+ * POST /api/realm/{realm}/nodes/ext/{extensionName}/batch
+ * Body: { keys: string[] }
+ * Requires Access Token.
+ */
+export const batchGetExtension = async <T = Record<string, unknown>>(
+  baseUrl: string,
+  realm: string,
+  accessTokenBase64: string,
+  extensionName: string,
+  keys: string[]
+): Promise<FetchResult<BatchExtensionResponse<T>>> => {
+  if (keys.length === 0) return { ok: true, data: { data: {} as Record<string, T> }, status: 200 };
+  return fetchWithAuth<BatchExtensionResponse<T>>(
+    `${baseUrl}/api/realm/${encodeURIComponent(realm)}/nodes/ext/${encodeURIComponent(extensionName)}/batch`,
+    `Bearer ${accessTokenBase64}`,
+    {
+      method: "POST",
+      body: { keys },
+    }
+  );
 };
