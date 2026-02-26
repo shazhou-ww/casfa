@@ -539,6 +539,26 @@ Resources:
         Comment: !Sub "CASFA ${StageName} SPA rewrite - non-asset paths to /index.html"
         Runtime: cloudfront-js-2.0
 
+  # CloudFront Function for API origins: copies viewer Host to X-Forwarded-Host
+  # so the Lambda can produce correct self-referential URLs behind CloudFront.
+  ApiHostForwardFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "casfa-api-host-forward-${StageName}"
+      AutoPublish: true
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var host = request.headers.host;
+          if (host) {
+            request.headers['x-forwarded-host'] = { value: host.value };
+          }
+          return request;
+        }
+      FunctionConfig:
+        Comment: !Sub "CASFA ${StageName} - forward viewer Host to X-Forwarded-Host"
+        Runtime: cloudfront-js-2.0
+
   CloudFrontOAC:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
@@ -608,6 +628,19 @@ Resources:
               FunctionARN: !GetAtt SpaRewriteFunction.FunctionARN
 
         CacheBehaviors:
+          # /.well-known/* → API Gateway (OAuth discovery, RFC 8414 / RFC 9728)
+          - PathPattern: "/.well-known/*"
+            TargetOriginId: ApiGatewayOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac  # AllViewerExceptHostHeader
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN: !GetAtt ApiHostForwardFunction.FunctionARN
           # /api/* → API Gateway (no cache, forward all)
           - PathPattern: "/api/*"
             TargetOriginId: ApiGatewayOrigin
@@ -622,6 +655,9 @@ Resources:
               - POST
               - PATCH
               - DELETE
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN: !GetAtt ApiHostForwardFunction.FunctionARN
 
         # SPA fallback is handled by SpaRewriteFunction on the default behavior.
         # Do NOT use CustomErrorResponses - they are distribution-wide and would

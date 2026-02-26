@@ -163,7 +163,7 @@ export const createOAuthAuthController = (deps: OAuthAuthControllerDeps): OAuthA
   // ──────────────────────────────────────────────────────────────────────────
 
   const getMetadata = (c: Context<Env>): Response => {
-    const host = c.req.header("Host");
+    const host = c.req.header("X-Forwarded-Host") ?? c.req.header("Host");
     const proto = c.req.header("X-Forwarded-Proto") ?? "http";
     const baseUrl = host ? `${proto}://${host}` : serverConfig.baseUrl;
 
@@ -186,7 +186,7 @@ export const createOAuthAuthController = (deps: OAuthAuthControllerDeps): OAuthA
   // ──────────────────────────────────────────────────────────────────────────
 
   const getProtectedResourceMetadata = (c: Context<Env>): Response => {
-    const host = c.req.header("Host");
+    const host = c.req.header("X-Forwarded-Host") ?? c.req.header("Host");
     const proto = c.req.header("X-Forwarded-Proto") ?? "http";
     const baseUrl = host ? `${proto}://${host}` : serverConfig.baseUrl;
 
