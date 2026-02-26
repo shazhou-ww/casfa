@@ -138,6 +138,20 @@ export async function createDirectClient(config: AppClientConfig): Promise<AppCl
     get nodes() {
       return client.nodes;
     },
+    get viewers() {
+      // Viewer management requires Service Worker — not available in direct mode.
+      // Return stub methods that reject with a clear error.
+      const notAvailable = () =>
+        Promise.reject(new Error("Viewer management requires Service Worker mode"));
+      return {
+        listAll: notAvailable,
+        listBuiltin: notAvailable,
+        listCustom: notAvailable,
+        addCustom: notAvailable,
+        removeCustom: notAvailable,
+        updateCustom: notAvailable,
+      } as import("./viewer-types.ts").ViewerMethods;
+    },
     getState() {
       return client.getState();
     },

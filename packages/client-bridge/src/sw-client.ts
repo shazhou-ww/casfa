@@ -30,26 +30,33 @@ import type {
   SyncErrorEvent,
   SyncState,
 } from "./types.ts";
+import type { ViewerMethods } from "./viewer-types.ts";
 
 /**
  * Wait for a ServiceWorkerRegistration to have an active worker.
  */
 async function waitForActive(reg: ServiceWorkerRegistration): Promise<ServiceWorker> {
+  // Prefer an incoming SW (installing/waiting) over the current active one.
+  // When skipWaiting() is used, the incoming SW will replace the active one,
+  // killing its ports. Connecting to the old active SW causes a dead channel.
+  const incoming = reg.installing ?? reg.waiting;
+  if (incoming) {
+    if (incoming.state === "activated") return incoming;
+    return new Promise((resolve, reject) => {
+      const onChange = () => {
+        if (incoming.state === "activated") {
+          incoming.removeEventListener("statechange", onChange);
+          resolve(incoming);
+        } else if (incoming.state === "redundant") {
+          incoming.removeEventListener("statechange", onChange);
+          reject(new Error("Service worker became redundant"));
+        }
+      };
+      incoming.addEventListener("statechange", onChange);
+    });
+  }
   if (reg.active) return reg.active;
-  const sw = reg.installing ?? reg.waiting;
-  if (!sw) throw new Error("No service worker in registration");
-  return new Promise((resolve, reject) => {
-    const onChange = () => {
-      if (sw.state === "activated") {
-        sw.removeEventListener("statechange", onChange);
-        resolve(sw);
-      } else if (sw.state === "redundant") {
-        sw.removeEventListener("statechange", onChange);
-        reject(new Error("Service worker became redundant"));
-      }
-    };
-    sw.addEventListener("statechange", onChange);
-  });
+  throw new Error("No service worker in registration");
 }
 
 export async function createSWClient(config: AppClientConfig): Promise<AppClient> {
@@ -168,6 +175,7 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
     depots: createNamespaceProxy<DepotMethods>(rpc, "depots"),
     fs: createNamespaceProxy<FsMethods>(rpc, "fs"),
     nodes: createNamespaceProxy<NodeMethods>(rpc, "nodes"),
+    viewers: createNamespaceProxy<ViewerMethods>(rpc, "viewers"),
   };
 
   // ── 7. AppClient ──
@@ -190,6 +198,9 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
     },
     get nodes() {
       return ns.nodes;
+    },
+    get viewers() {
+      return ns.viewers;
     },
 
     // ── CasfaClient: sync properties (cached locally) ──

@@ -34,9 +34,11 @@ type PreviewPanelProps = {
   onClose: () => void;
   /** Custom preview providers (higher priority than built-in) */
   previewProviders?: PreviewProvider[];
+  /** When set, renders an iframe with this URL instead of the normal preview */
+  viewerUrl?: string | null;
 };
 
-export function PreviewPanel({ item, onClose, previewProviders }: PreviewPanelProps) {
+export function PreviewPanel({ item, onClose, previewProviders, viewerUrl }: PreviewPanelProps) {
   const t = useExplorerT();
   const localFs = useExplorerStore((s) => s.localFs);
   const depotRoot = useExplorerStore((s) => s.depotRoot);
@@ -45,10 +47,16 @@ export function PreviewPanel({ item, onClose, previewProviders }: PreviewPanelPr
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Viewer mode: iframe-based rendering via /view composition URL
+  const isViewerMode = !!viewerUrl;
+
   // Construct CAS URL from item's nodeKey (if available)
   const casUrl = item?.nodeKey ? `/cas/${item.nodeKey}` : null;
 
   useEffect(() => {
+    // Skip blob loading in viewer mode — iframe handles everything
+    if (isViewerMode) return;
+
     if (!item || !depotRoot || item.isDirectory) {
       setBlob(null);
       return;
@@ -88,7 +96,7 @@ export function PreviewPanel({ item, onClose, previewProviders }: PreviewPanelPr
     return () => {
       cancelled = true;
     };
-  }, [item, depotRoot, localFs, t]);
+  }, [item, depotRoot, localFs, t, isViewerMode]);
 
   const handleClose = useCallback(() => {
     setBlob(null);
@@ -97,14 +105,16 @@ export function PreviewPanel({ item, onClose, previewProviders }: PreviewPanelPr
     onClose();
   }, [onClose]);
 
-  if (!item) return null;
+  const isOpen = isViewerMode ? !!viewerUrl : !!item;
+  if (!isOpen) return null;
 
-  const contentType = item.contentType || "application/octet-stream";
-  const provider = findPreviewProvider(contentType, previewProviders);
+  const contentType = item?.contentType || "application/octet-stream";
+  const provider = isViewerMode ? null : findPreviewProvider(contentType, previewProviders);
+  const dialogTitle = isViewerMode ? t("preview.viewer") : (item?.name ?? "");
 
   return (
     <Dialog
-      open={!!item}
+      open={isOpen}
       onClose={handleClose}
       maxWidth="lg"
       fullWidth
@@ -123,7 +133,7 @@ export function PreviewPanel({ item, onClose, previewProviders }: PreviewPanelPr
         }}
       >
         <Typography variant="subtitle1" component="span" noWrap sx={{ flex: 1 }}>
-          {item.name}
+          {dialogTitle}
         </Typography>
         <IconButton size="small" onClick={handleClose}>
           <CloseIcon />
@@ -138,7 +148,18 @@ export function PreviewPanel({ item, onClose, previewProviders }: PreviewPanelPr
           p: 0,
         }}
       >
-        {loading && (
+        {/* Viewer mode: render iframe */}
+        {isViewerMode && viewerUrl && (
+          <iframe
+            src={viewerUrl}
+            title={dialogTitle}
+            style={{ width: "100%", height: "100%", border: "none", flex: 1 }}
+            sandbox="allow-scripts allow-same-origin"
+          />
+        )}
+
+        {/* Normal preview mode */}
+        {!isViewerMode && loading && (
           <Box
             sx={{
               display: "flex",
@@ -154,7 +175,7 @@ export function PreviewPanel({ item, onClose, previewProviders }: PreviewPanelPr
           </Box>
         )}
 
-        {error && (
+        {!isViewerMode && error && (
           <Box
             sx={{
               display: "flex",
@@ -170,13 +191,13 @@ export function PreviewPanel({ item, onClose, previewProviders }: PreviewPanelPr
           </Box>
         )}
 
-        {!loading && !error && blob && provider && (
+        {!isViewerMode && !loading && !error && blob && provider && (
           <Box sx={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto" }}>
-            {provider.render({ item, blob, contentType, casUrl })}
+            {provider.render({ item: item!, blob, contentType, casUrl })}
           </Box>
         )}
 
-        {!loading && !error && blob && !provider && (
+        {!isViewerMode && !loading && !error && blob && !provider && (
           <Box
             sx={{
               display: "flex",

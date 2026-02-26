@@ -16,6 +16,7 @@ import type {
   SyncQueueStore,
   SyncState,
 } from "@casfa/explorer/core/sync-manager";
+import type { ViewerMethods } from "./viewer-types.ts";
 
 // Re-export event types for convenience
 export type { ConflictEvent, SyncCommitEvent, SyncErrorEvent, SyncState };
@@ -32,6 +33,9 @@ export type { ConflictEvent, SyncCommitEvent, SyncErrorEvent, SyncState };
  * getState, getServerInfo, etc.) are available directly on AppClient.
  */
 export type AppClient = CasfaClient & {
+  /** Viewer management (built-in + custom). Only available in SW mode. */
+  viewers: ViewerMethods;
+
   /**
    * Push user JWT. Creates/replaces the underlying CasfaClient with
    * autonomous refresh. Call again to re-login (overwrites old token).

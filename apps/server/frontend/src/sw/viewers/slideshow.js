@@ -6,12 +6,12 @@
 
   const display = document.createElement("div");
   display.style.cssText =
-    "flex:1;display:flex;align-items:center;justify-content:center;position:relative;";
+    "flex:1;display:flex;align-items:center;justify-content:center;position:relative;min-height:0;overflow:hidden;";
   body.appendChild(display);
 
   const img = document.createElement("img");
   img.style.cssText =
-    "max-width:100%;max-height:100%;object-fit:contain;transition:opacity .3s;";
+    "max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;transition:opacity .3s;";
   display.appendChild(img);
 
   const controls = document.createElement("div");

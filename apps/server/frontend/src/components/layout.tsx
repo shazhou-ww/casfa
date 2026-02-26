@@ -8,16 +8,19 @@
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import LogoutIcon from "@mui/icons-material/Logout";
+import SettingsIcon from "@mui/icons-material/Settings";
 import StorageIcon from "@mui/icons-material/Storage";
 import { AppBar, Box, Button, Menu, MenuItem, Snackbar, Toolbar, Typography } from "@mui/material";
 import { useCallback, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { useAuthStore } from "../stores/auth-store.ts";
+import { SettingsDialog } from "./settings-dialog.tsx";
 
 export function Layout() {
   const { user, logout } = useAuthStore();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [copied, setCopied] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const handleOpenMenu = useCallback((e: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(e.currentTarget);
@@ -80,6 +83,16 @@ export function Layout() {
                     Role: {user.role}
                   </Typography>
                 </MenuItem>
+                <MenuItem
+                  dense
+                  onClick={() => {
+                    handleCloseMenu();
+                    setSettingsOpen(true);
+                  }}
+                >
+                  <SettingsIcon sx={{ fontSize: 16, mr: 1 }} />
+                  <Typography variant="body2">Settings</Typography>
+                </MenuItem>
                 <MenuItem dense onClick={logout}>
                   <LogoutIcon sx={{ fontSize: 16, mr: 1 }} />
                   <Typography variant="body2">Sign out</Typography>
@@ -98,6 +111,7 @@ export function Layout() {
         <Outlet />
       </Box>
 
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <Snackbar
         open={copied}
         autoHideDuration={2000}

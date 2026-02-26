@@ -7,9 +7,15 @@
  * - Shows a clickable sync indicator — expand to see per-key progress.
  */
 
-import type { AppClient } from "@casfa/client-bridge";
+import type { AppClient, ViewerInfo } from "@casfa/client-bridge";
 import type { StorageProvider } from "@casfa/core";
-import { CasfaExplorer, type ExplorerStoreApi, type SyncState } from "@casfa/explorer";
+import {
+  CasfaExplorer,
+  type ExplorerItem,
+  type ExplorerMenuItem,
+  type ExplorerStoreApi,
+  type SyncState,
+} from "@casfa/explorer";
 import {
   CheckCircle,
   CloudDone,
@@ -18,6 +24,7 @@ import {
   Error as ErrorIcon,
   ExpandLess,
   ExpandMore,
+  OpenInBrowser as OpenInBrowserIcon,
   Replay as ReplayIcon,
   Warning as WarningIcon,
 } from "@mui/icons-material";
@@ -34,8 +41,9 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { ViewerPickerDialog } from "../components/viewer-picker-dialog.tsx";
 import { getAppClient } from "../lib/client.ts";
 import {
   clearSyncLog,
@@ -55,6 +63,44 @@ export function ExplorerPage() {
   const keyProv = getKeyProvider();
 
   const [conflictToast, setConflictToast] = useState<string | null>(null);
+
+  // ── Viewer state ──
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [viewerPickerOpen, setViewerPickerOpen] = useState(false);
+  const [viewerPickerTarget, setViewerPickerTarget] = useState<ExplorerItem | null>(null);
+
+  const fetchViewers = useCallback(async (): Promise<ViewerInfo[]> => {
+    if (!appClient) return [];
+    return appClient.viewers.listAll();
+  }, [appClient]);
+
+  const handleViewerSelect = useCallback(
+    (viewer: ViewerInfo) => {
+      if (!viewerPickerTarget?.nodeKey) return;
+      const url = `/view?target=${viewerPickerTarget.nodeKey}&viewer=${viewer.nodeKey}`;
+      setViewerUrl(url);
+      setViewerPickerOpen(false);
+      setViewerPickerTarget(null);
+    },
+    [viewerPickerTarget]
+  );
+
+  const extraContextMenuItems: ExplorerMenuItem[] = useMemo(
+    () => [
+      {
+        key: "open-with",
+        label: "Open with…",
+        icon: <OpenInBrowserIcon fontSize="small" />,
+        onClick: (items: ExplorerItem[]) => {
+          const target = items[0];
+          if (!target) return;
+          setViewerPickerTarget(target);
+          setViewerPickerOpen(true);
+        },
+      },
+    ],
+    []
+  );
 
   // Local cache of pending roots — keeps getSyncPendingRoot synchronous.
   // scheduleCommit sets the entry; onCommit clears it.
@@ -154,6 +200,20 @@ export function ExplorerPage() {
         getSyncPendingRoot={getSyncPendingRoot}
         subscribeCommit={subscribeCommit}
         onStoreReady={onStoreReady}
+        extraContextMenuItems={extraContextMenuItems}
+        viewerUrl={viewerUrl}
+        onViewerUrlChange={setViewerUrl}
+      />
+      <ViewerPickerDialog
+        open={viewerPickerOpen}
+        onClose={() => {
+          setViewerPickerOpen(false);
+          setViewerPickerTarget(null);
+        }}
+        onSelect={handleViewerSelect}
+        targetContentType={viewerPickerTarget?.contentType ?? null}
+        targetIsDirectory={viewerPickerTarget?.isDirectory ?? false}
+        fetchViewers={fetchViewers}
       />
       <SyncIndicator appClient={appClient} />
       <Snackbar

@@ -55,6 +55,8 @@ type ExplorerShellProps = {
   extraContextMenuItems?: ExplorerMenuItem[];
   extraToolbarItems?: ExplorerToolbarItem[];
   previewProviders?: PreviewProvider[];
+  viewerUrl?: string | null;
+  onViewerUrlChange?: (url: string | null) => void;
 };
 
 export function ExplorerShell(props: ExplorerShellProps) {
@@ -485,8 +487,12 @@ export function ExplorerShell(props: ExplorerShellProps) {
       {/* Preview panel (Iter 4) */}
       <PreviewPanel
         item={previewItem}
-        onClose={() => setPreviewItem(null)}
+        onClose={() => {
+          setPreviewItem(null);
+          props.onViewerUrlChange?.(null);
+        }}
         previewProviders={props.previewProviders}
+        viewerUrl={props.viewerUrl}
       />
 
       {/* Error snackbar */}
