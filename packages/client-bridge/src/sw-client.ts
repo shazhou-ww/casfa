@@ -101,6 +101,12 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
   let cachedSyncState: SyncState = ack.syncState ?? "idle";
   let cachedPendingCount: number = ack.pendingCount ?? 0;
 
+  // Mirror initial token state to main-thread storage so direct
+  // localStorage reads (e.g. OAuthAuthorizePage) work after SW activation.
+  if (cachedTokenState.user && config.tokenStorage) {
+    config.tokenStorage.save(cachedTokenState).catch(() => {});
+  }
+
   // ── 5. Events (BroadcastChannel "casfa") ──
   const bc = new BroadcastChannel("casfa");
   const listeners = {
@@ -146,6 +152,10 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
         break;
       case "token-state-changed":
         cachedTokenState = msg.payload;
+        // Mirror token state to main-thread storage (localStorage) so that
+        // pages that read directly from localStorage (e.g. OAuthAuthorizePage)
+        // can find the token after a full page reload.
+        config.tokenStorage?.save(msg.payload).catch(() => {});
         break;
     }
   };
