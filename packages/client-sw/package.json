@@ -1,7 +1,7 @@
 {
   "name": "@casfa/client-sw",
   "version": "0.1.0",
-  "description": "Service Worker message handler for CASFA — RPC dispatch and IDB token storage",
+  "description": "Service Worker utilities for CASFA — IndexedDB token storage",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -26,8 +26,7 @@
     "prepublishOnly": "bun run build"
   },
   "peerDependencies": {
-    "@casfa/client": "workspace:*",
-    "@casfa/port-rpc": "workspace:*"
+    "@casfa/client": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.0"

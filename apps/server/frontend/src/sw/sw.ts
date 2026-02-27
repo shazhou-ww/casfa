@@ -41,9 +41,9 @@ declare global {
  */
 
 import { type CasfaClient, createClient, type TokenStorageProvider } from "@casfa/client";
-import type { ConnectAckMessage } from "@casfa/client-bridge";
-import type { PortMessage } from "@casfa/client-bridge";
-import { createIndexedDBTokenStorage, createMessageHandler } from "@casfa/client-sw";
+import type { SwApi, SwInitState, FireAndForgetMessage } from "@casfa/client-bridge";
+import { createIndexedDBTokenStorage } from "@casfa/client-sw";
+import * as Comlink from "comlink";
 import {
   type CasContext,
   encodeDictNode,
@@ -86,30 +86,13 @@ let client: CasfaClient | null = null;
 // ── SyncCoordinator ──
 // Storage sync is a no-op in SW — the main thread flushes buffered nodes
 // before posting the commit message to the SW.
-const noopFlushStorage = { flush: async () => {} };
+const noopFlushStorage = { flush: async () => { } };
 
 const syncCoordinator = createSyncCoordinator({
   storage: noopFlushStorage,
   queueStore: createSyncQueueStore(),
   broadcast,
   debounceMs: 2_000,
-});
-
-// ── Message handler ──
-const handleMessage = createMessageHandler({
-  getClient: () => {
-    if (!client) throw new Error("Not authenticated");
-    return client;
-  },
-  setClient: (c: CasfaClient) => {
-    client = c;
-    // Reset init promise so ensureClient() won't overwrite the new client
-    clientInitPromise = null;
-  },
-  baseUrl: BASE_URL,
-  tokenStorage,
-  broadcast,
-  syncCoordinator,
 });
 
 // ── Viewer service (lazy init — uses keyProvider + virtualNodes) ──
@@ -122,40 +105,96 @@ function getViewerService(): ViewerService {
   return viewerService;
 }
 
-// ── Inline RPC helpers (avoid adding @casfa/port-rpc dependency) ────────────
-
-function respond(port: MessagePort, id: number, result: unknown): void {
-  port.postMessage({ type: "rpc-response", id, result });
-}
-
-function respondError(port: MessagePort, id: number, code: string, err: unknown): void {
-  const message = err instanceof Error ? err.message : String(err);
-  port.postMessage({ type: "rpc-response", id, error: { code, message } });
-}
-
 /**
- * Extended message handler: intercepts "viewers" namespace RPC calls
- * before delegating to the generic CasfaClient message handler.
+ * Create the Comlink-exposed SwApi object.
+ *
+ * This is created per-port connection and wraps the shared client + services.
  */
-async function handleExtendedMessage(msg: PortMessage, port: MessagePort): Promise<void> {
-  if (msg.type === "rpc" && msg.target === "viewers") {
-    console.log("[SW] viewers RPC received:", msg.method, "id:", msg.id);
-    try {
-      const svc = getViewerService();
-      const fn = (svc as unknown as Record<string, unknown>)[msg.method];
-      if (typeof fn !== "function") {
-        throw new Error(`Unknown viewers method: ${msg.method}`);
-      }
-      const result = await fn.apply(svc, msg.args);
-      console.log("[SW] viewers RPC responding id:", msg.id, "result items:", Array.isArray(result) ? result.length : typeof result);
-      respond(port, msg.id, result);
-    } catch (err) {
-      console.error("[SW] viewers RPC error id:", msg.id, err);
-      respondError(port, msg.id, "rpc_error", err);
-    }
-    return;
-  }
-  return handleMessage(msg, port);
+function createSwApi(): SwApi {
+  const getClient = () => {
+    if (!client) throw new Error("Not authenticated");
+    return client;
+  };
+
+  return {
+    // ── Namespaces (proxy to CasfaClient) ──
+    get oauth() {
+      return getClient().oauth;
+    },
+    get tokens() {
+      return getClient().tokens;
+    },
+    get delegates() {
+      return getClient().delegates;
+    },
+    get depots() {
+      return getClient().depots;
+    },
+    get fs() {
+      return getClient().fs;
+    },
+    get nodes() {
+      return getClient().nodes;
+    },
+    get viewers() {
+      return getViewerService();
+    },
+
+    // ── Top-level CasfaClient methods ──
+    getState() {
+      return client?.getState() ?? { user: null, rootDelegate: null };
+    },
+    getServerInfo() {
+      return client?.getServerInfo() ?? null;
+    },
+    setRootDelegate(delegate) {
+      client?.setRootDelegate(delegate);
+    },
+    async getAccessToken() {
+      return (await client?.getAccessToken()) ?? null;
+    },
+
+    // ── Auth lifecycle ──
+    async setUserToken(userId: string) {
+      const newClient = await createClient({
+        baseUrl: BASE_URL,
+        realm: userId,
+        tokenStorage,
+        onAuthRequired: () => broadcast({ type: "auth-required" }),
+      });
+      client = newClient;
+      clientInitPromise = null;
+      syncCoordinator.setClient(newClient);
+      // Broadcast updated state to all tabs
+      broadcast({
+        type: "token-state-changed",
+        payload: newClient.getState(),
+      });
+    },
+    async logout() {
+      await syncCoordinator.flushNow();
+      client?.logout();
+    },
+
+    // ── Sync operations ──
+    getPendingRoot(depotId: string) {
+      return syncCoordinator.getPendingRoot(depotId);
+    },
+    async flushNow() {
+      await syncCoordinator.flushNow();
+    },
+
+    // ── Initial state (returned after Comlink connect) ──
+    getInitialState(): SwInitState {
+      return {
+        authenticated: client !== null && client.getState().user !== null,
+        tokenState: client?.getState() ?? null,
+        serverInfo: client?.getServerInfo() ?? null,
+        syncState: syncCoordinator.getState(),
+        pendingCount: syncCoordinator.getPendingCount(),
+      };
+    },
+  };
 }
 
 // ============================================================================
@@ -254,35 +293,36 @@ function ensureClient(): Promise<void> {
 }
 
 // ============================================================================
-// Connection handling
+// Connection handling — Comlink-based
 // ============================================================================
 
 self.addEventListener("message", (event) => {
-  if (event.data?.type === "connect") {
-    const port = event.ports[0];
-    if (!port) return;
+  const msg = event.data as FireAndForgetMessage | undefined;
+
+  // ── Comlink initialization ──
+  if (msg?.type === "comlinkInit") {
+    const port = event.data.port as MessagePort | undefined;
+    if (!port) {
+      console.error("[SW] comlinkInit received without port!");
+      return;
+    }
 
     // Ensure a client exists (lazy init if SW was restarted after idle-kill)
-    const ready = ensureClient();
-
     event.waitUntil(
-      ready.then(() => {
-        // Send connect-ack with current state
-        const ack: ConnectAckMessage = {
-          type: "connect-ack",
-          authenticated: client !== null && client.getState().user !== null,
-          tokenState: client?.getState() ?? null,
-          serverInfo: client?.getServerInfo() ?? null,
-          syncState: syncCoordinator.getState(),
-          pendingCount: syncCoordinator.getPendingCount(),
-        };
-        port.postMessage(ack);
-
-        // Wire up message handler for this port
-        port.onmessage = (e) => handleExtendedMessage(e.data, port);
-        port.start();
+      ensureClient().then(() => {
+        // Expose the API via Comlink
+        const api = createSwApi();
+        Comlink.expose(api, port);
+        console.log("[SW] Comlink API exposed on port");
       })
     );
+    return;
+  }
+
+  // ── Fire-and-forget: schedule-commit ──
+  if (msg?.type === "schedule-commit") {
+    syncCoordinator.enqueue(msg.depotId, msg.targetRoot, msg.lastKnownServerRoot);
+    return;
   }
 });
 
@@ -409,7 +449,7 @@ function createReadonlyContext(cl: CasfaClient): CasContext {
 
       memCache.set(storageKey, result.data);
       // Write-back to IndexedDB for future reads
-      idbStorage.put(storageKey, result.data).catch(() => {});
+      idbStorage.put(storageKey, result.data).catch(() => { });
       return result.data;
     },
     put: async () => {
@@ -547,7 +587,7 @@ function createPageContext(cl: CasfaClient): CasContext {
       if (!result.ok) return null;
 
       memCache.set(storageKey, result.data);
-      idbStorage.put(storageKey, result.data).catch(() => {});
+      idbStorage.put(storageKey, result.data).catch(() => { });
       return result.data;
     },
     put: async () => {
@@ -946,7 +986,7 @@ async function handleCasFetch(request: Request, url: URL): Promise<Response> {
             "X-CAS-Key": targetNodeKey,
           },
         });
-        cache.put(cacheKey, response.clone()).catch(() => {});
+        cache.put(cacheKey, response.clone()).catch(() => { });
         return response;
       }
 
@@ -968,7 +1008,7 @@ async function handleCasFetch(request: Request, url: URL): Promise<Response> {
         // For simplicity, we don't cache streamed responses inline —
         // instead, re-fetch from the in-memory ctx cache would be instant.
         // We DO cache the final response so subsequent requests hit the SW cache.
-        cache.put(cacheKey, response.clone()).catch(() => {});
+        cache.put(cacheKey, response.clone()).catch(() => { });
         return response;
       }
 
@@ -1014,5 +1054,5 @@ async function handleCasFetch(request: Request, url: URL): Promise<Response> {
 
 self.addEventListener("online", () => {
   // Network restored — immediately attempt to flush pending commits
-  syncCoordinator.runSync().catch(() => {});
+  syncCoordinator.runSync().catch(() => { });
 });

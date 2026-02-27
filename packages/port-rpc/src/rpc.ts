@@ -84,6 +84,7 @@ export function createRPC<TMsg extends RPCMessage = RPCMessage>(
       resolve: (value: unknown) => void;
       reject: (reason: Error) => void;
       timer: ReturnType<typeof setTimeout>;
+      msgType: string;
     }
   >();
 
@@ -109,7 +110,7 @@ export function createRPC<TMsg extends RPCMessage = RPCMessage>(
         reject(new Error(`RPC timeout (${timeoutMs}ms): ${msg.type}`));
       }, timeoutMs);
 
-      pending.set(id, { resolve, reject, timer });
+      pending.set(id, { resolve, reject, timer, msgType: msg.type });
 
       const transferables =
         "args" in msg && Array.isArray(msg.args) ? extractTransferables(msg.args) : [];
