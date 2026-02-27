@@ -2,7 +2,7 @@
  * AppClient factory functions.
  *
  * Phase 1: createAppClient = createDirectClient (no SW).
- * Phase 2: createAppClient will auto-detect SW availability.
+ * Phase 2: createAppClient uses Comlink-based SW mode with direct mode fallback.
  */
 
 import type { AppClient, AppClientConfig } from "./types.ts";
@@ -18,14 +18,13 @@ export async function createDirectClient(config: AppClientConfig): Promise<AppCl
 /**
  * Create an AppClient with automatic mode selection.
  *
- * Phase 1: Always uses direct mode.
- * Phase 2: Will try SW mode first, falling back to direct.
+ * Tries SW mode (Comlink-based) first, falling back to direct mode.
  */
 export async function createAppClient(config: AppClientConfig): Promise<AppClient> {
   // Try SW mode if service workers are available
   if ("serviceWorker" in navigator) {
     try {
-      const { createSWClient } = await import("./sw-client.ts");
+      const { createSWClient } = await import("./sw-client-comlink.ts");
       return await createSWClient(config);
     } catch (e) {
       console.warn("[casfa] SW mode unavailable, using direct mode:", e);

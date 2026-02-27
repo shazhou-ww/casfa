@@ -7,6 +7,7 @@
     "apps/*"
   ],
   "scripts": {
+    "aws:login": "bun -e \"const content = await Bun.file('.env').text(); const match = content.match(/^AWS_PROFILE=(.+)$/m); if (!match) { console.error('AWS_PROFILE not set in .env'); process.exit(1); } Bun.spawnSync(['aws', 'sso', 'login', '--profile', match[1]], {stdio: ['inherit', 'inherit', 'inherit']})\"",
     "clean": "rimraf packages/*/dist apps/*/dist apps/cli/dist apps/server/backend/dist apps/server/backend/public apps/server/.aws-sam",
     "build": "bun run build:packages",
     "build:packages": "cd packages/port-rpc && bun run build && cd ../encoding && bun run build && cd ../protocol && bun run build && cd ../cas-uri && bun run build && cd ../delegate && bun run build && cd ../proof && bun run build && cd ../storage-core && bun run build && cd ../core && bun run build && cd ../dag-diff && bun run build && cd ../delegate-token && bun run build && cd ../client-auth-crypto && bun run build && cd ../storage-fs && bun run build && cd ../storage-memory && bun run build && cd ../storage-s3 && bun run build && cd ../storage-cached && bun run build && cd ../fs && bun run build && cd ../client && bun run build && cd ../storage-indexeddb && bun run build && cd ../storage-http && bun run build && cd ../explorer && bun run build && cd ../client-bridge && bun run build && cd ../client-sw && bun run build && cd ../oauth-consumer && bun run build && cd ../oauth-provider && bun run build && cd ../../apps/cli && bun run build",

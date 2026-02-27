@@ -117,9 +117,7 @@ export function createViewerService(
 
   return {
     async listAll(): Promise<ViewerInfo[]> {
-      console.log("[ViewerService] listAll() start");
       const [builtins, customs] = await Promise.all([getBuiltins(), store.loadAll()]);
-      console.log("[ViewerService] listAll() done — builtins:", builtins.length, "customs:", customs.length);
       return [...builtins.map(builtinToInfo), ...customs.map(customToInfo)];
     },
 

@@ -5,7 +5,7 @@
  * Callers see a single AppClient interface regardless of transport (SW / direct).
  *
  * Phase 1: Direct mode only (main-thread CasfaClient + SyncManager).
- * Phase 2: SW mode (RPC proxy to Service Worker).
+ * Phase 2: SW mode (Comlink RPC proxy to Service Worker).
  *
  * @packageDocumentation
  */
@@ -22,6 +22,7 @@ export type {
   ScheduleCommitMessage,
   SetUserTokenMessage,
 } from "./messages.ts";
+export type { FireAndForgetMessage, SwApi, SwInitState } from "./sw-api-types.ts";
 export type {
   AppClient,
   AppClientConfig,

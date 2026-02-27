@@ -59,6 +59,7 @@ let appClientPromise: Promise<AppClient> | null = null;
  */
 export function getAppClient(): Promise<AppClient> {
   if (!appClientPromise) {
+    console.log("[client] getAppClient() creating new client promise");
     appClientPromise = (async () => {
       // Try to recover realm from persisted tokens
       const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
@@ -73,8 +74,9 @@ export function getAppClient(): Promise<AppClient> {
           // ignore
         }
       }
+      console.log("[client] Creating AppClient with realm:", realm);
 
-      return createAppClientFactory({
+      const client = await createAppClientFactory({
         baseUrl: "",
         realm,
         // In dev mode, point to the TS source so Vite can transform it on the fly
@@ -93,7 +95,11 @@ export function getAppClient(): Promise<AppClient> {
         getLocalStorage: getStorage,
         keyProvider: getKeyProvider(),
       });
+      console.log("[client] AppClient created successfully");
+      return client;
     })();
+  } else {
+    console.log("[client] getAppClient() returning existing promise");
   }
   return appClientPromise;
 }

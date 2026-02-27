@@ -132,18 +132,14 @@ export function ViewerPickerDialog({
     if (!open) return;
     let cancelled = false;
     setLoading(true);
-    console.log("[ViewerPicker] fetchViewers() start");
     fetchViewers()
       .then((list) => {
-        console.log("[ViewerPicker] fetchViewers() resolved, count:", list.length);
         if (!cancelled) setViewers(list);
       })
-      .catch((err) => {
-        console.error("[ViewerPicker] fetchViewers() error:", err);
+      .catch(() => {
         if (!cancelled) setViewers([]);
       })
       .finally(() => {
-        console.log("[ViewerPicker] fetchViewers() finally, cancelled:", cancelled);
         if (!cancelled) setLoading(false);
       });
     return () => {

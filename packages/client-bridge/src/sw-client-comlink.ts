@@ -1,8 +1,8 @@
 /**
- * SW mode — CasfaClient API routed to Service Worker via MessagePort RPC.
+ * SW mode — CasfaClient API routed to Service Worker via Comlink.
  *
  * Returns an AppClient identical to createDirectClient, except all CasfaClient
- * methods are proxied through RPC to a single CasfaClient in the SW.
+ * methods are proxied through Comlink to a single CasfaClient in the SW.
  *
  * Sync properties (getState, getServerInfo) are cached locally and updated
  * via BroadcastChannel. Namespace methods are fully transparent — the caller
@@ -20,8 +20,10 @@ import type {
   TokenMethods,
   TokenState,
 } from "@casfa/client";
-import { createNamespaceProxy, createRPC } from "@casfa/port-rpc";
-import type { BroadcastMessage, ConnectAckMessage } from "./messages.ts";
+import * as Comlink from "comlink";
+import type { Remote } from "comlink";
+import type { BroadcastMessage } from "./messages.ts";
+import type { ServerInfo, SwApi, SwInitState } from "./sw-api-types.ts";
 import type {
   AppClient,
   AppClientConfig,
@@ -31,6 +33,23 @@ import type {
   SyncState,
 } from "./types.ts";
 import type { ViewerMethods } from "./viewer-types.ts";
+
+// ============================================================================
+// Timeout wrapper — Comlink has no built-in timeout
+// ============================================================================
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`RPC timeout (${ms}ms): ${label}`)), ms)
+    ),
+  ]);
+}
+
+// ============================================================================
+// SW registration and activation
+// ============================================================================
 
 /**
  * Wait for a ServiceWorkerRegistration to have an active worker.
@@ -59,6 +78,40 @@ async function waitForActive(reg: ServiceWorkerRegistration): Promise<ServiceWor
   throw new Error("No service worker in registration");
 }
 
+// ============================================================================
+// Namespace wrapper — wraps Remote namespace with timeout
+// ============================================================================
+
+/**
+ * Create a namespace proxy that wraps each method call with timeout.
+ *
+ * Comlink's Remote<T> makes method calls return Promise<ReturnType>.
+ * We wrap each call with our timeout logic.
+ */
+function createNamespaceWithTimeout<T extends object>(
+  remoteNamespace: Remote<T>,
+  nsName: string,
+  timeoutMs: number
+): T {
+  return new Proxy({} as T, {
+    get(_, method: string) {
+      return async (...args: unknown[]) => {
+        const fn = (remoteNamespace as Record<string, (...a: unknown[]) => Promise<unknown>>)[
+          method
+        ];
+        if (typeof fn !== "function") {
+          throw new Error(`${nsName}.${method} is not a function`);
+        }
+        return withTimeout(fn(...args), timeoutMs, `${nsName}.${method}`);
+      };
+    },
+  });
+}
+
+// ============================================================================
+// Main export
+// ============================================================================
+
 export async function createSWClient(config: AppClientConfig): Promise<AppClient> {
   const timeoutMs = config.rpcTimeoutMs ?? 120_000;
 
@@ -70,48 +123,39 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
   });
   const sw = await waitForActive(reg);
 
-  // ── 2. MessageChannel + connect handshake ──
+  // ── 2. MessageChannel + Comlink setup ──
   const { port1, port2 } = new MessageChannel();
   port1.start();
 
-  // Listen for connect-ack BEFORE sending connect to avoid race
-  const ackPromise = new Promise<ConnectAckMessage>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      port1.removeEventListener("message", handler);
-      reject(new Error("SW connect timeout"));
-    }, timeoutMs);
+  // Send port to SW for Comlink.expose()
+  sw.postMessage({ type: "comlinkInit", port: port2 }, [port2]);
 
-    const handler = (e: MessageEvent) => {
-      if (e.data?.type === "connect-ack") {
-        clearTimeout(timer);
-        port1.removeEventListener("message", handler);
-        resolve(e.data as ConnectAckMessage);
-      }
-    };
-    port1.addEventListener("message", handler);
-  });
+  // Wrap the remote API with Comlink
+  const remote = Comlink.wrap<SwApi>(port1);
 
-  sw.postMessage({ type: "connect" }, [port2]);
-  const ack = await ackPromise;
-
-  // ── 3. RPC layer (all subsequent port messages go through here) ──
-  const rpc = createRPC(port1, { timeoutMs });
+  // ── 3. Get initial state with timeout ──
+  const initState: SwInitState = await withTimeout(
+    remote.getInitialState(),
+    timeoutMs,
+    "getInitialState"
+  );
 
   // ── 4. Cached sync properties ──
   // getState() and getServerInfo() are synchronous on CasfaClient.
-  // Over RPC they'd be async, so we cache and keep updated via broadcasts.
-  let cachedTokenState: TokenState = ack.tokenState ?? {
+  // We cache and keep updated via broadcasts.
+  let cachedTokenState: TokenState = initState.tokenState ?? {
     user: null,
     rootDelegate: null,
   };
-  let cachedServerInfo: ReturnType<CasfaClient["getServerInfo"]> = ack.serverInfo;
-  let cachedSyncState: SyncState = ack.syncState ?? "idle";
-  let cachedPendingCount: number = ack.pendingCount ?? 0;
+  let cachedServerInfo: ReturnType<CasfaClient["getServerInfo"]> =
+    initState.serverInfo as ReturnType<CasfaClient["getServerInfo"]>;
+  let cachedSyncState: SyncState = initState.syncState ?? "idle";
+  let cachedPendingCount: number = initState.pendingCount ?? 0;
 
   // Mirror initial token state to main-thread storage so direct
   // localStorage reads (e.g. OAuthAuthorizePage) work after SW activation.
   if (cachedTokenState.user && config.tokenStorage) {
-    config.tokenStorage.save(cachedTokenState).catch(() => {});
+    config.tokenStorage.save(cachedTokenState).catch(() => { });
   }
 
   // ── 5. Events (BroadcastChannel "casfa") ──
@@ -129,30 +173,20 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
     switch (msg.type) {
       case "sync-state":
         cachedSyncState = msg.payload;
-        listeners.syncState.forEach((fn) => {
-          fn(msg.payload);
-        });
+        listeners.syncState.forEach((fn) => fn(msg.payload));
         break;
       case "conflict":
-        listeners.conflict.forEach((fn) => {
-          fn(msg.payload);
-        });
+        listeners.conflict.forEach((fn) => fn(msg.payload));
         break;
       case "sync-error":
-        listeners.syncError.forEach((fn) => {
-          fn(msg.payload);
-        });
+        listeners.syncError.forEach((fn) => fn(msg.payload));
         break;
       case "commit":
-        listeners.commit.forEach((fn) => {
-          fn(msg.payload);
-        });
+        listeners.commit.forEach((fn) => fn(msg.payload));
         break;
       case "pending-count":
         cachedPendingCount = msg.payload;
-        listeners.pendingCount.forEach((fn) => {
-          fn(msg.payload);
-        });
+        listeners.pendingCount.forEach((fn) => fn(msg.payload));
         break;
       case "auth-required":
         config.onAuthRequired?.();
@@ -162,25 +196,53 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
         // Mirror token state to main-thread storage (localStorage) so that
         // pages that read directly from localStorage (e.g. OAuthAuthorizePage)
         // can find the token after a full page reload.
-        config.tokenStorage?.save(msg.payload).catch(() => {});
+        config.tokenStorage?.save(msg.payload).catch(() => { });
         break;
     }
   };
 
-  // ── 6. Namespace proxies (cached, one per namespace) ──
+  // ── 6. Cached namespace proxies with timeout ──
   const ns = {
-    oauth: createNamespaceProxy<OAuthMethods>(rpc, "oauth"),
-    tokens: createNamespaceProxy<TokenMethods>(rpc, "tokens"),
-    delegates: createNamespaceProxy<DelegateMethods>(rpc, "delegates"),
-    depots: createNamespaceProxy<DepotMethods>(rpc, "depots"),
-    fs: createNamespaceProxy<FsMethods>(rpc, "fs"),
-    nodes: createNamespaceProxy<NodeMethods>(rpc, "nodes"),
-    viewers: createNamespaceProxy<ViewerMethods>(rpc, "viewers"),
+    oauth: createNamespaceWithTimeout<OAuthMethods>(
+      remote.oauth as unknown as Remote<OAuthMethods>,
+      "oauth",
+      timeoutMs
+    ),
+    tokens: createNamespaceWithTimeout<TokenMethods>(
+      remote.tokens as unknown as Remote<TokenMethods>,
+      "tokens",
+      timeoutMs
+    ),
+    delegates: createNamespaceWithTimeout<DelegateMethods>(
+      remote.delegates as unknown as Remote<DelegateMethods>,
+      "delegates",
+      timeoutMs
+    ),
+    depots: createNamespaceWithTimeout<DepotMethods>(
+      remote.depots as unknown as Remote<DepotMethods>,
+      "depots",
+      timeoutMs
+    ),
+    fs: createNamespaceWithTimeout<FsMethods>(
+      remote.fs as unknown as Remote<FsMethods>,
+      "fs",
+      timeoutMs
+    ),
+    nodes: createNamespaceWithTimeout<NodeMethods>(
+      remote.nodes as unknown as Remote<NodeMethods>,
+      "nodes",
+      timeoutMs
+    ),
+    viewers: createNamespaceWithTimeout<ViewerMethods>(
+      remote.viewers as unknown as Remote<ViewerMethods>,
+      "viewers",
+      timeoutMs
+    ),
   };
 
   // ── 7. AppClient ──
   return {
-    // ── CasfaClient: namespaces (RPC proxy) ──
+    // ── CasfaClient: namespaces (Comlink proxy with timeout) ──
     get oauth() {
       return ns.oauth;
     },
@@ -211,44 +273,35 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
       return cachedServerInfo;
     },
     setRootDelegate(delegate) {
-      // Fire-and-forget RPC — state updates arrive via broadcast
-      rpc({
-        type: "rpc",
-        target: "client",
-        method: "setRootDelegate",
-        args: [delegate],
-      }).catch(() => {});
+      // Fire-and-forget — state updates arrive via broadcast
+      remote.setRootDelegate(delegate);
     },
-    getAccessToken() {
-      return rpc({
-        type: "rpc",
-        target: "client",
-        method: "getAccessToken",
-        args: [],
-      }) as Promise<StoredAccessToken | null>;
+    async getAccessToken() {
+      return withTimeout(remote.getAccessToken(), timeoutMs, "getAccessToken") as Promise<
+        StoredAccessToken | null
+      >;
     },
 
     // ── AppClient: auth ──
     async setUserToken(userId: string) {
-      await rpc({ type: "set-user-token", userId });
+      await withTimeout(remote.setUserToken(userId), timeoutMs, "setUserToken");
       // Refresh cached state from SW
-      cachedTokenState = (await rpc({
-        type: "rpc",
-        target: "client",
-        method: "getState",
-        args: [],
-      })) as TokenState;
-      cachedServerInfo = (await rpc({
-        type: "rpc",
-        target: "client",
-        method: "getServerInfo",
-        args: [],
-      })) as ReturnType<CasfaClient["getServerInfo"]>;
+      cachedTokenState = await withTimeout(
+        Promise.resolve(remote.getState()),
+        timeoutMs,
+        "getState"
+      );
+      cachedServerInfo = (await withTimeout(
+        Promise.resolve(remote.getServerInfo()),
+        timeoutMs,
+        "getServerInfo"
+      )) as ReturnType<CasfaClient["getServerInfo"]>;
     },
 
     // ── AppClient: sync ──
     scheduleCommit(depotId, newRoot, lastKnownServerRoot) {
       const postCommit = () => {
+        // Fire-and-forget via raw postMessage (not Comlink)
         port1.postMessage({
           type: "schedule-commit",
           depotId,
@@ -271,14 +324,11 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
     },
 
     async getPendingRoot(depotId) {
-      return (await rpc({
-        type: "get-pending-root",
-        depotId,
-      })) as string | null;
+      return withTimeout(Promise.resolve(remote.getPendingRoot(depotId)), timeoutMs, "getPendingRoot");
     },
 
     async flushNow() {
-      await rpc({ type: "flush-now" });
+      await withTimeout(remote.flushNow(), timeoutMs, "flushNow");
     },
 
     // ── AppClient: events ──
@@ -318,7 +368,7 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
 
     // ── AppClient: lifecycle ──
     async logout() {
-      await rpc({ type: "logout" });
+      await withTimeout(remote.logout(), timeoutMs, "logout");
       cachedTokenState = { user: null, rootDelegate: null };
       cachedServerInfo = null;
     },
@@ -331,6 +381,8 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
       listeners.syncError.clear();
       listeners.commit.clear();
       listeners.pendingCount.clear();
+      // Release Comlink proxy
+      remote[Comlink.releaseProxy]();
     },
   };
 }

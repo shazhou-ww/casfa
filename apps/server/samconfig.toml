@@ -19,7 +19,7 @@ stack_name = "casfa-prod"
 resolve_s3 = true
 s3_prefix = "casfa-sam"
 region = "us-east-1"
-profile = "AdministratorAccess-914369185440"
+# profile = "AdministratorAccess-914369185440"  # Commented out - use AWS_PROFILE env var or default credentials
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 disable_rollback = false
@@ -64,7 +64,7 @@ stack_name = "casfa-staging"
 resolve_s3 = true
 s3_prefix = "casfa-sam-staging"
 region = "us-east-1"
-profile = "AdministratorAccess-914369185440"
+# profile = "AdministratorAccess-914369185440"  # Commented out - use AWS_PROFILE env var or default credentials
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = false
 
