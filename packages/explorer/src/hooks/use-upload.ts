@@ -81,15 +81,7 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
           contentType
         );
         if (!isFsError(result)) {
-          // Enqueue background commit or commit directly
-          if (depotId) {
-            if (scheduleCommit) {
-              scheduleCommit(depotId, result.newRoot, serverRoot);
-            } else {
-              await beforeCommit?.();
-              await client.depots.commit(depotId, { root: result.newRoot }).catch(() => {});
-            }
-          }
+          // Update local root immediately — commit will be scheduled after all uploads complete
           updateDepotRoot(result.newRoot);
           updateUploadItem(nextPending.id, { status: "done" });
         } else {
@@ -122,28 +114,35 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
   }, [
     uploadQueue,
     depotRoot,
-    depotId,
-    client,
     localFs,
-    beforeCommit,
-    scheduleCommit,
-    serverRoot,
     updateUploadItem,
     updateDepotRoot,
     onError,
   ]);
 
-  // Refresh directory listing when all uploads finish
+  // Schedule commit and refresh directory listing when all uploads finish
   const prevHadPending = useRef(false);
   useEffect(() => {
     const hasPending = uploadQueue.some(
       (item) => item.status === "pending" || item.status === "uploading"
     );
     if (prevHadPending.current && !hasPending && uploadQueue.length > 0) {
+      // All uploads completed — schedule a single commit with final root
+      const currentRoot = depotRoot;
+      if (depotId && currentRoot) {
+        if (scheduleCommit) {
+          scheduleCommit(depotId, currentRoot, serverRoot);
+        } else {
+          // Direct commit fallback
+          beforeCommit?.()
+            .then(() => client.depots.commit(depotId, { root: currentRoot }))
+            .catch(() => {});
+        }
+      }
       reloadDir();
     }
     prevHadPending.current = hasPending;
-  }, [uploadQueue, reloadDir]);
+  }, [uploadQueue, reloadDir, depotId, depotRoot, serverRoot, scheduleCommit, beforeCommit, client]);
 
   /** Cancel a pending upload (remove from queue) */
   const cancelUpload = useCallback(
