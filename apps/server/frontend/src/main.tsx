@@ -161,6 +161,29 @@ const theme = createTheme({
       },
     },
 
+    MuiSwitch: {
+      styleOverrides: {
+        root: {
+          "& .MuiSwitch-track": {
+            border: "1px solid #a1a1aa",
+            backgroundColor: "#e4e4e7",
+            opacity: 1,
+          },
+          "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
+            border: "none",
+            opacity: 1,
+          },
+          "& .MuiSwitch-switchBase.Mui-checked .MuiSwitch-thumb": {
+            color: "#ffffff",
+            boxShadow: "0 0 0 1px #a1a1aa",
+          },
+          "& .MuiSwitch-switchBase:not(.Mui-checked) .MuiSwitch-thumb": {
+            boxShadow: "0 0 0 1px #a1a1aa",
+          },
+        },
+      },
+    },
+
     MuiAlert: {
       styleOverrides: {
         root: {

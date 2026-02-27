@@ -166,7 +166,6 @@
       },
       "peerDependencies": {
         "@casfa/client": "workspace:*",
-        "@casfa/port-rpc": "workspace:*",
       },
     },
     "packages/core": {
