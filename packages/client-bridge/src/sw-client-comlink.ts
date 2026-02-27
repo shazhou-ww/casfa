@@ -301,8 +301,9 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
     // ── AppClient: sync ──
     scheduleCommit(depotId, newRoot, lastKnownServerRoot) {
       const postCommit = () => {
-        // Fire-and-forget via raw postMessage (not Comlink)
-        port1.postMessage({
+        // Fire-and-forget via raw postMessage to SW (not Comlink/MessagePort)
+        // Must use sw.postMessage() since port is owned by Comlink
+        sw.postMessage({
           type: "schedule-commit",
           depotId,
           targetRoot: newRoot,
