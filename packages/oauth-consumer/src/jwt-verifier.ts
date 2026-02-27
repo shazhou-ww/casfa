@@ -63,15 +63,20 @@ export type JwtVerifierConfig = {
  * ```
  */
 export function createJwtVerifier(config: JwtVerifierConfig): JwtVerifier {
+  console.log(`[JWT] Creating verifier with JWKS URI: ${config.jwksUri}`);
   const jwks = createRemoteJWKSet(new URL(config.jwksUri));
   const extractSubject = config.extractSubject ?? ((claims) => claims.sub as string);
 
   return async (token: string): Promise<Result<VerifiedIdentity>> => {
+    const startTime = Date.now();
+    console.log(`[JWT] Starting verification, token length: ${token.length}`);
     try {
+      console.log(`[JWT] Calling jwtVerify (will fetch JWKS if not cached)...`);
       const { payload } = await jwtVerify(token, jwks, {
         issuer: config.issuer,
         audience: config.audience,
       });
+      console.log(`[JWT] Verification succeeded in ${Date.now() - startTime}ms`);
 
       const claims = payload as Record<string, unknown>;
       const subject = extractSubject(claims);
@@ -93,11 +98,20 @@ export function createJwtVerifier(config: JwtVerifierConfig): JwtVerifier {
         },
       };
     } catch (err) {
+      const elapsed = Date.now() - startTime;
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const errName = err instanceof Error ? err.name : "Unknown";
+      console.error(`[JWT] Verification FAILED after ${elapsed}ms`);
+      console.error(`[JWT] Error name: ${errName}`);
+      console.error(`[JWT] Error message: ${errMsg}`);
+      if (err instanceof Error && err.stack) {
+        console.error(`[JWT] Stack: ${err.stack}`);
+      }
       return {
         ok: false,
         error: {
           code: "invalid_token",
-          message: `JWT verification failed: ${err instanceof Error ? err.message : String(err)}`,
+          message: `JWT verification failed: ${errMsg}`,
           statusCode: 401,
         },
       };
@@ -226,7 +240,7 @@ export function createMockJwtVerifier(secret: string): JwtVerifier {
  */
 export async function createMockJwt(
   secret: string,
-  payload: { sub: string; exp?: number; [key: string]: unknown }
+  payload: { sub: string; exp?: number;[key: string]: unknown }
 ): Promise<string> {
   const header = { alg: "HS256", typ: "JWT" };
 
