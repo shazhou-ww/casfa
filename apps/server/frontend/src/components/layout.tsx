@@ -15,6 +15,7 @@ import { useCallback, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { useAuthStore } from "../stores/auth-store.ts";
 import { SettingsDialog } from "./settings-dialog.tsx";
+import { NavTabs } from "./nav-tabs.tsx";
 
 export function Layout() {
   const { user, logout } = useAuthStore();
@@ -43,9 +44,12 @@ export function Layout() {
       <AppBar position="static">
         <Toolbar>
           <StorageIcon sx={{ mr: 1 }} />
-          <Typography variant="h6" noWrap sx={{ flexGrow: 1 }}>
+          <Typography variant="h6" noWrap>
             CASFA
           </Typography>
+          <Box sx={{ flex: 1, display: "flex", justifyContent: "center" }}>
+            <NavTabs />
+          </Box>
           {user && (
             <Box display="flex" alignItems="center" gap={1}>
               <Button

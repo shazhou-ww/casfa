@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthGuard } from "./components/auth-guard.tsx";
 import { Layout } from "./components/layout.tsx";
+import { DelegatesPage } from "./pages/delegates-page.tsx";
 import { ExplorerPage } from "./pages/explorer-page.tsx";
 import { LoginPage } from "./pages/login-page.tsx";
 import { OAuthAuthorizePage } from "./pages/oauth-authorize.tsx";
@@ -19,6 +20,8 @@ export function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<ExplorerPage />} />
           <Route path="/depot/:depotId" element={<ExplorerPage />} />
+          <Route path="/delegates" element={<DelegatesPage />} />
+          <Route path="/delegates/:delegateId" element={<DelegatesPage />} />
         </Route>
       </Route>
 
