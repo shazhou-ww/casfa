@@ -7,3 +7,5 @@ export { isRealmError } from "./errors.ts";
 export type { BlobStore, DelegateDb } from "./storage.ts";
 export type { Delegate, RealmStats } from "./types.ts";
 export { generateDelegateId } from "./id.ts";
+export { resolvePath, validateNameOnlyPath } from "./path.ts";
+export type { GetNode } from "./path.ts";
