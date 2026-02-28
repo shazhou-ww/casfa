@@ -66,6 +66,7 @@ export const buildCasContext = (ctx: FsContext): CasContext => {
         });
       }
     },
+    del: (key: string) => storage.del(key),
   };
 
   return {

@@ -354,6 +354,10 @@ export const createBufferedHttpStorage = (
       buffer.set(key, value);
     },
 
+    async del(key: string): Promise<void> {
+      buffer.delete(key);
+    },
+
     async flush(): Promise<void> {
       // Wait for any in-progress flush to complete first
       if (activeFlush) {

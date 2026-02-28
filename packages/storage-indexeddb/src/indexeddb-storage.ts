@@ -202,6 +202,12 @@ export const createIndexedDBStorage = (
       await maybeEvict();
     },
 
+    async del(key: string): Promise<void> {
+      const store = await getStore("readwrite");
+      await wrap(store.delete(key));
+      if (entryCount >= 0) entryCount--;
+    },
+
     /** Clear all cached blocks */
     async clear(): Promise<void> {
       const store = await getStore("readwrite");

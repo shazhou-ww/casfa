@@ -152,7 +152,11 @@ describe("ClaimController", () => {
     mockOwnershipDb = createMockOwnershipDb();
     mockPopContext = createMockPopContext();
     mockGetNodeContent = mock(async (_realm: string, _hash: string) => TEST_CONTENT);
-    mockStorage = { get: mock(async () => null), put: mock(async () => {}) };
+    mockStorage = {
+      get: mock(async () => null),
+      put: mock(async () => {}),
+      del: mock(async () => {}),
+    };
 
     controller = createClaimController({
       ownershipDb: mockOwnershipDb,

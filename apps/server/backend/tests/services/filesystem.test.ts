@@ -65,6 +65,9 @@ function createMemoryStorage(): StorageProvider & { data: Map<string, Uint8Array
     put: async (key: string, value: Uint8Array) => {
       data.set(key, value);
     },
+    del: async (key: string) => {
+      data.delete(key);
+    },
   };
 }
 

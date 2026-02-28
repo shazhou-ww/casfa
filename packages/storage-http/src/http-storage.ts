@@ -174,6 +174,10 @@ export const createHttpStorage = (config: HttpStorageConfig): HttpStorageProvide
       // else: owned — nothing to do
     },
 
+    async del(_key: string): Promise<void> {
+      // Remote HTTP CAS typically does not support delete; no-op.
+    },
+
     async checkMany(keys: string[]): Promise<CheckManyResult> {
       const missing: string[] = [];
       const unowned: string[] = [];

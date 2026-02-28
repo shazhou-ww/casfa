@@ -8,7 +8,7 @@
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { stat } from "node:fs/promises";
+import { stat, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { StorageProvider } from "@casfa/storage-core";
 
@@ -80,5 +80,15 @@ export const createFsStorage = (config: FsStorageConfig): StorageProvider => {
     writeFileSync(filePath, value);
   };
 
-  return { get, put };
+  const del = async (key: string): Promise<void> => {
+    const filePath = toFilePath(key);
+    try {
+      await unlink(filePath);
+    } catch (error: unknown) {
+      const err = error as { code?: string };
+      if (err.code !== "ENOENT") throw error;
+    }
+  };
+
+  return { get, put, del };
 };

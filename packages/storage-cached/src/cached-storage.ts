@@ -46,4 +46,9 @@ export const createCachedStorage = (
     await cache.put(key, value);
     await remote.put(key, value);
   },
+
+  async del(key: string): Promise<void> {
+    await cache.del(key);
+    await remote.del(key);
+  },
 });

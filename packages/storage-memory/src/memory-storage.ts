@@ -25,6 +25,9 @@ export const createMemoryStorage = (config: MemoryStorageConfig = {}): StoragePr
     put: async (key, value) => {
       data.set(key, value);
     },
+    del: async (key) => {
+      data.delete(key);
+    },
   };
 };
 
@@ -38,6 +41,9 @@ export const createMemoryStorageWithInspection = (config: MemoryStorageConfig = 
     get: async (key) => data.get(key) ?? null,
     put: async (key, value) => {
       data.set(key, value);
+    },
+    del: async (key) => {
+      data.delete(key);
     },
   };
 

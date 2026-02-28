@@ -7,6 +7,7 @@
  */
 
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -100,5 +101,21 @@ export const createS3Storage = (config: S3StorageConfig): StorageProvider => {
     );
   };
 
-  return { get, put };
+  const del = async (key: string): Promise<void> => {
+    try {
+      await client.send(
+        new DeleteObjectCommand({
+          Bucket: bucket,
+          Key: toS3Key(key),
+        })
+      );
+    } catch (error: unknown) {
+      const err = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+      if (err.name !== "NoSuchKey" && err.$metadata?.httpStatusCode !== 404) {
+        throw error;
+      }
+    }
+  };
+
+  return { get, put, del };
 };
