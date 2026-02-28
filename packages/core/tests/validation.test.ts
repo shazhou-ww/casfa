@@ -25,6 +25,9 @@ const createMemoryStorage = (): StorageProvider & { size: () => number } => {
       store.set(key, new Uint8Array(data));
     },
     get: async (key) => store.get(key) ?? null,
+    del: async (key) => {
+      store.delete(key);
+    },
     size: () => store.size,
   };
 };

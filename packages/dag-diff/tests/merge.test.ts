@@ -47,6 +47,9 @@ const createMemoryStorage = (): MemoryStorage => {
       }
       return store.get(key) ?? null;
     },
+    del: async (key: string) => {
+      store.delete(key);
+    },
     size: () => store.size,
     data: store,
   };

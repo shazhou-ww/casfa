@@ -16,4 +16,10 @@ export type StorageProvider = {
    * Key must be the correct BLAKE3s-128 hash of the content (CB32 encoded)
    */
   put: (key: string, value: Uint8Array) => Promise<void>;
+
+  /**
+   * Delete blob by key (e.g. for CAS GC).
+   * Use method name "del" to avoid JS keyword.
+   */
+  del: (key: string) => Promise<void>;
 };

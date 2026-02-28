@@ -34,6 +34,10 @@ function createSpyStorage(
       calls.push({ method: "put", args: [key, value] });
       store.set(key, value);
     },
+    async del(key) {
+      calls.push({ method: "del", args: [key] });
+      store.delete(key);
+    },
   };
 }
 
@@ -93,6 +97,7 @@ describe("createCachedStorage", () => {
         put: async () => {
           throw new Error("quota exceeded");
         },
+        del: async () => {},
       };
       const remote = createSpyStorage(new Map([[KEY, DATA]]));
 
@@ -130,12 +135,14 @@ describe("createCachedStorage", () => {
         put: async () => {
           order.push("cache");
         },
+        del: async () => {},
       };
       const remote: StorageProvider = {
         get: async () => null,
         put: async () => {
           order.push("remote");
         },
+        del: async () => {},
       };
 
       const storage = createCachedStorage(cache, remote);
@@ -151,6 +158,7 @@ describe("createCachedStorage", () => {
         put: async () => {
           throw new Error("upload failed");
         },
+        del: async () => {},
       };
 
       const storage = createCachedStorage(cache, remote);
@@ -200,6 +208,21 @@ describe("createCachedStorage", () => {
 
       expect(await storage.get(KEY)).toEqual(DATA);
       expect(await storage.get(key2)).toEqual(data2);
+    });
+  });
+
+  describe("del", () => {
+    it("should delete from both cache and remote", async () => {
+      const cache = createSpyStorage(new Map([[KEY, DATA]]));
+      const remote = createSpyStorage(new Map([[KEY, DATA]]));
+
+      const storage = createCachedStorage(cache, remote);
+      await storage.del(KEY);
+
+      expect(cache.store.has(KEY)).toBe(false);
+      expect(remote.store.has(KEY)).toBe(false);
+      expect(cache.calls).toEqual([{ method: "del", args: [KEY] }]);
+      expect(remote.calls).toEqual([{ method: "del", args: [KEY] }]);
     });
   });
 });

@@ -39,6 +39,9 @@ const createMemoryStorage = (): MemoryStorage => {
       store.set(key, new Uint8Array(data));
     },
     get: async (key) => store.get(key) ?? null,
+    del: async (key) => {
+      store.delete(key);
+    },
     size: () => store.size,
     clear: () => store.clear(),
     keys: () => Array.from(store.keys()),
