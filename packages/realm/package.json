@@ -25,6 +25,8 @@
     "@casfa/dag-diff": "workspace:*"
   },
   "devDependencies": {
+    "@casfa/storage-memory": "workspace:*",
+    "@noble/hashes": "^1.7.1",
     "@types/bun": "latest",
     "typescript": "^5.0.0"
   },
