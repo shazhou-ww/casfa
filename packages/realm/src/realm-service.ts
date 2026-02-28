@@ -1,12 +1,14 @@
 import type { CasService } from "@casfa/cas";
-import type { CasNode } from "@casfa/core";
-import { hashToKey } from "@casfa/core";
+import type { CasNode, KeyProvider } from "@casfa/core";
+import { encodeDictNode, hashToKey, keyToHash } from "@casfa/core";
 import { RealmError } from "./errors.ts";
 import type { Depot, DepotStore } from "./types.ts";
 
 export type RealmServiceContext = {
   cas: CasService;
   depotStore: DepotStore;
+  /** KeyProvider for building new dict nodes (e.g. closeDepot). Same as CAS context key. */
+  key: KeyProvider;
 };
 
 export type PathInput = string | string[];
@@ -74,13 +76,88 @@ async function resolvePath(
   return key;
 }
 
+/**
+ * Build a new dict node that is a copy of the given node but with one entry replaced.
+ * node must be a dict. Returns the key of the new node (caller must putNode).
+ */
+async function replaceDictEntry(
+  cas: CasService,
+  keyProvider: KeyProvider,
+  nodeKey: string,
+  replaceName: string,
+  replaceKey: string
+): Promise<{ newKey: string; bytes: Uint8Array }> {
+  const node = await cas.getNode(nodeKey);
+  if (!node || node.kind !== "dict") throw new RealmError("InvalidPath", "node is not a dict");
+  const names = node.childNames ?? [];
+  const children = node.children ?? [];
+  const nameIdx = names.indexOf(replaceName);
+  if (nameIdx < 0) throw new RealmError("InvalidPath", `entry ${replaceName} not found`);
+  const newChildren = children.slice();
+  const newNames = names.slice();
+  newChildren[nameIdx] = keyToHash(replaceKey);
+  const encoded = await encodeDictNode(
+    { children: newChildren, childNames: newNames },
+    keyProvider
+  );
+  const newKey = hashToKey(encoded.hash);
+  return { newKey, bytes: encoded.bytes };
+}
+
+/**
+ * Replace subtree at path in the tree rooted at nodeKey. Path segments walk by name.
+ * Returns the key of the new root (new nodes are put via cas).
+ */
+async function replaceSubtreeAtPath(
+  cas: CasService,
+  keyProvider: KeyProvider,
+  nodeKey: string,
+  segments: string[],
+  newChildKey: string
+): Promise<string> {
+  if (segments.length === 0) throw new RealmError("InvalidPath", "mount path must not be empty");
+  const node = await cas.getNode(nodeKey);
+  if (!node || node.kind !== "dict") throw new RealmError("InvalidPath", "node is not a dict");
+  if (segments.length === 1) {
+    const { newKey, bytes } = await replaceDictEntry(
+      cas,
+      keyProvider,
+      nodeKey,
+      segments[0]!,
+      newChildKey
+    );
+    await cas.putNode(newKey, bytes);
+    return newKey;
+  }
+  const firstKey = resolveSegment(node, segments[0]!);
+  if (firstKey === null) throw new RealmError("InvalidPath", `path segment ${segments[0]} not found`);
+  const newFirstKey = await replaceSubtreeAtPath(
+    cas,
+    keyProvider,
+    firstKey,
+    segments.slice(1),
+    newChildKey
+  );
+  const { newKey, bytes } = await replaceDictEntry(
+    cas,
+    keyProvider,
+    nodeKey,
+    segments[0]!,
+    newFirstKey
+  );
+  await cas.putNode(newKey, bytes);
+  return newKey;
+}
+
 export class RealmService {
   readonly cas: CasService;
   readonly depotStore: DepotStore;
+  readonly key: KeyProvider;
 
   constructor(ctx: RealmServiceContext) {
     this.cas = ctx.cas;
     this.depotStore = ctx.depotStore;
+    this.key = ctx.key;
   }
 
   async createDepot(parentDepotId: string, path: PathInput): Promise<Depot> {
@@ -115,8 +192,34 @@ export class RealmService {
     await this.depotStore.setRoot(depotId, newRootKey);
   }
 
-  async closeDepot(_depotId: string): Promise<void> {
-    throw new Error("not implemented");
+  async closeDepot(depotId: string): Promise<void> {
+    const depot = await this.depotStore.getDepot(depotId);
+    if (!depot) throw new RealmError("NotFound", "depot not found");
+    const parentId = depot.parentId;
+    if (parentId === null) throw new RealmError("InvalidPath", "cannot close root depot");
+    const mountPath = depot.mountPath;
+    const segments = normalizePath(mountPath);
+    if (segments.length === 0) throw new RealmError("InvalidPath", "mount path must not be empty");
+
+    const childRootKey = await this.depotStore.getRoot(depotId);
+    if (childRootKey === null) throw new RealmError("NotFound", "child depot has no root");
+    const parentRootKey = await this.depotStore.getRoot(parentId);
+    if (parentRootKey === null) throw new RealmError("NotFound", "parent has no root");
+
+    const newParentRootKey = await replaceSubtreeAtPath(
+      this.cas,
+      this.key,
+      parentRootKey,
+      segments,
+      childRootKey
+    );
+    await this.commitDepot(parentId, newParentRootKey, parentRootKey);
+
+    if (this.depotStore.setClosed) {
+      await this.depotStore.setClosed(depotId);
+    } else {
+      await this.depotStore.removeDepot(depotId);
+    }
   }
 
   async getNode(depotId: string, path: PathInput): Promise<CasNode | null> {
