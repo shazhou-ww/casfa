@@ -37,6 +37,9 @@ tsconfig.build.json
 # Finder (MacOS) folder config
 .DS_Store
 
+# git worktrees (subagent-driven / executing-plans)
+.worktrees
+
 # Vim swap files
 *.swp
 *.swo
