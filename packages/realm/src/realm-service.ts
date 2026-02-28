@@ -1,6 +1,8 @@
 import type { CasService } from "@casfa/cas";
-import type { CasNode, KeyProvider } from "@casfa/core";
+import type { CasNode, KeyProvider, StorageProvider } from "@casfa/core";
 import { encodeDictNode, hashToKey, keyToHash } from "@casfa/core";
+import { dagDiff } from "@casfa/dag-diff";
+import type { MovedEntry } from "@casfa/dag-diff";
 import { RealmError } from "./errors.ts";
 import type { Depot, DepotStore } from "./types.ts";
 
@@ -9,6 +11,8 @@ export type RealmServiceContext = {
   depotStore: DepotStore;
   /** KeyProvider for building new dict nodes (e.g. closeDepot). Same as CAS context key. */
   key: KeyProvider;
+  /** Storage for dag-diff (e.g. same store CAS uses). Required for updating child depot paths on parent commit move. */
+  storage: StorageProvider;
 };
 
 export type PathInput = string | string[];
@@ -18,6 +22,14 @@ function normalizePath(path: PathInput): string[] {
     return path.filter((s) => s.length > 0);
   }
   return path.split("/").filter((s) => s.length > 0);
+}
+
+/** Normalize depot mountPath to a single string for dag-diff comparison (e.g. "foo" or "foo/bar"). */
+function mountPathToString(mountPath: string[] | string): string {
+  if (Array.isArray(mountPath)) {
+    return mountPath.filter((s) => s.length > 0).join("/");
+  }
+  return mountPath;
 }
 
 /**
@@ -153,11 +165,13 @@ export class RealmService {
   readonly cas: CasService;
   readonly depotStore: DepotStore;
   readonly key: KeyProvider;
+  readonly storage: StorageProvider;
 
   constructor(ctx: RealmServiceContext) {
     this.cas = ctx.cas;
     this.depotStore = ctx.depotStore;
     this.key = ctx.key;
+    this.storage = ctx.storage;
   }
 
   async createDepot(parentDepotId: string, path: PathInput): Promise<Depot> {
@@ -189,7 +203,32 @@ export class RealmService {
   async commitDepot(depotId: string, newRootKey: string, oldRootKey: string): Promise<void> {
     const current = await this.depotStore.getRoot(depotId);
     if (current !== oldRootKey) throw new RealmError("CommitConflict");
+    const depot = await this.depotStore.getDepot(depotId);
+    if (!depot) throw new RealmError("NotFound", "depot not found");
     await this.depotStore.setRoot(depotId, newRootKey);
+
+    // After parent commit: if this depot has child depots, run dag-diff and update child mount paths on move
+    const allDepots = await this.depotStore.listDepots(depot.realmId);
+    const children = allDepots.filter((d) => d.parentId === depotId);
+    if (children.length === 0) return;
+
+    const result = await dagDiff(oldRootKey, newRootKey, { storage: this.storage });
+    const updateDepotPath = this.depotStore.updateDepotPath;
+    if (!updateDepotPath) return;
+
+    for (const child of children) {
+      const mountPathStr = mountPathToString(child.mountPath);
+      const childRootKey = await this.depotStore.getRoot(child.depotId);
+      if (childRootKey === null) continue;
+      const moved = result.entries.find(
+        (e): e is MovedEntry =>
+          e.type === "moved" && e.pathsFrom.includes(mountPathStr) && e.nodeKey === childRootKey
+      );
+      if (moved && moved.pathsTo.length > 0) {
+        const newPath = moved.pathsTo[0]!;
+        await updateDepotPath(child.depotId, newPath);
+      }
+    }
   }
 
   async closeDepot(depotId: string): Promise<void> {

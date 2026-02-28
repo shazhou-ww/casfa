@@ -58,7 +58,7 @@ describe("RealmService", () => {
     const keyProvider = createKeyProvider();
     const cas = createCasService({ storage, key: keyProvider });
     const depotStore = createMemoryDepotStore();
-    const service = new RealmService({ cas, depotStore, key: keyProvider });
+    const service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
     expect(service).toBeDefined();
     expect(service.cas).toBe(cas);
     expect(service.depotStore).toBe(depotStore);
@@ -81,7 +81,7 @@ describe("RealmService", () => {
       const keyProvider = createKeyProvider();
       cas = createCasService({ storage, key: keyProvider });
       depotStore = createMemoryDepotStore();
-      service = new RealmService({ cas, depotStore, key: keyProvider });
+      service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
 
       // Root = d-node with entry "a" pointing to an empty dict
       const emptyEnc = await encodeDictNode(
@@ -190,7 +190,7 @@ describe("RealmService", () => {
       const keyProvider = createKeyProvider();
       cas = createCasService({ storage, key: keyProvider });
       depotStore = createMemoryDepotStore();
-      service = new RealmService({ cas, depotStore, key: keyProvider });
+      service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
 
       // Parent root = dict with "foo" -> child dict
       const childEnc = await encodeDictNode(
@@ -254,7 +254,7 @@ describe("RealmService", () => {
       const keyProvider = createKeyProvider();
       cas = createCasService({ storage, key: keyProvider });
       depotStore = createMemoryDepotStore();
-      service = new RealmService({ cas, depotStore, key: keyProvider });
+      service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
 
       const enc = await encodeDictNode(
         { children: [], childNames: [] },
@@ -305,6 +305,62 @@ describe("RealmService", () => {
       expect(err).toBeInstanceOf(RealmError);
       expect((err as RealmError).code).toBe("CommitConflict");
     });
+
+    it("after parent commit that moves node foo->bar, child depot mountPath is updated via dag-diff", async () => {
+      const keyProvider = createKeyProvider();
+      const mem = createMemoryStorage();
+      const storage: CasStorage = {
+        get: mem.get.bind(mem),
+        put: mem.put.bind(mem),
+        del: mem.del.bind(mem),
+      };
+      const cas = createCasService({ storage, key: keyProvider });
+      const depotStore = createMemoryDepotStore();
+      const realm = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
+      const REALM_ID = "r1";
+      const PARENT_ID = "parent";
+
+      // Empty dict (child root)
+      const childEnc = await encodeDictNode(
+        { children: [], childNames: [] },
+        keyProvider
+      );
+      const childKey = hashToKey(childEnc.hash);
+      await cas.putNode(childKey, childEnc.bytes);
+
+      // Old parent root: dict with "foo" -> childKey
+      const oldRootEnc = await encodeDictNode(
+        { children: [childEnc.hash], childNames: ["foo"] },
+        keyProvider
+      );
+      const oldRootKey = hashToKey(oldRootEnc.hash);
+      await cas.putNode(oldRootKey, oldRootEnc.bytes);
+
+      // New parent root: dict with "bar" -> same childKey (move only)
+      const newRootEnc = await encodeDictNode(
+        { children: [childEnc.hash], childNames: ["bar"] },
+        keyProvider
+      );
+      const newRootKey = hashToKey(newRootEnc.hash);
+      await cas.putNode(newRootKey, newRootEnc.bytes);
+
+      await depotStore.insertDepot({
+        depotId: PARENT_ID,
+        realmId: REALM_ID,
+        parentId: null,
+        mountPath: [],
+      });
+      await depotStore.setRoot(PARENT_ID, oldRootKey);
+
+      const childDepot = await realm.createDepot(PARENT_ID, "foo");
+      expect(childDepot.mountPath).toBe("foo");
+
+      await realm.commitDepot(PARENT_ID, newRootKey, oldRootKey);
+
+      const updated = await depotStore.getDepot(childDepot.depotId);
+      expect(updated).not.toBeNull();
+      expect(updated!.mountPath).toBe("bar");
+    });
   });
 
   describe("closeDepot", () => {
@@ -325,7 +381,7 @@ describe("RealmService", () => {
       keyProvider = createKeyProvider();
       cas = createCasService({ storage, key: keyProvider });
       depotStore = createMemoryDepotStore();
-      service = new RealmService({ cas, depotStore, key: keyProvider });
+      service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
 
       // Parent root = d-node with "foo" -> child dict (empty)
       const childEnc = await encodeDictNode(
