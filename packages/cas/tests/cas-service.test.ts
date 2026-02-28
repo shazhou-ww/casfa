@@ -131,6 +131,103 @@ describe("CasService", () => {
       expect(await service.hasNode(keyRootB)).toBe(false);
     });
 
+    it("multi-root: two disjoint trees, gc with one root deletes the other tree", async () => {
+      const keyProvider = createKeyProvider();
+      const e1Enc = await encodeDictNode(
+        { children: [], childNames: [] },
+        keyProvider
+      );
+      const keyE1 = hashToKey(e1Enc.hash);
+      await service.putNode(keyE1, e1Enc.bytes);
+
+      const r1Enc = await encodeDictNode(
+        { children: [e1Enc.hash], childNames: ["x"] },
+        keyProvider
+      );
+      const keyR1 = hashToKey(r1Enc.hash);
+      await service.putNode(keyR1, r1Enc.bytes);
+
+      const e2Enc = await encodeDictNode(
+        { children: [e1Enc.hash], childNames: ["y"] },
+        keyProvider
+      );
+      const keyE2 = hashToKey(e2Enc.hash);
+      await service.putNode(keyE2, e2Enc.bytes);
+
+      const r2Enc = await encodeDictNode(
+        { children: [e2Enc.hash], childNames: ["z"] },
+        keyProvider
+      );
+      const keyR2 = hashToKey(r2Enc.hash);
+      await service.putNode(keyR2, r2Enc.bytes);
+
+      expect(await service.hasNode(keyR1)).toBe(true);
+      expect(await service.hasNode(keyE1)).toBe(true);
+      expect(await service.hasNode(keyR2)).toBe(true);
+      expect(await service.hasNode(keyE2)).toBe(true);
+
+      await service.gc([keyR1], Date.now() + 10_000);
+
+      expect(await service.hasNode(keyR1)).toBe(true);
+      expect(await service.hasNode(keyE1)).toBe(true);
+      expect(await service.hasNode(keyR2)).toBe(false);
+      expect(await service.hasNode(keyE2)).toBe(false);
+    });
+
+    it("cutOffTime: unreachable node retained when writeTime >= cutOffTime", async () => {
+      const keyProvider = createKeyProvider();
+      const enc = await encodeDictNode(
+        { children: [], childNames: [] },
+        keyProvider
+      );
+      const key = hashToKey(enc.hash);
+      const cutOffBeforePut = Date.now() - 1000;
+      await service.putNode(key, enc.bytes);
+      await service.gc([], cutOffBeforePut);
+      expect(await service.hasNode(key)).toBe(true);
+    });
+
+    it("cutOffTime: unreachable node deleted when writeTime < cutOffTime", async () => {
+      const keyProvider = createKeyProvider();
+      const enc = await encodeDictNode(
+        { children: [], childNames: [] },
+        keyProvider
+      );
+      const key = hashToKey(enc.hash);
+      await service.putNode(key, enc.bytes);
+      const cutOffAfterPut = Date.now() + 10_000;
+      await service.gc([], cutOffAfterPut);
+      expect(await service.hasNode(key)).toBe(false);
+    });
+
+    it("info() before and after gc: nodeCount and totalBytes change", async () => {
+      const keyProvider = createKeyProvider();
+      const eEnc = await encodeDictNode(
+        { children: [], childNames: [] },
+        keyProvider
+      );
+      const keyE = hashToKey(eEnc.hash);
+      await service.putNode(keyE, eEnc.bytes);
+      const rEnc = await encodeDictNode(
+        { children: [eEnc.hash], childNames: ["a"] },
+        keyProvider
+      );
+      const keyR = hashToKey(rEnc.hash);
+      await service.putNode(keyR, rEnc.bytes);
+
+      const infoBefore = await service.info();
+      expect(infoBefore.nodeCount).toBe(2);
+      expect(infoBefore.totalBytes).toBeGreaterThan(0);
+      expect(infoBefore.lastGcTime).toBeUndefined();
+
+      await service.gc([keyR], Date.now() + 10_000);
+
+      const infoAfter = await service.info();
+      expect(infoAfter.lastGcTime).toBeDefined();
+      expect(infoAfter.nodeCount).toBe(2);
+      expect(infoAfter.totalBytes).toBe(infoBefore.totalBytes);
+    });
+
     it("info() returns lastGcTime and nodeCount after gc", async () => {
       const keyProvider = createKeyProvider();
       const enc = await encodeDictNode(
