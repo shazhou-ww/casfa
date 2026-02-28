@@ -8,25 +8,32 @@ export type GetNode = (key: string) => Promise<CasNode | null>;
 /**
  * Resolve path from root; returns final node key or RealmError.
  * Supports name segments (d-node) and index segments (any node with children).
- * Returns InvalidPath if target is a successor (cannot bind to s-node).
+ * When allowSuccessor is false (default), returns InvalidPath if target is a successor (cannot bind to s-node).
  */
 export async function resolvePath(
   rootKey: string,
   segments: PathSegment[],
-  getNode: GetNode
+  getNode: GetNode,
+  options?: { allowSuccessor?: boolean }
 ): Promise<{ key: string } | RealmError> {
+  const allowSuccessor = options?.allowSuccessor ?? false;
   let currentKey = rootKey;
   for (const seg of segments) {
     const node = await getNode(currentKey);
     if (!node) return { code: "NotFound", message: `Node not found: ${currentKey}` };
 
     if (seg.kind === "name") {
-      if (node.kind !== "dict" || !node.childNames || !node.children) {
+      if (node.kind !== "dict") {
         return { code: "InvalidPath", message: "Name segment requires dict node" };
       }
-      const idx = node.childNames.indexOf(seg.value);
+      const names = node.childNames ?? [];
+      const children = node.children ?? [];
+      if (names.length === 0 || children.length === 0) {
+        return { code: "NotFound", message: `Child not found: ${seg.value}` };
+      }
+      const idx = names.indexOf(seg.value);
       if (idx === -1) return { code: "NotFound", message: `Child not found: ${seg.value}` };
-      const childHash = node.children[idx]!;
+      const childHash = children[idx]!;
       currentKey = hashToKey(childHash);
     } else {
       if (!node.children || node.children.length === 0) {
@@ -42,7 +49,7 @@ export async function resolvePath(
 
   const final = await getNode(currentKey);
   if (!final) return { code: "NotFound", message: `Node not found: ${currentKey}` };
-  if (final.kind === "successor") {
+  if (final.kind === "successor" && !allowSuccessor) {
     return { code: "InvalidPath", message: "Cannot bind to successor node" };
   }
 
