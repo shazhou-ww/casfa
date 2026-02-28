@@ -94,4 +94,63 @@ describe("CasService", () => {
       expect((err as CasError).code).toBe("ChildMissing");
     });
   });
+
+  describe("gc and info", () => {
+    it("deletes unreachable and old keys after gc(roots, cutOffTime)", async () => {
+      const keyProvider = createKeyProvider();
+      const emptyEnc = await encodeDictNode(
+        { children: [], childNames: [] },
+        keyProvider
+      );
+      const keyEmpty = hashToKey(emptyEnc.hash);
+      await service.putNode(keyEmpty, emptyEnc.bytes);
+
+      const withChildAEnc = await encodeDictNode(
+        { children: [emptyEnc.hash], childNames: ["a"] },
+        keyProvider
+      );
+      const keyRootA = hashToKey(withChildAEnc.hash);
+      await service.putNode(keyRootA, withChildAEnc.bytes);
+
+      const withChildBEnc = await encodeDictNode(
+        { children: [emptyEnc.hash], childNames: ["b"] },
+        keyProvider
+      );
+      const keyRootB = hashToKey(withChildBEnc.hash);
+      await service.putNode(keyRootB, withChildBEnc.bytes);
+
+      expect(await service.hasNode(keyRootA)).toBe(true);
+      expect(await service.hasNode(keyRootB)).toBe(true);
+      expect(await service.hasNode(keyEmpty)).toBe(true);
+
+      const cutOffTime = Date.now() + 10_000;
+      await service.gc([keyRootA], cutOffTime);
+
+      expect(await service.hasNode(keyRootA)).toBe(true);
+      expect(await service.hasNode(keyEmpty)).toBe(true);
+      expect(await service.hasNode(keyRootB)).toBe(false);
+    });
+
+    it("info() returns lastGcTime and nodeCount after gc", async () => {
+      const keyProvider = createKeyProvider();
+      const enc = await encodeDictNode(
+        { children: [], childNames: [] },
+        keyProvider
+      );
+      const key = hashToKey(enc.hash);
+      await service.putNode(key, enc.bytes);
+
+      let inf = await service.info();
+      expect(inf.nodeCount).toBe(1);
+      expect(inf.totalBytes).toBeGreaterThan(0);
+      expect(inf.lastGcTime).toBeUndefined();
+
+      await service.gc([key], Date.now() + 1);
+      inf = await service.info();
+      expect(inf.lastGcTime).toBeDefined();
+      expect(typeof inf.lastGcTime).toBe("number");
+      expect(inf.nodeCount).toBe(1);
+      expect(inf.totalBytes).toBeGreaterThan(0);
+    });
+  });
 });
