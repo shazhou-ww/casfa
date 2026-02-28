@@ -128,7 +128,7 @@ git commit -m "feat(realm): add RealmError and error codes"
 **Step 1: Define BlobStore and DelegateDb in storage.ts**
 
 - `BlobStore`: `get(key: string): Promise<Uint8Array | null>`, `put(key: string, value: Uint8Array): Promise<void>`, `sweep(keysToRetain: Set<string>): Promise<void>`.
-- `DelegateDb`: `getRoot(realmId: string): Promise<string | null>`, `setRoot(realmId: string, nodeKey: string): Promise<void>`, `getDelegate(delegateId: string): Promise<Delegate | null>`, `insertDelegate(delegate: Delegate): Promise<void>`. Optional: `compareAndSetRoot(realmId, expected, newKey): Promise<boolean>`.
+- `DelegateDb`: `getRoot(realmId: string): Promise<string | null>`, `setRoot(realmId: string, nodeKey: string): Promise<void>`, `getDelegate(delegateId: string): Promise<Delegate | null>`, `insertDelegate(delegate: Delegate): Promise<void>`. For realm stats: `getRealmStats(realmId): Promise<{ nodeCount: number, totalBytes: number } | null>`, `incrementRealmStats(realmId, nodeCountDelta, bytesDelta): Promise<void>`, `setRealmStats(realmId, { nodeCount, totalBytes }): Promise<void>`. Optional: `compareAndSetRoot(realmId, expected, newKey): Promise<boolean>`.
 
 **Step 2: Define Delegate in types.ts**
 
@@ -306,7 +306,7 @@ put(delegateId, relativePath, payload) encodes node (dict or file) via core, put
 
 **Step 2: Implement put**
 
-- Resolve delegate and logical root; relativePath may point to a new child (e.g. new file under logical root). Build new node (makeDict or putFileNode), put to blob; return new node key. Do not call setRoot.
+- Resolve delegate and logical root; relativePath may point to a new child (e.g. new file under logical root). Build new node (makeDict or putFileNode), put to blob; **then call db.incrementRealmStats(delegate.realmId, 1, bytes.length)**. Return new node key. Do not call setRoot.
 
 **Step 3: Run test and commit**
 
@@ -356,13 +356,17 @@ Set realm root to a small DAG (dict with two children). listReachableKeys(realmI
 
 **Step 3: Implement gcSweep**
 
-- listReachableKeys(realmId), then blob.sweep(reachableSet).
+- listReachableKeys(realmId), then blob.sweep(reachableSet). **Then recompute stats**: for each key in reachable, sum blob.get(key).length; call db.setRealmStats(realmId, { nodeCount: reachable.size, totalBytes }). This keeps realm stats in sync with retained nodes.
 
-**Step 4: Run test and commit**
+**Step 4: Add getRealmStats and tests**
+
+- RealmService.getRealmStats(realmId) delegates to db.getRealmStats(realmId). Test: after put, getRealmStats shows incremented nodeCount/totalBytes; after gcSweep, stats match retained set (and put-incremented stats are overwritten by recompute).
+
+**Step 5: Run test and commit**
 
 ```bash
 cd packages/realm && bun test tests/gc.test.ts
-git commit -m "feat(realm): listReachableKeys and gcSweep"
+git commit -m "feat(realm): listReachableKeys, gcSweep, getRealmStats; put increments stats, GC recomputes"
 ```
 
 ---
@@ -371,7 +375,7 @@ git commit -m "feat(realm): listReachableKeys and gcSweep"
 
 **Files:**
 - Modify: `package.json` (root) — add `cd ../realm && bun run test:unit` in test:unit script (after core or delegate).
-- Modify: `packages/realm/src/index.ts` — export all public API: errors, types, storage, id, path, merge, RealmService, listReachableKeys, gcSweep.
+- Modify: `packages/realm/src/index.ts` — export all public API: errors, types, storage, id, path, merge, RealmService, listReachableKeys, gcSweep, **getRealmStats**.
 
 **Step 5: Run full test and typecheck**
 
