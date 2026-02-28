@@ -81,6 +81,7 @@
 - **当前根**：`getRoot(realmId): Promise<string | null>`；`setRoot(realmId, nodeKey): Promise<void>`。可选：`compareAndSetRoot(realmId, expected, newKey): Promise<boolean>` 以强化原子性。
 - **Delegate**：`getDelegate(delegateId): Promise<Delegate | null>`；`insertDelegate(delegate): Promise<void>`。
 - **Delegate 类型**（本包定义）：至少含 `delegateId`、`realmId`、`parentId`（null 表示 root）、`boundPath`（name-only PathSegment[] 或序列化形式）；可选 `name`、`createdAt` 等。
+- **Realm 存储统计**：`getRealmStats(realmId): Promise<{ nodeCount: number, totalBytes: number } | null>`；`incrementRealmStats(realmId, nodeCountDelta: number, bytesDelta: number): Promise<void>`（每次 **put** 时由本层调用）；`setRealmStats(realmId, { nodeCount, totalBytes }): Promise<void>`（**GC 时重算**后写入，保证与当前可达集一致）。
 
 ### 3.4 路径表示
 
@@ -114,6 +115,11 @@
 - **listReachableKeys(realmId): Promise<Set<string>>**：从该 realm 当前根出发遍历 DAG，返回可达 node key 集合（只读）。
 - **gcSweep(realmId)**：调用 `listReachableKeys(realmId)` 得到 R，再调用 `BlobStore.sweep(R)`。多 realm 共用同一 BlobStore 时，调用方需合并多 realm 的可达集再 sweep，或保证一 store 一 realm。
 
+### 4.6 Realm 存储统计
+
+- **getRealmStats(realmId): Promise<{ nodeCount: number, totalBytes: number } | null>**：返回该 realm 的 node 总数与总字节数（仅统计当前逻辑上归属该 realm 的存储；GC 后与可达集一致）。
+- **更新时机**：每次 **put** 成功后本层调用 `DelegateDb.incrementRealmStats(realmId, 1, bytes.length)`；**gcSweep** 完成后根据保留集合重算 `nodeCount = |keysToRetain|`、`totalBytes = sum(blob.get(k).length)` 并调用 `setRealmStats(realmId, { nodeCount, totalBytes })`，保证统计与真实保留数据一致。
+
 ---
 
 ## 5. 错误类型
@@ -129,7 +135,7 @@
 
 ## 6. 测试策略
 
-- **单元测试**：内存 BlobStore + 内存 DelegateDb；覆盖 createRootDelegate、createChildDelegate、read（含 index）、put、commit（成功与冲突）、listReachableKeys、gcSweep。
+- **单元测试**：内存 BlobStore + 内存 DelegateDb；覆盖 createRootDelegate、createChildDelegate、read（含 index）、put、commit（成功与冲突）、listReachableKeys、gcSweep、**getRealmStats 及 put/GC 后统计变化**。
 - **集成**：可选；接 core + storage-memory 验证与编解码、路径解析一致。
 
 ---
