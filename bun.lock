@@ -325,13 +325,15 @@
       "name": "@casfa/realm",
       "version": "0.1.0",
       "dependencies": {
-        "@casfa/cas-uri": "workspace:*",
+        "@casfa/cas": "workspace:*",
         "@casfa/core": "workspace:*",
-        "@casfa/encoding": "workspace:*",
+        "@casfa/dag-diff": "workspace:*",
       },
       "devDependencies": {
+        "@casfa/storage-memory": "workspace:*",
+        "@noble/hashes": "^1.7.1",
         "@types/bun": "latest",
-        "typescript": "^5.3.0",
+        "typescript": "^5.0.0",
       },
     },
     "packages/storage-cached": {
