@@ -1,0 +1,34 @@
+{
+  "name": "@casfa/realm",
+  "version": "0.1.0",
+  "description": "Level 1 Realm: depot create/commit/close, path getNode/hasNode/putNode over CAS + dag-diff",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "bun ../../scripts/build-pkg.ts",
+    "test": "bun run test:unit",
+    "test:unit": "bun test",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@casfa/cas": "workspace:*",
+    "@casfa/core": "workspace:*",
+    "@casfa/dag-diff": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.0.0"
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": { "access": "public" },
+  "license": "MIT"
+}
