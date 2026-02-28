@@ -289,11 +289,25 @@ export class RealmService {
     await this.cas.putNode(nodeKey, data);
   }
 
-  async gc(_cutOffTime: number): Promise<void> {
-    throw new Error("not implemented");
+  async gc(realmId: string, cutOffTime: number): Promise<void> {
+    const depots = await this.depotStore.listDepots(realmId);
+    const rootKeys = new Set<string>();
+    for (const depot of depots) {
+      const root = await this.depotStore.getRoot(depot.depotId);
+      if (root !== null) rootKeys.add(root);
+    }
+    await this.cas.gc([...rootKeys], cutOffTime);
   }
 
-  async info(): Promise<unknown> {
-    throw new Error("not implemented");
+  async info(realmId?: string): Promise<{ lastGcTime?: number; nodeCount: number; totalBytes: number; depotCount?: number }> {
+    const casInfo = await this.cas.info();
+    const result: { lastGcTime?: number; nodeCount: number; totalBytes: number; depotCount?: number } = {
+      ...casInfo,
+    };
+    if (realmId !== undefined) {
+      const depots = await this.depotStore.listDepots(realmId);
+      result.depotCount = depots.length;
+    }
+    return result;
   }
 }

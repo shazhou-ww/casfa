@@ -448,4 +448,163 @@ describe("RealmService", () => {
       expect(depot).toBeNull();
     });
   });
+
+  describe("gc", () => {
+    it("collects all depot roots from listDepots, dedupes, and calls CAS.gc(roots, cutOffTime)", async () => {
+      const mem = createMemoryStorage();
+      const storage: CasStorage = {
+        get: mem.get.bind(mem),
+        put: mem.put.bind(mem),
+        del: mem.del.bind(mem),
+      };
+      const keyProvider = createKeyProvider();
+      const cas = createCasService({ storage, key: keyProvider });
+      const depotStore = createMemoryDepotStore();
+      const service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
+      const REALM_ID = "r1";
+
+      // Root A (depot1 and depot2 share this root - dedupe)
+      const encA = await encodeDictNode(
+        { children: [], childNames: [] },
+        keyProvider
+      );
+      const rootKeyA = hashToKey(encA.hash);
+      await cas.putNode(rootKeyA, encA.bytes);
+
+      // Orphan node (different content so different key; not reachable from any depot)
+      const encChild = await encodeDictNode(
+        { children: [], childNames: [] },
+        keyProvider
+      );
+      await cas.putNode(hashToKey(encChild.hash), encChild.bytes);
+      const encOrphan = await encodeDictNode(
+        { children: [encChild.hash], childNames: ["x"] },
+        keyProvider
+      );
+      const orphanKey = hashToKey(encOrphan.hash);
+      await cas.putNode(orphanKey, encOrphan.bytes);
+
+      await depotStore.insertDepot({
+        depotId: "d1",
+        realmId: REALM_ID,
+        parentId: null,
+        mountPath: [],
+      });
+      await depotStore.setRoot("d1", rootKeyA);
+      await depotStore.insertDepot({
+        depotId: "d2",
+        realmId: REALM_ID,
+        parentId: null,
+        mountPath: [],
+      });
+      await depotStore.setRoot("d2", rootKeyA); // same root -> dedupe
+
+      expect(await cas.hasNode(orphanKey)).toBe(true);
+
+      const cutOffTime = Date.now() + 60_000; // future so all nodes have time < cutOffTime
+      await service.gc(REALM_ID, cutOffTime);
+
+      // Orphan should be collected
+      expect(await cas.hasNode(orphanKey)).toBe(false);
+      // Depot roots and reachable nodes still present
+      expect(await cas.hasNode(rootKeyA)).toBe(true);
+    });
+
+    it("gc with multiple depots with different roots keeps all reachable nodes", async () => {
+      const mem = createMemoryStorage();
+      const storage: CasStorage = {
+        get: mem.get.bind(mem),
+        put: mem.put.bind(mem),
+        del: mem.del.bind(mem),
+      };
+      const keyProvider = createKeyProvider();
+      const cas = createCasService({ storage, key: keyProvider });
+      const depotStore = createMemoryDepotStore();
+      const service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
+      const REALM_ID = "r1";
+
+      const enc1 = await encodeDictNode(
+        { children: [], childNames: [] },
+        keyProvider
+      );
+      const root1 = hashToKey(enc1.hash);
+      await cas.putNode(root1, enc1.bytes);
+
+      const enc2 = await encodeDictNode(
+        { children: [], childNames: [] },
+        keyProvider
+      );
+      const root2 = hashToKey(enc2.hash);
+      await cas.putNode(root2, enc2.bytes);
+
+      await depotStore.insertDepot({
+        depotId: "d1",
+        realmId: REALM_ID,
+        parentId: null,
+        mountPath: [],
+      });
+      await depotStore.setRoot("d1", root1);
+      await depotStore.insertDepot({
+        depotId: "d2",
+        realmId: REALM_ID,
+        parentId: null,
+        mountPath: [],
+      });
+      await depotStore.setRoot("d2", root2);
+
+      await service.gc(REALM_ID, Date.now() + 60_000);
+
+      expect(await cas.hasNode(root1)).toBe(true);
+      expect(await cas.hasNode(root2)).toBe(true);
+    });
+  });
+
+  describe("info", () => {
+    it("returns CAS.info() and optionally depotCount when realmId provided", async () => {
+      const mem = createMemoryStorage();
+      const storage: CasStorage = {
+        get: mem.get.bind(mem),
+        put: mem.put.bind(mem),
+        del: mem.del.bind(mem),
+      };
+      const keyProvider = createKeyProvider();
+      const cas = createCasService({ storage, key: keyProvider });
+      const depotStore = createMemoryDepotStore();
+      const service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
+      const REALM_ID = "r1";
+
+      const enc = await encodeDictNode(
+        { children: [], childNames: [] },
+        keyProvider
+      );
+      const rootKey = hashToKey(enc.hash);
+      await cas.putNode(rootKey, enc.bytes);
+
+      await depotStore.insertDepot({
+        depotId: "d1",
+        realmId: REALM_ID,
+        parentId: null,
+        mountPath: [],
+      });
+      await depotStore.setRoot("d1", rootKey);
+      await depotStore.insertDepot({
+        depotId: "d2",
+        realmId: REALM_ID,
+        parentId: null,
+        mountPath: [],
+      });
+      await depotStore.setRoot("d2", rootKey);
+
+      const infoWithoutRealm = await service.info();
+      expect(infoWithoutRealm).toHaveProperty("nodeCount");
+      expect(infoWithoutRealm).toHaveProperty("totalBytes");
+      expect((infoWithoutRealm as { nodeCount: number }).nodeCount).toBeGreaterThanOrEqual(1);
+      expect((infoWithoutRealm as { depotCount?: number }).depotCount).toBeUndefined();
+
+      const infoWithRealm = await service.info(REALM_ID);
+      expect(infoWithRealm).toHaveProperty("nodeCount");
+      expect(infoWithRealm).toHaveProperty("totalBytes");
+      expect((infoWithRealm as { depotCount?: number }).depotCount).toBe(2);
+    });
+  });
 });
