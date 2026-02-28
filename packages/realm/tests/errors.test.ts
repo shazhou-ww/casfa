@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { RealmError, isRealmError } from "../src/errors.ts";
+import type { RealmError } from "../src/errors.ts";
+import { isRealmError } from "../src/errors.ts";
 
 describe("RealmError", () => {
   test("has expected error codes", () => {
