@@ -1,6 +1,18 @@
 import { decodeNode, hashToKey } from "@casfa/core";
 import type { CasNode } from "@casfa/core";
 import type { CasContext, CasInfo } from "./types.ts";
+import {
+  readKeysToRetain,
+  writeKeysToRetain,
+  appendNewKey,
+  clearNewKeys,
+  readNewKeys,
+  readTimes,
+  writeTimes,
+  setTime,
+  readLastGcTime,
+  writeLastGcTime,
+} from "./cas-meta.ts";
 
 export type CasErrorCode = "ChildMissing" | "KeyMismatch";
 
@@ -14,13 +26,31 @@ export class CasError extends Error {
   }
 }
 
+/** Traverse from root keys via getNode to collect all reachable keys. */
+async function reachableKeys(
+  getNode: (key: string) => Promise<CasNode | null>,
+  rootKeys: string[]
+): Promise<Set<string>> {
+  const seen = new Set<string>();
+  const queue = [...rootKeys];
+  while (queue.length > 0) {
+    const key = queue.pop()!;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const node = await getNode(key);
+    if (!node) continue;
+    const childHashes = node.children ?? [];
+    for (const h of childHashes) {
+      queue.push(hashToKey(h));
+    }
+  }
+  return seen;
+}
+
 /**
  * Creates a CAS service for the given context.
  */
 export function createCasService(ctx: CasContext) {
-  const keyToTime = new Map<string, number>();
-  const newKeysSinceGc = new Set<string>();
-
   return {
     async getNode(key: string): Promise<CasNode | null> {
       const data = await ctx.storage.get(key);
@@ -54,16 +84,52 @@ export function createCasService(ctx: CasContext) {
       await ctx.storage.put(nodeKey, data);
 
       const now = Date.now();
-      keyToTime.set(nodeKey, now);
-      newKeysSinceGc.add(nodeKey);
+      await appendNewKey(ctx.storage, nodeKey);
+      await setTime(ctx.storage, nodeKey, now);
     },
 
-    gc(): Promise<void> {
-      throw new Error("gc not implemented");
+    async gc(nodeKeys: string[], cutOffTime: number): Promise<void> {
+      const R = await reachableKeys((key) => this.getNode(key), nodeKeys);
+      const retained = await readKeysToRetain(ctx.storage);
+      const newKeys = await readNewKeys(ctx.storage);
+      const allKeys = new Set<string>([...retained, ...newKeys]);
+      const times = await readTimes(ctx.storage);
+
+      const toDelete: string[] = [];
+      for (const k of allKeys) {
+        if (R.has(k)) continue;
+        const t = times[k];
+        if (t !== undefined && t < cutOffTime) toDelete.push(k);
+      }
+      for (const k of toDelete) {
+        await ctx.storage.del(k);
+      }
+
+      await writeKeysToRetain(ctx.storage, [...R]);
+      await clearNewKeys(ctx.storage);
+      const timesRetained: Record<string, number> = {};
+      for (const k of R) {
+        if (times[k] !== undefined) timesRetained[k] = times[k];
+      }
+      await writeTimes(ctx.storage, timesRetained);
+      await writeLastGcTime(ctx.storage, Date.now());
     },
 
-    info(): Promise<CasInfo> {
-      throw new Error("info not implemented");
+    async info(): Promise<CasInfo> {
+      const lastGcTime = await readLastGcTime(ctx.storage);
+      const retained = await readKeysToRetain(ctx.storage);
+      const newKeys = await readNewKeys(ctx.storage);
+      const allKeys = new Set<string>([...retained, ...newKeys]);
+      let totalBytes = 0;
+      for (const k of allKeys) {
+        const data = await ctx.storage.get(k);
+        if (data) totalBytes += data.length;
+      }
+      return {
+        lastGcTime,
+        nodeCount: allKeys.size,
+        totalBytes,
+      };
     },
   };
 }
