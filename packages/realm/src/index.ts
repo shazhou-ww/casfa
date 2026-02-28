@@ -4,3 +4,5 @@
  */
 export type { RealmError, RealmErrorCode } from "./errors.ts";
 export { isRealmError } from "./errors.ts";
+export type { BlobStore, DelegateDb } from "./storage.ts";
+export type { Delegate, RealmStats } from "./types.ts";
