@@ -11,3 +11,12 @@ export { resolvePath, validateNameOnlyPath } from "./path.ts";
 export type { GetNode } from "./path.ts";
 export { replaceSubtreeAtPath } from "./merge.ts";
 export type { MergeContext } from "./merge.ts";
+export { RealmService } from "./realm-service.ts";
+export type {
+  RealmServiceDeps,
+  CreateRootDelegateOptions,
+  CreateChildDelegateOptions,
+  ReadResult,
+  PutResult,
+  CommitResult,
+} from "./realm-service.ts";
