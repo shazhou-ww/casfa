@@ -23,6 +23,8 @@ export type DepotStore = {
   listDepots(realmId: string): Promise<Depot[]>;
   insertDepot(depot: Depot): Promise<void>;
   removeDepot(depotId: string): Promise<void>;
+  /** Update mount path (e.g. after parent commit moves node via dag-diff). */
+  updateDepotPath?(depotId: string, newPath: string[] | string): Promise<void>;
   /** Mark depot as closed (optional; some impls may use removeDepot instead). */
   setClosed?(depotId: string): Promise<void>;
 };

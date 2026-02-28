@@ -1,7 +1,8 @@
 import type { CasService } from "@casfa/cas";
 import type { CasNode } from "@casfa/core";
 import { hashToKey } from "@casfa/core";
-import type { DepotStore } from "./types.ts";
+import { RealmError } from "./errors.ts";
+import type { Depot, DepotStore } from "./types.ts";
 
 export type RealmServiceContext = {
   cas: CasService;
@@ -82,12 +83,36 @@ export class RealmService {
     this.depotStore = ctx.depotStore;
   }
 
-  async createDepot(_parentDepotId: string, _path: string): Promise<unknown> {
-    throw new Error("not implemented");
+  async createDepot(parentDepotId: string, path: PathInput): Promise<Depot> {
+    const parent = await this.depotStore.getDepot(parentDepotId);
+    if (!parent) throw new RealmError("NotFound", "parent depot not found");
+    const rootKey = await this.depotStore.getRoot(parentDepotId);
+    if (rootKey === null) throw new RealmError("NotFound", "parent has no root");
+    const segments = normalizePath(path);
+    const childKey = await resolvePath(
+      this.cas,
+      (id) => this.depotStore.getRoot(id),
+      parentDepotId,
+      segments
+    );
+    if (childKey === null) throw new RealmError("InvalidPath", "path does not resolve under parent root");
+    const depotId = crypto.randomUUID();
+    const mountPath = typeof path === "string" ? path : segments;
+    const newDepot: Depot = {
+      depotId,
+      realmId: parent.realmId,
+      parentId: parent.depotId,
+      mountPath,
+    };
+    await this.depotStore.insertDepot(newDepot);
+    await this.depotStore.setRoot(depotId, childKey);
+    return newDepot;
   }
 
-  async commitDepot(_depotId: string, _newRoot: string, _oldRoot: string): Promise<void> {
-    throw new Error("not implemented");
+  async commitDepot(depotId: string, newRootKey: string, oldRootKey: string): Promise<void> {
+    const current = await this.depotStore.getRoot(depotId);
+    if (current !== oldRootKey) throw new RealmError("CommitConflict");
+    await this.depotStore.setRoot(depotId, newRootKey);
   }
 
   async closeDepot(_depotId: string): Promise<void> {
