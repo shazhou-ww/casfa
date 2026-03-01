@@ -75,4 +75,72 @@ describe("Branches / Worker", () => {
     const data = (await res.json()) as { entries?: unknown[] };
     expect(Array.isArray(data.entries)).toBe(true);
   });
+
+  it("revoke branch then branch not in list", async () => {
+    const token = ctx.helpers.createUserToken(realmId);
+    await ctx.helpers.authRequest(
+      token,
+      "POST",
+      `/api/realm/${realmId}/fs/mkdir`,
+      { path: "revMe" }
+    );
+    const { branchId } = await ctx.helpers.createBranch(token, realmId, {
+      mountPath: "revMe",
+    });
+    const revokeRes = await ctx.helpers.authRequest(
+      token,
+      "POST",
+      `/api/realm/${realmId}/branches/${branchId}/revoke`
+    );
+    expect(revokeRes.status).toBe(200);
+    const listRes = await ctx.helpers.authRequest(
+      token,
+      "GET",
+      `/api/realm/${realmId}/branches`
+    );
+    expect(listRes.status).toBe(200);
+    const data = (await listRes.json()) as { branches?: { branchId: string }[] };
+    expect(data.branches?.some((b) => b.branchId === branchId)).toBe(false);
+  });
+
+  it("complete merges sub-branch into parent", async () => {
+    const token = ctx.helpers.createUserToken(realmId);
+    await ctx.helpers.authRequest(
+      token,
+      "POST",
+      `/api/realm/${realmId}/fs/mkdir`,
+      { path: "parentDir" }
+    );
+    const { accessToken: workerToken, branchId: parentId } =
+      await ctx.helpers.createBranch(token, realmId, {
+        mountPath: "parentDir",
+      });
+    await ctx.helpers.authRequest(
+      workerToken,
+      "POST",
+      "/api/realm/me/fs/mkdir",
+      { path: "child" }
+    );
+    const { accessToken: childToken, branchId: childId } =
+      await ctx.helpers.createBranch(workerToken, realmId, {
+        mountPath: "child",
+        parentBranchId: parentId,
+      });
+    const completeRes = await ctx.helpers.authRequest(
+      childToken,
+      "POST",
+      "/api/realm/me/branches/me/complete"
+    );
+    expect(completeRes.status).toBe(200);
+    const completeData = (await completeRes.json()) as { completed?: string };
+    expect(completeData.completed).toBe(childId);
+    const listRes = await ctx.helpers.authRequest(
+      token,
+      "GET",
+      `/api/realm/${realmId}/files`
+    );
+    expect(listRes.status).toBe(200);
+    const listData = (await listRes.json()) as { entries?: { name: string }[] };
+    expect(listData.entries?.some((e) => e.name === "parentDir")).toBe(true);
+  });
 });
