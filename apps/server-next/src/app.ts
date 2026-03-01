@@ -11,6 +11,7 @@ import { createRealmMiddleware } from "./middleware/realm.ts";
 import { createFilesController } from "./controllers/files.ts";
 import { createFsController } from "./controllers/fs.ts";
 import { createBranchesController } from "./controllers/branches.ts";
+import { createDelegatesController } from "./controllers/delegates.ts";
 
 import type { KeyProvider } from "@casfa/core";
 
@@ -40,6 +41,7 @@ export function createApp(deps: AppDeps) {
   });
   const realmMiddleware = createRealmMiddleware();
   app.use("/api/realm/:realmId/*", authMiddleware, realmMiddleware);
+  app.use("/api/realm/:realmId", authMiddleware, realmMiddleware);
 
   const rootResolverDeps = {
     realm: deps.realm,
@@ -50,6 +52,7 @@ export function createApp(deps: AppDeps) {
   const files = createFilesController(rootResolverDeps);
   const fs = createFsController(rootResolverDeps);
   const branches = createBranchesController({ ...rootResolverDeps, config: deps.config });
+  const delegates = createDelegatesController({ delegateGrantStore: deps.delegateGrantStore });
 
   app.get("/api/realm/:realmId/files", (c) =>
     c.req.query("meta") === "1" ? files.stat(c) : files.list(c)
@@ -68,6 +71,10 @@ export function createApp(deps: AppDeps) {
   app.get("/api/realm/:realmId/branches", (c) => branches.list(c));
   app.post("/api/realm/:realmId/branches/:branchId/revoke", (c) => branches.revoke(c));
   app.post("/api/realm/:realmId/branches/:branchId/complete", (c) => branches.complete(c));
+
+  app.get("/api/realm/:realmId/delegates", (c) => delegates.list(c));
+  app.post("/api/realm/:realmId/delegates/assign", (c) => delegates.assign(c));
+  app.post("/api/realm/:realmId/delegates/:delegateId/revoke", (c) => delegates.revoke(c));
 
   app.onError((err, c) => {
     const body: ErrorBody = {
