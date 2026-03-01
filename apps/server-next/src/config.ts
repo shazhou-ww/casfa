@@ -7,6 +7,9 @@ export type ServerConfig = {
   auth: {
     mockJwtSecret?: string;
     maxBranchTtlMs?: number;
+    cognitoRegion?: string;
+    cognitoUserPoolId?: string;
+    cognitoClientId?: string;
   };
 };
 
@@ -24,6 +27,9 @@ export function loadConfig(): ServerConfig {
     maxBranchTtlMs: process.env.MAX_BRANCH_TTL_MS
       ? Number(process.env.MAX_BRANCH_TTL_MS)
       : undefined,
+    cognitoRegion: process.env.COGNITO_REGION,
+    cognitoUserPoolId: process.env.COGNITO_USER_POOL_ID,
+    cognitoClientId: process.env.COGNITO_CLIENT_ID,
   };
   return { port, storage, auth };
 }
