@@ -7,8 +7,9 @@ import { createCasService } from "@casfa/cas";
 import type { KeyProvider } from "@casfa/core";
 import { computeSizeFlagByte, encodeDictNode, hashToKey } from "@casfa/core";
 import { createMemoryStorage } from "@casfa/storage-memory";
-import { RealmError } from "../src/errors.ts";
-import { RealmService } from "../src/realm-service.ts";
+import { isRealmError } from "../src/errors.ts";
+import type { RealmService } from "../src/realm-service.ts";
+import { createRealmService } from "../src/realm-service.ts";
 import type { Depot, DepotStore } from "../src/types.ts";
 
 function createKeyProvider(): KeyProvider {
@@ -57,7 +58,7 @@ describe("RealmService", () => {
     const keyProvider = createKeyProvider();
     const cas = createCasService({ storage, key: keyProvider });
     const depotStore = createMemoryDepotStore();
-    const service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
+    const service = createRealmService({ cas, depotStore, key: keyProvider, storage: mem });
     expect(service).toBeDefined();
     expect(service.cas).toBe(cas);
     expect(service.depotStore).toBe(depotStore);
@@ -80,7 +81,7 @@ describe("RealmService", () => {
       const keyProvider = createKeyProvider();
       cas = createCasService({ storage, key: keyProvider });
       depotStore = createMemoryDepotStore();
-      service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
+      service = createRealmService({ cas, depotStore, key: keyProvider, storage: mem });
 
       // Root = d-node with entry "a" pointing to an empty dict
       const emptyEnc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
@@ -180,7 +181,7 @@ describe("RealmService", () => {
       const keyProvider = createKeyProvider();
       cas = createCasService({ storage, key: keyProvider });
       depotStore = createMemoryDepotStore();
-      service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
+      service = createRealmService({ cas, depotStore, key: keyProvider, storage: mem });
 
       // Parent root = dict with "foo" -> child dict
       const childEnc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
@@ -241,7 +242,7 @@ describe("RealmService", () => {
       const keyProvider = createKeyProvider();
       cas = createCasService({ storage, key: keyProvider });
       depotStore = createMemoryDepotStore();
-      service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
+      service = createRealmService({ cas, depotStore, key: keyProvider, storage: mem });
 
       const enc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const oldRootKey = hashToKey(enc.hash);
@@ -280,8 +281,8 @@ describe("RealmService", () => {
       const wrongOldRoot = "wrong-key-16-bytes!!"; // not current root
 
       const err = await service.commitDepot(DEPOT_ID, newRootKey, wrongOldRoot).catch((e) => e);
-      expect(err).toBeInstanceOf(RealmError);
-      expect((err as RealmError).code).toBe("CommitConflict");
+      expect(isRealmError(err)).toBe(true);
+      expect(err.code).toBe("CommitConflict");
     });
 
     it("after parent commit that moves node foo->bar, child depot mountPath is updated via dag-diff", async () => {
@@ -294,7 +295,7 @@ describe("RealmService", () => {
       };
       const cas = createCasService({ storage, key: keyProvider });
       const depotStore = createMemoryDepotStore();
-      const realm = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
+      const realm = createRealmService({ cas, depotStore, key: keyProvider, storage: mem });
       const REALM_ID = "r1";
       const PARENT_ID = "parent";
 
@@ -356,7 +357,7 @@ describe("RealmService", () => {
       keyProvider = createKeyProvider();
       cas = createCasService({ storage, key: keyProvider });
       depotStore = createMemoryDepotStore();
-      service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
+      service = createRealmService({ cas, depotStore, key: keyProvider, storage: mem });
 
       // Parent root = d-node with "foo" -> child dict (empty)
       const childEnc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
@@ -429,7 +430,7 @@ describe("RealmService", () => {
       const keyProvider = createKeyProvider();
       const cas = createCasService({ storage, key: keyProvider });
       const depotStore = createMemoryDepotStore();
-      const service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
+      const service = createRealmService({ cas, depotStore, key: keyProvider, storage: mem });
       const REALM_ID = "r1";
 
       // Root A (depot1 and depot2 share this root - dedupe)
@@ -483,7 +484,7 @@ describe("RealmService", () => {
       const keyProvider = createKeyProvider();
       const cas = createCasService({ storage, key: keyProvider });
       const depotStore = createMemoryDepotStore();
-      const service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
+      const service = createRealmService({ cas, depotStore, key: keyProvider, storage: mem });
       const REALM_ID = "r1";
 
       const enc1 = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
@@ -527,7 +528,7 @@ describe("RealmService", () => {
       const keyProvider = createKeyProvider();
       const cas = createCasService({ storage, key: keyProvider });
       const depotStore = createMemoryDepotStore();
-      const service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
+      const service = createRealmService({ cas, depotStore, key: keyProvider, storage: mem });
       const REALM_ID = "r1";
 
       const enc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);

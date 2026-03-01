@@ -16,14 +16,24 @@ import type { CasContext, CasInfo } from "./types.ts";
 
 export type CasErrorCode = "ChildMissing" | "KeyMismatch";
 
-export class CasError extends Error {
+export type CasError = {
+  readonly name: "CasError";
   readonly code: CasErrorCode;
-  constructor(code: CasErrorCode, message?: string) {
-    super(message ?? code);
-    this.name = "CasError";
-    this.code = code;
-    Object.setPrototypeOf(this, CasError.prototype);
-  }
+  message: string;
+};
+
+export function createCasError(code: CasErrorCode, message?: string): CasError {
+  return { name: "CasError", code, message: message ?? code };
+}
+
+export function isCasError(x: unknown): x is CasError {
+  return (
+    typeof x === "object" &&
+    x !== null &&
+    "name" in x &&
+    (x as CasError).name === "CasError" &&
+    "code" in x
+  );
 }
 
 /** Traverse from root keys via getNode to collect all reachable keys. */
@@ -71,14 +81,14 @@ export function createCasService(ctx: CasContext) {
         const childKey = hashToKey(childHash);
         const exists = await this.hasNode(childKey);
         if (!exists) {
-          throw new CasError("ChildMissing", `Child key ${childKey} does not exist`);
+          throw createCasError("ChildMissing", `Child key ${childKey} does not exist`);
         }
       }
 
       const computedHash = await ctx.key.computeKey(data);
       const computedKey = hashToKey(computedHash);
       if (computedKey !== nodeKey) {
-        throw new CasError(
+        throw createCasError(
           "KeyMismatch",
           `Node key ${nodeKey} does not match content hash ${computedKey}`
         );

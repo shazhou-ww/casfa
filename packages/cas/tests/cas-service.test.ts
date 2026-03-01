@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import type { KeyProvider } from "@casfa/core";
 import { computeSizeFlagByte, encodeDictNode, hashToKey } from "@casfa/core";
 import { createMemoryStorage } from "@casfa/storage-memory";
-import { CasError, createCasService } from "../src/cas-service.ts";
+import { createCasService, isCasError } from "../src/cas-service.ts";
 import type { CasStorage } from "../src/types.ts";
 
 const createKeyProvider = (): KeyProvider => ({
@@ -79,8 +79,8 @@ describe("CasService", () => {
         code: "ChildMissing",
       });
       const err = await service.putNode(nodeKey, encoded.bytes).catch((e) => e);
-      expect(err).toBeInstanceOf(CasError);
-      expect((err as CasError).code).toBe("ChildMissing");
+      expect(isCasError(err)).toBe(true);
+      expect(err.code).toBe("ChildMissing");
     });
   });
 

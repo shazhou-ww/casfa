@@ -4,6 +4,18 @@ This repo is a **Bun monorepo** with workspaces `packages/*` and `apps/*`. Run s
 
 ---
 
+## Coding conventions (required)
+
+When writing or modifying code, **follow the coding conventions** in **`docs/CODING-CONVENTIONS.md`**:
+
+- **Functional style**: prefer pure functions and create functions that return objects; avoid mutable shared state.
+- **Use `type` for ADT and data shapes**; do not use `interface`.
+- **No `class`**: use create functions (e.g. `createCasService(ctx)`) to build service objects; for errors use a `type` plus a create function (e.g. `createCasError(code, message?)`), not a class extending `Error`.
+
+Agents must apply these conventions in all new code and when touching existing code in scope.
+
+---
+
 ## Environment & tools
 
 - Use **Bun**. Commands: `bun run <script>`, `bun install`. If install cache causes issues, use `bun install --no-cache`.
