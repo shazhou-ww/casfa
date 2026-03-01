@@ -53,6 +53,7 @@ export function createApp(deps: AppDeps) {
   app.get("/api/realm/:realmId/files/*path", (c) =>
     c.req.query("meta") === "1" ? files.stat(c) : files.getOrList(c)
   );
+  app.put("/api/realm/:realmId/files/*path", (c) => files.upload(c));
 
   app.onError((err, c) => {
     const body: ErrorBody = {
