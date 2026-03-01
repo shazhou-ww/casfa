@@ -1,13 +1,21 @@
 import { Hono } from "hono";
 import type { Env, ErrorBody } from "./types.ts";
 import type { ServerConfig } from "./config.ts";
+import type { CasFacade } from "@casfa/cas";
+import type { RealmFacade } from "@casfa/realm";
 
-export function createApp(_deps: ServerConfig) {
+export type AppDeps = {
+  config: ServerConfig;
+  cas: CasFacade;
+  realm: RealmFacade;
+};
+
+export function createApp(deps: AppDeps) {
   const app = new Hono<Env>();
   app.get("/api/health", (c) => c.json({ ok: true }, 200));
   app.get("/api/info", (c) =>
     c.json({
-      storageType: _deps.storage.type,
+      storageType: deps.config.storage.type,
       authType: "mock",
     }, 200)
   );
