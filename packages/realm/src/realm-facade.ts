@@ -323,9 +323,8 @@ export function createRealmFacade(ctx: RealmFacadeContext): RealmFacade {
   const { cas, delegateStore, key, maxLimitedTtlMs } = ctx;
 
   return {
-    async createRootDelegate(realmId: string, options: DelegateOptions) {
-      const list = await delegateStore.listDelegates(realmId);
-      let main = list.find((d) => d.parentId === null);
+    async getRootDelegate(realmId: string, options: DelegateOptions) {
+      let main = await delegateStore.getRootDelegate(realmId);
       const now = Date.now();
       const accessToken = crypto.randomUUID();
       const accessHash = await hashToken(accessToken);

@@ -1,5 +1,5 @@
 /**
- * RealmFacade tests: createRootDelegate, getNode, putNode, commit, createChildDelegate, close, info.
+ * RealmFacade tests: getRootDelegate, getNode, putNode, commit, createChildDelegate, close, info.
  */
 import { describe, expect, it } from "bun:test";
 import {
@@ -26,7 +26,7 @@ function createKeyProvider(): KeyProvider {
 }
 
 describe("RealmFacade", () => {
-  it("createRootDelegate returns limited DelegateFacade; getNode, putNode, commit, createChildDelegate, close work", async () => {
+  it("getRootDelegate returns limited DelegateFacade; getNode, putNode, commit, createChildDelegate, close work", async () => {
     const mem = createMemoryStorage();
     const storage = createCasStorageFromBuffer({
       get: mem.get.bind(mem),
@@ -38,7 +38,7 @@ describe("RealmFacade", () => {
     const delegateStore = createMemoryDelegateStore();
     const realm = createRealmFacade({ cas, delegateStore, key: keyProvider });
 
-    const facade = await realm.createRootDelegate("r1", { ttl: 3600_000 });
+    const facade = await realm.getRootDelegate("r1", { ttl: 3600_000 });
     expect(facade.delegateId).toBeDefined();
     expect(facade.lifetime).toBe("limited");
     expect((facade as { expiresAt: number }).expiresAt).toBeGreaterThan(Date.now());
