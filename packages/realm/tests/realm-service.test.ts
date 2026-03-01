@@ -2,8 +2,8 @@
  * RealmService tests: getNode, hasNode, putNode, createDepot, commitDepot.
  */
 import { beforeEach, describe, expect, it } from "bun:test";
-import { createCasService } from "@casfa/cas";
 import type { CasStorage } from "@casfa/cas";
+import { createCasService } from "@casfa/cas";
 import type { KeyProvider } from "@casfa/core";
 import { computeSizeFlagByte, encodeDictNode, hashToKey } from "@casfa/core";
 import { createMemoryStorage } from "@casfa/storage-memory";
@@ -31,8 +31,7 @@ function createMemoryDepotStore(): DepotStore {
     setRoot: async (depotId, nodeKey) => {
       roots.set(depotId, nodeKey);
     },
-    listDepots: async (realmId) =>
-      [...depots.values()].filter((d) => d.realmId === realmId),
+    listDepots: async (realmId) => [...depots.values()].filter((d) => d.realmId === realmId),
     insertDepot: async (depot) => {
       depots.set(depot.depotId, depot);
     },
@@ -84,10 +83,7 @@ describe("RealmService", () => {
       service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
 
       // Root = d-node with entry "a" pointing to an empty dict
-      const emptyEnc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const emptyEnc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const childKey = hashToKey(emptyEnc.hash);
       await cas.putNode(childKey, emptyEnc.bytes);
 
@@ -131,10 +127,7 @@ describe("RealmService", () => {
 
     it("putNode(nodeKey, data) delegates to CAS.putNode", async () => {
       const keyProvider = createKeyProvider();
-      const enc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const enc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const nodeKey = hashToKey(enc.hash);
       await service.putNode(nodeKey, enc.bytes);
       const got = await cas.getNode(nodeKey);
@@ -144,10 +137,7 @@ describe("RealmService", () => {
 
     it("getNode(main, 'a/b') resolves nested path when root has a -> dict with 'b'", async () => {
       const keyProvider = createKeyProvider();
-      const leafEnc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const leafEnc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const leafKey = hashToKey(leafEnc.hash);
       await cas.putNode(leafKey, leafEnc.bytes);
 
@@ -193,10 +183,7 @@ describe("RealmService", () => {
       service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
 
       // Parent root = dict with "foo" -> child dict
-      const childEnc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const childEnc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const childKey = hashToKey(childEnc.hash);
       await cas.putNode(childKey, childEnc.bytes);
 
@@ -229,9 +216,11 @@ describe("RealmService", () => {
       expect(parentRootKey).not.toBeNull();
       const parentRoot = await cas.getNode(parentRootKey!);
       expect(parentRoot).not.toBeNull();
-      const childKeyFromParent = parentRoot!.childNames?.indexOf("foo") >= 0
-        ? hashToKey(parentRoot!.children![parentRoot!.childNames!.indexOf("foo")!]!)
-        : null;
+      const idx = parentRoot!.childNames?.indexOf("foo");
+      const childKeyFromParent =
+        idx !== undefined && idx >= 0
+          ? hashToKey(parentRoot!.children![idx]!)
+          : null;
       expect(childKeyFromParent).not.toBeNull();
       expect(newRootKey).toBe(childKeyFromParent);
     });
@@ -256,10 +245,7 @@ describe("RealmService", () => {
       depotStore = createMemoryDepotStore();
       service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
 
-      const enc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const enc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const oldRootKey = hashToKey(enc.hash);
       await cas.putNode(oldRootKey, enc.bytes);
 
@@ -274,10 +260,7 @@ describe("RealmService", () => {
 
     it("commitDepot(depot, newRoot, oldRoot) when current root === oldRoot sets root to newRoot", async () => {
       const keyProvider = createKeyProvider();
-      const newEnc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const newEnc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const newRootKey = hashToKey(newEnc.hash);
       await cas.putNode(newRootKey, newEnc.bytes);
 
@@ -292,10 +275,7 @@ describe("RealmService", () => {
 
     it("commitDepot(depot, newRoot, oldRoot) when current root !== oldRoot throws RealmError CommitConflict", async () => {
       const keyProvider = createKeyProvider();
-      const newEnc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const newEnc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const newRootKey = hashToKey(newEnc.hash);
       await cas.putNode(newRootKey, newEnc.bytes);
 
@@ -321,10 +301,7 @@ describe("RealmService", () => {
       const PARENT_ID = "parent";
 
       // Empty dict (child root)
-      const childEnc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const childEnc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const childKey = hashToKey(childEnc.hash);
       await cas.putNode(childKey, childEnc.bytes);
 
@@ -384,10 +361,7 @@ describe("RealmService", () => {
       service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
 
       // Parent root = d-node with "foo" -> child dict (empty)
-      const childEnc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const childEnc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const childKey = hashToKey(childEnc.hash);
       await cas.putNode(childKey, childEnc.bytes);
 
@@ -412,10 +386,7 @@ describe("RealmService", () => {
       const childDepotId = childDepot.depotId;
 
       // Change child's root: put a different node (dict with "x" entry) and setRoot
-      const leafEnc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const leafEnc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const leafKey = hashToKey(leafEnc.hash);
       await cas.putNode(leafKey, leafEnc.bytes);
       const newChildRootEnc = await encodeDictNode(
@@ -464,18 +435,12 @@ describe("RealmService", () => {
       const REALM_ID = "r1";
 
       // Root A (depot1 and depot2 share this root - dedupe)
-      const encA = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const encA = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const rootKeyA = hashToKey(encA.hash);
       await cas.putNode(rootKeyA, encA.bytes);
 
       // Orphan node (different content so different key; not reachable from any depot)
-      const encChild = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const encChild = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       await cas.putNode(hashToKey(encChild.hash), encChild.bytes);
       const encOrphan = await encodeDictNode(
         { children: [encChild.hash], childNames: ["x"] },
@@ -523,17 +488,11 @@ describe("RealmService", () => {
       const service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
       const REALM_ID = "r1";
 
-      const enc1 = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const enc1 = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const root1 = hashToKey(enc1.hash);
       await cas.putNode(root1, enc1.bytes);
 
-      const enc2 = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const enc2 = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const root2 = hashToKey(enc2.hash);
       await cas.putNode(root2, enc2.bytes);
 
@@ -573,10 +532,7 @@ describe("RealmService", () => {
       const service = new RealmService({ cas, depotStore, key: keyProvider, storage: mem });
       const REALM_ID = "r1";
 
-      const enc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const enc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const rootKey = hashToKey(enc.hash);
       await cas.putNode(rootKey, enc.bytes);
 
