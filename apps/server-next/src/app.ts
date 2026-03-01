@@ -13,6 +13,7 @@ import { createFsController } from "./controllers/fs.ts";
 import { createBranchesController } from "./controllers/branches.ts";
 import { createDelegatesController } from "./controllers/delegates.ts";
 import { createRealmController } from "./controllers/realm.ts";
+import { createMcpHandler } from "./mcp/handler.ts";
 
 import type { KeyProvider } from "@casfa/core";
 
@@ -28,6 +29,7 @@ export type AppDeps = {
 
 export function createApp(deps: AppDeps) {
   const app = new Hono<Env>();
+
   app.get("/api/health", (c) => c.json({ ok: true }, 200));
   app.get("/api/info", (c) =>
     c.json({
@@ -82,6 +84,8 @@ export function createApp(deps: AppDeps) {
   app.post("/api/realm/:realmId/delegates/assign", (c) => delegates.assign(c));
   app.post("/api/realm/:realmId/delegates/:delegateId/revoke", (c) => delegates.revoke(c));
 
+  app.post("/api/mcp", authMiddleware, createMcpHandler({ ...rootResolverDeps, config: deps.config }));
+
   app.onError((err, c) => {
     const body: ErrorBody = {
       error: "INTERNAL_ERROR",
@@ -89,5 +93,6 @@ export function createApp(deps: AppDeps) {
     };
     return c.json(body, 500);
   });
+
   return app;
 }
