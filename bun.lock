@@ -107,6 +107,9 @@
         "@casfa/cas": "workspace:*",
         "@casfa/core": "workspace:*",
         "@casfa/realm": "workspace:*",
+        "@casfa/storage-fs": "workspace:*",
+        "@casfa/storage-memory": "workspace:*",
+        "@noble/hashes": "^1.7.2",
         "hono": "^4.6.0",
       },
       "devDependencies": {
