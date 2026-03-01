@@ -33,6 +33,8 @@ export type Delegate = DelegateLimited | DelegateUnlimited;
 
 export type DelegateStore = {
   getDelegate(delegateId: string): Promise<Delegate | null>;
+  /** Root delegate for the realm (parentId === null), or null if none. */
+  getRootDelegate(realmId: string): Promise<Delegate | null>;
   getRoot(delegateId: string): Promise<string | null>;
   setRoot(delegateId: string, nodeKey: string): Promise<void>;
   listDelegates(realmId: string): Promise<Delegate[]>;
@@ -92,7 +94,10 @@ export type RealmFacadeContext = {
 };
 
 export type RealmFacade = {
-  createRootDelegate(realmId: string, options: DelegateOptions): Promise<DelegateFacade>;
+  /**
+   * Get the realm's root delegate facade; creates the root delegate and empty root in CAS on first use.
+   */
+  getRootDelegate(realmId: string, options: DelegateOptions): Promise<DelegateFacade>;
   gc(realmId: string, cutOffTime: number): Promise<void>;
   info(realmId: string): Promise<RealmInfo>;
 };

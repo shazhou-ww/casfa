@@ -11,6 +11,12 @@ export function createMemoryDelegateStore(): DelegateStore {
     async getDelegate(delegateId: string) {
       return delegates.get(delegateId) ?? null;
     },
+    async getRootDelegate(realmId: string) {
+      const list = Array.from(delegates.values()).filter(
+        (d) => d.realmId === realmId && d.parentId === null
+      );
+      return list[0] ?? null;
+    },
     async getRoot(delegateId: string) {
       return roots.get(delegateId) ?? null;
     },
