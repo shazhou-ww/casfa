@@ -210,6 +210,11 @@ export function startTestServer(options?: { port?: number }): TestServer {
 let cachedServer: TestServer | null = null;
 let serverPromise: Promise<TestServer> | null = null;
 
+function clearCachedServer(): void {
+  cachedServer = null;
+  serverPromise = null;
+}
+
 async function getOrCreateServer(): Promise<TestServer> {
   if (cachedServer) return cachedServer;
   if (serverPromise) return serverPromise;
@@ -249,8 +254,7 @@ export function createE2EContext(): E2EContext {
       if (resolved) {
         resolved.stop();
         resolved = null;
-        cachedServer = null;
-        serverPromise = null;
+        clearCachedServer();
       }
     },
   };
