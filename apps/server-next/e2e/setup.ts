@@ -35,7 +35,7 @@ export type TestHelpers = {
   createBranch(
     userToken: string,
     realmId: string,
-    body: { mountPath: string; ttl?: number }
+    body: { mountPath: string; ttl?: number; parentBranchId?: string }
   ): Promise<{ branchId: string; accessToken: string; expiresAt?: number }>;
   mcpRequest(token: string, method: string, params?: unknown): Promise<Response>;
 };
@@ -144,7 +144,7 @@ export function startTestServer(options?: { port?: number }): TestServer {
   const createBranch = async (
     userToken: string,
     realmId: string,
-    body: { mountPath: string; ttl?: number }
+    body: { mountPath: string; ttl?: number; parentBranchId?: string }
   ): Promise<{ branchId: string; accessToken: string; expiresAt?: number }> => {
     const res = await authRequest(
       userToken,
