@@ -15,6 +15,7 @@ const derivedDataStore = createMemoryDerivedDataStore();
 const app = createApp({
   config,
   cas,
+  key,
   realm,
   delegateGrantStore,
   derivedDataStore,

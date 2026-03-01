@@ -8,10 +8,14 @@ import type { DelegateGrantStore } from "./db/delegate-grants.ts";
 import type { DerivedDataStore } from "./db/derived-data.ts";
 import { createAuthMiddleware } from "./middleware/auth.ts";
 import { createRealmMiddleware } from "./middleware/realm.ts";
+import { createFilesController } from "./controllers/files.ts";
+
+import type { KeyProvider } from "@casfa/core";
 
 export type AppDeps = {
   config: ServerConfig;
   cas: CasFacade;
+  key: KeyProvider;
   realm: RealmFacade;
   delegateGrantStore: DelegateGrantStore;
   derivedDataStore: DerivedDataStore;
@@ -34,6 +38,21 @@ export function createApp(deps: AppDeps) {
   });
   const realmMiddleware = createRealmMiddleware();
   app.use("/api/realm/:realmId/*", authMiddleware, realmMiddleware);
+
+  const rootResolverDeps = {
+    realm: deps.realm,
+    delegateStore: deps.delegateStore,
+    cas: deps.cas,
+    key: deps.key,
+  };
+  const files = createFilesController(rootResolverDeps);
+
+  app.get("/api/realm/:realmId/files", (c) =>
+    c.req.query("meta") === "1" ? files.stat(c) : files.list(c)
+  );
+  app.get("/api/realm/:realmId/files/*path", (c) =>
+    c.req.query("meta") === "1" ? files.stat(c) : files.getOrList(c)
+  );
 
   app.onError((err, c) => {
     const body: ErrorBody = {
