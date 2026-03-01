@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "bun run src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun run test:unit && bun run test:e2e",
+    "test:unit": "bun test tests/",
+    "test:e2e": "bun test e2e/"
   },
   "dependencies": {
     "@casfa/cas": "workspace:*",
