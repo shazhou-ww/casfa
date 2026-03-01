@@ -77,6 +77,7 @@ export function createApp(deps: AppDeps) {
   app.use("/api/me", authMiddleware);
   app.get("/api/me", (c) => me.get(c));
   app.get("/api/me/settings", (c) => me.getSettings(c));
+  app.patch("/api/me/settings", (c) => me.patchSettings(c));
 
   app.get("/api/realm/:realmId/files", (c) =>
     c.req.query("meta") === "1" ? files.stat(c) : files.list(c)
