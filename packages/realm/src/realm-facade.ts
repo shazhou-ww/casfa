@@ -275,7 +275,6 @@ function createDelegateFacade(
     } as DelegateFacadeLimited;
   }
 
-  const _unlimitedDelegate = delegate as DelegateUnlimited;
   return {
     ...base,
     lifetime: "unlimited",
