@@ -19,6 +19,8 @@ import { createMeController } from "./controllers/me.ts";
 
 import type { KeyProvider } from "@casfa/core";
 
+import type { UserSettingsStore } from "./db/user-settings.ts";
+
 export type AppDeps = {
   config: ServerConfig;
   cas: CasFacade;
@@ -27,6 +29,7 @@ export type AppDeps = {
   delegateGrantStore: DelegateGrantStore;
   derivedDataStore: DerivedDataStore;
   delegateStore: DelegateStore;
+  userSettingsStore: UserSettingsStore;
 };
 
 export function createApp(deps: AppDeps) {
@@ -69,10 +72,11 @@ export function createApp(deps: AppDeps) {
   const branches = createBranchesController({ ...rootResolverDeps, config: deps.config });
   const delegates = createDelegatesController({ delegateGrantStore: deps.delegateGrantStore });
   const realm = createRealmController(rootResolverDeps);
-  const me = createMeController({});
+  const me = createMeController({ userSettingsStore: deps.userSettingsStore });
 
   app.use("/api/me", authMiddleware);
   app.get("/api/me", (c) => me.get(c));
+  app.get("/api/me/settings", (c) => me.getSettings(c));
 
   app.get("/api/realm/:realmId/files", (c) =>
     c.req.query("meta") === "1" ? files.stat(c) : files.list(c)

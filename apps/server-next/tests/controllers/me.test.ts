@@ -7,6 +7,7 @@ import type { Env } from "../../src/types.ts";
 import { createAuthMiddleware } from "../../src/middleware/auth.ts";
 import { createMeController } from "../../src/controllers/me.ts";
 import { createMemoryDelegateGrantStore } from "../../src/db/delegate-grants.ts";
+import { createMemoryUserSettingsStore } from "../../src/db/user-settings.ts";
 import { createMemoryDelegateStore } from "@casfa/realm";
 
 function makeJwt(sub: string, extra?: Record<string, unknown>): string {
@@ -25,8 +26,9 @@ describe("GET /api/me", () => {
   it("returns 401 when Authorization header is missing", async () => {
     const delegateStore = createMemoryDelegateStore();
     const delegateGrantStore = createMemoryDelegateGrantStore();
+    const userSettingsStore = createMemoryUserSettingsStore();
     const auth = createAuthMiddleware({ delegateGrantStore, delegateStore });
-    const me = createMeController({});
+    const me = createMeController({ userSettingsStore });
     const app = new Hono<Env>()
       .use("/api/me", auth)
       .get("/api/me", (c) => me.get(c));
@@ -37,8 +39,9 @@ describe("GET /api/me", () => {
   it("returns 200 with userId when Bearer is valid JWT (user)", async () => {
     const delegateStore = createMemoryDelegateStore();
     const delegateGrantStore = createMemoryDelegateGrantStore();
+    const userSettingsStore = createMemoryUserSettingsStore();
     const auth = createAuthMiddleware({ delegateGrantStore, delegateStore });
-    const me = createMeController({});
+    const me = createMeController({ userSettingsStore });
     const app = new Hono<Env>()
       .use("/api/me", auth)
       .get("/api/me", (c) => me.get(c));
@@ -54,8 +57,9 @@ describe("GET /api/me", () => {
   it("returns 403 when auth is delegate (not user)", async () => {
     const delegateStore = createMemoryDelegateStore();
     const delegateGrantStore = createMemoryDelegateGrantStore();
+    const userSettingsStore = createMemoryUserSettingsStore();
     const auth = createAuthMiddleware({ delegateGrantStore, delegateStore });
-    const me = createMeController({});
+    const me = createMeController({ userSettingsStore });
     const app = new Hono<Env>()
       .use("/api/me", auth)
       .get("/api/me", (c) => me.get(c));
