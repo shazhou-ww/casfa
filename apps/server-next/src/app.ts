@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import type { Env, ErrorBody } from "./types.ts";
 import type { ServerConfig } from "./config.ts";
 import type { CasFacade } from "@casfa/cas";
@@ -29,6 +30,15 @@ export type AppDeps = {
 
 export function createApp(deps: AppDeps) {
   const app = new Hono<Env>();
+
+  app.use(
+    "*",
+    cors({
+      origin: "*",
+      allowHeaders: ["Content-Type", "Authorization"],
+      allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    })
+  );
 
   app.get("/api/health", (c) => c.json({ ok: true }, 200));
   app.get("/api/info", (c) =>
@@ -93,6 +103,10 @@ export function createApp(deps: AppDeps) {
     };
     return c.json(body, 500);
   });
+
+  app.notFound((c) =>
+    c.json({ error: "NOT_FOUND", message: "Not found" } satisfies ErrorBody, 404)
+  );
 
   return app;
 }
