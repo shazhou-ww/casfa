@@ -29,7 +29,12 @@
     "@casfa/storage-memory": "workspace:*",
     "@noble/hashes": "^1.7.1"
   },
-  "files": ["dist", "README.md"],
-  "publishConfig": { "access": "public" },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT"
 }

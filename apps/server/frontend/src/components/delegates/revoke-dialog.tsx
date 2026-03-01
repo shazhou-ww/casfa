@@ -79,8 +79,8 @@ export function RevokeDelegateDialog({
       <DialogContent>
         <Alert severity="warning" sx={{ mb: 2 }}>
           <AlertTitle>Warning</AlertTitle>
-          Revoking this delegate will <strong>permanently invalidate</strong> it
-          along with all its descendant delegates. This action cannot be undone.
+          Revoking this delegate will <strong>permanently invalidate</strong> it along with all its
+          descendant delegates. This action cannot be undone.
         </Alert>
 
         <Box sx={{ mb: 2 }}>
@@ -96,10 +96,7 @@ export function RevokeDelegateDialog({
           <Typography variant="body2" color="text.secondary">
             ID
           </Typography>
-          <Typography
-            variant="body2"
-            sx={{ fontFamily: "monospace", fontSize: "0.85em" }}
-          >
+          <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: "0.85em" }}>
             {delegate.delegateId}
           </Typography>
         </Box>

@@ -101,12 +101,12 @@ export type SwInitState = {
  */
 export type FireAndForgetMessage =
   | {
-    type: "schedule-commit";
-    depotId: string;
-    targetRoot: string;
-    lastKnownServerRoot: string | null;
-  }
+      type: "schedule-commit";
+      depotId: string;
+      targetRoot: string;
+      lastKnownServerRoot: string | null;
+    }
   | {
-    type: "comlinkInit";
-    port: MessagePort;
-  };
+      type: "comlinkInit";
+      port: MessagePort;
+    };

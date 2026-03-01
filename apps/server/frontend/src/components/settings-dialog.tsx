@@ -45,24 +45,14 @@ type TabKey = (typeof tabs)[number]["key"];
 
 function TabPanel({ active, children }: { active: boolean; children: React.ReactNode }) {
   if (!active) return null;
-  return (
-    <Box sx={{ flex: 1, overflow: "auto" }}>
-      {children}
-    </Box>
-  );
+  return <Box sx={{ flex: 1, overflow: "auto" }}>{children}</Box>;
 }
 
 // ============================================================================
 // Main component
 // ============================================================================
 
-export function SettingsDialog({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
+export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<TabKey>("viewers");
 
   return (

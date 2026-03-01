@@ -111,14 +111,7 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
     };
 
     doUpload();
-  }, [
-    uploadQueue,
-    depotRoot,
-    localFs,
-    updateUploadItem,
-    updateDepotRoot,
-    onError,
-  ]);
+  }, [uploadQueue, depotRoot, localFs, updateUploadItem, updateDepotRoot, onError]);
 
   // Schedule commit and refresh directory listing when all uploads finish
   const prevHadPending = useRef(false);
@@ -142,7 +135,16 @@ export function useUpload({ onError }: UseUploadOpts = {}) {
       reloadDir();
     }
     prevHadPending.current = hasPending;
-  }, [uploadQueue, reloadDir, depotId, depotRoot, serverRoot, scheduleCommit, beforeCommit, client]);
+  }, [
+    uploadQueue,
+    reloadDir,
+    depotId,
+    depotRoot,
+    serverRoot,
+    scheduleCommit,
+    beforeCommit,
+    client,
+  ]);
 
   /** Cancel a pending upload (remove from queue) */
   const cancelUpload = useCallback(

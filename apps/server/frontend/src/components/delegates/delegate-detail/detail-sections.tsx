@@ -27,16 +27,16 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../../stores/auth-store.ts";
 import {
-  CopyButton,
   CopyableChip,
-  InfoRow,
-  PermissionCard,
-  Section,
+  CopyButton,
   formatRelativeExpiry,
   formatTime,
   getStatus,
-  statusConfig,
+  InfoRow,
   type NotifyFn,
+  PermissionCard,
+  Section,
+  statusConfig,
 } from "./detail-primitives.tsx";
 
 // -- DetailHeader -----------------------------------------------------------
@@ -251,7 +251,9 @@ export function PermissionsSection({
         </Typography>
         {delegate.scopeNodeHash ? (
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-            <Typography variant="body2" color="text.secondary">Single scope</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Single scope
+            </Typography>
             <CopyableChip
               value={delegate.scopeNodeHash}
               maxLen={24}
@@ -261,7 +263,9 @@ export function PermissionsSection({
           </Box>
         ) : delegate.scopeSetNodeId ? (
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-            <Typography variant="body2" color="text.secondary">Multi-scope set</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Multi-scope set
+            </Typography>
             <CopyableChip
               value={delegate.scopeSetNodeId}
               maxLen={24}
@@ -281,21 +285,14 @@ export function PermissionsSection({
 
 // -- DelegationChain --------------------------------------------------------
 
-export function DelegationChain({
-  chain,
-  currentId,
-}: {
-  chain: string[];
-  currentId: string;
-}) {
+export function DelegationChain({ chain, currentId }: { chain: string[]; currentId: string }) {
   const { user } = useAuthStore();
   const navigate = useNavigate();
 
   return (
     <Breadcrumbs separator={<NavigateNextIcon fontSize="small" />}>
       {chain.map((id, index) => {
-        const isRoot =
-          index === 0 || (user?.rootDelegateId != null && id === user.rootDelegateId);
+        const isRoot = index === 0 || (user?.rootDelegateId != null && id === user.rootDelegateId);
         const isCurrent = id === currentId;
         const label = isRoot
           ? `Root (${id.slice(0, 8)}…)`
@@ -329,10 +326,7 @@ export function RevocationSection({ delegate }: { delegate: DelegateDetail }) {
   if (!delegate.isRevoked) return null;
 
   return (
-    <Paper
-      variant="outlined"
-      sx={{ overflow: "hidden", borderColor: "rgba(161, 161, 170, 0.4)" }}
-    >
+    <Paper variant="outlined" sx={{ overflow: "hidden", borderColor: "rgba(161, 161, 170, 0.4)" }}>
       <Box sx={{ height: 3, bgcolor: "#a1a1aa" }} />
       <Box sx={{ px: 2.5, py: 2 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 600, letterSpacing: "0.02em", mb: 1.5 }}>

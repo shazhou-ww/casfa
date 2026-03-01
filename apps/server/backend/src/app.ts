@@ -45,13 +45,10 @@ import {
 import { createNodeAuthMiddleware } from "./middleware/node-auth.ts";
 // Router
 import { createRouter } from "./router.ts";
+import { createExtensionRegistry, createExtensionService } from "./services/extensions/index.ts";
+import { metaExtension } from "./services/extensions/meta-extension.ts";
 // Services
 import { createFsService } from "./services/fs/index.ts";
-import {
-  createExtensionRegistry,
-  createExtensionService,
-} from "./services/extensions/index.ts";
-import { metaExtension } from "./services/extensions/meta-extension.ts";
 import type { Env } from "./types.ts";
 import { toCrockfordBase32 } from "./util/encoding.ts";
 import type { CombinedKeyProvider } from "./util/hash-provider.ts";

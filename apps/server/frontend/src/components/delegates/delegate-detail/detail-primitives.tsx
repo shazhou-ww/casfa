@@ -3,19 +3,8 @@
  */
 
 import type { DelegateDetail } from "@casfa/protocol";
-import {
-  Check as CheckIcon,
-  ContentCopy as ContentCopyIcon,
-} from "@mui/icons-material";
-import {
-  Box,
-  Chip,
-  Divider,
-  IconButton,
-  Paper,
-  Tooltip,
-  Typography,
-} from "@mui/material";
+import { Check as CheckIcon, ContentCopy as ContentCopyIcon } from "@mui/icons-material";
+import { Box, Chip, Divider, IconButton, Paper, Tooltip, Typography } from "@mui/material";
 import { useCallback, useState } from "react";
 
 // -- Types ------------------------------------------------------------------
@@ -56,13 +45,7 @@ export const statusConfig = {
 
 // -- Section card -----------------------------------------------------------
 
-export function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+export function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Paper variant="outlined" sx={{ overflow: "hidden" }}>
       <Box
@@ -192,7 +175,7 @@ export function CopyableChip({
     <Tooltip title={value}>
       <Chip
         icon={icon}
-        label={value.length > maxLen ? value.slice(0, maxLen) + "…" : value}
+        label={value.length > maxLen ? `${value.slice(0, maxLen)}…` : value}
         size="small"
         variant="outlined"
         sx={{ fontFamily: "monospace", fontSize: "0.8em", cursor: "pointer" }}

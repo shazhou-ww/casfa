@@ -148,8 +148,7 @@ export const MCP_TOOLS: McpTool[] = [
         },
         path: {
           type: "string",
-          description:
-            "Subdirectory path to start from (e.g., 'src/components'). Omit for root.",
+          description: "Subdirectory path to start from (e.g., 'src/components'). Omit for root.",
         },
         depth: {
           type: "number",

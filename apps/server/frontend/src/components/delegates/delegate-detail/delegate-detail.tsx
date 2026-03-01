@@ -10,7 +10,7 @@ import { Alert, Box, CircularProgress, IconButton, Paper, Typography } from "@mu
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getAppClient } from "../../../lib/client.ts";
-import { Section, type NotifyFn } from "./detail-primitives.tsx";
+import { type NotifyFn, Section } from "./detail-primitives.tsx";
 import {
   BasicInfoSection,
   DelegationChain,
@@ -26,11 +26,7 @@ type DelegateDetailProps = {
   onNotify?: NotifyFn;
 };
 
-export function DelegateDetail({
-  delegateId,
-  onRevokeClick,
-  onNotify,
-}: DelegateDetailProps) {
+export function DelegateDetail({ delegateId, onRevokeClick, onNotify }: DelegateDetailProps) {
   const navigate = useNavigate();
   const [delegate, setDelegate] = useState<DelegateDetailType | null>(null);
   const [loading, setLoading] = useState(true);

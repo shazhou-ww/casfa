@@ -19,14 +19,14 @@
  * via Vite's ?raw import, giving them proper syntax highlighting and linting.
  */
 
+import type { ViewerManifest } from "@casfa/client-bridge";
 import {
   encodeDictNode,
   encodeFileNode,
   hashToKey,
-  keyToHash,
   type KeyProvider,
+  keyToHash,
 } from "@casfa/core";
-import type { ViewerManifest } from "@casfa/client-bridge";
 import { storageKeyToNodeKey } from "@casfa/protocol";
 
 // Vite ?raw imports — inlined as strings at build time
@@ -64,10 +64,7 @@ async function encodeTextFile(
   store: Map<string, Uint8Array>
 ): Promise<string> {
   const data = textEncoder.encode(text);
-  const encoded = await encodeFileNode(
-    { data, contentType, fileSize: data.length },
-    keyProvider
-  );
+  const encoded = await encodeFileNode({ data, contentType, fileSize: data.length }, keyProvider);
   const storageKey = hashToKey(encoded.hash);
   store.set(storageKey, encoded.bytes);
   return storageKey;
@@ -82,12 +79,7 @@ async function encodeManifest(
   keyProvider: KeyProvider,
   store: Map<string, Uint8Array>
 ): Promise<string> {
-  return encodeTextFile(
-    JSON.stringify(manifest, null, 2),
-    "application/json",
-    keyProvider,
-    store
-  );
+  return encodeTextFile(JSON.stringify(manifest, null, 2), "application/json", keyProvider, store);
 }
 
 /**
@@ -130,7 +122,12 @@ export async function initBuiltinViewers(
     contentTypes: ["image/*"],
   };
   const galleryManifestKey = await encodeManifest(galleryManifest, keyProvider, virtualStore);
-  const galleryJsKey = await encodeTextFile(IMAGE_GALLERY_JS, "text/javascript", keyProvider, virtualStore);
+  const galleryJsKey = await encodeTextFile(
+    IMAGE_GALLERY_JS,
+    "text/javascript",
+    keyProvider,
+    virtualStore
+  );
   const galleryKey = await buildViewerNode(
     [
       { name: "manifest.json", storageKey: galleryManifestKey },
@@ -155,7 +152,12 @@ export async function initBuiltinViewers(
     contentTypes: ["image/*"],
   };
   const slideshowManifestKey = await encodeManifest(slideshowManifest, keyProvider, virtualStore);
-  const slideshowJsKey = await encodeTextFile(SLIDESHOW_JS, "text/javascript", keyProvider, virtualStore);
+  const slideshowJsKey = await encodeTextFile(
+    SLIDESHOW_JS,
+    "text/javascript",
+    keyProvider,
+    virtualStore
+  );
   const slideshowKey = await buildViewerNode(
     [
       { name: "manifest.json", storageKey: slideshowManifestKey },
@@ -180,7 +182,12 @@ export async function initBuiltinViewers(
     contentTypes: ["text/*"],
   };
   const textManifestKey = await encodeManifest(textManifest, keyProvider, virtualStore);
-  const textJsKey = await encodeTextFile(TEXT_VIEWER_JS, "text/javascript", keyProvider, virtualStore);
+  const textJsKey = await encodeTextFile(
+    TEXT_VIEWER_JS,
+    "text/javascript",
+    keyProvider,
+    virtualStore
+  );
   const textViewerKey = await buildViewerNode(
     [
       { name: "manifest.json", storageKey: textManifestKey },

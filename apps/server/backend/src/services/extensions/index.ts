@@ -123,10 +123,7 @@ export type ExtensionRegistry = {
   /**
    * Find extensions that match a given node, filtered by timing.
    */
-  findMatchingExtensions: (
-    node: CasNode,
-    timing?: "on-create" | "on-demand"
-  ) => NodeExtensionDef[];
+  findMatchingExtensions: (node: CasNode, timing?: "on-create" | "on-demand") => NodeExtensionDef[];
 };
 
 export const createExtensionRegistry = (): ExtensionRegistry => {

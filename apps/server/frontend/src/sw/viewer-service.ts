@@ -6,10 +6,10 @@
  * viewers are persisted in IndexedDB via ViewerStore.
  */
 
-import type { KeyProvider } from "@casfa/core";
 import type { ViewerManifest } from "@casfa/client-bridge";
-import { initBuiltinViewers, type BuiltinViewer } from "./builtin-viewers.ts";
-import { createViewerStore, type CustomViewerEntry, type ViewerStore } from "./viewer-store.ts";
+import type { KeyProvider } from "@casfa/core";
+import { type BuiltinViewer, initBuiltinViewers } from "./builtin-viewers.ts";
+import { type CustomViewerEntry, createViewerStore, type ViewerStore } from "./viewer-store.ts";
 
 // ============================================================================
 // Types

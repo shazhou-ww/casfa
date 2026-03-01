@@ -5,8 +5,7 @@
  * tokenTtl, delegate expiry.
  */
 
-import type { CreateDelegateResponse } from "@casfa/protocol";
-import type { DepotListItem } from "@casfa/protocol";
+import type { CreateDelegateResponse, DepotListItem } from "@casfa/protocol";
 import {
   Autocomplete,
   Box,
@@ -227,8 +226,8 @@ export function CreateDelegateDialog({ open, onClose, onCreated }: CreateDelegat
           Delegate Lifetime
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
-          How long this delegate remains valid. After expiration, all access tokens under it
-          become invalid regardless of their own TTL.
+          How long this delegate remains valid. After expiration, all access tokens under it become
+          invalid regardless of their own TTL.
         </Typography>
 
         <FormControlLabel
@@ -278,9 +277,7 @@ export function CreateDelegateDialog({ open, onClose, onCreated }: CreateDelegat
           onChange={(e) => setTokenTtl(Number(e.target.value))}
           error={ttlExceedsLifetime}
           helperText={
-            ttlExceedsLifetime
-              ? "Token TTL must not exceed delegate lifetime."
-              : undefined
+            ttlExceedsLifetime ? "Token TTL must not exceed delegate lifetime." : undefined
           }
           fullWidth
         >
@@ -302,7 +299,11 @@ export function CreateDelegateDialog({ open, onClose, onCreated }: CreateDelegat
         <Button onClick={onClose} disabled={submitting}>
           Cancel
         </Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={submitting || ttlExceedsLifetime}>
+        <Button
+          onClick={handleSubmit}
+          variant="contained"
+          disabled={submitting || ttlExceedsLifetime}
+        >
           {submitting ? <CircularProgress size={20} /> : "Create"}
         </Button>
       </DialogActions>

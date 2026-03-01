@@ -288,10 +288,7 @@ export const createRouter = (deps: RouterDeps): Hono<Env> => {
   );
 
   // ---- Node extensions: /nodes/ext/:name/batch ----
-  realmRouter.post(
-    "/:realmId/nodes/ext/:name/batch",
-    deps.extensions.batchGet
-  );
+  realmRouter.post("/:realmId/nodes/ext/:name/batch", deps.extensions.batchGet);
 
   // ---- Filesystem operations: /nodes/fs/:key/{op} ----
   realmRouter.get("/:realmId/nodes/fs/:key/stat", deps.nodeAuthMiddleware, deps.filesystem.stat);

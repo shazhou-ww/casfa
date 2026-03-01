@@ -14,8 +14,8 @@ import { AppBar, Box, Button, Menu, MenuItem, Snackbar, Toolbar, Typography } fr
 import { useCallback, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { useAuthStore } from "../stores/auth-store.ts";
-import { SettingsDialog } from "./settings-dialog.tsx";
 import { NavTabs } from "./nav-tabs.tsx";
+import { SettingsDialog } from "./settings-dialog.tsx";
 
 export function Layout() {
   const { user, logout } = useAuthStore();
