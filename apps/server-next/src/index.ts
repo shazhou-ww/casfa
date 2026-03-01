@@ -1,6 +1,6 @@
 import { createApp } from "./app.ts";
+import { loadConfig } from "./config.ts";
 
-const port = Number(process.env.PORT) || 8802;
-const config = { port, storage: { type: "memory" as const }, auth: {} };
+const config = loadConfig();
 const app = createApp(config);
-Bun.serve({ port, fetch: app.fetch });
+Bun.serve({ port: config.port, fetch: app.fetch });
