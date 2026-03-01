@@ -218,9 +218,7 @@ describe("RealmService", () => {
       expect(parentRoot).not.toBeNull();
       const idx = parentRoot!.childNames?.indexOf("foo");
       const childKeyFromParent =
-        idx !== undefined && idx >= 0
-          ? hashToKey(parentRoot!.children![idx]!)
-          : null;
+        idx !== undefined && idx >= 0 ? hashToKey(parentRoot!.children![idx]!) : null;
       expect(childKeyFromParent).not.toBeNull();
       expect(newRootKey).toBe(childKeyFromParent);
     });

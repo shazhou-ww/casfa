@@ -20,10 +20,10 @@ import type {
   TokenMethods,
   TokenState,
 } from "@casfa/client";
-import * as Comlink from "comlink";
 import type { Remote } from "comlink";
+import * as Comlink from "comlink";
 import type { BroadcastMessage } from "./messages.ts";
-import type { ServerInfo, SwApi, SwInitState } from "./sw-api-types.ts";
+import type { SwApi, SwInitState } from "./sw-api-types.ts";
 import type {
   AppClient,
   AppClientConfig,
@@ -155,7 +155,7 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
   // Mirror initial token state to main-thread storage so direct
   // localStorage reads (e.g. OAuthAuthorizePage) work after SW activation.
   if (cachedTokenState.user && config.tokenStorage) {
-    config.tokenStorage.save(cachedTokenState).catch(() => { });
+    config.tokenStorage.save(cachedTokenState).catch(() => {});
   }
 
   // ── 5. Events (BroadcastChannel "casfa") ──
@@ -173,20 +173,30 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
     switch (msg.type) {
       case "sync-state":
         cachedSyncState = msg.payload;
-        listeners.syncState.forEach((fn) => fn(msg.payload));
+        listeners.syncState.forEach((fn) => {
+          fn(msg.payload);
+        });
         break;
       case "conflict":
-        listeners.conflict.forEach((fn) => fn(msg.payload));
+        listeners.conflict.forEach((fn) => {
+          fn(msg.payload);
+        });
         break;
       case "sync-error":
-        listeners.syncError.forEach((fn) => fn(msg.payload));
+        listeners.syncError.forEach((fn) => {
+          fn(msg.payload);
+        });
         break;
       case "commit":
-        listeners.commit.forEach((fn) => fn(msg.payload));
+        listeners.commit.forEach((fn) => {
+          fn(msg.payload);
+        });
         break;
       case "pending-count":
         cachedPendingCount = msg.payload;
-        listeners.pendingCount.forEach((fn) => fn(msg.payload));
+        listeners.pendingCount.forEach((fn) => {
+          fn(msg.payload);
+        });
         break;
       case "auth-required":
         config.onAuthRequired?.();
@@ -196,7 +206,7 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
         // Mirror token state to main-thread storage (localStorage) so that
         // pages that read directly from localStorage (e.g. OAuthAuthorizePage)
         // can find the token after a full page reload.
-        config.tokenStorage?.save(msg.payload).catch(() => { });
+        config.tokenStorage?.save(msg.payload).catch(() => {});
         break;
     }
   };
@@ -277,9 +287,11 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
       remote.setRootDelegate(delegate);
     },
     async getAccessToken() {
-      return withTimeout(remote.getAccessToken(), timeoutMs, "getAccessToken") as Promise<
-        StoredAccessToken | null
-      >;
+      return withTimeout(
+        remote.getAccessToken(),
+        timeoutMs,
+        "getAccessToken"
+      ) as Promise<StoredAccessToken | null>;
     },
 
     // ── AppClient: auth ──
@@ -325,7 +337,11 @@ export async function createSWClient(config: AppClientConfig): Promise<AppClient
     },
 
     async getPendingRoot(depotId) {
-      return withTimeout(Promise.resolve(remote.getPendingRoot(depotId)), timeoutMs, "getPendingRoot");
+      return withTimeout(
+        Promise.resolve(remote.getPendingRoot(depotId)),
+        timeoutMs,
+        "getPendingRoot"
+      );
     },
 
     async flushNow() {
