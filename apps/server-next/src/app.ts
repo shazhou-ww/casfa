@@ -9,6 +9,7 @@ import type { DerivedDataStore } from "./db/derived-data.ts";
 import { createAuthMiddleware } from "./middleware/auth.ts";
 import { createRealmMiddleware } from "./middleware/realm.ts";
 import { createFilesController } from "./controllers/files.ts";
+import { createFsController } from "./controllers/fs.ts";
 
 import type { KeyProvider } from "@casfa/core";
 
@@ -46,6 +47,7 @@ export function createApp(deps: AppDeps) {
     key: deps.key,
   };
   const files = createFilesController(rootResolverDeps);
+  const fs = createFsController(rootResolverDeps);
 
   app.get("/api/realm/:realmId/files", (c) =>
     c.req.query("meta") === "1" ? files.stat(c) : files.list(c)
@@ -54,6 +56,11 @@ export function createApp(deps: AppDeps) {
     c.req.query("meta") === "1" ? files.stat(c) : files.getOrList(c)
   );
   app.put("/api/realm/:realmId/files/*path", (c) => files.upload(c));
+
+  app.post("/api/realm/:realmId/fs/mkdir", (c) => fs.mkdir(c));
+  app.post("/api/realm/:realmId/fs/rm", (c) => fs.rm(c));
+  app.post("/api/realm/:realmId/fs/mv", (c) => fs.mv(c));
+  app.post("/api/realm/:realmId/fs/cp", (c) => fs.cp(c));
 
   app.onError((err, c) => {
     const body: ErrorBody = {
