@@ -12,6 +12,7 @@ import { createFilesController } from "./controllers/files.ts";
 import { createFsController } from "./controllers/fs.ts";
 import { createBranchesController } from "./controllers/branches.ts";
 import { createDelegatesController } from "./controllers/delegates.ts";
+import { createRealmController } from "./controllers/realm.ts";
 
 import type { KeyProvider } from "@casfa/core";
 
@@ -53,6 +54,7 @@ export function createApp(deps: AppDeps) {
   const fs = createFsController(rootResolverDeps);
   const branches = createBranchesController({ ...rootResolverDeps, config: deps.config });
   const delegates = createDelegatesController({ delegateGrantStore: deps.delegateGrantStore });
+  const realm = createRealmController(rootResolverDeps);
 
   app.get("/api/realm/:realmId/files", (c) =>
     c.req.query("meta") === "1" ? files.stat(c) : files.list(c)
@@ -71,6 +73,10 @@ export function createApp(deps: AppDeps) {
   app.get("/api/realm/:realmId/branches", (c) => branches.list(c));
   app.post("/api/realm/:realmId/branches/:branchId/revoke", (c) => branches.revoke(c));
   app.post("/api/realm/:realmId/branches/:branchId/complete", (c) => branches.complete(c));
+
+  app.get("/api/realm/:realmId", (c) => realm.info(c));
+  app.get("/api/realm/:realmId/usage", (c) => realm.usage(c));
+  app.post("/api/realm/:realmId/gc", (c) => realm.gc(c));
 
   app.get("/api/realm/:realmId/delegates", (c) => delegates.list(c));
   app.post("/api/realm/:realmId/delegates/assign", (c) => delegates.assign(c));
