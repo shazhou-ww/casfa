@@ -191,9 +191,9 @@ Worker 在**某一 Branch** 上操作，可将部分工作通过创建 **子 Bra
 
 ## 5. 与非功能需求的衔接
 
-- **认证**：User 与 Delegate 的 OAuth/Token 形态、Branch Token 的编码与校验，在 server-next 架构设计中单独定义。
-- **路径与存储**：文件访问采用路径型 REST API，底层仍通过 Realm/Branch 的 path 语义（getNode(path)、commit 等）与 CAS 对接。
-- **大文件与流**：上传/下载、Block 切分与拼装、流式透传等，与现有 facade-delegate 设计中的流式语义一致，在 API 与实现层细化。
+- **认证**：User 与 Delegate 的 OAuth/Token 形态、Branch Token 的编码与校验，在 server-next 架构设计中单独定义（见 [server-next-module-design](./2026-03-01-server-next-module-design.md)）。
+- **路径与存储**：文件访问采用路径型 REST API，底层仍通过 Realm/Branch 的 path 语义与 CAS 对接。
+- **大文件与流**：上传/下载、Block 切分与拼装、流式透传等，在 API 与实现层细化。**server-next 首版**仅支持单 node 文件（约 4MB），大文件分块为后续增强，见 [file-chunk-upload-download](./2026-03-01-file-chunk-upload-download.md)。
 
 ---
 
