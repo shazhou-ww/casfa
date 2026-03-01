@@ -18,6 +18,7 @@
     "paths": {
       "@casfa/cas-uri": ["./packages/cas-uri/src/index.ts"],
       "@casfa/client": ["./packages/client/src/index.ts"],
+      "@casfa/cas": ["./packages/cas/src/index.ts"],
       "@casfa/client/types": ["./packages/client/src/types/index.ts"],
       "@casfa/client/api": ["./packages/client/src/api/index.ts"],
       "@casfa/client-auth-crypto": ["./packages/client-auth-crypto/src/index.ts"],
@@ -27,6 +28,7 @@
       "@casfa/encoding": ["./packages/encoding/src/index.ts"],
       "@casfa/proof": ["./packages/proof/src/index.ts"],
       "@casfa/protocol": ["./packages/protocol/src/index.ts"],
+      "@casfa/realm": ["./packages/realm/src/index.ts"],
       "@casfa/storage-core": ["./packages/storage-core/src/index.ts"],
       "@casfa/storage-fs": ["./packages/storage-fs/src/index.ts"],
       "@casfa/storage-memory": ["./packages/storage-memory/src/index.ts"],
