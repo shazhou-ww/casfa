@@ -6,6 +6,8 @@
  * shown first; others are shown in a "More viewers" section.
  */
 
+import type { ViewerInfo } from "@casfa/client-bridge";
+import CloseIcon from "@mui/icons-material/Close";
 import OpenInBrowserIcon from "@mui/icons-material/OpenInBrowser";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import {
@@ -21,9 +23,7 @@ import {
   ListItemText,
   Typography,
 } from "@mui/material";
-import CloseIcon from "@mui/icons-material/Close";
 import { useCallback, useEffect, useState } from "react";
-import type { ViewerInfo } from "@casfa/client-bridge";
 
 // ============================================================================
 // Helpers

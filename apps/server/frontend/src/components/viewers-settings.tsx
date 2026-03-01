@@ -255,13 +255,7 @@ export function ViewersSettings() {
 // Viewer card
 // ============================================================================
 
-function ViewerCard({
-  viewer,
-  onRemove,
-}: {
-  viewer: ViewerInfo;
-  onRemove?: (id: string) => void;
-}) {
+function ViewerCard({ viewer, onRemove }: { viewer: ViewerInfo; onRemove?: (id: string) => void }) {
   // Build icon URL from viewer's icon path (if specified)
   const iconUrl = viewer.icon
     ? `/page/${encodeURIComponent(viewer.nodeKey)}/${encodeURIComponent(viewer.icon)}`
@@ -272,11 +266,7 @@ function ViewerCard({
       <CardContent sx={{ p: 0, "&:last-child": { pb: 0 } }}>
         <Box display="flex" alignItems="center" gap={1.5}>
           {iconUrl ? (
-            <Avatar
-              src={iconUrl}
-              variant="rounded"
-              sx={{ width: 32, height: 32 }}
-            />
+            <Avatar src={iconUrl} variant="rounded" sx={{ width: 32, height: 32 }} />
           ) : (
             <Avatar
               sx={{

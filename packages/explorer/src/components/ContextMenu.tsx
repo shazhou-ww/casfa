@@ -342,23 +342,24 @@ export function ContextMenu({
       ])}
 
       {/* Extra context menu items */}
-      {extraItems && extraItems.length > 0 && [
-        <Divider key="extra-divider" />,
-        ...extraItems.map((extra) => (
-          <MenuItem
-            key={extra.key}
-            onClick={handleAction(() =>
-              extra.onClick(
-                selectedItems.length > 0 ? selectedItems : targetItem ? [targetItem] : []
-              )
-            )}
-            disabled={extra.disabled}
-          >
-            {extra.icon && <ListItemIcon>{extra.icon}</ListItemIcon>}
-            <ListItemText>{extra.label}</ListItemText>
-          </MenuItem>
-        )),
-      ]}
+      {extraItems &&
+        extraItems.length > 0 && [
+          <Divider key="extra-divider" />,
+          ...extraItems.map((extra) => (
+            <MenuItem
+              key={extra.key}
+              onClick={handleAction(() =>
+                extra.onClick(
+                  selectedItems.length > 0 ? selectedItems : targetItem ? [targetItem] : []
+                )
+              )}
+              disabled={extra.disabled}
+            >
+              {extra.icon && <ListItemIcon>{extra.icon}</ListItemIcon>}
+              <ListItemText>{extra.label}</ListItemText>
+            </MenuItem>
+          )),
+        ]}
     </Menu>
   );
 }

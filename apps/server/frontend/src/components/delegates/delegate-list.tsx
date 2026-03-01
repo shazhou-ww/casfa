@@ -8,8 +8,8 @@ import {
   Block as BlockIcon,
   CloudUpload,
   InfoOutlined as InfoOutlinedIcon,
-  Storage,
   VpnKey as KeyIcon,
+  Storage,
 } from "@mui/icons-material";
 import {
   Alert,
@@ -106,7 +106,7 @@ export function DelegateList({ onCreateClick, onRevokeClick }: DelegateListProps
   useEffect(() => {
     fetchDelegates();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [includeRevoked]);
+  }, [fetchDelegates]);
 
   const handleCreateClick = useCallback(() => {
     onCreateClick();
@@ -212,19 +212,38 @@ export function DelegateList({ onCreateClick, onRevokeClick }: DelegateListProps
                             textDecoration: isRevoked ? "line-through" : "none",
                           }}
                         >
-                          {d.name || d.delegateId.slice(0, 16) + "…"}
+                          {d.name || `${d.delegateId.slice(0, 16)}…`}
                         </Typography>
                       </TableCell>
                       <TableCell align="center">
                         <Typography variant="body2">{d.depth}</Typography>
                       </TableCell>
                       <TableCell align="center">
-                        <Box sx={{ display: "flex", gap: 0.5, justifyContent: "center", flexWrap: "wrap" }}>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            gap: 0.5,
+                            justifyContent: "center",
+                            flexWrap: "wrap",
+                          }}
+                        >
                           {d.canUpload && (
-                            <Chip icon={<CloudUpload />} label="Upload" color="primary" variant="outlined" size="small" />
+                            <Chip
+                              icon={<CloudUpload />}
+                              label="Upload"
+                              color="primary"
+                              variant="outlined"
+                              size="small"
+                            />
                           )}
                           {d.canManageDepot && (
-                            <Chip icon={<Storage />} label="Depot" color="secondary" variant="outlined" size="small" />
+                            <Chip
+                              icon={<Storage />}
+                              label="Depot"
+                              color="secondary"
+                              variant="outlined"
+                              size="small"
+                            />
                           )}
                           {!d.canUpload && !d.canManageDepot && (
                             <Chip label="Read only" variant="outlined" size="small" />

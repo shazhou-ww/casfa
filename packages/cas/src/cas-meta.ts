@@ -60,7 +60,10 @@ export async function readTimes(storage: CasStorage): Promise<Record<string, num
   return obj && typeof obj === "object" ? obj : {};
 }
 
-export async function writeTimes(storage: CasStorage, times: Record<string, number>): Promise<void> {
+export async function writeTimes(
+  storage: CasStorage,
+  times: Record<string, number>
+): Promise<void> {
   await storage.put(BLOB_KEYS.TIMES, encodeJson(times));
 }
 

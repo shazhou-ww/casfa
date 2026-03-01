@@ -2,15 +2,10 @@
  * CAS service tests: getNode, putNode, hasNode, child existence check
  */
 import { beforeEach, describe, expect, it } from "bun:test";
-import {
-  decodeNode,
-  encodeDictNode,
-  hashToKey,
-  computeSizeFlagByte,
-} from "@casfa/core";
 import type { KeyProvider } from "@casfa/core";
+import { computeSizeFlagByte, encodeDictNode, hashToKey } from "@casfa/core";
 import { createMemoryStorage } from "@casfa/storage-memory";
-import { createCasService, CasError } from "../src/cas-service.ts";
+import { CasError, createCasService } from "../src/cas-service.ts";
 import type { CasStorage } from "../src/types.ts";
 
 const createKeyProvider = (): KeyProvider => ({
@@ -46,10 +41,7 @@ describe("CasService", () => {
     });
 
     it("returns decoded node after putNode", async () => {
-      const encoded = await encodeDictNode(
-        { children: [], childNames: [] },
-        createKeyProvider()
-      );
+      const encoded = await encodeDictNode({ children: [], childNames: [] }, createKeyProvider());
       const nodeKey = hashToKey(encoded.hash);
       await service.putNode(nodeKey, encoded.bytes);
       const node = await service.getNode(nodeKey);
@@ -66,10 +58,7 @@ describe("CasService", () => {
     });
 
     it("returns true when key exists", async () => {
-      const encoded = await encodeDictNode(
-        { children: [], childNames: [] },
-        createKeyProvider()
-      );
+      const encoded = await encodeDictNode({ children: [], childNames: [] }, createKeyProvider());
       const nodeKey = hashToKey(encoded.hash);
       await service.putNode(nodeKey, encoded.bytes);
       expect(await service.hasNode(nodeKey)).toBe(true);
@@ -98,10 +87,7 @@ describe("CasService", () => {
   describe("gc and info", () => {
     it("deletes unreachable and old keys after gc(roots, cutOffTime)", async () => {
       const keyProvider = createKeyProvider();
-      const emptyEnc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const emptyEnc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const keyEmpty = hashToKey(emptyEnc.hash);
       await service.putNode(keyEmpty, emptyEnc.bytes);
 
@@ -133,10 +119,7 @@ describe("CasService", () => {
 
     it("multi-root: two disjoint trees, gc with one root deletes the other tree", async () => {
       const keyProvider = createKeyProvider();
-      const e1Enc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const e1Enc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const keyE1 = hashToKey(e1Enc.hash);
       await service.putNode(keyE1, e1Enc.bytes);
 
@@ -176,10 +159,7 @@ describe("CasService", () => {
 
     it("cutOffTime: unreachable node retained when writeTime >= cutOffTime", async () => {
       const keyProvider = createKeyProvider();
-      const enc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const enc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const key = hashToKey(enc.hash);
       const cutOffBeforePut = Date.now() - 1000;
       await service.putNode(key, enc.bytes);
@@ -189,10 +169,7 @@ describe("CasService", () => {
 
     it("cutOffTime: unreachable node deleted when writeTime < cutOffTime", async () => {
       const keyProvider = createKeyProvider();
-      const enc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const enc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const key = hashToKey(enc.hash);
       await service.putNode(key, enc.bytes);
       const cutOffAfterPut = Date.now() + 10_000;
@@ -202,16 +179,10 @@ describe("CasService", () => {
 
     it("info() before and after gc: nodeCount and totalBytes change", async () => {
       const keyProvider = createKeyProvider();
-      const eEnc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const eEnc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const keyE = hashToKey(eEnc.hash);
       await service.putNode(keyE, eEnc.bytes);
-      const rEnc = await encodeDictNode(
-        { children: [eEnc.hash], childNames: ["a"] },
-        keyProvider
-      );
+      const rEnc = await encodeDictNode({ children: [eEnc.hash], childNames: ["a"] }, keyProvider);
       const keyR = hashToKey(rEnc.hash);
       await service.putNode(keyR, rEnc.bytes);
 
@@ -230,10 +201,7 @@ describe("CasService", () => {
 
     it("info() returns lastGcTime and nodeCount after gc", async () => {
       const keyProvider = createKeyProvider();
-      const enc = await encodeDictNode(
-        { children: [], childNames: [] },
-        keyProvider
-      );
+      const enc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const key = hashToKey(enc.hash);
       await service.putNode(key, enc.bytes);
 

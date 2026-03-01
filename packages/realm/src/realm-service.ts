@@ -1,8 +1,8 @@
 import type { CasService } from "@casfa/cas";
 import type { CasNode, KeyProvider, StorageProvider } from "@casfa/core";
 import { encodeDictNode, hashToKey, keyToHash } from "@casfa/core";
-import { dagDiff } from "@casfa/dag-diff";
 import type { MovedEntry } from "@casfa/dag-diff";
+import { dagDiff } from "@casfa/dag-diff";
 import { RealmError } from "./errors.ts";
 import type { Depot, DepotStore } from "./types.ts";
 
@@ -142,7 +142,8 @@ async function replaceSubtreeAtPath(
     return newKey;
   }
   const firstKey = resolveSegment(node, segments[0]!);
-  if (firstKey === null) throw new RealmError("InvalidPath", `path segment ${segments[0]} not found`);
+  if (firstKey === null)
+    throw new RealmError("InvalidPath", `path segment ${segments[0]} not found`);
   const newFirstKey = await replaceSubtreeAtPath(
     cas,
     keyProvider,
@@ -186,7 +187,8 @@ export class RealmService {
       parentDepotId,
       segments
     );
-    if (childKey === null) throw new RealmError("InvalidPath", "path does not resolve under parent root");
+    if (childKey === null)
+      throw new RealmError("InvalidPath", "path does not resolve under parent root");
     const depotId = crypto.randomUUID();
     const mountPath = typeof path === "string" ? path : segments;
     const newDepot: Depot = {
@@ -263,24 +265,14 @@ export class RealmService {
 
   async getNode(depotId: string, path: PathInput): Promise<CasNode | null> {
     const segments = normalizePath(path);
-    const key = await resolvePath(
-      this.cas,
-      (id) => this.depotStore.getRoot(id),
-      depotId,
-      segments
-    );
+    const key = await resolvePath(this.cas, (id) => this.depotStore.getRoot(id), depotId, segments);
     if (key === null) return null;
     return this.cas.getNode(key);
   }
 
   async hasNode(depotId: string, path: PathInput): Promise<boolean> {
     const segments = normalizePath(path);
-    const key = await resolvePath(
-      this.cas,
-      (id) => this.depotStore.getRoot(id),
-      depotId,
-      segments
-    );
+    const key = await resolvePath(this.cas, (id) => this.depotStore.getRoot(id), depotId, segments);
     if (key === null) return false;
     return this.cas.hasNode(key);
   }
@@ -299,9 +291,16 @@ export class RealmService {
     await this.cas.gc([...rootKeys], cutOffTime);
   }
 
-  async info(realmId?: string): Promise<{ lastGcTime?: number; nodeCount: number; totalBytes: number; depotCount?: number }> {
+  async info(
+    realmId?: string
+  ): Promise<{ lastGcTime?: number; nodeCount: number; totalBytes: number; depotCount?: number }> {
     const casInfo = await this.cas.info();
-    const result: { lastGcTime?: number; nodeCount: number; totalBytes: number; depotCount?: number } = {
+    const result: {
+      lastGcTime?: number;
+      nodeCount: number;
+      totalBytes: number;
+      depotCount?: number;
+    } = {
       ...casInfo,
     };
     if (realmId !== undefined) {

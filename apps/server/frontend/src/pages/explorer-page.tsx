@@ -105,7 +105,9 @@ export function ExplorerPage() {
         });
         setViewerToast(`Viewer "${manifest.name}" added successfully.`);
       } catch (err) {
-        setViewerToast(`Failed to add viewer: ${err instanceof Error ? err.message : "unknown error"}`);
+        setViewerToast(
+          `Failed to add viewer: ${err instanceof Error ? err.message : "unknown error"}`
+        );
       }
     },
     [appClient]

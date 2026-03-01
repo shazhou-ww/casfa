@@ -40,7 +40,7 @@ export function NavTabs() {
     (path: string) => {
       navigate(path);
     },
-    [navigate],
+    [navigate]
   );
 
   return (

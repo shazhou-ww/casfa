@@ -30,7 +30,12 @@
     "@types/bun": "latest",
     "typescript": "^5.0.0"
   },
-  "files": ["dist", "README.md"],
-  "publishConfig": { "access": "public" },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT"
 }

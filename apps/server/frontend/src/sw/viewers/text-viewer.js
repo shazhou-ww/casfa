@@ -29,15 +29,14 @@
       .sort();
 
     if (names.length === 0) {
-      content.innerHTML =
-        '<p style="opacity:.6;">No text files found in target.</p>';
+      content.innerHTML = '<p style="opacity:.6;">No text files found in target.</p>';
       return;
     }
 
     const show = async (name) => {
       content.innerHTML = '<p style="opacity:.5;">Loading...</p>';
       try {
-        const r = await fetch("_target/" + encodeURIComponent(name));
+        const r = await fetch(`_target/${encodeURIComponent(name)}`);
         const text = await r.text();
         const pre = document.createElement("pre");
         pre.style.cssText =
@@ -49,13 +48,11 @@
         content.innerHTML = "";
         content.append(h, pre);
       } catch (e) {
-        content.innerHTML =
-          '<p style="color:red;">Error: ' + e.message + "</p>";
+        content.innerHTML = `<p style="color:red;">Error: ${e.message}</p>`;
       }
       // Highlight active
       for (const btn of sidebar.querySelectorAll(".file-item"))
-        btn.style.background =
-          btn.dataset.name === name ? "#ddd" : "";
+        btn.style.background = btn.dataset.name === name ? "#ddd" : "";
     };
 
     for (const name of names) {
@@ -66,12 +63,10 @@
         "padding:4px 12px;cursor:pointer;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
       item.textContent = name;
       item.onmouseenter = () => {
-        if (item.style.background !== "rgb(221, 221, 221)")
-          item.style.background = "#e8e8e8";
+        if (item.style.background !== "rgb(221, 221, 221)") item.style.background = "#e8e8e8";
       };
       item.onmouseleave = () => {
-        if (item.style.background !== "rgb(221, 221, 221)")
-          item.style.background = "";
+        if (item.style.background !== "rgb(221, 221, 221)") item.style.background = "";
       };
       item.onclick = () => show(name);
       sidebar.appendChild(item);
@@ -79,7 +74,6 @@
 
     show(names[0]);
   } catch (e) {
-    content.innerHTML =
-      '<p style="color:red;">Failed to load target: ' + e.message + "</p>";
+    content.innerHTML = `<p style="color:red;">Failed to load target: ${e.message}</p>`;
   }
 })();

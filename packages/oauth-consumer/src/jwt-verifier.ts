@@ -240,7 +240,7 @@ export function createMockJwtVerifier(secret: string): JwtVerifier {
  */
 export async function createMockJwt(
   secret: string,
-  payload: { sub: string; exp?: number;[key: string]: unknown }
+  payload: { sub: string; exp?: number; [key: string]: unknown }
 ): Promise<string> {
   const header = { alg: "HS256", typ: "JWT" };
 

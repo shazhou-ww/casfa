@@ -110,11 +110,7 @@ export type FsService = {
     auth?: AccessTokenAuthContext
   ): Promise<FsRewriteResponse | FsError>;
   resolveNodeKey(realm: string, nodeKey: string): Promise<string | FsError>;
-  tree(
-    realm: string,
-    rootNodeKey: string,
-    opts?: FsTreeOptions
-  ): Promise<FsTreeResponse | FsError>;
+  tree(realm: string, rootNodeKey: string, opts?: FsTreeOptions): Promise<FsTreeResponse | FsError>;
 };
 
 type FsError = import("./types.ts").FsError;

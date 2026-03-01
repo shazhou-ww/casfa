@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Deploy script that loads AWS_PROFILE from root .env
  *
@@ -9,9 +10,9 @@
  *   bun run backend/scripts/deploy.ts all staging       # Full staging deploy
  */
 
-import { $ } from "bun";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { $ } from "bun";
 
 // Load .env from monorepo root (Bun auto-loads from cwd, but we need root)
 const rootEnvPath = resolve(import.meta.dir, "../../../../.env");
@@ -65,9 +66,7 @@ async function deployFrontend() {
   const distributionId = distIdResult.trim();
 
   if (!distributionId) {
-    throw new Error(
-      `Failed to get CloudFrontDistributionId from stack ${stackName}`
-    );
+    throw new Error(`Failed to get CloudFrontDistributionId from stack ${stackName}`);
   }
 
   console.log(`  Bucket: ${bucket}`);

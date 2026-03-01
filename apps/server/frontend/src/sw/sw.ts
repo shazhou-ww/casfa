@@ -41,16 +41,15 @@ declare global {
  */
 
 import { type CasfaClient, createClient, type TokenStorageProvider } from "@casfa/client";
-import type { SwApi, SwInitState, FireAndForgetMessage } from "@casfa/client-bridge";
+import type { FireAndForgetMessage, SwApi, SwInitState } from "@casfa/client-bridge";
 import { createIndexedDBTokenStorage } from "@casfa/client-sw";
-import * as Comlink from "comlink";
 import {
   type CasContext,
   encodeDictNode,
   getNode,
+  getWellKnownNodeData,
   hashToKey,
   isWellKnownNode,
-  getWellKnownNodeData,
   keyToHash,
   openFileStream,
   type StorageProvider,
@@ -58,8 +57,9 @@ import {
 import { createSyncCoordinator } from "@casfa/explorer/core/sync-coordinator";
 import { hashToNodeKey, nodeKeyToStorageKey, storageKeyToNodeKey } from "@casfa/protocol";
 import { createIndexedDBStorage } from "@casfa/storage-indexeddb";
-import { createSyncQueueStore } from "../lib/sync-queue-store.ts";
+import * as Comlink from "comlink";
 import { getKeyProvider } from "../lib/storage.ts";
+import { createSyncQueueStore } from "../lib/sync-queue-store.ts";
 import { initBuiltinViewers } from "./builtin-viewers.ts";
 import { createViewerService, type ViewerService } from "./viewer-service.ts";
 
@@ -86,7 +86,7 @@ let client: CasfaClient | null = null;
 // ── SyncCoordinator ──
 // Storage sync is a no-op in SW — the main thread flushes buffered nodes
 // before posting the commit message to the SW.
-const noopFlushStorage = { flush: async () => { } };
+const noopFlushStorage = { flush: async () => {} };
 
 const syncCoordinator = createSyncCoordinator({
   storage: noopFlushStorage,
@@ -449,7 +449,7 @@ function createReadonlyContext(cl: CasfaClient): CasContext {
 
       memCache.set(storageKey, result.data);
       // Write-back to IndexedDB for future reads
-      idbStorage.put(storageKey, result.data).catch(() => { });
+      idbStorage.put(storageKey, result.data).catch(() => {});
       return result.data;
     },
     put: async () => {
@@ -587,7 +587,7 @@ function createPageContext(cl: CasfaClient): CasContext {
       if (!result.ok) return null;
 
       memCache.set(storageKey, result.data);
-      idbStorage.put(storageKey, result.data).catch(() => { });
+      idbStorage.put(storageKey, result.data).catch(() => {});
       return result.data;
     },
     put: async () => {
@@ -677,17 +677,14 @@ async function handlePageFetch(_request: Request, url: URL): Promise<Response> {
             }
           }
         }
-        return new Response(
-          JSON.stringify({ type: "dict", key: targetNodeKey, children }),
-          {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-              "Cache-Control": cacheControl,
-              "X-CAS-Key": targetNodeKey,
-            },
-          }
-        );
+        return new Response(JSON.stringify({ type: "dict", key: targetNodeKey, children }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": cacheControl,
+            "X-CAS-Key": targetNodeKey,
+          },
+        });
       }
 
       case "file": {
@@ -816,10 +813,7 @@ async function handleViewCompose(url: URL): Promise<Response> {
 
     // Compose: viewer children + _target → new d-node
     const childNames = [...(viewerNode.childNames ?? []), "_target"];
-    const children = [
-      ...(viewerNode.children ?? []),
-      keyToHash(targetStorageKey),
-    ];
+    const children = [...(viewerNode.children ?? []), keyToHash(targetStorageKey)];
 
     // Encode the virtual d-node (pure computation, no storage write)
     const encoded = await encodeDictNode({ children, childNames }, getKeyProvider());
@@ -858,10 +852,7 @@ async function handleViewCompose(url: URL): Promise<Response> {
  * Supports bare node keys (nod_XXX) and paths (nod_XXX/subdir/file).
  * Returns the storage key string on success, or a Response on error.
  */
-async function resolveUriToStorageKey(
-  ctx: CasContext,
-  uri: string
-): Promise<string | Response> {
+async function resolveUriToStorageKey(ctx: CasContext, uri: string): Promise<string | Response> {
   // Strip optional cas:// prefix
   const bare = uri.startsWith("cas://") ? uri.slice(6) : uri;
 
@@ -885,10 +876,10 @@ async function resolveUriToStorageKey(
   if (pathSegments.length > 0) {
     const nav = await navigatePath(ctx, storageKey, pathSegments);
     if ("error" in nav) {
-      return new Response(
-        JSON.stringify({ error: "navigation_failed", message: nav.error }),
-        { status: nav.status, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "navigation_failed", message: nav.error }), {
+        status: nav.status,
+        headers: { "Content-Type": "application/json" },
+      });
     }
     storageKey = nav.storageKey;
   }
@@ -986,7 +977,7 @@ async function handleCasFetch(request: Request, url: URL): Promise<Response> {
             "X-CAS-Key": targetNodeKey,
           },
         });
-        cache.put(cacheKey, response.clone()).catch(() => { });
+        cache.put(cacheKey, response.clone()).catch(() => {});
         return response;
       }
 
@@ -1008,7 +999,7 @@ async function handleCasFetch(request: Request, url: URL): Promise<Response> {
         // For simplicity, we don't cache streamed responses inline —
         // instead, re-fetch from the in-memory ctx cache would be instant.
         // We DO cache the final response so subsequent requests hit the SW cache.
-        cache.put(cacheKey, response.clone()).catch(() => { });
+        cache.put(cacheKey, response.clone()).catch(() => {});
         return response;
       }
 
@@ -1054,5 +1045,5 @@ async function handleCasFetch(request: Request, url: URL): Promise<Response> {
 
 self.addEventListener("online", () => {
   // Network restored — immediately attempt to flush pending commits
-  syncCoordinator.runSync().catch(() => { });
+  syncCoordinator.runSync().catch(() => {});
 });

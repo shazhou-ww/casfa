@@ -31,8 +31,7 @@
       .sort();
 
     if (names.length === 0) {
-      display.innerHTML =
-        '<p style="opacity:.6;">No images found in target.</p>';
+      display.innerHTML = '<p style="opacity:.6;">No images found in target.</p>';
       return;
     }
 
@@ -44,9 +43,9 @@
       idx = ((i % names.length) + names.length) % names.length;
       img.style.opacity = "0";
       setTimeout(() => {
-        img.src = "_target/" + encodeURIComponent(names[idx]);
+        img.src = `_target/${encodeURIComponent(names[idx])}`;
         img.alt = names[idx];
-        counter.textContent = idx + 1 + " / " + names.length;
+        counter.textContent = `${idx + 1} / ${names.length}`;
         img.style.opacity = "1";
       }, 150);
     };
@@ -80,8 +79,7 @@
     };
 
     const counter = document.createElement("span");
-    counter.style.cssText =
-      "min-width:60px;text-align:center;font-size:14px;";
+    counter.style.cssText = "min-width:60px;text-align:center;font-size:14px;";
 
     controls.append(prev, playBtn, next, counter);
 
@@ -99,7 +97,6 @@
       }
     });
   } catch (e) {
-    display.innerHTML =
-      '<p style="color:#e74c3c;">Failed to load: ' + e.message + "</p>";
+    display.innerHTML = `<p style="color:#e74c3c;">Failed to load: ${e.message}</p>`;
   }
 })();

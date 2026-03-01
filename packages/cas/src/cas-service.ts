@@ -1,18 +1,18 @@
-import { decodeNode, hashToKey } from "@casfa/core";
 import type { CasNode } from "@casfa/core";
-import type { CasContext, CasInfo } from "./types.ts";
+import { decodeNode, hashToKey } from "@casfa/core";
 import {
-  readKeysToRetain,
-  writeKeysToRetain,
   appendNewKey,
   clearNewKeys,
+  readKeysToRetain,
+  readLastGcTime,
   readNewKeys,
   readTimes,
-  writeTimes,
   setTime,
-  readLastGcTime,
+  writeKeysToRetain,
   writeLastGcTime,
+  writeTimes,
 } from "./cas-meta.ts";
+import type { CasContext, CasInfo } from "./types.ts";
 
 export type CasErrorCode = "ChildMissing" | "KeyMismatch";
 
@@ -78,7 +78,10 @@ export function createCasService(ctx: CasContext) {
       const computedHash = await ctx.key.computeKey(data);
       const computedKey = hashToKey(computedHash);
       if (computedKey !== nodeKey) {
-        throw new CasError("KeyMismatch", `Node key ${nodeKey} does not match content hash ${computedKey}`);
+        throw new CasError(
+          "KeyMismatch",
+          `Node key ${nodeKey} does not match content hash ${computedKey}`
+        );
       }
 
       await ctx.storage.put(nodeKey, data);

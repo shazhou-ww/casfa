@@ -90,10 +90,7 @@ export function DelegatesPage() {
           onNotify={handleNotify}
         />
       ) : (
-        <DelegateList
-          onCreateClick={handleOpenCreate}
-          onRevokeClick={handleListRevokeClick}
-        />
+        <DelegateList onCreateClick={handleOpenCreate} onRevokeClick={handleListRevokeClick} />
       )}
 
       <CreateDelegateDialog
@@ -102,9 +99,7 @@ export function DelegatesPage() {
         onCreated={handleCreated}
       />
 
-      {tokenData && (
-        <TokenDisplay open={!!tokenData} onClose={handleCloseToken} data={tokenData} />
-      )}
+      {tokenData && <TokenDisplay open={!!tokenData} onClose={handleCloseToken} data={tokenData} />}
 
       {revokeTarget && (
         <RevokeDelegateDialog
