@@ -15,6 +15,7 @@ import { createBranchesController } from "./controllers/branches.ts";
 import { createDelegatesController } from "./controllers/delegates.ts";
 import { createRealmController } from "./controllers/realm.ts";
 import { createMcpHandler } from "./mcp/handler.ts";
+import { createMeController } from "./controllers/me.ts";
 
 import type { KeyProvider } from "@casfa/core";
 
@@ -68,6 +69,10 @@ export function createApp(deps: AppDeps) {
   const branches = createBranchesController({ ...rootResolverDeps, config: deps.config });
   const delegates = createDelegatesController({ delegateGrantStore: deps.delegateGrantStore });
   const realm = createRealmController(rootResolverDeps);
+  const me = createMeController({});
+
+  app.use("/api/me", authMiddleware);
+  app.get("/api/me", (c) => me.get(c));
 
   app.get("/api/realm/:realmId/files", (c) =>
     c.req.query("meta") === "1" ? files.stat(c) : files.list(c)
