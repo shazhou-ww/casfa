@@ -8,10 +8,13 @@ export type DelegatePermission =
 /** Worker 的访问模式 */
 export type WorkerAccess = "readonly" | "readwrite";
 
-/** User：Realm 拥有者；realmId 由 userId 查询（当前 1:1），天然全权限 */
+/** User：Realm 拥有者；realmId 由 userId 查询（当前 1:1），天然全权限；Cognito 验签后可带 profile 字段 */
 export type UserAuth = {
   type: "user";
   userId: string;
+  email?: string;
+  name?: string;
+  picture?: string;
 };
 
 /** Delegate：长期授权客户端/Agent */

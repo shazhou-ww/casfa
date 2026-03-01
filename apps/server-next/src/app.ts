@@ -51,6 +51,7 @@ export function createApp(deps: AppDeps) {
   const authMiddleware = createAuthMiddleware({
     delegateGrantStore: deps.delegateGrantStore,
     delegateStore: deps.delegateStore,
+    config: deps.config,
   });
   const realmMiddleware = createRealmMiddleware();
   app.use("/api/realm/:realmId/*", authMiddleware, realmMiddleware);

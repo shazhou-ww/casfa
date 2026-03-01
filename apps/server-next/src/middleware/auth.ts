@@ -2,6 +2,8 @@ import type { Context, Next } from "hono";
 import type { AuthContext, Env } from "../types.ts";
 import type { DelegateGrantStore } from "../db/delegate-grants.ts";
 import type { DelegateStore } from "@casfa/realm";
+import type { ServerConfig } from "../config.ts";
+import { createCognitoJwtVerifier } from "../auth/cognito-jwks.ts";
 
 async function sha256Hex(text: string): Promise<string> {
   const bytes = new TextEncoder().encode(text);
@@ -11,14 +13,32 @@ async function sha256Hex(text: string): Promise<string> {
     .join("");
 }
 
-/** Mock JWT verifier: decode payload without verification, return { sub }. */
-async function mockJwtVerify(token: string): Promise<{ sub: string; client_id?: string }> {
+/** Mock JWT verifier: decode payload without verification, return { sub, client_id?, email?, name?, picture? }. */
+async function mockJwtVerify(token: string): Promise<{
+  sub: string;
+  client_id?: string;
+  email?: string;
+  name?: string;
+  picture?: string;
+}> {
   const parts = token.split(".");
   if (parts.length !== 3 || !parts[1]) throw new Error("Invalid JWT");
   const decoded = atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"));
-  const obj = JSON.parse(decoded) as { sub?: string; client_id?: string };
+  const obj = JSON.parse(decoded) as {
+    sub?: string;
+    client_id?: string;
+    email?: string;
+    name?: string;
+    picture?: string;
+  };
   if (obj.sub == null) throw new Error("Missing sub");
-  return { sub: obj.sub, client_id: obj.client_id };
+  return {
+    sub: obj.sub,
+    client_id: obj.client_id,
+    email: obj.email,
+    name: obj.name,
+    picture: obj.picture,
+  };
 }
 
 /** Decode Branch token (base64url of branchId) to branchId */
@@ -33,13 +53,32 @@ function decodeBranchToken(token: string): string | null {
 }
 
 export type AuthMiddlewareDeps = {
-  jwtVerifier?: (token: string) => Promise<{ sub: string; client_id?: string }>;
+  jwtVerifier?: (token: string) => Promise<{
+    sub: string;
+    client_id?: string;
+    email?: string;
+    name?: string;
+    picture?: string;
+  }>;
+  config?: ServerConfig;
   delegateGrantStore: DelegateGrantStore;
   delegateStore: DelegateStore;
 };
 
 export function createAuthMiddleware(deps: AuthMiddlewareDeps) {
-  const jwtVerifier = deps.jwtVerifier ?? mockJwtVerify;
+  let jwtVerifier = deps.jwtVerifier;
+  if (jwtVerifier == null) {
+    const auth = deps.config?.auth;
+    if (auth?.cognitoRegion && auth?.cognitoUserPoolId) {
+      jwtVerifier = createCognitoJwtVerifier({
+        region: auth.cognitoRegion,
+        userPoolId: auth.cognitoUserPoolId,
+        clientId: auth.cognitoClientId,
+      });
+    } else {
+      jwtVerifier = mockJwtVerify;
+    }
+  }
 
   return async function authMiddleware(c: Context<Env>, next: Next) {
     const header = c.req.header("Authorization");
@@ -72,7 +111,13 @@ export function createAuthMiddleware(deps: AuthMiddlewareDeps) {
           c.set("auth", auth);
           return next();
         }
-        const userAuth: AuthContext = { type: "user", userId };
+        const userAuth: AuthContext = {
+          type: "user",
+          userId,
+          email: payload.email,
+          name: payload.name,
+          picture: payload.picture,
+        };
         c.set("auth", userAuth);
         return next();
       } catch {
