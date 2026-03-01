@@ -3,8 +3,11 @@ import type { Env, ErrorBody } from "./types.ts";
 import type { ServerConfig } from "./config.ts";
 import type { CasFacade } from "@casfa/cas";
 import type { RealmFacade } from "@casfa/realm";
+import type { DelegateStore } from "@casfa/realm";
 import type { DelegateGrantStore } from "./db/delegate-grants.ts";
 import type { DerivedDataStore } from "./db/derived-data.ts";
+import { createAuthMiddleware } from "./middleware/auth.ts";
+import { createRealmMiddleware } from "./middleware/realm.ts";
 
 export type AppDeps = {
   config: ServerConfig;
@@ -12,6 +15,7 @@ export type AppDeps = {
   realm: RealmFacade;
   delegateGrantStore: DelegateGrantStore;
   derivedDataStore: DerivedDataStore;
+  delegateStore: DelegateStore;
 };
 
 export function createApp(deps: AppDeps) {
@@ -23,6 +27,14 @@ export function createApp(deps: AppDeps) {
       authType: "mock",
     }, 200)
   );
+
+  const authMiddleware = createAuthMiddleware({
+    delegateGrantStore: deps.delegateGrantStore,
+    delegateStore: deps.delegateStore,
+  });
+  const realmMiddleware = createRealmMiddleware();
+  app.use("/api/realm/:realmId/*", authMiddleware, realmMiddleware);
+
   app.onError((err, c) => {
     const body: ErrorBody = {
       error: "INTERNAL_ERROR",
