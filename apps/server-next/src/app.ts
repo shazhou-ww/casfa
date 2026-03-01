@@ -3,11 +3,15 @@ import type { Env, ErrorBody } from "./types.ts";
 import type { ServerConfig } from "./config.ts";
 import type { CasFacade } from "@casfa/cas";
 import type { RealmFacade } from "@casfa/realm";
+import type { DelegateGrantStore } from "./db/delegate-grants.ts";
+import type { DerivedDataStore } from "./db/derived-data.ts";
 
 export type AppDeps = {
   config: ServerConfig;
   cas: CasFacade;
   realm: RealmFacade;
+  delegateGrantStore: DelegateGrantStore;
+  derivedDataStore: DerivedDataStore;
 };
 
 export function createApp(deps: AppDeps) {
