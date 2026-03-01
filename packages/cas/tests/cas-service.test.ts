@@ -1,12 +1,17 @@
 /**
- * CAS service tests: getNode, putNode, hasNode, child existence check
+ * CAS facade tests: getNode, putNode, hasNode, child existence check
  */
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { KeyProvider } from "@casfa/core";
-import { computeSizeFlagByte, encodeDictNode, hashToKey } from "@casfa/core";
+import { computeSizeFlagByte, decodeNode, encodeDictNode, hashToKey } from "@casfa/core";
 import { createMemoryStorage } from "@casfa/storage-memory";
-import { createCasService, isCasError } from "../src/cas-service.ts";
-import type { CasStorage } from "../src/types.ts";
+import {
+  bytesFromStream,
+  createCasFacade,
+  createCasStorageFromBuffer,
+  isCasError,
+  streamFromBytes,
+} from "../src/index.ts";
 
 const createKeyProvider = (): KeyProvider => ({
   computeKey: async (data: Uint8Array) => {
@@ -17,18 +22,17 @@ const createKeyProvider = (): KeyProvider => ({
   },
 });
 
-describe("CasService", () => {
-  let storage: CasStorage;
-  let service: ReturnType<typeof createCasService>;
+describe("CasFacade", () => {
+  let facade: ReturnType<typeof createCasFacade>;
 
   beforeEach(() => {
     const mem = createMemoryStorage();
-    storage = {
+    const storage = createCasStorageFromBuffer({
       get: mem.get.bind(mem),
       put: mem.put.bind(mem),
       del: mem.del.bind(mem),
-    };
-    service = createCasService({
+    });
+    facade = createCasFacade({
       storage,
       key: createKeyProvider(),
     });
@@ -36,32 +40,35 @@ describe("CasService", () => {
 
   describe("getNode", () => {
     it("returns null for missing key", async () => {
-      const got = await service.getNode("0".repeat(26));
+      const got = await facade.getNode("0".repeat(26));
       expect(got).toBeNull();
     });
 
-    it("returns decoded node after putNode", async () => {
+    it("returns key and body stream after putNode", async () => {
       const encoded = await encodeDictNode({ children: [], childNames: [] }, createKeyProvider());
       const nodeKey = hashToKey(encoded.hash);
-      await service.putNode(nodeKey, encoded.bytes);
-      const node = await service.getNode(nodeKey);
-      expect(node).not.toBeNull();
-      expect(node!.kind).toBe("dict");
-      expect(node!.children).toEqual(undefined);
-      expect(node!.childNames).toEqual([]);
+      await facade.putNode(nodeKey, streamFromBytes(encoded.bytes));
+      const result = await facade.getNode(nodeKey);
+      expect(result).not.toBeNull();
+      expect(result!.key).toBe(nodeKey);
+      const bytes = await bytesFromStream(result!.body);
+      const node = decodeNode(bytes);
+      expect(node.kind).toBe("dict");
+      expect(node.children).toEqual(undefined);
+      expect(node.childNames).toEqual([]);
     });
   });
 
   describe("hasNode", () => {
     it("returns false for missing key", async () => {
-      expect(await service.hasNode("0".repeat(26))).toBe(false);
+      expect(await facade.hasNode("0".repeat(26))).toBe(false);
     });
 
     it("returns true when key exists", async () => {
       const encoded = await encodeDictNode({ children: [], childNames: [] }, createKeyProvider());
       const nodeKey = hashToKey(encoded.hash);
-      await service.putNode(nodeKey, encoded.bytes);
-      expect(await service.hasNode(nodeKey)).toBe(true);
+      await facade.putNode(nodeKey, streamFromBytes(encoded.bytes));
+      expect(await facade.hasNode(nodeKey)).toBe(true);
     });
   });
 
@@ -75,10 +82,10 @@ describe("CasService", () => {
         keyProvider
       );
       const nodeKey = hashToKey(encoded.hash);
-      await expect(service.putNode(nodeKey, encoded.bytes)).rejects.toMatchObject({
+      await expect(facade.putNode(nodeKey, streamFromBytes(encoded.bytes))).rejects.toMatchObject({
         code: "ChildMissing",
       });
-      const err = await service.putNode(nodeKey, encoded.bytes).catch((e) => e);
+      const err = await facade.putNode(nodeKey, streamFromBytes(encoded.bytes)).catch((e) => e);
       expect(isCasError(err)).toBe(true);
       expect(err.code).toBe("ChildMissing");
     });
@@ -89,72 +96,72 @@ describe("CasService", () => {
       const keyProvider = createKeyProvider();
       const emptyEnc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const keyEmpty = hashToKey(emptyEnc.hash);
-      await service.putNode(keyEmpty, emptyEnc.bytes);
+      await facade.putNode(keyEmpty, streamFromBytes(emptyEnc.bytes));
 
       const withChildAEnc = await encodeDictNode(
         { children: [emptyEnc.hash], childNames: ["a"] },
         keyProvider
       );
       const keyRootA = hashToKey(withChildAEnc.hash);
-      await service.putNode(keyRootA, withChildAEnc.bytes);
+      await facade.putNode(keyRootA, streamFromBytes(withChildAEnc.bytes));
 
       const withChildBEnc = await encodeDictNode(
         { children: [emptyEnc.hash], childNames: ["b"] },
         keyProvider
       );
       const keyRootB = hashToKey(withChildBEnc.hash);
-      await service.putNode(keyRootB, withChildBEnc.bytes);
+      await facade.putNode(keyRootB, streamFromBytes(withChildBEnc.bytes));
 
-      expect(await service.hasNode(keyRootA)).toBe(true);
-      expect(await service.hasNode(keyRootB)).toBe(true);
-      expect(await service.hasNode(keyEmpty)).toBe(true);
+      expect(await facade.hasNode(keyRootA)).toBe(true);
+      expect(await facade.hasNode(keyRootB)).toBe(true);
+      expect(await facade.hasNode(keyEmpty)).toBe(true);
 
       const cutOffTime = Date.now() + 10_000;
-      await service.gc([keyRootA], cutOffTime);
+      await facade.gc([keyRootA], cutOffTime);
 
-      expect(await service.hasNode(keyRootA)).toBe(true);
-      expect(await service.hasNode(keyEmpty)).toBe(true);
-      expect(await service.hasNode(keyRootB)).toBe(false);
+      expect(await facade.hasNode(keyRootA)).toBe(true);
+      expect(await facade.hasNode(keyEmpty)).toBe(true);
+      expect(await facade.hasNode(keyRootB)).toBe(false);
     });
 
     it("multi-root: two disjoint trees, gc with one root deletes the other tree", async () => {
       const keyProvider = createKeyProvider();
       const e1Enc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const keyE1 = hashToKey(e1Enc.hash);
-      await service.putNode(keyE1, e1Enc.bytes);
+      await facade.putNode(keyE1, streamFromBytes(e1Enc.bytes));
 
       const r1Enc = await encodeDictNode(
         { children: [e1Enc.hash], childNames: ["x"] },
         keyProvider
       );
       const keyR1 = hashToKey(r1Enc.hash);
-      await service.putNode(keyR1, r1Enc.bytes);
+      await facade.putNode(keyR1, streamFromBytes(r1Enc.bytes));
 
       const e2Enc = await encodeDictNode(
         { children: [e1Enc.hash], childNames: ["y"] },
         keyProvider
       );
       const keyE2 = hashToKey(e2Enc.hash);
-      await service.putNode(keyE2, e2Enc.bytes);
+      await facade.putNode(keyE2, streamFromBytes(e2Enc.bytes));
 
       const r2Enc = await encodeDictNode(
         { children: [e2Enc.hash], childNames: ["z"] },
         keyProvider
       );
       const keyR2 = hashToKey(r2Enc.hash);
-      await service.putNode(keyR2, r2Enc.bytes);
+      await facade.putNode(keyR2, streamFromBytes(r2Enc.bytes));
 
-      expect(await service.hasNode(keyR1)).toBe(true);
-      expect(await service.hasNode(keyE1)).toBe(true);
-      expect(await service.hasNode(keyR2)).toBe(true);
-      expect(await service.hasNode(keyE2)).toBe(true);
+      expect(await facade.hasNode(keyR1)).toBe(true);
+      expect(await facade.hasNode(keyE1)).toBe(true);
+      expect(await facade.hasNode(keyR2)).toBe(true);
+      expect(await facade.hasNode(keyE2)).toBe(true);
 
-      await service.gc([keyR1], Date.now() + 10_000);
+      await facade.gc([keyR1], Date.now() + 10_000);
 
-      expect(await service.hasNode(keyR1)).toBe(true);
-      expect(await service.hasNode(keyE1)).toBe(true);
-      expect(await service.hasNode(keyR2)).toBe(false);
-      expect(await service.hasNode(keyE2)).toBe(false);
+      expect(await facade.hasNode(keyR1)).toBe(true);
+      expect(await facade.hasNode(keyE1)).toBe(true);
+      expect(await facade.hasNode(keyR2)).toBe(false);
+      expect(await facade.hasNode(keyE2)).toBe(false);
     });
 
     it("cutOffTime: unreachable node retained when writeTime >= cutOffTime", async () => {
@@ -162,39 +169,39 @@ describe("CasService", () => {
       const enc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const key = hashToKey(enc.hash);
       const cutOffBeforePut = Date.now() - 1000;
-      await service.putNode(key, enc.bytes);
-      await service.gc([], cutOffBeforePut);
-      expect(await service.hasNode(key)).toBe(true);
+      await facade.putNode(key, streamFromBytes(enc.bytes));
+      await facade.gc([], cutOffBeforePut);
+      expect(await facade.hasNode(key)).toBe(true);
     });
 
     it("cutOffTime: unreachable node deleted when writeTime < cutOffTime", async () => {
       const keyProvider = createKeyProvider();
       const enc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const key = hashToKey(enc.hash);
-      await service.putNode(key, enc.bytes);
+      await facade.putNode(key, streamFromBytes(enc.bytes));
       const cutOffAfterPut = Date.now() + 10_000;
-      await service.gc([], cutOffAfterPut);
-      expect(await service.hasNode(key)).toBe(false);
+      await facade.gc([], cutOffAfterPut);
+      expect(await facade.hasNode(key)).toBe(false);
     });
 
     it("info() before and after gc: nodeCount and totalBytes change", async () => {
       const keyProvider = createKeyProvider();
       const eEnc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const keyE = hashToKey(eEnc.hash);
-      await service.putNode(keyE, eEnc.bytes);
+      await facade.putNode(keyE, streamFromBytes(eEnc.bytes));
       const rEnc = await encodeDictNode({ children: [eEnc.hash], childNames: ["a"] }, keyProvider);
       const keyR = hashToKey(rEnc.hash);
-      await service.putNode(keyR, rEnc.bytes);
+      await facade.putNode(keyR, streamFromBytes(rEnc.bytes));
 
-      const infoBefore = await service.info();
+      const infoBefore = await facade.info();
       expect(infoBefore.nodeCount).toBe(2);
       expect(infoBefore.totalBytes).toBeGreaterThan(0);
-      expect(infoBefore.lastGcTime).toBeUndefined();
+      expect(infoBefore.lastGcTime).toBeNull();
 
-      await service.gc([keyR], Date.now() + 10_000);
+      await facade.gc([keyR], Date.now() + 10_000);
 
-      const infoAfter = await service.info();
-      expect(infoAfter.lastGcTime).toBeDefined();
+      const infoAfter = await facade.info();
+      expect(infoAfter.lastGcTime).not.toBeNull();
       expect(infoAfter.nodeCount).toBe(2);
       expect(infoAfter.totalBytes).toBe(infoBefore.totalBytes);
     });
@@ -203,16 +210,16 @@ describe("CasService", () => {
       const keyProvider = createKeyProvider();
       const enc = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
       const key = hashToKey(enc.hash);
-      await service.putNode(key, enc.bytes);
+      await facade.putNode(key, streamFromBytes(enc.bytes));
 
-      let inf = await service.info();
+      let inf = await facade.info();
       expect(inf.nodeCount).toBe(1);
       expect(inf.totalBytes).toBeGreaterThan(0);
-      expect(inf.lastGcTime).toBeUndefined();
+      expect(inf.lastGcTime).toBeNull();
 
-      await service.gc([key], Date.now() + 1);
-      inf = await service.info();
-      expect(inf.lastGcTime).toBeDefined();
+      await facade.gc([key], Date.now() + 1);
+      inf = await facade.info();
+      expect(inf.lastGcTime).not.toBeNull();
       expect(typeof inf.lastGcTime).toBe("number");
       expect(inf.nodeCount).toBe(1);
       expect(inf.totalBytes).toBeGreaterThan(0);

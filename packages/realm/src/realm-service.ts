@@ -1,17 +1,16 @@
-import type { CasService } from "@casfa/cas";
+import type { CasFacade } from "@casfa/cas";
+import { bytesFromStream, streamFromBytes } from "@casfa/cas";
 import type { CasNode, KeyProvider, StorageProvider } from "@casfa/core";
-import { encodeDictNode, hashToKey, keyToHash } from "@casfa/core";
+import { decodeNode, encodeDictNode, hashToKey, keyToHash } from "@casfa/core";
 import type { MovedEntry } from "@casfa/dag-diff";
 import { dagDiff } from "@casfa/dag-diff";
 import { createRealmError } from "./errors.ts";
-import type { Depot, DepotStore } from "./types.ts";
+import type { Depot, DepotStore } from "./realm-legacy-types.ts";
 
 export type RealmServiceContext = {
-  cas: CasService;
+  cas: CasFacade;
   depotStore: DepotStore;
-  /** KeyProvider for building new dict nodes (e.g. closeDepot). Same as CAS context key. */
   key: KeyProvider;
-  /** Storage for dag-diff (e.g. same store CAS uses). Required for updating child depot paths on parent commit move. */
   storage: StorageProvider;
 };
 
@@ -68,7 +67,7 @@ function resolveSegment(node: CasNode, segment: string): string | null {
  * Resolve path from depot root to final node key. Returns key or null.
  */
 async function resolvePath(
-  cas: CasService,
+  cas: CasFacade,
   getRoot: (depotId: string) => Promise<string | null>,
   depotId: string,
   segments: string[]
@@ -79,8 +78,10 @@ async function resolvePath(
 
   let key = rootKey;
   for (const segment of segments) {
-    const node = await cas.getNode(key);
-    if (!node) return null;
+    const result = await cas.getNode(key);
+    if (!result) return null;
+    const bytes = await bytesFromStream(result.body);
+    const node = decodeNode(bytes);
     const nextKey = resolveSegment(node, segment);
     if (nextKey === null) return null;
     key = nextKey;
@@ -93,14 +94,17 @@ async function resolvePath(
  * node must be a dict. Returns the key of the new node (caller must putNode).
  */
 async function replaceDictEntry(
-  cas: CasService,
+  cas: CasFacade,
   keyProvider: KeyProvider,
   nodeKey: string,
   replaceName: string,
   replaceKey: string
 ): Promise<{ newKey: string; bytes: Uint8Array }> {
-  const node = await cas.getNode(nodeKey);
-  if (!node || node.kind !== "dict") throw createRealmError("InvalidPath", "node is not a dict");
+  const result = await cas.getNode(nodeKey);
+  if (!result) throw createRealmError("InvalidPath", "node not found");
+  const bytes = await bytesFromStream(result.body);
+  const node = decodeNode(bytes);
+  if (node.kind !== "dict") throw createRealmError("InvalidPath", "node is not a dict");
   const names = node.childNames ?? [];
   const children = node.children ?? [];
   const nameIdx = names.indexOf(replaceName);
@@ -121,24 +125,27 @@ async function replaceDictEntry(
  * Returns the key of the new root (new nodes are put via cas).
  */
 async function replaceSubtreeAtPath(
-  cas: CasService,
+  cas: CasFacade,
   keyProvider: KeyProvider,
   nodeKey: string,
   segments: string[],
   newChildKey: string
 ): Promise<string> {
   if (segments.length === 0) throw createRealmError("InvalidPath", "mount path must not be empty");
-  const node = await cas.getNode(nodeKey);
-  if (!node || node.kind !== "dict") throw createRealmError("InvalidPath", "node is not a dict");
+  const result = await cas.getNode(nodeKey);
+  if (!result) throw createRealmError("InvalidPath", "node not found");
+  const bytes = await bytesFromStream(result.body);
+  const node = decodeNode(bytes);
+  if (node.kind !== "dict") throw createRealmError("InvalidPath", "node is not a dict");
   if (segments.length === 1) {
-    const { newKey, bytes } = await replaceDictEntry(
+    const { newKey, bytes: newBytes } = await replaceDictEntry(
       cas,
       keyProvider,
       nodeKey,
       segments[0]!,
       newChildKey
     );
-    await cas.putNode(newKey, bytes);
+    await cas.putNode(newKey, streamFromBytes(newBytes));
     return newKey;
   }
   const firstKey = resolveSegment(node, segments[0]!);
@@ -151,21 +158,21 @@ async function replaceSubtreeAtPath(
     segments.slice(1),
     newChildKey
   );
-  const { newKey, bytes } = await replaceDictEntry(
+  const { newKey, bytes: newBytes } = await replaceDictEntry(
     cas,
     keyProvider,
     nodeKey,
     segments[0]!,
     newFirstKey
   );
-  await cas.putNode(newKey, bytes);
+  await cas.putNode(newKey, streamFromBytes(newBytes));
   return newKey;
 }
 
 export function createRealmService(ctx: RealmServiceContext) {
   const { cas, depotStore, key, storage } = ctx;
   return {
-    get cas(): CasService {
+    get cas(): CasFacade {
       return cas;
     },
     get depotStore(): DepotStore {
@@ -270,7 +277,10 @@ export function createRealmService(ctx: RealmServiceContext) {
       const segments = normalizePath(path);
       const keyResolved = await resolvePath(cas, (id) => depotStore.getRoot(id), depotId, segments);
       if (keyResolved === null) return null;
-      return cas.getNode(keyResolved);
+      const result = await cas.getNode(keyResolved);
+      if (!result) return null;
+      const bytes = await bytesFromStream(result.body);
+      return decodeNode(bytes);
     },
 
     async hasNode(depotId: string, path: PathInput): Promise<boolean> {
@@ -281,7 +291,7 @@ export function createRealmService(ctx: RealmServiceContext) {
     },
 
     async putNode(nodeKey: string, data: Uint8Array): Promise<void> {
-      await cas.putNode(nodeKey, data);
+      await cas.putNode(nodeKey, streamFromBytes(data));
     },
 
     async gc(realmId: string, cutOffTime: number): Promise<void> {

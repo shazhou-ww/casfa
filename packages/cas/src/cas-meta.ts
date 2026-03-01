@@ -2,6 +2,7 @@
  * CAS internal meta blobs: keysToRetain, new keys since GC, key→timestamp, lastGcTime.
  * Uses only storage get/put/del; format is JSON.
  */
+import { bytesFromStream, streamFromBytes } from "./stream-util.ts";
 import type { CasStorage } from "./types.ts";
 
 export const BLOB_KEYS = {
@@ -27,18 +28,28 @@ function decodeJson<T>(buf: Uint8Array | null): T | null {
   return JSON.parse(decoder.decode(buf)) as T;
 }
 
+async function getBytes(storage: CasStorage, key: string): Promise<Uint8Array | null> {
+  const stream = await storage.get(key);
+  if (stream === null) return null;
+  return bytesFromStream(stream);
+}
+
+function putBytes(storage: CasStorage, key: string, bytes: Uint8Array): Promise<void> {
+  return storage.put(key, streamFromBytes(bytes));
+}
+
 export async function readKeysToRetain(storage: CasStorage): Promise<string[]> {
-  const buf = await storage.get(BLOB_KEYS.RETAINED);
+  const buf = await getBytes(storage, BLOB_KEYS.RETAINED);
   const arr = decodeJson<string[]>(buf);
   return Array.isArray(arr) ? arr : [];
 }
 
 export async function writeKeysToRetain(storage: CasStorage, keys: string[]): Promise<void> {
-  await storage.put(BLOB_KEYS.RETAINED, encodeJson(keys));
+  await putBytes(storage, BLOB_KEYS.RETAINED, encodeJson(keys));
 }
 
 export async function readNewKeys(storage: CasStorage): Promise<string[]> {
-  const buf = await storage.get(BLOB_KEYS.NEW_KEYS);
+  const buf = await getBytes(storage, BLOB_KEYS.NEW_KEYS);
   const arr = decodeJson<string[]>(buf);
   return Array.isArray(arr) ? arr : [];
 }
@@ -47,15 +58,15 @@ export async function appendNewKey(storage: CasStorage, key: string): Promise<vo
   const keys = await readNewKeys(storage);
   if (keys.includes(key)) return;
   keys.push(key);
-  await storage.put(BLOB_KEYS.NEW_KEYS, encodeJson(keys));
+  await putBytes(storage, BLOB_KEYS.NEW_KEYS, encodeJson(keys));
 }
 
 export async function clearNewKeys(storage: CasStorage): Promise<void> {
-  await storage.put(BLOB_KEYS.NEW_KEYS, encodeJson([]));
+  await putBytes(storage, BLOB_KEYS.NEW_KEYS, encodeJson([]));
 }
 
 export async function readTimes(storage: CasStorage): Promise<Record<string, number>> {
-  const buf = await storage.get(BLOB_KEYS.TIMES);
+  const buf = await getBytes(storage, BLOB_KEYS.TIMES);
   const obj = decodeJson<Record<string, number>>(buf);
   return obj && typeof obj === "object" ? obj : {};
 }
@@ -64,7 +75,7 @@ export async function writeTimes(
   storage: CasStorage,
   times: Record<string, number>
 ): Promise<void> {
-  await storage.put(BLOB_KEYS.TIMES, encodeJson(times));
+  await putBytes(storage, BLOB_KEYS.TIMES, encodeJson(times));
 }
 
 export async function setTime(storage: CasStorage, key: string, time: number): Promise<void> {
@@ -73,15 +84,15 @@ export async function setTime(storage: CasStorage, key: string, time: number): P
   await writeTimes(storage, times);
 }
 
-export async function readLastGcTime(storage: CasStorage): Promise<number | undefined> {
-  const buf = await storage.get(BLOB_KEYS.META);
+export async function readLastGcTime(storage: CasStorage): Promise<number | null> {
+  const buf = await getBytes(storage, BLOB_KEYS.META);
   const obj = decodeJson<{ lastGcTime?: number }>(buf);
-  return obj?.lastGcTime;
+  return obj?.lastGcTime ?? null;
 }
 
 export async function writeLastGcTime(storage: CasStorage, lastGcTime: number): Promise<void> {
-  const buf = await storage.get(BLOB_KEYS.META);
+  const buf = await getBytes(storage, BLOB_KEYS.META);
   const obj = decodeJson<{ lastGcTime?: number }>(buf) ?? {};
   obj.lastGcTime = lastGcTime;
-  await storage.put(BLOB_KEYS.META, encodeJson(obj));
+  await putBytes(storage, BLOB_KEYS.META, encodeJson(obj));
 }
