@@ -3,7 +3,7 @@ import type { CasNode, KeyProvider, StorageProvider } from "@casfa/core";
 import { encodeDictNode, hashToKey, keyToHash } from "@casfa/core";
 import type { MovedEntry } from "@casfa/dag-diff";
 import { dagDiff } from "@casfa/dag-diff";
-import { RealmError } from "./errors.ts";
+import { createRealmError } from "./errors.ts";
 import type { Depot, DepotStore } from "./types.ts";
 
 export type RealmServiceContext = {
@@ -100,11 +100,11 @@ async function replaceDictEntry(
   replaceKey: string
 ): Promise<{ newKey: string; bytes: Uint8Array }> {
   const node = await cas.getNode(nodeKey);
-  if (!node || node.kind !== "dict") throw new RealmError("InvalidPath", "node is not a dict");
+  if (!node || node.kind !== "dict") throw createRealmError("InvalidPath", "node is not a dict");
   const names = node.childNames ?? [];
   const children = node.children ?? [];
   const nameIdx = names.indexOf(replaceName);
-  if (nameIdx < 0) throw new RealmError("InvalidPath", `entry ${replaceName} not found`);
+  if (nameIdx < 0) throw createRealmError("InvalidPath", `entry ${replaceName} not found`);
   const newChildren = children.slice();
   const newNames = names.slice();
   newChildren[nameIdx] = keyToHash(replaceKey);
@@ -127,9 +127,9 @@ async function replaceSubtreeAtPath(
   segments: string[],
   newChildKey: string
 ): Promise<string> {
-  if (segments.length === 0) throw new RealmError("InvalidPath", "mount path must not be empty");
+  if (segments.length === 0) throw createRealmError("InvalidPath", "mount path must not be empty");
   const node = await cas.getNode(nodeKey);
-  if (!node || node.kind !== "dict") throw new RealmError("InvalidPath", "node is not a dict");
+  if (!node || node.kind !== "dict") throw createRealmError("InvalidPath", "node is not a dict");
   if (segments.length === 1) {
     const { newKey, bytes } = await replaceDictEntry(
       cas,
@@ -143,7 +143,7 @@ async function replaceSubtreeAtPath(
   }
   const firstKey = resolveSegment(node, segments[0]!);
   if (firstKey === null)
-    throw new RealmError("InvalidPath", `path segment ${segments[0]} not found`);
+    throw createRealmError("InvalidPath", `path segment ${segments[0]} not found`);
   const newFirstKey = await replaceSubtreeAtPath(
     cas,
     keyProvider,
@@ -162,151 +162,153 @@ async function replaceSubtreeAtPath(
   return newKey;
 }
 
-export class RealmService {
-  readonly cas: CasService;
-  readonly depotStore: DepotStore;
-  readonly key: KeyProvider;
-  readonly storage: StorageProvider;
+export function createRealmService(ctx: RealmServiceContext) {
+  const { cas, depotStore, key, storage } = ctx;
+  return {
+    get cas(): CasService {
+      return cas;
+    },
+    get depotStore(): DepotStore {
+      return depotStore;
+    },
+    get key(): KeyProvider {
+      return key;
+    },
+    get storage(): StorageProvider {
+      return storage;
+    },
 
-  constructor(ctx: RealmServiceContext) {
-    this.cas = ctx.cas;
-    this.depotStore = ctx.depotStore;
-    this.key = ctx.key;
-    this.storage = ctx.storage;
-  }
-
-  async createDepot(parentDepotId: string, path: PathInput): Promise<Depot> {
-    const parent = await this.depotStore.getDepot(parentDepotId);
-    if (!parent) throw new RealmError("NotFound", "parent depot not found");
-    const rootKey = await this.depotStore.getRoot(parentDepotId);
-    if (rootKey === null) throw new RealmError("NotFound", "parent has no root");
-    const segments = normalizePath(path);
-    const childKey = await resolvePath(
-      this.cas,
-      (id) => this.depotStore.getRoot(id),
-      parentDepotId,
-      segments
-    );
-    if (childKey === null)
-      throw new RealmError("InvalidPath", "path does not resolve under parent root");
-    const depotId = crypto.randomUUID();
-    const mountPath = typeof path === "string" ? path : segments;
-    const newDepot: Depot = {
-      depotId,
-      realmId: parent.realmId,
-      parentId: parent.depotId,
-      mountPath,
-    };
-    await this.depotStore.insertDepot(newDepot);
-    await this.depotStore.setRoot(depotId, childKey);
-    return newDepot;
-  }
-
-  async commitDepot(depotId: string, newRootKey: string, oldRootKey: string): Promise<void> {
-    const current = await this.depotStore.getRoot(depotId);
-    if (current !== oldRootKey) throw new RealmError("CommitConflict");
-    const depot = await this.depotStore.getDepot(depotId);
-    if (!depot) throw new RealmError("NotFound", "depot not found");
-    await this.depotStore.setRoot(depotId, newRootKey);
-
-    // After parent commit: if this depot has child depots, run dag-diff and update child mount paths on move
-    const allDepots = await this.depotStore.listDepots(depot.realmId);
-    const children = allDepots.filter((d) => d.parentId === depotId);
-    if (children.length === 0) return;
-
-    const result = await dagDiff(oldRootKey, newRootKey, { storage: this.storage });
-    const updateDepotPath = this.depotStore.updateDepotPath;
-    if (!updateDepotPath) return;
-
-    for (const child of children) {
-      const mountPathStr = mountPathToString(child.mountPath);
-      const childRootKey = await this.depotStore.getRoot(child.depotId);
-      if (childRootKey === null) continue;
-      const moved = result.entries.find(
-        (e): e is MovedEntry =>
-          e.type === "moved" && e.pathsFrom.includes(mountPathStr) && e.nodeKey === childRootKey
+    async createDepot(parentDepotId: string, path: PathInput): Promise<Depot> {
+      const parent = await depotStore.getDepot(parentDepotId);
+      if (!parent) throw createRealmError("NotFound", "parent depot not found");
+      const rootKey = await depotStore.getRoot(parentDepotId);
+      if (rootKey === null) throw createRealmError("NotFound", "parent has no root");
+      const segments = normalizePath(path);
+      const childKey = await resolvePath(
+        cas,
+        (id) => depotStore.getRoot(id),
+        parentDepotId,
+        segments
       );
-      if (moved && moved.pathsTo.length > 0) {
-        const newPath = moved.pathsTo[0]!;
-        await updateDepotPath(child.depotId, newPath);
+      if (childKey === null)
+        throw createRealmError("InvalidPath", "path does not resolve under parent root");
+      const depotId = crypto.randomUUID();
+      const mountPath = typeof path === "string" ? path : segments;
+      const newDepot: Depot = {
+        depotId,
+        realmId: parent.realmId,
+        parentId: parent.depotId,
+        mountPath,
+      };
+      await depotStore.insertDepot(newDepot);
+      await depotStore.setRoot(depotId, childKey);
+      return newDepot;
+    },
+
+    async commitDepot(depotId: string, newRootKey: string, oldRootKey: string): Promise<void> {
+      const current = await depotStore.getRoot(depotId);
+      if (current !== oldRootKey) throw createRealmError("CommitConflict");
+      const depot = await depotStore.getDepot(depotId);
+      if (!depot) throw createRealmError("NotFound", "depot not found");
+      await depotStore.setRoot(depotId, newRootKey);
+
+      const allDepots = await depotStore.listDepots(depot.realmId);
+      const children = allDepots.filter((d) => d.parentId === depotId);
+      if (children.length === 0) return;
+
+      const result = await dagDiff(oldRootKey, newRootKey, { storage });
+      const updateDepotPath = depotStore.updateDepotPath;
+      if (!updateDepotPath) return;
+
+      for (const child of children) {
+        const mountPathStr = mountPathToString(child.mountPath);
+        const childRootKey = await depotStore.getRoot(child.depotId);
+        if (childRootKey === null) continue;
+        const moved = result.entries.find(
+          (e): e is MovedEntry =>
+            e.type === "moved" && e.pathsFrom.includes(mountPathStr) && e.nodeKey === childRootKey
+        );
+        if (moved && moved.pathsTo.length > 0) {
+          const newPath = moved.pathsTo[0]!;
+          await updateDepotPath(child.depotId, newPath);
+        }
       }
-    }
-  }
+    },
 
-  async closeDepot(depotId: string): Promise<void> {
-    const depot = await this.depotStore.getDepot(depotId);
-    if (!depot) throw new RealmError("NotFound", "depot not found");
-    const parentId = depot.parentId;
-    if (parentId === null) throw new RealmError("InvalidPath", "cannot close root depot");
-    const mountPath = depot.mountPath;
-    const segments = normalizePath(mountPath);
-    if (segments.length === 0) throw new RealmError("InvalidPath", "mount path must not be empty");
+    async closeDepot(depotId: string): Promise<void> {
+      const depot = await depotStore.getDepot(depotId);
+      if (!depot) throw createRealmError("NotFound", "depot not found");
+      const parentId = depot.parentId;
+      if (parentId === null) throw createRealmError("InvalidPath", "cannot close root depot");
+      const mountPath = depot.mountPath;
+      const segments = normalizePath(mountPath);
+      if (segments.length === 0)
+        throw createRealmError("InvalidPath", "mount path must not be empty");
 
-    const childRootKey = await this.depotStore.getRoot(depotId);
-    if (childRootKey === null) throw new RealmError("NotFound", "child depot has no root");
-    const parentRootKey = await this.depotStore.getRoot(parentId);
-    if (parentRootKey === null) throw new RealmError("NotFound", "parent has no root");
+      const childRootKey = await depotStore.getRoot(depotId);
+      if (childRootKey === null) throw createRealmError("NotFound", "child depot has no root");
+      const parentRootKey = await depotStore.getRoot(parentId);
+      if (parentRootKey === null) throw createRealmError("NotFound", "parent has no root");
 
-    const newParentRootKey = await replaceSubtreeAtPath(
-      this.cas,
-      this.key,
-      parentRootKey,
-      segments,
-      childRootKey
-    );
-    await this.commitDepot(parentId, newParentRootKey, parentRootKey);
+      const newParentRootKey = await replaceSubtreeAtPath(
+        cas,
+        key,
+        parentRootKey,
+        segments,
+        childRootKey
+      );
+      await this.commitDepot(parentId, newParentRootKey, parentRootKey);
 
-    if (this.depotStore.setClosed) {
-      await this.depotStore.setClosed(depotId);
-    } else {
-      await this.depotStore.removeDepot(depotId);
-    }
-  }
+      if (depotStore.setClosed) {
+        await depotStore.setClosed(depotId);
+      } else {
+        await depotStore.removeDepot(depotId);
+      }
+    },
 
-  async getNode(depotId: string, path: PathInput): Promise<CasNode | null> {
-    const segments = normalizePath(path);
-    const key = await resolvePath(this.cas, (id) => this.depotStore.getRoot(id), depotId, segments);
-    if (key === null) return null;
-    return this.cas.getNode(key);
-  }
+    async getNode(depotId: string, path: PathInput): Promise<CasNode | null> {
+      const segments = normalizePath(path);
+      const keyResolved = await resolvePath(cas, (id) => depotStore.getRoot(id), depotId, segments);
+      if (keyResolved === null) return null;
+      return cas.getNode(keyResolved);
+    },
 
-  async hasNode(depotId: string, path: PathInput): Promise<boolean> {
-    const segments = normalizePath(path);
-    const key = await resolvePath(this.cas, (id) => this.depotStore.getRoot(id), depotId, segments);
-    if (key === null) return false;
-    return this.cas.hasNode(key);
-  }
+    async hasNode(depotId: string, path: PathInput): Promise<boolean> {
+      const segments = normalizePath(path);
+      const keyResolved = await resolvePath(cas, (id) => depotStore.getRoot(id), depotId, segments);
+      if (keyResolved === null) return false;
+      return cas.hasNode(keyResolved);
+    },
 
-  async putNode(nodeKey: string, data: Uint8Array): Promise<void> {
-    await this.cas.putNode(nodeKey, data);
-  }
+    async putNode(nodeKey: string, data: Uint8Array): Promise<void> {
+      await cas.putNode(nodeKey, data);
+    },
 
-  async gc(realmId: string, cutOffTime: number): Promise<void> {
-    const depots = await this.depotStore.listDepots(realmId);
-    const rootKeys = new Set<string>();
-    for (const depot of depots) {
-      const root = await this.depotStore.getRoot(depot.depotId);
-      if (root !== null) rootKeys.add(root);
-    }
-    await this.cas.gc([...rootKeys], cutOffTime);
-  }
+    async gc(realmId: string, cutOffTime: number): Promise<void> {
+      const depots = await depotStore.listDepots(realmId);
+      const rootKeys = new Set<string>();
+      for (const d of depots) {
+        const root = await depotStore.getRoot(d.depotId);
+        if (root !== null) rootKeys.add(root);
+      }
+      await cas.gc([...rootKeys], cutOffTime);
+    },
 
-  async info(
-    realmId?: string
-  ): Promise<{ lastGcTime?: number; nodeCount: number; totalBytes: number; depotCount?: number }> {
-    const casInfo = await this.cas.info();
-    const result: {
+    async info(realmId?: string): Promise<{
       lastGcTime?: number;
       nodeCount: number;
       totalBytes: number;
       depotCount?: number;
-    } = {
-      ...casInfo,
-    };
-    if (realmId !== undefined) {
-      const depots = await this.depotStore.listDepots(realmId);
-      result.depotCount = depots.length;
-    }
-    return result;
-  }
+    }> {
+      const casInfo = await cas.info();
+      const result = { ...casInfo };
+      if (realmId !== undefined) {
+        const depots = await depotStore.listDepots(realmId);
+        (result as { depotCount?: number }).depotCount = depots.length;
+      }
+      return result;
+    },
+  };
 }
+
+export type RealmService = ReturnType<typeof createRealmService>;
