@@ -12,7 +12,8 @@ import {
   writeLastGcTime,
   writeTimes,
 } from "./cas-meta.ts";
-import type { CasContext, CasInfo } from "./types.ts";
+import { bytesFromStream, streamFromBytes } from "./stream-util.ts";
+import type { CasContext, CasInfo, CasNodeResult } from "./types.ts";
 
 export type CasErrorCode = "ChildMissing" | "KeyMismatch";
 
@@ -36,9 +37,9 @@ export function isCasError(x: unknown): x is CasError {
   );
 }
 
-/** Traverse from root keys via getNode to collect all reachable keys. */
+/** Traverse from root keys via getNode (decoded) to collect all reachable keys. */
 async function reachableKeys(
-  getNode: (key: string) => Promise<CasNode | null>,
+  getNodeDecoded: (key: string) => Promise<CasNode | null>,
   rootKeys: string[]
 ): Promise<Set<string>> {
   const seen = new Set<string>();
@@ -47,7 +48,7 @@ async function reachableKeys(
     const key = queue.pop()!;
     if (seen.has(key)) continue;
     seen.add(key);
-    const node = await getNode(key);
+    const node = await getNodeDecoded(key);
     if (!node) continue;
     const childHashes = node.children ?? [];
     for (const h of childHashes) {
@@ -58,22 +59,25 @@ async function reachableKeys(
 }
 
 /**
- * Creates a CAS service for the given context.
+ * Creates a CAS facade for the given context.
  */
-export function createCasService(ctx: CasContext) {
+export function createCasFacade(ctx: CasContext) {
   return {
-    async getNode(key: string): Promise<CasNode | null> {
-      const data = await ctx.storage.get(key);
-      if (data === null) return null;
-      return decodeNode(data);
+    async getNode(key: string): Promise<CasNodeResult | null> {
+      const stream = await ctx.storage.get(key);
+      if (stream === null) return null;
+      return { key, body: stream };
     },
 
     async hasNode(key: string): Promise<boolean> {
-      const data = await ctx.storage.get(key);
-      return data !== null;
+      const stream = await ctx.storage.get(key);
+      if (stream === null) return false;
+      await stream.cancel();
+      return true;
     },
 
-    async putNode(nodeKey: string, data: Uint8Array): Promise<void> {
+    async putNode(nodeKey: string, body: ReadableStream<Uint8Array>): Promise<void> {
+      const data = await bytesFromStream(body);
       const node = decodeNode(data);
       const childHashes = node.children ?? [];
 
@@ -94,7 +98,7 @@ export function createCasService(ctx: CasContext) {
         );
       }
 
-      await ctx.storage.put(nodeKey, data);
+      await ctx.storage.put(nodeKey, streamFromBytes(data));
 
       const now = Date.now();
       await appendNewKey(ctx.storage, nodeKey);
@@ -102,7 +106,13 @@ export function createCasService(ctx: CasContext) {
     },
 
     async gc(nodeKeys: string[], cutOffTime: number): Promise<void> {
-      const R = await reachableKeys((key) => this.getNode(key), nodeKeys);
+      const getNodeDecoded = async (key: string): Promise<CasNode | null> => {
+        const result = await this.getNode(key);
+        if (!result) return null;
+        const bytes = await bytesFromStream(result.body);
+        return decodeNode(bytes);
+      };
+      const R = await reachableKeys(getNodeDecoded, nodeKeys);
       const retained = await readKeysToRetain(ctx.storage);
       const newKeys = await readNewKeys(ctx.storage);
       const allKeys = new Set<string>([...retained, ...newKeys]);
@@ -135,11 +145,14 @@ export function createCasService(ctx: CasContext) {
       const allKeys = new Set<string>([...retained, ...newKeys]);
       let totalBytes = 0;
       for (const k of allKeys) {
-        const data = await ctx.storage.get(k);
-        if (data) totalBytes += data.length;
+        const stream = await ctx.storage.get(k);
+        if (stream !== null) {
+          const bytes = await bytesFromStream(stream);
+          totalBytes += bytes.length;
+        }
       }
       return {
-        lastGcTime,
+        lastGcTime: lastGcTime ?? null,
         nodeCount: allKeys.size,
         totalBytes,
       };
@@ -147,4 +160,4 @@ export function createCasService(ctx: CasContext) {
   };
 }
 
-export type CasService = ReturnType<typeof createCasService>;
+export type CasFacade = ReturnType<typeof createCasFacade>;

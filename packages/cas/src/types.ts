@@ -1,17 +1,22 @@
 import type { KeyProvider } from "@casfa/core";
 
 /**
- * CAS storage interface: get/put/del for blob storage.
+ * Byte stream type: CAS node body read/write uses streams for streaming passthrough.
+ */
+export type BytesStream = ReadableStream<Uint8Array>;
+
+/**
+ * CAS storage: get returns stream, put accepts stream.
  * Keys are content-addressed (e.g. Crockford Base32 encoded).
  */
 export type CasStorage = {
-  get: (key: string) => Promise<Uint8Array | null>;
-  put: (key: string, value: Uint8Array) => Promise<void>;
+  get: (key: string) => Promise<BytesStream | null>;
+  put: (key: string, value: BytesStream) => Promise<void>;
   del: (key: string) => Promise<void>;
 };
 
 /**
- * Context for CAS service: storage and key computation.
+ * Context for CAS facade: storage and key computation.
  */
 export type CasContext = {
   storage: CasStorage;
@@ -22,10 +27,25 @@ export type CasContext = {
  * CAS store info (e.g. for gc and monitoring).
  */
 export type CasInfo = {
-  /** Last GC run timestamp (ms), if ever run */
-  lastGcTime?: number;
-  /** Number of nodes (blobs) in the store */
+  /** Last GC run timestamp (ms); null if never run */
+  lastGcTime: number | null;
   nodeCount: number;
-  /** Total bytes stored */
   totalBytes: number;
+};
+
+/**
+ * Result of reading a CAS node: key + body stream (no full buffering).
+ */
+export type CasNodeResult = {
+  key: string;
+  body: BytesStream;
+};
+
+/** CasFacade shape: getNode returns CasNodeResult, putNode accepts BytesStream. */
+export type CasFacade = {
+  getNode(key: string): Promise<CasNodeResult | null>;
+  hasNode(key: string): Promise<boolean>;
+  putNode(nodeKey: string, body: BytesStream): Promise<void>;
+  gc(nodeKeys: string[], cutOffTime: number): Promise<void>;
+  info(): Promise<CasInfo>;
 };
