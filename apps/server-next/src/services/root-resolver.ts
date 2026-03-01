@@ -77,6 +77,17 @@ export async function getCurrentRoot(
   return deps.delegateStore.getRoot(rootFacade.delegateId);
 }
 
+/** Delegate/branch id for commit (setRoot). User/Delegate → root delegate id; Worker → branchId. */
+export async function getEffectiveDelegateId(
+  auth: AuthContext,
+  deps: RootResolverDeps
+): Promise<string> {
+  if (auth.type === "worker") return auth.branchId;
+  const realmId = auth.type === "user" ? auth.userId : auth.realmId;
+  const rootFacade = await deps.realm.getRootDelegate(realmId, {});
+  return rootFacade.delegateId;
+}
+
 /**
  * Resolve path from root key to final node key.
  * Path is normalized (no leading/trailing slashes, no "..").
