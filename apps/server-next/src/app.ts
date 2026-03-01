@@ -71,10 +71,10 @@ export function createApp(deps: AppDeps) {
   app.get("/api/realm/:realmId/files", (c) =>
     c.req.query("meta") === "1" ? files.stat(c) : files.list(c)
   );
-  app.get("/api/realm/:realmId/files/*path", (c) =>
+  app.get("/api/realm/:realmId/files/:path{.+}", (c) =>
     c.req.query("meta") === "1" ? files.stat(c) : files.getOrList(c)
   );
-  app.put("/api/realm/:realmId/files/*path", (c) => files.upload(c));
+  app.put("/api/realm/:realmId/files/:path{.+}", (c) => files.upload(c));
 
   app.post("/api/realm/:realmId/fs/mkdir", (c) => fs.mkdir(c));
   app.post("/api/realm/:realmId/fs/rm", (c) => fs.rm(c));
