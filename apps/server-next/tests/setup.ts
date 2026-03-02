@@ -5,13 +5,13 @@
 process.env.STORAGE_TYPE ??= "memory";
 process.env.MOCK_JWT_SECRET ??= "test-secret-e2e";
 
-import { loadConfig } from "../src/config.ts";
-import { createApp } from "../src/app.ts";
-import { createCasFacade } from "../src/services/cas.ts";
-import { createRealmFacadeFromConfig } from "../src/services/realm.ts";
-import { createMemoryDelegateGrantStore } from "../src/db/delegate-grants.ts";
-import { createMemoryDerivedDataStore } from "../src/db/derived-data.ts";
-import { createMemoryUserSettingsStore } from "../src/db/user-settings.ts";
+import { loadConfig } from "../backend/config.ts";
+import { createApp } from "../backend/app.ts";
+import { createCasFacade } from "../backend/services/cas.ts";
+import { createRealmFacadeFromConfig } from "../backend/services/realm.ts";
+import { createMemoryDelegateGrantStore } from "../backend/db/delegate-grants.ts";
+import { createMemoryDerivedDataStore } from "../backend/db/derived-data.ts";
+import { createMemoryUserSettingsStore } from "../backend/db/user-settings.ts";
 import { createMemoryDelegateStore } from "@casfa/realm";
 
 export type TestServer = {
