@@ -1,0 +1,41 @@
+service: casfa-server-next
+
+frameworkVersion: "4"
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  httpApi:
+    payload: '2.0'
+    cors: true
+  environment:
+    STORAGE_TYPE: ${env:STORAGE_TYPE, 'memory'}
+    MOCK_JWT_SECRET: ${env:MOCK_JWT_SECRET, ''}
+    COGNITO_REGION: ${env:COGNITO_REGION, ''}
+    COGNITO_USER_POOL_ID: ${env:COGNITO_USER_POOL_ID, ''}
+    COGNITO_CLIENT_ID: ${env:COGNITO_CLIENT_ID, ''}
+    STORAGE_FS_PATH: ${env:STORAGE_FS_PATH, ''}
+    MAX_BRANCH_TTL_MS: ${env:MAX_BRANCH_TTL_MS, ''}
+
+plugins:
+  - serverless-esbuild
+  - serverless-offline
+
+custom:
+  serverless-offline:
+    httpPort: 3000
+    noPrependStageInUrl: true
+  esbuild:
+    bundle: true
+    target: node20
+    format: esm
+    sourcemap: true
+    packagePath: ./package.json
+
+functions:
+  api:
+    handler: backend/lambda.handler
+    events:
+      - httpApi: '*'

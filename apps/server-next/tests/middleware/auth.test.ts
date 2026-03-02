@@ -4,9 +4,9 @@
  */
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
-import type { Env } from "../../src/types.ts";
-import { createAuthMiddleware } from "../../src/middleware/auth.ts";
-import { createMemoryDelegateGrantStore } from "../../src/db/delegate-grants.ts";
+import type { Env } from "../../backend/types.ts";
+import { createAuthMiddleware } from "../../backend/middleware/auth.ts";
+import { createMemoryDelegateGrantStore } from "../../backend/db/delegate-grants.ts";
 import { createMemoryDelegateStore } from "@casfa/realm";
 import type { Delegate } from "@casfa/realm";
 

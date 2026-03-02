@@ -2,7 +2,7 @@
  * Cognito JWKS verifier: empty token rejects; JWKS fetch 404 leads to reject.
  */
 import { describe, expect, it, mock } from "bun:test";
-import { createCognitoJwtVerifier } from "../../src/auth/cognito-jwks.ts";
+import { createCognitoJwtVerifier } from "../../backend/auth/cognito-jwks.ts";
 
 describe("createCognitoJwtVerifier", () => {
   it("rejects empty token", async () => {
