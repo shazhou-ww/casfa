@@ -1,0 +1,25 @@
+services:
+  # Persistent DynamoDB Local - for daily development (data retained across restarts)
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    container_name: casfa-next-dynamodb
+    user: root
+    ports:
+      - "7102:8000"
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/data"]
+    volumes:
+      - dynamodb-data:/data
+    restart: unless-stopped
+
+  # In-memory DynamoDB Local - for E2E / dev:test (clean each run)
+  dynamodb-test:
+    image: amazon/dynamodb-local:latest
+    container_name: casfa-next-dynamodb-test
+    user: root
+    ports:
+      - "7112:8000"
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
+    restart: "no"
+
+volumes:
+  dynamodb-data:
