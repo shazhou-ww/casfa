@@ -10,6 +10,7 @@ import {
   resolvePath,
   getNodeDecoded,
   getEffectiveDelegateId,
+  ensureEmptyRoot,
 } from "../services/root-resolver.ts";
 import { addOrReplaceAtPath } from "../services/tree-mutations.ts";
 import { encodeFileNode, hashToKey } from "@casfa/core";
@@ -35,6 +36,24 @@ function getPathParam(c: Context<Env>): string {
   return path;
 }
 
+/** If rootKey is null and auth is user, ensure realm root then return getCurrentRoot again; otherwise return rootKey. */
+async function ensureRootForUser(
+  auth: NonNullable<Env["Variables"]["auth"]>,
+  rootKey: string | null,
+  deps: FilesControllerDeps
+): Promise<string | null> {
+  if (rootKey !== null) return rootKey;
+  if (auth.type !== "user") return null;
+  try {
+    const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
+    await deps.branchStore.ensureRealmRoot(auth.userId, emptyKey);
+    return deps.branchStore.getRealmRoot(auth.userId);
+  } catch (err) {
+    console.warn("[files] ensureRealmRoot failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 export function createFilesController(deps: FilesControllerDeps) {
   return {
     async list(c: Context<Env>) {
@@ -44,7 +63,10 @@ export function createFilesController(deps: FilesControllerDeps) {
       }
       const pathStr = getPathParam(c);
       try {
-        const rootKey = await getCurrentRoot(auth, deps);
+        let rootKey = await getCurrentRoot(auth, deps);
+        console.log("[files-root] list pathStr=%j auth.type=%s getCurrentRoot=>%s", pathStr, auth.type, rootKey ?? "null");
+        rootKey = await ensureRootForUser(auth, rootKey, deps);
+        console.log("[files-root] after ensureRootForUser=>%s", rootKey ?? "null");
         if (rootKey === null) {
           return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
@@ -52,7 +74,28 @@ export function createFilesController(deps: FilesControllerDeps) {
         if (nodeKey === null) {
           return c.json({ error: "NOT_FOUND", message: "Path not found" }, 404);
         }
-        const node = await getNodeDecoded(deps.cas, nodeKey);
+        console.log("[files-root] resolvePath=>nodeKey=%j", nodeKey);
+        let node = await getNodeDecoded(deps.cas, nodeKey);
+        console.log("[files-root] getNodeDecoded(nodeKey)=>%s", node ? "ok" : "null");
+        const shouldRepair = !node && pathStr === "" && nodeKey === rootKey && auth.type === "user";
+        console.log("[files-root] repair? pathStr==='' && !node && nodeKey===rootKey && user => %s", shouldRepair);
+        if (shouldRepair) {
+          try {
+            console.log("[files-root] repair: ensureEmptyRoot...");
+            const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
+            console.log("[files-root] repair: ensureEmptyRoot=>emptyKey=%j", emptyKey);
+            await deps.branchStore.setRealmRoot(auth.userId, emptyKey);
+            console.log("[files-root] repair: setRealmRoot done");
+            const newRootKey = await deps.branchStore.getRealmRoot(auth.userId);
+            console.log("[files-root] repair: getRealmRoot=>newRootKey=%j", newRootKey ?? "null");
+            if (newRootKey) {
+              node = await getNodeDecoded(deps.cas, newRootKey);
+              console.log("[files-root] repair: getNodeDecoded(newRootKey)=>%s", node ? "ok" : "null");
+            }
+          } catch (err) {
+            console.error("[files-root] repair failed:", err instanceof Error ? err.message : err);
+          }
+        }
         if (!node) {
           return c.json({ error: "NOT_FOUND", message: "Node not found" }, 404);
         }
@@ -87,7 +130,8 @@ export function createFilesController(deps: FilesControllerDeps) {
       }
       const pathStr = getPathParam(c);
       try {
-        const rootKey = await getCurrentRoot(auth, deps);
+        let rootKey = await getCurrentRoot(auth, deps);
+        rootKey = await ensureRootForUser(auth, rootKey, deps);
         if (rootKey === null) {
           return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
@@ -95,7 +139,17 @@ export function createFilesController(deps: FilesControllerDeps) {
         if (nodeKey === null) {
           return c.json({ error: "NOT_FOUND", message: "Path not found" }, 404);
         }
-        const node = await getNodeDecoded(deps.cas, nodeKey);
+        let node = await getNodeDecoded(deps.cas, nodeKey);
+        if (!node && pathStr === "" && nodeKey === rootKey && auth.type === "user") {
+          try {
+            const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
+            await deps.branchStore.setRealmRoot(auth.userId, emptyKey);
+            const newRootKey = await deps.branchStore.getRealmRoot(auth.userId);
+            if (newRootKey) node = await getNodeDecoded(deps.cas, newRootKey);
+          } catch {
+            // repair failed; fall through to 404
+          }
+        }
         if (!node) {
           return c.json({ error: "NOT_FOUND", message: "Node not found" }, 404);
         }
@@ -127,7 +181,8 @@ export function createFilesController(deps: FilesControllerDeps) {
       }
       const pathStr = getPathParam(c);
       try {
-        const rootKey = await getCurrentRoot(auth, deps);
+        let rootKey = await getCurrentRoot(auth, deps);
+        rootKey = await ensureRootForUser(auth, rootKey, deps);
         if (rootKey === null) {
           return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
@@ -135,7 +190,17 @@ export function createFilesController(deps: FilesControllerDeps) {
         if (nodeKey === null) {
           return c.json({ error: "NOT_FOUND", message: "Path not found" }, 404);
         }
-        const node = await getNodeDecoded(deps.cas, nodeKey);
+        let node = await getNodeDecoded(deps.cas, nodeKey);
+        if (!node && pathStr === "" && nodeKey === rootKey && auth.type === "user") {
+          try {
+            const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
+            await deps.branchStore.setRealmRoot(auth.userId, emptyKey);
+            const newRootKey = await deps.branchStore.getRealmRoot(auth.userId);
+            if (newRootKey) node = await getNodeDecoded(deps.cas, newRootKey);
+          } catch {
+            // repair failed; fall through to 404
+          }
+        }
         if (!node) {
           return c.json({ error: "NOT_FOUND", message: "Node not found" }, 404);
         }
@@ -191,7 +256,8 @@ export function createFilesController(deps: FilesControllerDeps) {
         if (pathSegments.length === 0) {
           return c.json({ error: "BAD_REQUEST", message: "Path must include file name" }, 400);
         }
-        const rootKey = await getCurrentRoot(auth, deps);
+        let rootKey = await getCurrentRoot(auth, deps);
+        rootKey = await ensureRootForUser(auth, rootKey, deps);
         if (rootKey === null) {
           return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }

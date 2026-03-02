@@ -174,7 +174,6 @@ export function createAuthMiddleware(deps: AuthMiddlewareDeps) {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         // Log for debugging 401 (e.g. expired token, wrong issuer, JWKS fetch failure)
-        console.warn("[auth] JWT verification failed:", message);
         return c.json({ error: "UNAUTHORIZED", message: "Invalid token" }, 401);
       }
     }

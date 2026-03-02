@@ -31,6 +31,8 @@ import type { KeyProvider } from "@casfa/core";
 
 import type { UserSettingsStore } from "./db/user-settings.ts";
 
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+
 export type AppDeps = {
   config: ServerConfig;
   cas: CasFacade;
@@ -60,6 +62,32 @@ export function createApp(deps: AppDeps) {
       authType: deps.config.auth.cognitoUserPoolId ? "cognito" : "mock",
     }, 200)
   );
+
+  // SPA entry for OAuth callback: CloudFront sends GET /oauth/callback to API; Lambda serves index.html from frontend bucket so the app can read ?code= & ?state= from the URL.
+  if (deps.config.frontendBucket) {
+    app.get("/oauth/callback", async (c) => {
+      const s3 = new S3Client({ region: process.env.AWS_REGION ?? "us-east-1" });
+      try {
+        const out = await s3.send(
+          new GetObjectCommand({
+            Bucket: deps.config.frontendBucket,
+            Key: "index.html",
+          })
+        );
+        const body = out.Body;
+        if (!body) return c.text("index.html not found", 503);
+        const chunks: Uint8Array[] = [];
+        for await (const chunk of body as AsyncIterable<Uint8Array>) chunks.push(chunk);
+        const html = new TextDecoder().decode(Buffer.concat(chunks));
+        return c.html(html);
+      } catch (e) {
+        return c.json(
+          { error: "SERVICE_UNAVAILABLE", message: "Failed to serve OAuth callback page" } satisfies ErrorBody,
+          503
+        );
+      }
+    });
+  }
 
   if (deps.config.auth.mockJwtSecret) {
     const devMockToken = createDevMockTokenController({
@@ -242,8 +270,8 @@ export function createApp(deps: AppDeps) {
           const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
           await deps.branchStore.ensureRealmRoot(sub, emptyKey);
         }
-      } catch {
-        // ignore decode/ensure errors; still return tokens
+      } catch (err) {
+        // still return tokens; /files will retry ensureRootForUser or repair root
       }
     }
     return c.json({
@@ -326,7 +354,6 @@ export function createApp(deps: AppDeps) {
     const clientName = typeof body.client_name === "string" ? body.client_name.trim() || undefined : undefined;
     const clientId = "casfa-" + crypto.randomUUID().replace(/-/g, "").slice(0, 12);
     clientMetadataByClientId.set(clientId, { client_name: clientName });
-    console.log("[mcp-oauth] register", { client_name: clientName, redirect_uris: redirectUris, issued_client_id: clientId });
     return c.json(
       {
         client_id: clientId,
@@ -343,7 +370,6 @@ export function createApp(deps: AppDeps) {
       return c.json({ error: "BAD_REQUEST", message: "Missing client_id" }, 400);
     }
     const meta = clientMetadataByClientId.get(clientId);
-    console.log("[mcp-oauth] client-info", { client_id: clientId, found: !!meta, client_name: meta?.client_name ?? null });
     return c.json({ client_name: meta?.client_name ?? null });
   });
 
@@ -373,7 +399,6 @@ export function createApp(deps: AppDeps) {
         400
       );
     }
-    console.log("[mcp-oauth] authorize", { client_id, redirect_uri: redirect_uri.slice(0, 60) + (redirect_uri.length > 60 ? "…" : "") });
     const realmId = auth.userId;
     const code = createMcpAuthCode({
       clientId: client_id,
@@ -400,7 +425,6 @@ export function createApp(deps: AppDeps) {
       return c.json({ error: "BAD_REQUEST", message: "Content-Type must be application/x-www-form-urlencoded" }, 400);
     }
     const grant_type = params.grant_type;
-    console.log("[mcp-oauth] token", { grant_type, client_id: params.client_id ?? "(none)" });
 
     if (grant_type === "refresh_token") {
       const refresh_token = params.refresh_token;
@@ -525,6 +549,8 @@ export function createApp(deps: AppDeps) {
   );
 
   app.onError((err, c) => {
+    console.error("[api] 500", c.req.method, c.req.path, err instanceof Error ? err.message : String(err));
+    if (err instanceof Error && err.stack) console.error(err.stack);
     const body: ErrorBody = {
       error: "INTERNAL_ERROR",
       message: err.message ?? "Internal server error",

@@ -1,6 +1,6 @@
 /**
  * CAS facade: S3 in Lambda/server (ServerConfig); optional fs/memory for tests.
- * For local dev use S3_ENDPOINT (e.g. http://localhost:4569) with serverless-s3-local.
+ * For local dev use S3_ENDPOINT (e.g. http://localhost:7104) with serverless-s3-local.
  */
 import {
   createCasFacade as createCasFacadeImpl,
@@ -61,7 +61,7 @@ function createStorageFromConfig(config: CasFacadeConfig): ReturnType<typeof cre
           forcePathStyle: true,
           credentials: {
             accessKeyId: "S3RVER",
-            secretAccessKey: "S3RVER",
+            secretAccessKey: "S3RVER00",
           },
         })
       : undefined;
