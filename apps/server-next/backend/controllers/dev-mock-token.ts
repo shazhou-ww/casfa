@@ -2,9 +2,16 @@ import { SignJWT } from "jose";
 import type { Context } from "hono";
 import type { Env } from "../types.ts";
 import type { ServerConfig } from "../config.ts";
+import type { BranchStore } from "../db/branch-store.ts";
+import type { CasFacade } from "@casfa/cas";
+import type { KeyProvider } from "@casfa/core";
+import { ensureEmptyRoot } from "../services/root-resolver.ts";
 
 export type DevMockTokenControllerDeps = {
   config: ServerConfig;
+  branchStore: BranchStore;
+  cas: CasFacade;
+  key: KeyProvider;
 };
 
 /** Default sub for dev mock token when not overridden by env */
@@ -13,6 +20,7 @@ const DEFAULT_DEV_SUB = "dev-user";
 /**
  * Creates a controller for GET/POST /api/dev/mock-token.
  * Only when config.auth.mockJwtSecret is set; otherwise handler returns 404.
+ * On success, ensures realm root for the mock user (so realm exists after "login").
  */
 export function createDevMockTokenController(deps: DevMockTokenControllerDeps) {
   return {
@@ -34,6 +42,9 @@ export function createDevMockTokenController(deps: DevMockTokenControllerDeps) {
         .setIssuedAt()
         .setExpirationTime("24h")
         .sign(key);
+
+      const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
+      await deps.branchStore.ensureRealmRoot(sub, emptyKey);
 
       return c.json({ token }, 200);
     },

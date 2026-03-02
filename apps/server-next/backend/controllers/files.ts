@@ -46,7 +46,7 @@ export function createFilesController(deps: FilesControllerDeps) {
       try {
         const rootKey = await getCurrentRoot(auth, deps);
         if (rootKey === null) {
-          return c.json({ error: "NOT_FOUND", message: "Realm or branch root not found" }, 404);
+          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
         const nodeKey = await resolvePath(deps.cas, rootKey, pathStr);
         if (nodeKey === null) {
@@ -89,7 +89,7 @@ export function createFilesController(deps: FilesControllerDeps) {
       try {
         const rootKey = await getCurrentRoot(auth, deps);
         if (rootKey === null) {
-          return c.json({ error: "NOT_FOUND", message: "Realm or branch root not found" }, 404);
+          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
         const nodeKey = await resolvePath(deps.cas, rootKey, pathStr);
         if (nodeKey === null) {
@@ -129,7 +129,7 @@ export function createFilesController(deps: FilesControllerDeps) {
       try {
         const rootKey = await getCurrentRoot(auth, deps);
         if (rootKey === null) {
-          return c.json({ error: "NOT_FOUND", message: "Realm or branch root not found" }, 404);
+          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
         const nodeKey = await resolvePath(deps.cas, rootKey, pathStr);
         if (nodeKey === null) {
@@ -193,7 +193,7 @@ export function createFilesController(deps: FilesControllerDeps) {
         }
         const rootKey = await getCurrentRoot(auth, deps);
         if (rootKey === null) {
-          return c.json({ error: "NOT_FOUND", message: "Realm or branch root not found" }, 404);
+          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
         const data = new Uint8Array(raw);
         const contentType =

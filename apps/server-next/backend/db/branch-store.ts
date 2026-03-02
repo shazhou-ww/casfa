@@ -21,13 +21,7 @@ export type BranchStore = {
 export function createMemoryBranchStore(): BranchStore {
   const branches = new Map<string, Branch>();
   const roots = new Map<string, string>();
-
-  function getRootRecord(realmId: string): Branch | null {
-    for (const b of branches.values()) {
-      if (b.realmId === realmId && b.parentId === null) return b;
-    }
-    return null;
-  }
+  const realmRootBranchId = new Map<string, string>();
 
   return {
     async getBranch(branchId: string) {
@@ -35,15 +29,15 @@ export function createMemoryBranchStore(): BranchStore {
     },
 
     async getRealmRoot(realmId: string) {
-      const root = getRootRecord(realmId);
-      if (!root) return null;
-      return roots.get(root.branchId) ?? null;
+      const branchId = realmRootBranchId.get(realmId);
+      if (!branchId) return null;
+      return roots.get(branchId) ?? null;
     },
 
     async getRealmRootRecord(realmId: string) {
-      const root = getRootRecord(realmId);
-      if (!root) return null;
-      return { branchId: root.branchId };
+      const branchId = realmRootBranchId.get(realmId);
+      if (!branchId) return null;
+      return { branchId };
     },
 
     async setRealmRoot(realmId: string, nodeKey: string) {
@@ -53,8 +47,7 @@ export function createMemoryBranchStore(): BranchStore {
     },
 
     async ensureRealmRoot(realmId: string, emptyRootKey: string) {
-      const existing = await this.getRealmRootRecord(realmId);
-      if (existing) return;
+      if (realmRootBranchId.has(realmId)) return;
       const branchId = crypto.randomUUID();
       await this.insertBranch({
         branchId,
@@ -63,6 +56,7 @@ export function createMemoryBranchStore(): BranchStore {
         mountPath: "",
         expiresAt: 0,
       });
+      realmRootBranchId.set(realmId, branchId);
       await this.setBranchRoot(branchId, emptyRootKey);
     },
 
@@ -87,6 +81,12 @@ export function createMemoryBranchStore(): BranchStore {
     async removeBranch(branchId: string) {
       branches.delete(branchId);
       roots.delete(branchId);
+      for (const [realmId, id] of realmRootBranchId) {
+        if (id === branchId) {
+          realmRootBranchId.delete(realmId);
+          break;
+        }
+      }
     },
 
     async purgeExpiredBranches(expiredBefore: number) {

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "clean": "rimraf .serverless .esbuild .local-storage",
+    "clean:db": "rimraf .dynamodb",
     "dev": "concurrently -n api,web -c blue,green \"bun run scripts/dev.ts\" \"bun run --cwd frontend dev\"",
     "dev:cognito": "concurrently -n api,web -c blue,green \"bun run scripts/dev-cognito.ts\" \"bun run --cwd frontend dev\"",
     "dev:test": "bun run scripts/dev-test.ts",

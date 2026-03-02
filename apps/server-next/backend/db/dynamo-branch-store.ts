@@ -1,7 +1,7 @@
 /**
  * DynamoDB-backed BranchStore for realm root + branch state.
- * Same table shape as legacy DelegateStore: PK=DLG#branchId, SK=METADATA|ROOT;
- * GSI1: gsi1pk=REALM#realmId, gsi1sk=PARENT#parentId (root = PARENT#ROOT).
+ * Realm root branch is stored on the realm entity: pk=REALM#realmId, sk=REALM, rootBranchId.
+ * Branch rows: PK=DLG#branchId, SK=METADATA|ROOT; GSI1: gsi1pk=REALM#realmId, gsi1sk=PARENT#parentId.
  */
 import {
   DynamoDBClient,
@@ -19,8 +19,10 @@ import type { Branch } from "../types/branch.ts";
 import type { BranchStore } from "./branch-store.ts";
 
 const PK_PREFIX = "DLG#";
+const REALM_PK_PREFIX = "REALM#";
 const SK_METADATA = "METADATA";
 const SK_ROOT = "ROOT";
+const SK_REALM = "REALM";
 const GSI1_NAME = "realm-index";
 const GSI1PK_PREFIX = "REALM#";
 const GSI1SK_ROOT = "PARENT#ROOT";
@@ -41,6 +43,10 @@ function toGsi1Pk(realmId: string): string {
 
 function toGsi1Sk(parentId: string | null): string {
   return parentId === null ? GSI1SK_ROOT : `${GSI1SK_PREFIX}${parentId}`;
+}
+
+function realmPk(realmId: string): string {
+  return `${REALM_PK_PREFIX}${realmId}`;
 }
 
 /** Map Dynamo item (legacy shape) to Branch. */
@@ -101,6 +107,20 @@ export function createDynamoBranchStore(
       const r = await doc.send(
         new QueryCommand({
           TableName: tableName,
+          KeyConditionExpression: "pk = :pk AND sk = :sk",
+          ExpressionAttributeValues: {
+            ":pk": realmPk(realmId),
+            ":sk": SK_REALM,
+          },
+          Limit: 1,
+        })
+      );
+      const item = r.Items?.[0] as Record<string, unknown> | undefined;
+      if (item?.rootBranchId) return { branchId: item.rootBranchId as string };
+
+      const legacy = await doc.send(
+        new QueryCommand({
+          TableName: tableName,
           IndexName: GSI1_NAME,
           KeyConditionExpression: "gsi1pk = :pk AND gsi1sk = :sk",
           ExpressionAttributeValues: {
@@ -110,10 +130,16 @@ export function createDynamoBranchStore(
           Limit: 1,
         })
       );
-      const item = r.Items?.[0] as Record<string, unknown> | undefined;
-      if (!item) return null;
-      const pk = item.pk as string;
+      const legItem = legacy.Items?.[0] as Record<string, unknown> | undefined;
+      if (!legItem) return null;
+      const pk = legItem.pk as string;
       const branchId = pk.startsWith(PK_PREFIX) ? pk.slice(PK_PREFIX.length) : pk;
+      await doc.send(
+        new PutCommand({
+          TableName: tableName,
+          Item: { pk: realmPk(realmId), sk: SK_REALM, rootBranchId: branchId },
+        })
+      );
       return { branchId };
     },
 
@@ -124,8 +150,18 @@ export function createDynamoBranchStore(
     },
 
     async ensureRealmRoot(realmId: string, emptyRootKey: string) {
-      const existing = await this.getRealmRootRecord(realmId);
-      if (existing) return;
+      const r = await doc.send(
+        new QueryCommand({
+          TableName: tableName,
+          KeyConditionExpression: "pk = :pk AND sk = :sk",
+          ExpressionAttributeValues: {
+            ":pk": realmPk(realmId),
+            ":sk": SK_REALM,
+          },
+          Limit: 1,
+        })
+      );
+      if (r.Items?.[0]?.rootBranchId) return;
       const branchId = crypto.randomUUID();
       await this.insertBranch({
         branchId,
@@ -134,6 +170,18 @@ export function createDynamoBranchStore(
         mountPath: "",
         expiresAt: 0,
       });
+      try {
+        await doc.send(
+          new PutCommand({
+            TableName: tableName,
+            Item: { pk: realmPk(realmId), sk: SK_REALM, rootBranchId: branchId },
+            ConditionExpression: "attribute_not_exists(pk)",
+          })
+        );
+      } catch (e: unknown) {
+        if ((e as { name?: string })?.name === "ConditionalCheckFailedException") return;
+        throw e;
+      }
       await this.setBranchRoot(branchId, emptyRootKey);
     },
 

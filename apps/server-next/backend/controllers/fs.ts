@@ -44,7 +44,7 @@ export function createFsController(deps: FsControllerDeps) {
         }
         const rootKey = await getCurrentRoot(auth, deps);
         if (rootKey === null) {
-          return c.json({ error: "NOT_FOUND", message: "Realm or branch root not found" }, 404);
+          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
         const emptyDict = await encodeDictNode({ children: [], childNames: [] }, deps.key);
         const emptyDictKey = hashToKey(emptyDict.hash);
@@ -85,7 +85,7 @@ export function createFsController(deps: FsControllerDeps) {
         }
         let rootKey = await getCurrentRoot(auth, deps);
         if (rootKey === null) {
-          return c.json({ error: "NOT_FOUND", message: "Realm or branch root not found" }, 404);
+          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
         for (const p of paths) {
           const pathStr = p.trim().replace(/^\/+|\/+$/g, "");
@@ -122,7 +122,7 @@ export function createFsController(deps: FsControllerDeps) {
         }
         let rootKey = await getCurrentRoot(auth, deps);
         if (rootKey === null) {
-          return c.json({ error: "NOT_FOUND", message: "Realm or branch root not found" }, 404);
+          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
         const nodeKey = await resolvePath(deps.cas, rootKey, fromStr);
         if (nodeKey === null) {
@@ -160,7 +160,7 @@ export function createFsController(deps: FsControllerDeps) {
         }
         const rootKey = await getCurrentRoot(auth, deps);
         if (rootKey === null) {
-          return c.json({ error: "NOT_FOUND", message: "Realm or branch root not found" }, 404);
+          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
         const nodeKey = await resolvePath(deps.cas, rootKey, fromStr);
         if (nodeKey === null) {

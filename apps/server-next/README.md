@@ -44,6 +44,16 @@ bun run dev
 
 本地一律使用 **serverless-dynamodb-local**（DynamoDB 端口 7102）和 **serverless-s3-local**（S3 端口 4569）；首次需执行一次 `bunx serverless dynamodb install`。启动时用 `serverless offline start` 会自动拉起 DynamoDB 与 S3 本地服务。
 
+**清理本地数据库**：若因旧数据导致报错（如 "key conditions were not unique"），可清空本地 DynamoDB 后重装并重启：
+
+```bash
+bun run clean:db
+bunx serverless dynamodb install
+bun run dev
+```
+
+**若出现 `NoClassDefFoundError: org/apache/commons/cli/ParseException`**：说明 DynamoDB Local 的 classpath 不完整（常见于 `clean:db` 后重装）。请务必在 **`apps/server-next` 目录下**执行 `bunx serverless dynamodb install`，确认 `.dynamodb` 内既有 `DynamoDBLocal.jar` 也有 `DynamoDBLocal_lib/` 目录。若仍报错，可改用 Docker 运行 DynamoDB Local：在 `serverless.yml` 的 `custom.serverless-dynamodb.start` 下取消注释 `docker: true`，并确保本机已安装 Docker。
+
 ### 本地测试环境（local-test，端口 711x）
 
 ```bash

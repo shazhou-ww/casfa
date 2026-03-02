@@ -73,8 +73,9 @@ function resolveSegment(node: CasNode, segment: string): string | null {
 
 /**
  * Get the current root node key for the given auth.
- * User/Delegate: realm root (ensures empty root if needed); Worker: branch root.
- * Returns null if no root exists (e.g. branch not yet committed).
+ * User/Delegate: realm root (must already exist; not created here).
+ * Worker: branch root.
+ * Returns null if no root exists (realm not initialized or branch not committed).
  */
 export async function getCurrentRoot(
   auth: AuthContext,
@@ -84,13 +85,7 @@ export async function getCurrentRoot(
     return deps.branchStore.getBranchRoot(auth.branchId);
   }
   const realmId = auth.type === "user" ? auth.userId : auth.realmId;
-  let rootKey = await deps.branchStore.getRealmRoot(realmId);
-  if (rootKey === null) {
-    const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
-    await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
-    rootKey = emptyKey;
-  }
-  return rootKey;
+  return deps.branchStore.getRealmRoot(realmId);
 }
 
 /** Branch id for commit (setBranchRoot). User/Delegate → root record id; Worker → branchId. */
@@ -101,11 +96,8 @@ export async function getEffectiveDelegateId(
   if (auth.type === "worker") return auth.branchId;
   const realmId = auth.type === "user" ? auth.userId : auth.realmId;
   const record = await deps.branchStore.getRealmRootRecord(realmId);
-  if (record) return record.branchId;
-  await getCurrentRoot(auth, deps);
-  const after = await deps.branchStore.getRealmRootRecord(realmId);
-  if (!after) throw new Error("Realm root record not found after ensure");
-  return after.branchId;
+  if (!record) throw new Error("Realm not initialized");
+  return record.branchId;
 }
 
 /**
