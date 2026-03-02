@@ -1,10 +1,11 @@
 /**
  * Start local-test: serverless offline on 7111 (API) and 7113 (lambda), mock auth.
  * Uses Docker dynamodb-test (7112, in-memory) and serverless-s3-local (4569).
+ * Automatically runs dev-setup (check + init DynamoDB) before starting.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { resolve } from "node:path";
-import { ensureTables, isDynamoDBReady } from "./create-local-tables.ts";
+import { isDynamoDBReady } from "./create-local-tables.ts";
+import { runSetup } from "./dev-setup.ts";
 
 const HTTP_PORT = 7111;
 const LAMBDA_PORT = 7113;
@@ -67,7 +68,7 @@ async function main(): Promise<void> {
   }
 
   console.log("\nEnsuring DynamoDB tables exist (stage=local-test)...");
-  await ensureTables(DYNAMODB_ENDPOINT, "local-test");
+  await runSetup("local-test");
 
   const env = {
     ...process.env,
@@ -79,7 +80,7 @@ async function main(): Promise<void> {
   };
 
   spawn(
-    "bunx",
+    "npx",
     [
       "serverless",
       "offline",

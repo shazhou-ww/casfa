@@ -1,11 +1,13 @@
 /**
  * Start local-dev with Cognito auth: serverless offline on 7101.
  * Uses Docker DynamoDB (7102) and serverless-s3-local (4569).
+ * Automatically runs dev-setup (check + init DynamoDB) before starting.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { ensureTables, isDynamoDBReady } from "./create-local-tables.ts";
+import { isDynamoDBReady } from "./create-local-tables.ts";
+import { runSetup } from "./dev-setup.ts";
 
 const HTTP_PORT = 7101;
 const DYNAMODB_ENDPOINT = "http://localhost:7102";
@@ -87,7 +89,7 @@ async function main(): Promise<void> {
   }
 
   console.log("\nEnsuring DynamoDB tables exist...");
-  await ensureTables(DYNAMODB_ENDPOINT, "dev");
+  await runSetup("dev");
 
   const env = {
     ...process.env,
@@ -96,7 +98,7 @@ async function main(): Promise<void> {
     S3_BUCKET: process.env.S3_BUCKET ?? "casfa-next-dev-blob",
   };
 
-  spawn("bunx", ["serverless", "offline", "start", "--httpPort", String(HTTP_PORT)], {
+  spawn("npx", ["serverless", "offline", "start", "--httpPort", String(HTTP_PORT)], {
     cwd: appRoot,
     env,
     stdio: "inherit",
