@@ -11,13 +11,17 @@ provider:
     payload: '2.0'
     cors: true
   environment:
+    PORT: ${env:PORT, '8802'}
     STORAGE_TYPE: ${env:STORAGE_TYPE, 'memory'}
+    STORAGE_FS_PATH: ${env:STORAGE_FS_PATH, ''}
     MOCK_JWT_SECRET: ${env:MOCK_JWT_SECRET, ''}
+    MAX_BRANCH_TTL_MS: ${env:MAX_BRANCH_TTL_MS, ''}
     COGNITO_REGION: ${env:COGNITO_REGION, ''}
     COGNITO_USER_POOL_ID: ${env:COGNITO_USER_POOL_ID, ''}
     COGNITO_CLIENT_ID: ${env:COGNITO_CLIENT_ID, ''}
-    STORAGE_FS_PATH: ${env:STORAGE_FS_PATH, ''}
-    MAX_BRANCH_TTL_MS: ${env:MAX_BRANCH_TTL_MS, ''}
+    DYNAMODB_ENDPOINT: ${env:DYNAMODB_ENDPOINT, ''}
+    S3_BUCKET: ${env:S3_BUCKET, ''}
+    LOG_LEVEL: ${env:LOG_LEVEL, ''}
 
 plugins:
   - serverless-esbuild
