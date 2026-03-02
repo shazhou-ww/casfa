@@ -8,7 +8,7 @@
     "dev:bun": "bun run backend/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun run test:unit && bun run test:e2e",
-    "test:unit": "bun test tests/",
+    "test:unit": "bun test backend/",
     "test:e2e": "bun run scripts/e2e-offline.ts"
   },
   "dependencies": {
