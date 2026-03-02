@@ -1,68 +1,120 @@
 import { create } from "zustand";
 import type { CreateDelegateResponse, DelegateListItem } from "../types/delegate";
+import { useAuthStore } from "./auth-store";
+import { apiFetch } from "../lib/auth";
 
 type DelegatesStore = {
   delegates: DelegateListItem[];
   isLoading: boolean;
   error: string | null;
-  includeRevoked: boolean;
   fetchDelegates: () => Promise<void>;
-  setIncludeRevoked: (v: boolean) => void;
   createDelegate: (params: { name?: string; ttlSeconds?: number }) => Promise<CreateDelegateResponse>;
   revokeDelegate: (delegateId: string) => Promise<void>;
 };
 
-let mockId = 1;
-const MOCK_LIST: DelegateListItem[] = [];
+function getRealmId(): string {
+  const realmId = useAuthStore.getState().user?.userId;
+  if (!realmId) throw new Error("Not authenticated: realmId (user) not loaded");
+  return realmId;
+}
+
+/** Map backend list item to DelegateListItem. Backend has no name (use clientId) and no isRevoked (revoked are omitted). */
+function mapDelegateItem(d: {
+  delegateId: string;
+  clientId?: string;
+  permissions?: string[];
+  createdAt: number;
+  expiresAt?: number | null;
+}): DelegateListItem {
+  return {
+    delegateId: d.delegateId,
+    name: typeof d.clientId === "string" && d.clientId.trim() ? d.clientId.trim() : undefined,
+    createdAt: d.createdAt,
+    expiresAt: d.expiresAt ?? undefined,
+    isRevoked: false,
+  };
+}
 
 export const useDelegatesStore = create<DelegatesStore>((set, get) => ({
   delegates: [],
   isLoading: false,
   error: null,
-  includeRevoked: false,
 
   fetchDelegates: async () => {
     set({ isLoading: true, error: null });
     try {
-      const { includeRevoked } = get();
-      const list = includeRevoked ? MOCK_LIST : MOCK_LIST.filter((d) => !d.isRevoked);
+      const realmId = getRealmId();
+      const res = await apiFetch(`/api/realm/${realmId}/delegates`);
+      if (!res.ok) {
+        const data = (await res.json()) as { message?: string; error?: string };
+        throw new Error(data.message ?? data.error ?? "Failed to fetch delegates");
+      }
+      const data = (await res.json()) as {
+        delegates?: Array<{
+          delegateId: string;
+          clientId?: string;
+          permissions?: string[];
+          createdAt: number;
+          expiresAt?: number | null;
+        }>;
+      };
+      const list = (data.delegates ?? []).map(mapDelegateItem);
       set({ delegates: list });
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : "Failed to fetch" });
+      set({ error: e instanceof Error ? e.message : "Failed to fetch delegates" });
     } finally {
       set({ isLoading: false });
     }
   },
 
-  setIncludeRevoked: (v) => {
-    set({ includeRevoked: v });
-    get().fetchDelegates();
-  },
-
   createDelegate: async (params) => {
-    const delegateId = `mock-delegate-${mockId++}`;
-    const now = Date.now();
-    const ttl = params.ttlSeconds ?? 86400;
-    const delegate: DelegateListItem = {
-      delegateId,
-      name: params.name?.trim() || undefined,
-      createdAt: now,
-      expiresAt: now + ttl * 1000,
-      isRevoked: false,
-      depth: 0,
+    const realmId = getRealmId();
+    const ttlMs = typeof params.ttlSeconds === "number" && params.ttlSeconds > 0
+      ? params.ttlSeconds * 1000
+      : 86400 * 1000;
+    const body: { ttl: number; client_id?: string } = { ttl: ttlMs };
+    if (params.name?.trim()) body.client_id = params.name.trim();
+
+    const res = await apiFetch(`/api/realm/${realmId}/delegates/assign`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const data = (await res.json()) as { message?: string; error?: string };
+      throw new Error(data.message ?? data.error ?? "Failed to create delegate");
+    }
+    const raw = (await res.json()) as {
+      delegateId: string;
+      accessToken: string;
+      clientId: string;
+      expiresAt?: number | null;
     };
-    MOCK_LIST.unshift(delegate);
+    const now = Date.now();
+    const delegate: DelegateListItem = {
+      delegateId: raw.delegateId,
+      name: raw.clientId?.trim() || undefined,
+      createdAt: now,
+      expiresAt: raw.expiresAt ?? undefined,
+      isRevoked: false,
+    };
     const response: CreateDelegateResponse = {
       delegate,
-      accessToken: `mock-access-${delegateId}`,
-      accessTokenExpiresAt: now + ttl * 1000,
+      accessToken: raw.accessToken,
+      accessTokenExpiresAt: raw.expiresAt ?? now + ttlMs,
     };
     return response;
   },
 
   revokeDelegate: async (delegateId: string) => {
-    const d = MOCK_LIST.find((x) => x.delegateId === delegateId);
-    if (d) d.isRevoked = true;
+    const realmId = getRealmId();
+    const res = await apiFetch(`/api/realm/${realmId}/delegates/${encodeURIComponent(delegateId)}/revoke`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      const data = (await res.json()) as { message?: string; error?: string };
+      throw new Error(data.message ?? data.error ?? "Failed to revoke delegate");
+    }
     await get().fetchDelegates();
   },
 }));

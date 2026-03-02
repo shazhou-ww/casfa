@@ -7,9 +7,7 @@ import {
   Button,
   Chip,
   CircularProgress,
-  FormControlLabel,
   IconButton,
-  Switch,
   Table,
   TableBody,
   TableCell,
@@ -18,7 +16,7 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import type { DelegateListItem } from "../../../types/delegate";
 import { useDelegatesStore } from "../../stores/delegates-store";
 
@@ -60,21 +58,12 @@ export function DelegatesTab({ onCreateClick, onRevokeClick }: DelegatesTabProps
     delegates,
     isLoading,
     error,
-    includeRevoked,
     fetchDelegates,
-    setIncludeRevoked,
   } = useDelegatesStore();
 
   useEffect(() => {
     fetchDelegates();
   }, [fetchDelegates]);
-
-  const handleToggleRevoked = useCallback(
-    (_: React.ChangeEvent<HTMLInputElement>, checked: boolean) => {
-      setIncludeRevoked(checked);
-    },
-    [setIncludeRevoked]
-  );
 
   return (
     <Box>
@@ -87,21 +76,9 @@ export function DelegatesTab({ onCreateClick, onRevokeClick }: DelegatesTabProps
         }}
       >
         <Typography variant="h6">Delegates</Typography>
-        <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={includeRevoked}
-                onChange={handleToggleRevoked}
-                size="small"
-              />
-            }
-            label="Show revoked"
-          />
-          <Button variant="contained" startIcon={<AddIcon />} onClick={onCreateClick}>
-            Create Delegate
-          </Button>
-        </Box>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={onCreateClick}>
+          Create Delegate
+        </Button>
       </Box>
 
       {error && (
