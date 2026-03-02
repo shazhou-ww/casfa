@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "casfa-local": {
+      "url": "http://localhost:8901/api/mcp"
+    },
+    "casfa": {
+      "url": "https://casfa.shazhou.me/api/mcp"
+    },
+    "casfa-next-local": {
+      "url": "http://localhost:7100/api/mcp"
+    }
+  }
+}
