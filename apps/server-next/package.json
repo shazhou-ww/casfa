@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "clean": "rimraf .serverless .esbuild .local-storage",
     "dev": "bun run scripts/dev.ts",
     "dev:test": "bun run scripts/dev-test.ts",
     "dev:bun": "bun run backend/index.ts",
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@types/bun": "latest",
     "esbuild": "^0.24.0",
+    "rimraf": "^6.0.1",
     "serverless": "^4.0.0",
     "serverless-esbuild": "^1.57.0",
     "serverless-offline": "^14.0.0",
