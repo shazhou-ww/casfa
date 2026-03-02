@@ -1,4 +1,5 @@
-import { Alert, Box, Snackbar, Tab, Tabs, Typography } from "@mui/material";
+import KeyIcon from "@mui/icons-material/Key";
+import { Alert, Box, List, ListItemButton, ListItemIcon, ListItemText, Snackbar, Typography } from "@mui/material";
 import { useCallback, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { CreateDelegateDialog } from "../components/settings/delegates/create-delegate-dialog";
@@ -9,6 +10,8 @@ import type { CreateDelegateResponse, DelegateListItem } from "../types/delegate
 import { useDelegatesStore } from "../stores/delegates-store";
 
 const DELEGATES_TAB = "delegates";
+
+const SIDEBAR_WIDTH = 220;
 
 type TokenData = {
   delegateId: string;
@@ -33,8 +36,8 @@ export function SettingsPage() {
 
   const fetchDelegates = useDelegatesStore((s) => s.fetchDelegates);
 
-  const handleTabChange = useCallback(
-    (_: React.SyntheticEvent, value: string) => {
+  const handleNav = useCallback(
+    (value: string) => {
       if (value === DELEGATES_TAB) {
         navigate("/settings/delegates", { replace: true });
       }
@@ -77,19 +80,44 @@ export function SettingsPage() {
   }, [fetchDelegates]);
 
   return (
-    <Box sx={{ p: 3, height: "100%", overflow: "auto" }}>
-      <Typography variant="h6" sx={{ mb: 2 }}>
-        Settings
-      </Typography>
-      <Tabs value={tabValue} onChange={handleTabChange} sx={{ mb: 2 }}>
-        <Tab label="Delegates" value={DELEGATES_TAB} />
-      </Tabs>
-      {tabValue === DELEGATES_TAB && (
-        <DelegatesTab
-          onCreateClick={handleCreateClick}
-          onRevokeClick={handleRevokeClick}
-        />
-      )}
+    <Box sx={{ height: "100%", display: "flex", overflow: "hidden" }}>
+      {/* Left sidebar */}
+      <Box
+        sx={{
+          width: SIDEBAR_WIDTH,
+          flexShrink: 0,
+          borderRight: 1,
+          borderColor: "divider",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <Typography variant="subtitle1" sx={{ px: 2, py: 2, fontWeight: 600 }}>
+          Settings
+        </Typography>
+        <List dense disablePadding sx={{ px: 1 }}>
+          <ListItemButton
+            selected={tabValue === DELEGATES_TAB}
+            onClick={() => handleNav(DELEGATES_TAB)}
+          >
+            <ListItemIcon sx={{ minWidth: 36 }}>
+              <KeyIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText primary="Delegates" primaryTypographyProps={{ variant: "body2" }} />
+          </ListItemButton>
+        </List>
+      </Box>
+      {/* Right content */}
+      <Box sx={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column" }}>
+        <Box sx={{ flex: 1, p: 3, pt: 2, overflow: "auto" }}>
+          {tabValue === DELEGATES_TAB && (
+            <DelegatesTab
+              onCreateClick={handleCreateClick}
+              onRevokeClick={handleRevokeClick}
+            />
+          )}
+        </Box>
+      </Box>
 
       <CreateDelegateDialog
         open={createOpen}

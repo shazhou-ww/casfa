@@ -4,18 +4,19 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import SettingsIcon from "@mui/icons-material/Settings";
 import StorageIcon from "@mui/icons-material/Storage";
 import {
-  AppBar,
   Box,
   Button,
   Menu,
   MenuItem,
   Snackbar,
-  Toolbar,
   Typography,
 } from "@mui/material";
 import { useCallback, useState } from "react";
-import { useNavigate, Outlet } from "react-router-dom";
+import { Link, useNavigate, Outlet } from "react-router-dom";
+import { SidebarTree } from "./explorer/sidebar-tree";
 import { useAuthStore } from "../stores/auth-store";
+
+const SIDEBAR_WIDTH = 260;
 
 export function Layout() {
   const { user, logout } = useAuthStore();
@@ -27,9 +28,7 @@ export function Layout() {
     setAnchorEl(e.currentTarget);
   }, []);
 
-  const handleCloseMenu = useCallback(() => {
-    setAnchorEl(null);
-  }, []);
+  const handleCloseMenu = useCallback(() => setAnchorEl(null), []);
 
   const handleCopyUserId = useCallback(() => {
     if (user?.userId) {
@@ -50,21 +49,59 @@ export function Layout() {
   }, [logout, navigate, handleCloseMenu]);
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <AppBar position="static">
-        <Toolbar>
-          <StorageIcon sx={{ mr: 1 }} />
-          <Typography variant="h6" noWrap>
+    <Box sx={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+      {/* Left sidebar */}
+      <Box
+        sx={{
+          width: SIDEBAR_WIDTH,
+          flexShrink: 0,
+          display: "flex",
+          flexDirection: "column",
+          borderRight: 1,
+          borderColor: "divider",
+          bgcolor: "background.paper",
+        }}
+      >
+        {/* Fixed top: Branding */}
+        <Box
+          component={Link}
+          to="/files"
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            px: 2,
+            py: 2,
+            textDecoration: "none",
+            color: "text.primary",
+            "&:hover": { bgcolor: "action.hover" },
+          }}
+        >
+          <StorageIcon sx={{ fontSize: 24 }} />
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
             CASFA
           </Typography>
-          <Box sx={{ flex: 1 }} />
+        </Box>
+
+        {/* Middle: folder tree only */}
+        <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+          <SidebarTree />
+        </Box>
+
+        {/* Fixed bottom: Profile */}
+        <Box sx={{ flexShrink: 0, p: 1, borderTop: 1, borderColor: "divider" }}>
           {user && (
-            <Box display="flex" alignItems="center" gap={1}>
+            <>
               <Button
+                fullWidth
                 color="inherit"
                 onClick={handleOpenMenu}
                 endIcon={<KeyboardArrowDownIcon />}
-                sx={{ textTransform: "none" }}
+                sx={{
+                  justifyContent: "flex-start",
+                  textTransform: "none",
+                  fontSize: "0.8125rem",
+                }}
               >
                 {user.name || user.email || user.userId}
               </Button>
@@ -72,8 +109,8 @@ export function Layout() {
                 anchorEl={anchorEl}
                 open={Boolean(anchorEl)}
                 onClose={handleCloseMenu}
-                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-                transformOrigin={{ vertical: "top", horizontal: "right" }}
+                anchorOrigin={{ vertical: "top", horizontal: "right" }}
+                transformOrigin={{ vertical: "bottom", horizontal: "right" }}
               >
                 {user.email && (
                   <MenuItem dense disabled>
@@ -84,11 +121,7 @@ export function Layout() {
                   <Typography
                     variant="body2"
                     component="code"
-                    sx={{
-                      fontSize: "0.8em",
-                      mr: 1,
-                      fontFamily: "monospace",
-                    }}
+                    sx={{ fontSize: "0.8em", mr: 1, fontFamily: "monospace" }}
                   >
                     {user.userId}
                   </Typography>
@@ -103,17 +136,19 @@ export function Layout() {
                   <Typography variant="body2">Sign out</Typography>
                 </MenuItem>
               </Menu>
-            </Box>
+            </>
           )}
-        </Toolbar>
-      </AppBar>
+        </Box>
+      </Box>
 
+      {/* Right: main content */}
       <Box
         component="main"
         sx={{
           flex: 1,
           display: "flex",
           flexDirection: "column",
+          minWidth: 0,
           overflow: "hidden",
         }}
       >
