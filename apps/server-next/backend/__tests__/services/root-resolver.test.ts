@@ -105,7 +105,7 @@ describe("resolvePath", () => {
 });
 
 describe("getCurrentRoot", () => {
-  it("returns realm root for user auth (ensures empty root)", async () => {
+  it("returns realm root for user auth when realm is initialized", async () => {
     const key = createKeyProvider();
     const storage = createMemoryStorage();
     const casStorage = createCasStorageFromBuffer({
@@ -115,6 +115,8 @@ describe("getCurrentRoot", () => {
     });
     const cas = createCasFacade({ storage: casStorage, key });
     const branchStore = createMemoryBranchStore();
+    const emptyKey = await ensureEmptyRoot(cas, key);
+    await branchStore.ensureRealmRoot("u1", emptyKey);
     const deps: RootResolverDeps = { branchStore, cas, key };
     const auth: UserAuth = { type: "user", userId: "u1" };
     const rootKey = await getCurrentRoot(auth, deps);

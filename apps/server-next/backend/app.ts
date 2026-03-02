@@ -17,6 +17,7 @@ import { createRealmController } from "./controllers/realm.ts";
 import { createMcpHandler } from "./mcp/handler.ts";
 import { createMeController } from "./controllers/me.ts";
 import { createDevMockTokenController } from "./controllers/dev-mock-token.ts";
+import { ensureEmptyRoot } from "./services/root-resolver.ts";
 
 import type { KeyProvider } from "@casfa/core";
 
@@ -53,7 +54,12 @@ export function createApp(deps: AppDeps) {
   );
 
   if (deps.config.auth.mockJwtSecret) {
-    const devMockToken = createDevMockTokenController({ config: deps.config });
+    const devMockToken = createDevMockTokenController({
+      config: deps.config,
+      branchStore: deps.branchStore,
+      cas: deps.cas,
+      key: deps.key,
+    });
     app.get("/api/dev/mock-token", (c) => devMockToken.get(c));
     app.post("/api/dev/mock-token", (c) => devMockToken.get(c));
   }
@@ -191,6 +197,20 @@ export function createApp(deps: AppDeps) {
       refresh_token?: string;
       expires_in?: number;
     };
+    if (data.id_token) {
+      try {
+        const payload = JSON.parse(
+          Buffer.from(data.id_token.split(".")[1]!, "base64url").toString()
+        ) as { sub?: string };
+        const sub = payload.sub;
+        if (sub) {
+          const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
+          await deps.branchStore.ensureRealmRoot(sub, emptyKey);
+        }
+      } catch {
+        // ignore decode/ensure errors; still return tokens
+      }
+    }
     return c.json({
       id_token: data.id_token,
       access_token: data.access_token,

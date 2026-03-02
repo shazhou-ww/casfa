@@ -51,6 +51,10 @@ custom:
     start:
       port: 7102
       migrate: true
+      inMemory: false
+      dbPath: ".dynamodb"
+      # If Java install fails with NoClassDefFoundError (e.g. ParseException), use Docker instead:
+      # docker: true
   s3:
     host: localhost
     port: 4569

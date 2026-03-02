@@ -6,7 +6,6 @@ import type { Context } from "hono";
 import type { Env } from "../types.ts";
 import type { RootResolverDeps } from "../services/root-resolver.ts";
 import { resolvePath } from "../services/root-resolver.ts";
-import { ensureEmptyRoot } from "../services/root-resolver.ts";
 import type { Branch } from "../types/branch.ts";
 import type { ServerConfig } from "../config.ts";
 
@@ -56,11 +55,12 @@ export function createBranchesController(deps: BranchesControllerDeps) {
           if (!hasBranchManage(auth)) {
             return c.json({ error: "FORBIDDEN", message: "branch_manage or user required" }, 403);
           }
-          let rootKey = await deps.branchStore.getRealmRoot(realmId);
+          const rootKey = await deps.branchStore.getRealmRoot(realmId);
           if (rootKey === null) {
-            const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
-            await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
-            rootKey = emptyKey;
+            return c.json(
+              { error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." },
+              404
+            );
           }
           const rootRecord = await deps.branchStore.getRealmRootRecord(realmId);
           if (!rootRecord) throw new Error("Realm root record not found");

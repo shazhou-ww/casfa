@@ -9,7 +9,6 @@ import {
   getCurrentRoot,
   resolvePath,
   getNodeDecoded,
-  ensureEmptyRoot,
 } from "../services/root-resolver.ts";
 import { hashToKey } from "@casfa/core";
 import type { ServerConfig } from "../config.ts";
@@ -217,11 +216,9 @@ async function handleToolsCall(
         if (!hasBranchManage(auth)) {
           return mcpError(id, MCP_INVALID_PARAMS, "branch_manage or user required");
         }
-        let rootKey = await deps.branchStore.getRealmRoot(realmId);
+        const rootKey = await deps.branchStore.getRealmRoot(realmId);
         if (rootKey === null) {
-          const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
-          await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
-          rootKey = emptyKey;
+          return mcpError(id, MCP_INVALID_PARAMS, "Realm not initialized. Open profile or realm first.");
         }
         const rootRecord = await deps.branchStore.getRealmRootRecord(realmId);
         if (!rootRecord) return mcpError(id, MCP_INVALID_PARAMS, "Realm root not found");
