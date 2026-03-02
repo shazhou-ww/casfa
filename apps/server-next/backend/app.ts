@@ -22,6 +22,7 @@ import {
   createMcpAuthCode,
   consumeMcpAuthCodeAsync,
   createMcpDelegateToken,
+  refreshMcpTokens,
   cacheTokenForUsedCode,
   getCachedTokenForUsedCode,
 } from "./services/mcp-oauth.ts";
@@ -333,11 +334,48 @@ export function createApp(deps: AppDeps) {
       return c.json({ error: "BAD_REQUEST", message: "Content-Type must be application/x-www-form-urlencoded" }, 400);
     }
     const grant_type = params.grant_type;
+
+    if (grant_type === "refresh_token") {
+      const refresh_token = params.refresh_token;
+      const client_id = params.client_id;
+      if (!refresh_token || !client_id) {
+        return c.json(
+          { error: "invalid_request", error_description: "Missing refresh_token or client_id" },
+          400
+        );
+      }
+      const result = await refreshMcpTokens(
+        refresh_token,
+        client_id,
+        deps.config,
+        deps.delegateGrantStore
+      );
+      if (!result) {
+        return c.json(
+          { error: "invalid_grant", error_description: "Invalid or expired refresh token" },
+          400
+        );
+      }
+      return c.json({
+        access_token: result.accessToken,
+        refresh_token: result.refreshToken,
+        token_type: "Bearer",
+        expires_in: result.expiresIn,
+        refresh_expires_in: result.refreshExpiresIn,
+      });
+    }
+
+    if (grant_type !== "authorization_code") {
+      return c.json(
+        { error: "invalid_request", error_description: "grant_type must be authorization_code or refresh_token" },
+        400
+      );
+    }
     const code = params.code;
     const redirect_uri = params.redirect_uri;
     const client_id = params.client_id;
     const code_verifier = params.code_verifier;
-    if (grant_type !== "authorization_code" || !code || !redirect_uri || !client_id || !code_verifier) {
+    if (!code || !redirect_uri || !client_id || !code_verifier) {
       return c.json(
         { error: "invalid_request", error_description: "Missing or invalid grant_type, code, redirect_uri, client_id, or code_verifier" },
         400

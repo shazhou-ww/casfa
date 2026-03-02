@@ -95,24 +95,42 @@ function base64urlEncode(s: string): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-/** Build a delegate access token: either signed JWT (when mockJwtSecret) or JWT-shaped string for lookup by hash. Also issues refresh_token and stores its hash. */
-export async function createMcpDelegateToken(
+/** Refresh token format: base64url({ sub, client_id }) + "." + random so we can decode realmId for lookup. */
+function makeRefreshTokenPayload(realmId: string, clientId: string): string {
+  const payload = base64urlEncode(JSON.stringify({ sub: realmId, client_id: clientId }));
+  return `${payload}.${randomCode()}`;
+}
+
+/** Decode refresh token payload to get realmId and clientId. Returns null if invalid. */
+export function decodeMcpRefreshTokenPayload(token: string): { realmId: string; clientId: string } | null {
+  const dot = token.indexOf(".");
+  if (dot <= 0) return null;
+  try {
+    const decoded = atob(token.slice(0, dot).replace(/-/g, "+").replace(/_/g, "/"));
+    const obj = JSON.parse(decoded) as { sub?: string; client_id?: string };
+    if (typeof obj.sub !== "string" || typeof obj.client_id !== "string") return null;
+    return { realmId: obj.sub, clientId: obj.client_id };
+  } catch {
+    return null;
+  }
+}
+
+const REFRESH_EXPIRES_IN_SEC = 60 * 24 * 60 * 60; // 60 days
+
+/** Generate new access + refresh token pair (and hashes). Does not insert into store. */
+async function generateMcpTokenPair(
   realmId: string,
   clientId: string,
-  config: ServerConfig,
-  delegateGrantStore: DelegateGrantStore
+  config: ServerConfig
 ): Promise<{
   accessToken: string;
   refreshToken: string;
+  accessTokenHash: string;
+  refreshTokenHash: string;
   expiresIn: number;
   refreshExpiresIn: number;
 }> {
-  const delegateId = crypto.randomUUID();
-  const now = Date.now();
-  const expiresAt = now + 30 * 24 * 60 * 60 * 1000; // 30 days
-  const expSec = Math.floor(expiresAt / 1000);
-  const REFRESH_EXPIRES_IN_SEC = 60 * 24 * 60 * 60; // 60 days
-
+  const expSec = Math.floor((Date.now() + 30 * 24 * 60 * 60 * 1000) / 1000);
   let accessToken: string;
   const secret = config.auth.mockJwtSecret;
   if (secret) {
@@ -128,25 +146,81 @@ export async function createMcpDelegateToken(
     const payloadB64 = base64urlEncode(JSON.stringify(payload));
     accessToken = `${header}.${payloadB64}.mcp`;
   }
-
-  const refreshToken = randomCode();
+  const refreshToken = makeRefreshTokenPayload(realmId, clientId);
   const accessTokenHash = await sha256Hex(accessToken);
   const refreshTokenHash = await sha256Hex(refreshToken);
+  return {
+    accessToken,
+    refreshToken,
+    accessTokenHash,
+    refreshTokenHash,
+    expiresIn: 30 * 24 * 60 * 60,
+    refreshExpiresIn: REFRESH_EXPIRES_IN_SEC,
+  };
+}
+
+/** Build a delegate access token: either signed JWT (when mockJwtSecret) or JWT-shaped string for lookup by hash. Also issues refresh_token and stores its hash. */
+export async function createMcpDelegateToken(
+  realmId: string,
+  clientId: string,
+  config: ServerConfig,
+  delegateGrantStore: DelegateGrantStore
+): Promise<{
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  refreshExpiresIn: number;
+}> {
+  const delegateId = crypto.randomUUID();
+  const now = Date.now();
+  const expiresAt = now + 30 * 24 * 60 * 60 * 1000; // 30 days
+
+  const pair = await generateMcpTokenPair(realmId, clientId, config);
   await delegateGrantStore.insert({
     delegateId,
     realmId,
     clientId,
-    accessTokenHash,
-    refreshTokenHash,
+    accessTokenHash: pair.accessTokenHash,
+    refreshTokenHash: pair.refreshTokenHash,
     permissions: ["file_read", "file_write", "branch_manage"],
     createdAt: now,
     expiresAt,
   });
 
   return {
-    accessToken,
-    refreshToken,
-    expiresIn: 30 * 24 * 60 * 60,
-    refreshExpiresIn: REFRESH_EXPIRES_IN_SEC,
+    accessToken: pair.accessToken,
+    refreshToken: pair.refreshToken,
+    expiresIn: pair.expiresIn,
+    refreshExpiresIn: pair.refreshExpiresIn,
+  };
+}
+
+/** Exchange refresh_token for new access_token and refresh_token (rotation). Returns null if invalid. */
+export async function refreshMcpTokens(
+  refreshToken: string,
+  clientId: string,
+  config: ServerConfig,
+  delegateGrantStore: DelegateGrantStore
+): Promise<{
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  refreshExpiresIn: number;
+} | null> {
+  const payload = decodeMcpRefreshTokenPayload(refreshToken);
+  if (!payload || payload.clientId !== clientId) return null;
+  const refreshTokenHash = await sha256Hex(refreshToken);
+  const grant = await delegateGrantStore.getByRefreshTokenHash(payload.realmId, refreshTokenHash);
+  if (!grant) return null;
+  const pair = await generateMcpTokenPair(grant.realmId, grant.clientId, config);
+  await delegateGrantStore.updateTokens(grant.delegateId, {
+    accessTokenHash: pair.accessTokenHash,
+    refreshTokenHash: pair.refreshTokenHash,
+  });
+  return {
+    accessToken: pair.accessToken,
+    refreshToken: pair.refreshToken,
+    expiresIn: pair.expiresIn,
+    refreshExpiresIn: pair.refreshExpiresIn,
   };
 }
