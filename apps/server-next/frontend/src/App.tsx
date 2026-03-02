@@ -14,6 +14,7 @@ export function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<ExplorerPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/delegates" element={<SettingsPage />} />
         </Route>
       </Route>
 
