@@ -1,8 +1,8 @@
 /**
- * Start serverless-offline, wait for ready, run E2E tests with BASE_URL, then stop.
- * Run from apps/server-next (e.g. bun run scripts/e2e-offline.ts).
+ * Start dev:test (serverless offline on 7111), wait for ready, run E2E with BASE_URL=http://localhost:7111, then stop.
+ * Run from apps/server-next (e.g. bun run test:e2e).
  */
-const OFFLINE_PORT = 3000;
+const OFFLINE_PORT = 7111;
 const BASE_URL = `http://localhost:${OFFLINE_PORT}`;
 const HEALTH_URL = `${BASE_URL}/api/health`;
 const WAIT_MS = 60_000;
@@ -27,6 +27,11 @@ const serverless = Bun.spawn(
   ["bunx", "serverless", "offline", "--httpPort", String(OFFLINE_PORT)],
   {
     cwd: appRoot,
+    env: {
+      ...process.env,
+      STORAGE_TYPE: "memory",
+      MOCK_JWT_SECRET: process.env.MOCK_JWT_SECRET ?? "test-secret-e2e",
+    },
     stdout: "pipe",
     stderr: "pipe",
   }
