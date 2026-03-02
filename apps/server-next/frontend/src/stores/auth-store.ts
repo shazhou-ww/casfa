@@ -53,6 +53,8 @@ type AuthStore = {
   initialize: () => Promise<void>;
   logout: () => void;
   setUser: (user: User | null) => void;
+  /** Internal: set token (e.g. after refresh); for mock also persists to sessionStorage */
+  setToken: (token: string | null) => void;
   getToken: () => string | null;
 };
 
@@ -65,6 +67,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   isLoggedIn: false,
 
   getToken: () => get().token,
+
+  setToken: (token) => {
+    if (get().authType === "mock") saveStoredMockToken(token);
+    set({ token });
+  },
 
   initialize: async () => {
     set({ loading: true });
