@@ -34,7 +34,7 @@ export function createCognitoJwtVerifier(config: CognitoJwtVerifierConfig): (tok
 
     const options: jose.JWTVerifyOptions = {
       issuer,
-      clockTolerance: 10,
+      clockTolerance: 30,
     };
     if (clientId) {
       options.audience = clientId;

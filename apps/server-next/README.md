@@ -54,6 +54,8 @@ bun run dev
 
 **若出现 `NoClassDefFoundError: org/apache/commons/cli/ParseException`**：说明 DynamoDB Local 的 classpath 不完整（常见于 `clean:db` 后重装）。请务必在 **`apps/server-next` 目录下**执行 `bunx serverless dynamodb install`，确认 `.dynamodb` 内既有 `DynamoDBLocal.jar` 也有 `DynamoDBLocal_lib/` 目录。若仍报错，可改用 Docker 运行 DynamoDB Local：在 `serverless.yml` 的 `custom.serverless-dynamodb.start` 下取消注释 `docker: true`，并确保本机已安装 Docker。
 
+**为何 DynamoDB Local 经常要重启？** 常见原因：（1）**持久化到文件**（`inMemory: false` + `dbPath`）：异常退出或 Ctrl+C 后，SQLite 文件可能被锁或损坏，下次启动失败或表现异常；（2）**进程生命周期**：DynamoDB 随 `serverless offline` 作为子进程启动，杀掉 dev 时 Java 进程有时未正确退出，端口 7102 被占；（3）**Java 进程**：DynamoDB Local 是 JAR，偶发崩溃后插件不会自动重启。**缓解**：本地开发已默认改为 **`inMemory: true`**（每次启动全新 DB，无文件锁问题）；若需要保留数据，可改回 `inMemory: false` 并取消注释 `dbPath: ".dynamodb"`，遇到问题再执行 `bun run clean:db` 后重装并重启。
+
 ### 本地测试环境（local-test，端口 711x）
 
 ```bash
@@ -91,7 +93,9 @@ bun run deploy              # 默认 stage=beta
 bun run deploy -- --stage prod
 ```
 
-脚本会从**当前目录**起向上逐级查找 `.env`，直到**仓库根目录**，读取第一个出现的 `AWS_PROFILE` 并用其执行 `serverless deploy`。若未找到则使用当前环境已有的 AWS 凭证。**注意**：须在 `apps/server-next` 目录下执行 `bun run deploy`，以便 serverless 找到 `serverless.yml`。
+脚本会从**当前目录**起向上逐级查找 `.env`，直到**仓库根目录**，读取第一个出现的 `AWS_PROFILE` 并用其执行 `serverless deploy`。同时会加载 `.env` 和 `.env.{stage}`（如 `.env.prod`）中的变量并传给 Lambda；**线上（beta/prod）必须配置 Cognito**：在 `.env` 或 `.env.prod` 中设置 `COGNITO_USER_POOL_ID`、`COGNITO_CLIENT_ID`、`COGNITO_HOSTED_UI_URL`（及可选 `COGNITO_REGION`），且**不要**设置 `MOCK_JWT_SECRET`（部署脚本在非 dev 阶段会主动忽略该变量）。若未配置 Cognito 即部署 prod，脚本会报错并退出。若未找到则使用当前环境已有的 AWS 凭证。**注意**：须在 `apps/server-next` 目录下执行 `bun run deploy`，以便 serverless 找到 `serverless.yml`。
+
+**自定义域名**：beta 使用 `beta.casfa.shazhou.me`，prod 使用 `casfa.shazhou.me`。部署前在 `.env` 或 `.env.{stage}` 中设置 `ACM_CERTIFICATE_ARN`（须为 **us-east-1** 的 ACM 证书，如 `*.casfa.shazhou.me`）。部署完成后在 DNS 中添加 CNAME：`<域名>` → CloudFront 分配域名（部署结束会打印）。
 
 **示例**：在 `apps/server-next` 或项目根目录放置 `.env`，内容为：
 
@@ -111,7 +115,7 @@ AWS_PROFILE=AdministratorAccess-914369185440
 | 变量 | 说明 |
 |------|------|
 | `PORT` | HTTP 端口（dev:bun） |
-| `MOCK_JWT_SECRET` | 设则 mock 鉴权，不设则 Cognito |
+| `MOCK_JWT_SECRET` | 设则 mock 鉴权；**线上（beta/prod）部署时不要设**，部署脚本会忽略 |
 | `COGNITO_*` | Cognito 配置 |
 | `DYNAMODB_ENDPOINT` | 本地 DynamoDB 地址（如 http://localhost:7102）；不设则用 AWS |
 | `DYNAMODB_TABLE_DELEGATES` / `DYNAMODB_TABLE_GRANTS` | 表名（默认 `casfa-next-<stage>-delegates/grants`） |
@@ -120,6 +124,7 @@ AWS_PROFILE=AdministratorAccess-914369185440
 | `STAGE` / `SLS_STAGE` | 用于默认表名/桶名（dev / local-test / beta / prod） |
 | `LOG_LEVEL` | 可选 |
 | `AWS_PROFILE` | 仅用于本地/CI 部署时指定 AWS profile（可写在 `.env`，由 `bun run deploy` 读取） |
+| `ACM_CERTIFICATE_ARN` | 部署 beta/prod 时自定义域名用；须为 **us-east-1** 的 ACM 证书 ARN（如 `*.casfa.shazhou.me`） |
 
 ## API 设计
 

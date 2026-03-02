@@ -64,6 +64,34 @@ function loadAwsProfile(): string | undefined {
   return undefined;
 }
 
+/** Load .env and optionally .env.{stage} from CWD and parents up to repo root. Merges in order (later overrides). */
+function loadEnvForDeploy(stage: string): Record<string, string> {
+  const repoRoot = findRepoRoot(CWD);
+  const dirs: string[] = [];
+  let d = resolve(CWD);
+  while (true) {
+    dirs.push(d);
+    if (d === repoRoot) break;
+    const parent = resolve(d, "..");
+    if (parent === d) break;
+    d = parent;
+  }
+  const out: Record<string, string> = {};
+  for (const dir of dirs) {
+    const envPath = join(dir, ".env");
+    if (existsSync(envPath)) {
+      Object.assign(out, parseEnvFile(envPath));
+    }
+  }
+  for (const dir of dirs) {
+    const stageEnvPath = join(dir, `.env.${stage}`);
+    if (existsSync(stageEnvPath)) {
+      Object.assign(out, parseEnvFile(stageEnvPath));
+    }
+  }
+  return out;
+}
+
 function run(cmd: string[], env: Record<string, string | undefined>, opts?: { cwd?: string }): Promise<number> {
   return new Promise((resolvePromise, reject) => {
     const proc = Bun.spawn(cmd, {
@@ -116,12 +144,50 @@ async function main(): Promise<number> {
   const serverlessArgs = args.filter((_, i) => i !== stageIdx && i !== stageIdx + 1);
 
   const profile = loadAwsProfile();
-  const env: Record<string, string | undefined> = { ...process.env };
+  const deployEnv = loadEnvForDeploy(stage);
+  const env: Record<string, string | undefined> = { ...process.env, ...deployEnv };
   if (profile) {
     env.AWS_PROFILE = profile;
     console.log(`Using AWS_PROFILE from .env: ${profile}`);
   } else {
     console.log("No AWS_PROFILE in .env; using existing env.");
+  }
+
+  // Production (beta/prod): use Cognito only — do not pass MOCK_JWT_SECRET so Lambda never uses mock auth.
+  const isProdLike = stage !== "dev" && stage !== "local-test";
+  if (isProdLike) {
+    delete env.MOCK_JWT_SECRET;
+    const cognitoPoolId = env.COGNITO_USER_POOL_ID?.trim();
+    if (!cognitoPoolId) {
+      console.error(
+        `[${stage}] COGNITO_USER_POOL_ID is required. Set it in .env or .env.${stage} (see .env.example).`
+      );
+      return 1;
+    }
+    if (!env.COGNITO_CLIENT_ID?.trim() || !env.COGNITO_HOSTED_UI_URL?.trim()) {
+      console.error(
+        `[${stage}] COGNITO_CLIENT_ID and COGNITO_HOSTED_UI_URL are required. Set them in .env or .env.${stage}.`
+      );
+      return 1;
+    }
+    console.log(`[${stage}] Using Cognito auth (COGNITO_USER_POOL_ID set, MOCK_JWT_SECRET omitted).`);
+  }
+
+  // Custom domain for CloudFront: beta -> beta.casfa.shazhou.me, prod -> casfa.shazhou.me (prod DNS 暂不覆盖旧版)
+  const stageDomains: Record<string, string> = {
+    beta: "beta.casfa.shazhou.me",
+    prod: "casfa.shazhou.me",
+  };
+  const domain = stageDomains[stage];
+  if (domain) {
+    const certArn = env.ACM_CERTIFICATE_ARN?.trim();
+    if (certArn) {
+      env.CLOUDFRONT_ALIAS = domain;
+      env.ACM_CERTIFICATE_ARN = certArn;
+      console.log(`[${stage}] CloudFront custom domain: ${domain} (ACM cert set).`);
+    } else {
+      console.log(`[${stage}] No ACM_CERTIFICATE_ARN; deploying without custom domain (set in .env to use https://${domain}).`);
+    }
   }
 
   // 1. Build frontend
@@ -234,6 +300,10 @@ async function main(): Promise<number> {
 
   console.log("\nDeploy complete.");
   if (frontendUrl) console.log(`Frontend: ${frontendUrl}`);
+  const customDomain = env.CLOUDFRONT_ALIAS;
+  if (customDomain) {
+    console.log(`Custom domain: https://${customDomain} (add CNAME ${customDomain} -> CloudFront distribution if not already).`);
+  }
   return 0;
 }
 

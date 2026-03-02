@@ -70,10 +70,14 @@ export function OAuthCallbackPage() {
         const data = (await res.json()) as {
           id_token?: string;
           access_token?: string;
+          message?: string;
         };
         const idToken = data.id_token ?? data.access_token;
         if (!idToken) {
-          setError("No token in response");
+          setError(
+            (data as { message?: string }).message ||
+              "No token in response. Ensure http://localhost:7100/oauth/callback is in Cognito App Client callback URLs, and complete sign-in in the same tab (so PKCE code_verifier is available)."
+          );
           return;
         }
         setAuthType("cognito");
