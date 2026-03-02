@@ -109,7 +109,8 @@ export function createAuthMiddleware(deps: AuthMiddlewareDeps) {
   }
 
   return async function authMiddleware(c: Context<Env>, next: Next) {
-    const header = c.req.header("Authorization");
+    const header =
+      c.req.header("Authorization") ?? c.req.header("authorization");
     if (!header?.startsWith("Bearer ")) {
       return c.json({ error: "UNAUTHORIZED", message: "Missing or invalid Authorization" }, 401);
     }
@@ -170,7 +171,10 @@ export function createAuthMiddleware(deps: AuthMiddlewareDeps) {
         };
         c.set("auth", userAuth);
         return next();
-      } catch {
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        // Log for debugging 401 (e.g. expired token, wrong issuer, JWKS fetch failure)
+        console.warn("[auth] JWT verification failed:", message);
         return c.json({ error: "UNAUTHORIZED", message: "Invalid token" }, 401);
       }
     }

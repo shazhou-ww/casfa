@@ -13,6 +13,49 @@ provider:
   runtime: nodejs20.x
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:Query
+            - dynamodb:BatchGetItem
+            - dynamodb:BatchWriteItem
+            - dynamodb:Scan
+          Resource:
+            - !GetAtt DelegatesTable.Arn
+            - !Sub ${DelegatesTable.Arn}/index/*
+        - Effect: Allow
+          Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:Query
+            - dynamodb:BatchGetItem
+            - dynamodb:BatchWriteItem
+            - dynamodb:Scan
+          Resource:
+            - !GetAtt DelegateGrantsTable.Arn
+            - !Sub ${DelegateGrantsTable.Arn}/index/*
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+            - s3:PutObject
+            - s3:DeleteObject
+            - s3:ListBucket
+          Resource:
+            - !GetAtt BlobBucket.Arn
+            - !Sub ${BlobBucket.Arn}/*
+  stackParameters:
+    - ParameterKey: CloudFrontAlias
+      ParameterValue: ${env:CLOUDFRONT_ALIAS, ''}
+    - ParameterKey: AcmCertArn
+      ParameterValue: ${env:ACM_CERTIFICATE_ARN, ''}
   httpApi:
     payload: '2.0'
     cors: true
@@ -37,8 +80,19 @@ plugins:
   - serverless-s3-local
   - serverless-esbuild
   - serverless-offline
+  - serverless-parameters
 
 custom:
+  # CloudFormation Parameters for custom domain (serverless-parameters plugin; values from env via provider.stackParameters)
+  parameters:
+    CloudFrontAlias:
+      Type: String
+      Default: ''
+      Description: Custom domain alias for CloudFront (e.g. beta.casfa.shazhou.me)
+    AcmCertArn:
+      Type: String
+      Default: ''
+      Description: ACM certificate ARN (must be in us-east-1 for CloudFront)
   serverless-offline:
     httpPort: 7101
     lambdaPort: 7103
@@ -51,8 +105,11 @@ custom:
     start:
       port: 7102
       migrate: true
-      inMemory: false
-      dbPath: ".dynamodb"
+      # inMemory: true = 每次启动全新 DB，避免文件锁/损坏导致频繁重启；需要保留数据时改为 false 并用 dbPath
+      inMemory: true
+      # inMemory: false 时取消下面注释以持久化（可能遇到文件锁或异常退出后需 clean:db + 重启）
+      # inMemory: false
+      # dbPath: ".dynamodb"
       # If Java install fails with NoClassDefFoundError (e.g. ParseException), use Docker instead:
       # docker: true
   s3:
@@ -71,12 +128,16 @@ custom:
 functions:
   api:
     handler: backend/lambda.handler
+    timeout: 30
     events:
       - httpApi: '*'
 
 # Frontend: S3 bucket + CloudFront (SPA; /api -> API Gateway)
-# DynamoDB tables for delegates/grants; S3 bucket for CAS blob (serverless-s3-local creates locally)
+# Custom domain: set CLOUDFRONT_ALIAS and ACM_CERTIFICATE_ARN when deploying beta/prod (see deploy script and .env.example).
+# Parameters are added by serverless-parameters plugin from custom.parameters.
 resources:
+  Conditions:
+    UseCustomDomain: !Not [!Equals [!Ref CloudFrontAlias, '']]
   Resources:
     # DynamoDB: delegates + roots (realm/branch state)
     DelegatesTable:
@@ -170,8 +231,29 @@ resources:
           OriginAccessControlOriginType: s3
           SigningBehavior: always
           SigningProtocol: sigv4
+    # Cache policy for /api/*: forward Authorization to origin (required for Bearer JWT); minimal TTL so API is not cached.
+    ApiCachePolicy:
+      Type: AWS::CloudFront::CachePolicy
+      Properties:
+        CachePolicyConfig:
+          Name: casfa-next-api-cache-${sls:stage}
+          Comment: Forward Authorization header to API Gateway; cache key includes Authorization so per-user
+          DefaultTTL: 1
+          MaxTTL: 1
+          MinTTL: 0
+          ParametersInCacheKeyAndForwardedToOrigin:
+            EnableAcceptEncodingGzip: true
+            HeadersConfig:
+              HeaderBehavior: whitelist
+              Headers:
+                - Authorization
+            CookiesConfig:
+              CookieBehavior: none
+            QueryStringsConfig:
+              QueryStringBehavior: all
     FrontendCloudFront:
       Type: AWS::CloudFront::Distribution
+      DependsOn: SpaFallbackEdgeVersion
       Properties:
         DistributionConfig:
           Enabled: true
@@ -193,20 +275,97 @@ resources:
             AllowedMethods: [GET, HEAD, OPTIONS]
             Compress: true
             CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+            LambdaFunctionAssociations:
+              - EventType: origin-response
+                LambdaFunctionARN: !Ref SpaFallbackEdgeVersion
           CacheBehaviors:
             - PathPattern: /api/*
               TargetOriginId: ApiGateway
               ViewerProtocolPolicy: https-only
               AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
               Compress: true
-              CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-          CustomErrorResponses:
-            - ErrorCode: 403
-              ResponseCode: 200
-              ResponsePagePath: /index.html
-            - ErrorCode: 404
-              ResponseCode: 200
-              ResponsePagePath: /index.html
+              CachePolicyId: !Ref ApiCachePolicy
+              LambdaFunctionAssociations:
+                - EventType: origin-response
+                  LambdaFunctionARN: !Ref SpaFallbackEdgeVersion
+          Aliases: !If [UseCustomDomain, [!Ref CloudFrontAlias], !Ref AWS::NoValue]
+          ViewerCertificate: !If
+            - UseCustomDomain
+            - AcmCertificateArn: !Ref AcmCertArn
+              SslSupportMethod: sni-only
+              MinimumProtocolVersion: TLSv1.2_2021
+            - CloudFrontDefaultCertificate: true
+          # No CustomErrorResponses: API 403/404 must return JSON. SPA fallback via SpaFallbackEdge (origin-response).
+    SpaFallbackEdgeRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal: { Service: lambda.amazonaws.com }
+              Action: sts:AssumeRole
+            - Effect: Allow
+              Principal: { Service: edgelambda.amazonaws.com }
+              Action: sts:AssumeRole
+    SpaFallbackEdgeRolePolicy:
+      Type: AWS::IAM::Policy
+      Properties:
+        PolicyName: SpaFallbackEdgeS3
+        Roles: [!Ref SpaFallbackEdgeRole]
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub ${FrontendBucket.Arn}/index.html
+    SpaFallbackEdgeFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+        FunctionName: casfa-next-spa-fallback-edge-${sls:stage}
+        Runtime: nodejs18.x
+        Handler: index.handler
+        Code:
+          ZipFile: |
+            const AWS = require('aws-sdk');
+            function parse(d) {
+              if (!d || typeof d !== 'string') return null;
+              const p = d.toLowerCase().split('.');
+              if (p.length >= 4 && p[1] === 's3') return { bucket: p[0], region: p[2] || 'us-east-1' };
+              return null;
+            }
+            exports.handler = async (event) => {
+              const r = event.Records && event.Records[0] && event.Records[0].cf;
+              if (!r) return event;
+              const req = r.request;
+              const res = r.response;
+              const status = parseInt(res.status, 10);
+              if (status !== 403 && status !== 404) return event;
+              if (req.uri.startsWith('/api')) return event;
+              const o = parse(req.origin && req.origin.s3 && req.origin.s3.domainName);
+              if (!o) return event;
+              const s3 = new AWS.S3({ region: o.region });
+              try {
+                const out = await s3.getObject({ Bucket: o.bucket, Key: 'index.html' }).promise();
+                const body = out.Body.toString('utf-8');
+                const b64 = Buffer.from(body, 'utf-8').toString('base64');
+                res.status = '200';
+                res.statusDescription = 'OK';
+                res.body = b64;
+                res.bodyEncoding = 'base64';
+                res.headers['content-type'] = [{ key: 'Content-Type', value: 'text/html; charset=utf-8' }];
+                res.headers['content-length'] = [{ key: 'Content-Length', value: String(Buffer.byteLength(body, 'utf-8')) }];
+              } catch (e) {}
+              return event;
+            };
+        Role: !GetAtt SpaFallbackEdgeRole.Arn
+        MemorySize: 128
+        Timeout: 5
+    SpaFallbackEdgeVersion:
+      Type: AWS::Lambda::Version
+      DependsOn: SpaFallbackEdgeFunction
+      Properties:
+        FunctionName: !Ref SpaFallbackEdgeFunction
     FrontendBucketPolicy:
       Type: AWS::S3::BucketPolicy
       DependsOn: FrontendCloudFront

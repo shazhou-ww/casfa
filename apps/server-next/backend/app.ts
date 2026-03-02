@@ -199,12 +199,39 @@ export function createApp(deps: AppDeps) {
         400
       );
     }
-    const data = (await tokenRes.json()) as {
+    const contentType = tokenRes.headers.get("content-type") ?? "";
+    let data: {
       id_token?: string;
       access_token?: string;
       refresh_token?: string;
       expires_in?: number;
     };
+    const raw = await tokenRes.text();
+    if (contentType.includes("application/json")) {
+      data = JSON.parse(raw) as typeof data;
+    } else if (contentType.includes("application/x-www-form-urlencoded") || !raw.trim().startsWith("{")) {
+      const params = new URLSearchParams(raw);
+      data = {
+        id_token: params.get("id_token") ?? undefined,
+        access_token: params.get("access_token") ?? undefined,
+        refresh_token: params.get("refresh_token") ?? undefined,
+        expires_in: params.get("expires_in") ? Number(params.get("expires_in")) : undefined,
+      };
+    } else {
+      data = JSON.parse(raw) as typeof data;
+    }
+    const idToken = data.id_token ?? data.access_token;
+    if (!idToken) {
+      return c.json(
+        {
+          error: "OAUTH_TOKEN_EXCHANGE_FAILED",
+          message:
+            "Cognito did not return id_token or access_token. Check that the App Client has " +
+            "http://localhost:7100/oauth/callback in Allowed callback URLs and that PKCE code_verifier is sent.",
+        } satisfies ErrorBody,
+        502
+      );
+    }
     if (data.id_token) {
       try {
         const payload = JSON.parse(
