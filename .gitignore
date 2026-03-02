@@ -31,6 +31,12 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 *.tsbuildinfo
 tsconfig.build.json
 
+# Serverless (deploy artifacts, state)
+.serverless
+
+# serverless-esbuild / esbuild build output
+.esbuild
+
 # IntelliJ based IDEs
 .idea
 

@@ -36,6 +36,7 @@ plugins:
 custom:
   serverless-offline:
     httpPort: 7101
+    lambdaPort: 7103
     noPrependStageInUrl: true
   esbuild:
     bundle: true

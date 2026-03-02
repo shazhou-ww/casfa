@@ -3,6 +3,7 @@
  * Run from apps/server-next (e.g. bun run test:e2e).
  */
 const OFFLINE_PORT = 7111;
+const LAMBDA_PORT = 7113;
 const BASE_URL = `http://localhost:${OFFLINE_PORT}`;
 const HEALTH_URL = `${BASE_URL}/api/health`;
 const WAIT_MS = 60_000;
@@ -24,7 +25,7 @@ async function waitForHealthy(): Promise<void> {
 
 const appRoot = process.cwd();
 const serverless = Bun.spawn(
-  ["bunx", "serverless", "offline", "--httpPort", String(OFFLINE_PORT)],
+  ["bunx", "serverless", "offline", "--httpPort", String(OFFLINE_PORT), "--lambdaPort", String(LAMBDA_PORT)],
   {
     cwd: appRoot,
     env: {

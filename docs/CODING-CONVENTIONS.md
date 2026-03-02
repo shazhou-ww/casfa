@@ -4,6 +4,25 @@ Agents and contributors should follow these conventions when writing or modifyin
 
 ---
 
+## Be explicit: avoid ambiguous definitions
+
+- Prefer **explicit** types and APIs; avoid definitions that are ambiguous or “either A or B” without a clear single meaning.
+- **Optional properties** (`?`): use only when the absence of the value has a clear meaning; otherwise prefer a required field or a separate type.
+- **Union types** that mean “string or array of string” (or similar) are ambiguous—pick one representation and use it consistently (e.g. path as `string` only, not `string | string[]`).
+- **Paths**: use **`string`** only (e.g. `"foo"`, `"foo/bar"`). Do **not** support a segments array (`string[]`) for the same concept; one representation keeps the code clear.
+
+```ts
+// Prefer: single, explicit type
+type Delegate = { delegateId: string; mountPath: string };
+function getNode(path: string): Promise<CasNode | null>;
+
+// Avoid: optional or union when a single clear choice is better
+type Delegate = { delegateId: string; mountPath?: string[] | string };
+function getNode(path: string | string[]): Promise<CasNode | null>;
+```
+
+---
+
 ## Functional style
 
 - Prefer **functional** style: pure functions, immutable data, avoid mutable shared state.
@@ -71,3 +90,4 @@ class CasError extends Error { ... }
 | `type` for ADT and data shapes | `interface` |
 | Create functions returning objects | `class` |
 | Functional style, pure functions | Mutable state, OO constructors |
+| Explicit types, one representation (e.g. path as `string`) | Optional / union types that are ambiguous (e.g. `string \| string[]`) |
