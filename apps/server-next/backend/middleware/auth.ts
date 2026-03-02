@@ -3,6 +3,7 @@ import type { AuthContext, Env } from "../types.ts";
 import type { DelegateGrantStore } from "../db/delegate-grants.ts";
 import type { DelegateStore } from "@casfa/realm";
 import type { ServerConfig } from "../config.ts";
+import * as jose from "jose";
 import { createCognitoJwtVerifier } from "../auth/cognito-jwks.ts";
 
 async function sha256Hex(text: string): Promise<string> {
@@ -41,6 +42,31 @@ async function mockJwtVerify(token: string): Promise<{
   };
 }
 
+type JwtPayload = {
+  sub: string;
+  client_id?: string;
+  email?: string;
+  name?: string;
+  picture?: string;
+};
+
+/** Verify mock JWT with HS256 using MOCK_JWT_SECRET; rejects invalid or expired tokens. */
+function createMockSecretJwtVerifier(secret: string): (token: string) => Promise<JwtPayload> {
+  const key = new Uint8Array(new TextEncoder().encode(secret));
+  return async (token: string): Promise<JwtPayload> => {
+    const { payload } = await jose.jwtVerify(token, key);
+    const sub = payload.sub;
+    if (!sub || typeof sub !== "string") throw new Error("Missing sub");
+    return {
+      sub,
+      client_id: typeof payload.client_id === "string" ? payload.client_id : undefined,
+      email: typeof payload.email === "string" ? payload.email : undefined,
+      name: typeof payload.name === "string" ? payload.name : undefined,
+      picture: typeof payload.picture === "string" ? payload.picture : undefined,
+    };
+  };
+}
+
 /** Decode Branch token (base64url of branchId) to branchId */
 function decodeBranchToken(token: string): string | null {
   try {
@@ -75,6 +101,8 @@ export function createAuthMiddleware(deps: AuthMiddlewareDeps) {
         userPoolId: auth.cognitoUserPoolId,
         clientId: auth.cognitoClientId,
       });
+    } else if (auth?.mockJwtSecret) {
+      jwtVerifier = createMockSecretJwtVerifier(auth.mockJwtSecret);
     } else {
       jwtVerifier = mockJwtVerify;
     }
