@@ -37,6 +37,10 @@ tsconfig.build.json
 # serverless-esbuild / esbuild build output
 .esbuild
 
+# DynamoDB Local and S3 local (serverless-dynamodb, serverless-s3-local)
+.dynamodb
+.local-storage
+
 # IntelliJ based IDEs
 .idea
 
