@@ -16,8 +16,8 @@ import {
   resolvePath,
   getCurrentRoot,
   type RootResolverDeps,
-} from "../../src/services/root-resolver.ts";
-import type { UserAuth, WorkerAuth } from "../../src/types.ts";
+} from "../../backend/services/root-resolver.ts";
+import type { UserAuth, WorkerAuth } from "../../backend/types.ts";
 
 function createKeyProvider(): KeyProvider {
   return {

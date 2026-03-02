@@ -11,6 +11,7 @@ import { createCasFacade } from "../src/services/cas.ts";
 import { createRealmFacadeFromConfig } from "../src/services/realm.ts";
 import { createMemoryDelegateGrantStore } from "../src/db/delegate-grants.ts";
 import { createMemoryDerivedDataStore } from "../src/db/derived-data.ts";
+import { createMemoryUserSettingsStore } from "../src/db/user-settings.ts";
 import { createMemoryDelegateStore } from "@casfa/realm";
 
 export type TestServer = {
@@ -63,31 +64,7 @@ function createUserToken(realmId: string): string {
   return `${header}.${payload}.${signature}`;
 }
 
-export function startTestServer(options?: { port?: number }): TestServer {
-  const config = loadConfig();
-  const { cas, key } = createCasFacade(config);
-  const delegateStore = createMemoryDelegateStore();
-  const realm = createRealmFacadeFromConfig(cas, key, config, delegateStore);
-  const delegateGrantStore = createMemoryDelegateGrantStore();
-  const derivedDataStore = createMemoryDerivedDataStore();
-  const app = createApp({
-    config,
-    cas,
-    key,
-    realm,
-    delegateGrantStore,
-    derivedDataStore,
-    delegateStore,
-  });
-
-  const port = options?.port ?? 0;
-  const server = Bun.serve({
-    fetch: app.fetch,
-    port,
-  });
-
-  const url = `http://localhost:${server.port}`;
-
+function createHelpers(url: string): TestHelpers {
   const authRequest = async (
     token: string,
     method: string,
@@ -192,18 +169,55 @@ export function startTestServer(options?: { port?: number }): TestServer {
     });
   };
 
-  const helpers: TestHelpers = {
+  return {
     createUserToken,
     authRequest,
     assignDelegate,
     createBranch,
     mcpRequest,
   };
+}
 
+/** When BASE_URL is set, use it as remote server (no process start/stop). */
+function createRemoteTestServer(baseUrl: string): TestServer {
+  const url = baseUrl.replace(/\/$/, "");
+  return {
+    url,
+    stop: () => {},
+    helpers: createHelpers(url),
+  };
+}
+
+export function startTestServer(options?: { port?: number }): TestServer {
+  const config = loadConfig();
+  const { cas, key } = createCasFacade(config);
+  const delegateStore = createMemoryDelegateStore();
+  const realm = createRealmFacadeFromConfig(cas, key, config, delegateStore);
+  const delegateGrantStore = createMemoryDelegateGrantStore();
+  const derivedDataStore = createMemoryDerivedDataStore();
+  const userSettingsStore = createMemoryUserSettingsStore();
+  const app = createApp({
+    config,
+    cas,
+    key,
+    realm,
+    delegateGrantStore,
+    derivedDataStore,
+    delegateStore,
+    userSettingsStore,
+  });
+
+  const port = options?.port ?? 0;
+  const server = Bun.serve({
+    fetch: app.fetch,
+    port,
+  });
+
+  const url = `http://localhost:${server.port}`;
   return {
     url,
     stop: () => server.stop(),
-    helpers,
+    helpers: createHelpers(url),
   };
 }
 
@@ -216,6 +230,11 @@ function clearCachedServer(): void {
 }
 
 async function getOrCreateServer(): Promise<TestServer> {
+  const baseUrl = process.env.BASE_URL;
+  if (baseUrl) {
+    if (!cachedServer) cachedServer = createRemoteTestServer(baseUrl);
+    return cachedServer;
+  }
   if (cachedServer) return cachedServer;
   if (serverPromise) return serverPromise;
   serverPromise = Promise.resolve(startTestServer());
@@ -251,11 +270,11 @@ export function createE2EContext(): E2EContext {
       resolved = await serverPromise;
     },
     cleanup(): void {
-      if (resolved) {
+      if (resolved && !process.env.BASE_URL) {
         resolved.stop();
-        resolved = null;
-        clearCachedServer();
       }
+      resolved = null;
+      clearCachedServer();
     },
   };
 }

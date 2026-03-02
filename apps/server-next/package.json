@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run src/index.ts",
+    "dev": "serverless offline",
+    "dev:bun": "bun run backend/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun run test:unit && bun run test:e2e",
     "test:unit": "bun test tests/",
-    "test:e2e": "bun test e2e/"
+    "test:e2e": "bun run scripts/e2e-offline.ts"
   },
   "dependencies": {
     "@casfa/cas": "workspace:*",
@@ -22,6 +23,10 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "esbuild": "^0.24.0",
+    "serverless": "^4.0.0",
+    "serverless-esbuild": "^1.57.0",
+    "serverless-offline": "^14.0.0",
     "typescript": "^5.8.3"
   }
 }
