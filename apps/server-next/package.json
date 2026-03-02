@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "serverless offline",
+    "dev": "bun run scripts/dev.ts",
+    "dev:test": "bun run scripts/dev-test.ts",
     "dev:bun": "bun run backend/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun run test:unit && bun run test:e2e",
