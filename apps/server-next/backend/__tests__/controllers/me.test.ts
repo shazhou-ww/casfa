@@ -8,7 +8,7 @@ import { createAuthMiddleware } from "../../middleware/auth.ts";
 import { createMeController } from "../../controllers/me.ts";
 import { createMemoryDelegateGrantStore } from "../../db/delegate-grants.ts";
 import { createMemoryUserSettingsStore } from "../../db/user-settings.ts";
-import { createMemoryDelegateStore } from "@casfa/realm";
+import { createMemoryBranchStore } from "../../db/branch-store.ts";
 
 function makeJwt(sub: string, extra?: Record<string, unknown>): string {
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }))
@@ -24,10 +24,10 @@ function makeJwt(sub: string, extra?: Record<string, unknown>): string {
 
 describe("GET /api/me", () => {
   it("returns 401 when Authorization header is missing", async () => {
-    const delegateStore = createMemoryDelegateStore();
+    const branchStore = createMemoryBranchStore();
     const delegateGrantStore = createMemoryDelegateGrantStore();
     const userSettingsStore = createMemoryUserSettingsStore();
-    const auth = createAuthMiddleware({ delegateGrantStore, delegateStore });
+    const auth = createAuthMiddleware({ delegateGrantStore, branchStore });
     const me = createMeController({ userSettingsStore });
     const app = new Hono<Env>()
       .use("/api/me", auth)
@@ -37,10 +37,10 @@ describe("GET /api/me", () => {
   });
 
   it("returns 200 with userId when Bearer is valid JWT (user)", async () => {
-    const delegateStore = createMemoryDelegateStore();
+    const branchStore = createMemoryBranchStore();
     const delegateGrantStore = createMemoryDelegateGrantStore();
     const userSettingsStore = createMemoryUserSettingsStore();
-    const auth = createAuthMiddleware({ delegateGrantStore, delegateStore });
+    const auth = createAuthMiddleware({ delegateGrantStore, branchStore });
     const me = createMeController({ userSettingsStore });
     const app = new Hono<Env>()
       .use("/api/me", auth)
@@ -55,10 +55,10 @@ describe("GET /api/me", () => {
   });
 
   it("returns 403 when auth is delegate (not user)", async () => {
-    const delegateStore = createMemoryDelegateStore();
+    const branchStore = createMemoryBranchStore();
     const delegateGrantStore = createMemoryDelegateGrantStore();
     const userSettingsStore = createMemoryUserSettingsStore();
-    const auth = createAuthMiddleware({ delegateGrantStore, delegateStore });
+    const auth = createAuthMiddleware({ delegateGrantStore, branchStore });
     const me = createMeController({ userSettingsStore });
     const app = new Hono<Env>()
       .use("/api/me", auth)

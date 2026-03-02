@@ -6,9 +6,12 @@ import { createCognitoJwtVerifier } from "../../auth/cognito-jwks.ts";
 
 describe("createCognitoJwtVerifier", () => {
   it("rejects empty token", async () => {
-    const fetchMock = mock(() => Promise.resolve(new Response(JSON.stringify({ keys: [] }), { status: 200 })));
+    const fetchMock = Object.assign(
+      mock(() => Promise.resolve(new Response(JSON.stringify({ keys: [] }), { status: 200 }))),
+      { preconnect: () => {} }
+    );
     const originalFetch = globalThis.fetch;
-    (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock;
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch;
 
     const verifier = createCognitoJwtVerifier({
       region: "us-east-1",
@@ -20,11 +23,12 @@ describe("createCognitoJwtVerifier", () => {
   });
 
   it("rejects when JWKS URL returns 404", async () => {
-    const fetchMock = mock((url: string) =>
-      Promise.resolve(new Response("Not Found", { status: 404 }))
+    const fetchMock = Object.assign(
+      mock((_url: string) => Promise.resolve(new Response("Not Found", { status: 404 }))),
+      { preconnect: () => {} }
     );
     const originalFetch = globalThis.fetch;
-    (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock;
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch;
 
     const verifier = createCognitoJwtVerifier({
       region: "us-east-1",
