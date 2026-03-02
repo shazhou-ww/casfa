@@ -3,18 +3,18 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { CasFacade } from "@casfa/cas";
-import { encodeDictNode, hashToKey } from "@casfa/core";
-import type { KeyProvider } from "@casfa/core";
-import { createMemoryDelegateStore } from "@casfa/realm";
-import { createRealmFacade } from "@casfa/realm";
 import { createCasFacade } from "@casfa/cas";
 import { createCasStorageFromBuffer } from "@casfa/cas";
-import { createMemoryStorage } from "@casfa/storage-memory";
+import { encodeDictNode, hashToKey } from "@casfa/core";
+import type { KeyProvider } from "@casfa/core";
 import { computeSizeFlagByte } from "@casfa/core";
+import { createMemoryStorage } from "@casfa/storage-memory";
+import { createMemoryBranchStore } from "../../db/branch-store.ts";
 import {
   normalizePath,
   resolvePath,
   getCurrentRoot,
+  ensureEmptyRoot,
   type RootResolverDeps,
 } from "../../services/root-resolver.ts";
 import type { UserAuth, WorkerAuth } from "../../types.ts";
@@ -72,7 +72,7 @@ describe("resolvePath", () => {
       put: async (k: string, bytes: Uint8Array) => {
         store.set(k, bytes);
       },
-      del: async (k: string) => store.delete(k),
+      del: async (_k: string) => {},
     };
     const storage = createCasStorageFromBuffer(bufferStorage);
     const cas = createCasFacade({ storage, key });
@@ -105,75 +105,63 @@ describe("resolvePath", () => {
 });
 
 describe("getCurrentRoot", () => {
-  it("returns realm root for user auth (creates root delegate)", async () => {
+  it("returns realm root for user auth (ensures empty root)", async () => {
     const key = createKeyProvider();
     const storage = createMemoryStorage();
     const casStorage = createCasStorageFromBuffer({
       get: storage.get.bind(storage),
       put: storage.put.bind(storage),
-      del: storage.del.bind(storage),
+      del: async () => {},
     });
     const cas = createCasFacade({ storage: casStorage, key });
-    const delegateStore = createMemoryDelegateStore();
-    const realm = createRealmFacade({
-      cas,
-      delegateStore,
-      key,
-      maxLimitedTtlMs: 3600_000,
-    });
-    const deps: RootResolverDeps = { realm, delegateStore, cas, key };
+    const branchStore = createMemoryBranchStore();
+    const deps: RootResolverDeps = { branchStore, cas, key };
     const auth: UserAuth = { type: "user", userId: "u1" };
     const rootKey = await getCurrentRoot(auth, deps);
     expect(rootKey).not.toBeNull();
   });
 
   it("returns branch root for worker when set", async () => {
-    const delegateStore = createMemoryDelegateStore();
+    const branchStore = createMemoryBranchStore();
     const key = createKeyProvider();
     const storage = createMemoryStorage();
     const casStorage = createCasStorageFromBuffer({
       get: storage.get.bind(storage),
       put: storage.put.bind(storage),
-      del: storage.del.bind(storage),
+      del: async () => {},
     });
     const cas = createCasFacade({ storage: casStorage, key });
-    const realm = createRealmFacade({
-      cas,
-      delegateStore,
-      key,
-      maxLimitedTtlMs: 3600_000,
+    const emptyKey = await ensureEmptyRoot(cas, key);
+    await branchStore.ensureRealmRoot("r1", emptyKey);
+    const record = await branchStore.getRealmRootRecord("r1");
+    expect(record).not.toBeNull();
+    const branchId = crypto.randomUUID();
+    await branchStore.insertBranch({
+      branchId,
+      realmId: "r1",
+      parentId: record!.branchId,
+      mountPath: "sub",
+      expiresAt: Date.now() + 3600_000,
     });
-    await realm.getRootDelegate("r1", {});
-    const rootDelegate = await delegateStore.getRootDelegate("r1");
-    expect(rootDelegate).not.toBeNull();
-    const branchId = rootDelegate!.delegateId;
-    const emptyDict = await encodeDictNode({ children: [], childNames: [] }, key);
-    const rootKey = hashToKey(emptyDict.hash);
-    await delegateStore.setRoot(branchId, rootKey);
+    await branchStore.setBranchRoot(branchId, emptyKey);
 
-    const deps: RootResolverDeps = { realm, delegateStore, cas, key };
+    const deps: RootResolverDeps = { branchStore, cas, key };
     const auth: WorkerAuth = { type: "worker", realmId: "r1", branchId, access: "readwrite" };
     const got = await getCurrentRoot(auth, deps);
-    expect(got).toBe(rootKey);
+    expect(got).toBe(emptyKey);
   });
 
   it("returns null for worker when branch has no root", async () => {
-    const delegateStore = createMemoryDelegateStore();
+    const branchStore = createMemoryBranchStore();
     const key = createKeyProvider();
     const storage = createMemoryStorage();
     const casStorage = createCasStorageFromBuffer({
       get: storage.get.bind(storage),
       put: storage.put.bind(storage),
-      del: storage.del.bind(storage),
+      del: async () => {},
     });
     const cas = createCasFacade({ storage: casStorage, key });
-    const realm = createRealmFacade({
-      cas,
-      delegateStore,
-      key,
-      maxLimitedTtlMs: 3600_000,
-    });
-    const deps: RootResolverDeps = { realm, delegateStore, cas, key };
+    const deps: RootResolverDeps = { branchStore, cas, key };
     const auth: WorkerAuth = {
       type: "worker",
       realmId: "r1",

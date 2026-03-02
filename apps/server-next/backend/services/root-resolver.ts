@@ -1,21 +1,32 @@
 /**
  * Resolve "current root" from auth and path string to node key.
- * User/Delegate: realm root (getRootDelegate then getRoot).
- * Worker: branch root (getRoot(branchId)).
+ * User/Delegate: realm root (BranchStore); Worker: branch root.
  */
 import type { AuthContext } from "../types.ts";
 import type { CasFacade } from "@casfa/cas";
-import { bytesFromStream } from "@casfa/cas";
+import { bytesFromStream, streamFromBytes } from "@casfa/cas";
 import type { CasNode, KeyProvider } from "@casfa/core";
-import { decodeNode, hashToKey } from "@casfa/core";
-import type { DelegateStore, RealmFacade } from "@casfa/realm";
+import { decodeNode, encodeDictNode, hashToKey } from "@casfa/core";
+import type { BranchStore } from "../db/branch-store.ts";
 
 export type RootResolverDeps = {
-  realm: RealmFacade;
-  delegateStore: DelegateStore;
+  branchStore: BranchStore;
   cas: CasFacade;
   key: KeyProvider;
 };
+
+/** Create empty dict root in CAS and return its key. */
+export async function ensureEmptyRoot(
+  cas: CasFacade,
+  key: KeyProvider
+): Promise<string> {
+  const encoded = await encodeDictNode({ children: [], childNames: [] }, key);
+  const nodeKey = hashToKey(encoded.hash);
+  const exists = await cas.hasNode(nodeKey);
+  if (exists) return nodeKey;
+  await cas.putNode(nodeKey, streamFromBytes(encoded.bytes));
+  return nodeKey;
+}
 
 /** Normalize path: trim slashes, disallow "..", return segments. */
 export function normalizePath(pathStr: string): string[] {
@@ -62,7 +73,7 @@ function resolveSegment(node: CasNode, segment: string): string | null {
 
 /**
  * Get the current root node key for the given auth.
- * User/Delegate: realm root (creates root delegate if needed); Worker: branch root.
+ * User/Delegate: realm root (ensures empty root if needed); Worker: branch root.
  * Returns null if no root exists (e.g. branch not yet committed).
  */
 export async function getCurrentRoot(
@@ -70,22 +81,31 @@ export async function getCurrentRoot(
   deps: RootResolverDeps
 ): Promise<string | null> {
   if (auth.type === "worker") {
-    return deps.delegateStore.getRoot(auth.branchId);
+    return deps.branchStore.getBranchRoot(auth.branchId);
   }
   const realmId = auth.type === "user" ? auth.userId : auth.realmId;
-  const rootFacade = await deps.realm.getRootDelegate(realmId, {});
-  return deps.delegateStore.getRoot(rootFacade.delegateId);
+  let rootKey = await deps.branchStore.getRealmRoot(realmId);
+  if (rootKey === null) {
+    const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
+    await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
+    rootKey = emptyKey;
+  }
+  return rootKey;
 }
 
-/** Delegate/branch id for commit (setRoot). User/Delegate → root delegate id; Worker → branchId. */
+/** Branch id for commit (setBranchRoot). User/Delegate → root record id; Worker → branchId. */
 export async function getEffectiveDelegateId(
   auth: AuthContext,
   deps: RootResolverDeps
 ): Promise<string> {
   if (auth.type === "worker") return auth.branchId;
   const realmId = auth.type === "user" ? auth.userId : auth.realmId;
-  const rootFacade = await deps.realm.getRootDelegate(realmId, {});
-  return rootFacade.delegateId;
+  const record = await deps.branchStore.getRealmRootRecord(realmId);
+  if (record) return record.branchId;
+  await getCurrentRoot(auth, deps);
+  const after = await deps.branchStore.getRealmRootRecord(realmId);
+  if (!after) throw new Error("Realm root record not found after ensure");
+  return after.branchId;
 }
 
 /**
