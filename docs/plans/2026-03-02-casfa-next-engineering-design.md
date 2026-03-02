@@ -92,7 +92,8 @@ apps/server-next/
 
 ## 第四节：本地 dev / test 流程
 
-- **`bun run dev`**：启动 local-dev（前端 7100、API 7101、DynamoDB 7102）；持久化存储；不设 `MOCK_JWT_SECRET`，用 Cognito。
+- **`bun run dev`**：启动 local-dev（前端 7100、API 7101、DynamoDB 7102）；持久化存储；**默认设 `MOCK_JWT_SECRET`，使用 mock 鉴权**。
+- **`bun run dev:cognito`**：同一条命令同时起前端与 API，**不设 `MOCK_JWT_SECRET`，使用 Cognito**；端口与其余约定不变。
 - **`bun run dev:test`**：启动 local-test（API 7111，可选前端 7110）；内存/临时存储；设 `MOCK_JWT_SECRET`，mock 鉴权；不跑测试。
 - **`bun run test:e2e`**：先启动 `bun run dev:test`，就绪后对 `http://localhost:7111` 跑 E2E，结束后退出。
 
@@ -102,7 +103,7 @@ apps/server-next/
 
 | 变量名               | local-dev        | local-test     | beta/prod   |
 |----------------------|------------------|----------------|-------------|
-| MOCK_JWT_SECRET      | 不设或空         | 固定值         | 不设或空    |
+| MOCK_JWT_SECRET      | 设（默认 mock）  | 固定值         | 不设或空    |
 | COGNITO_*            | 同线上           | 可不设        | 同线上      |
 | DYNAMODB_ENDPOINT    | http://localhost:7102 | 不设（内存） | 不设        |
 | S3/STORAGE_*         | 本地路径         | 内存/临时     | 真实桶/配置 |

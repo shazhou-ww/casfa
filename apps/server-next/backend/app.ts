@@ -16,6 +16,7 @@ import { createDelegatesController } from "./controllers/delegates.ts";
 import { createRealmController } from "./controllers/realm.ts";
 import { createMcpHandler } from "./mcp/handler.ts";
 import { createMeController } from "./controllers/me.ts";
+import { createDevMockTokenController } from "./controllers/dev-mock-token.ts";
 
 import type { KeyProvider } from "@casfa/core";
 
@@ -51,6 +52,12 @@ export function createApp(deps: AppDeps) {
       authType: deps.config.auth.cognitoUserPoolId ? "cognito" : "mock",
     }, 200)
   );
+
+  if (deps.config.auth.mockJwtSecret) {
+    const devMockToken = createDevMockTokenController({ config: deps.config });
+    app.get("/api/dev/mock-token", (c) => devMockToken.get(c));
+    app.post("/api/dev/mock-token", (c) => devMockToken.get(c));
+  }
 
   const authMiddleware = createAuthMiddleware({
     delegateGrantStore: deps.delegateGrantStore,

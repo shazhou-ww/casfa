@@ -1,6 +1,7 @@
 /**
- * Start local-dev: serverless offline on 7101, mock auth (MOCK_JWT_SECRET), persistent local storage.
- * Optionally start DynamoDB local on 7102 (when used); this script only starts offline.
+ * Start local-dev with Cognito auth: serverless offline on 7101.
+ * Does NOT set MOCK_JWT_SECRET so backend uses Cognito.
+ * Frontend is started by the concurrently wrapper in dev:cognito script.
  */
 const PORT = 7101;
 const appRoot = process.cwd();
@@ -10,7 +11,6 @@ Bun.spawn(
     cwd: appRoot,
     env: {
       ...process.env,
-      MOCK_JWT_SECRET: process.env.MOCK_JWT_SECRET ?? "dev-mock-secret",
       STORAGE_TYPE: process.env.STORAGE_TYPE ?? "memory",
       DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? "http://localhost:7102",
     },

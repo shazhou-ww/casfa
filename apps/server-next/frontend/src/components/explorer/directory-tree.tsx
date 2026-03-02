@@ -18,8 +18,6 @@ import type { FsEntry } from "../../types/api";
 type DirectoryTreeProps = {
   currentPath: string;
   onPathChange: (path: string) => void;
-  /** Mock: when true, use static mock data instead of API */
-  useMock?: boolean;
 };
 
 function formatPath(path: string): string[] {
@@ -27,14 +25,13 @@ function formatPath(path: string): string[] {
   return path.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
 }
 
-async function fetchListForTree(path: string, useMock: boolean): Promise<FsEntry[]> {
-  return fetchList(path, useMock);
+async function fetchListForTree(path: string): Promise<FsEntry[]> {
+  return fetchList(path);
 }
 
 export function DirectoryTree({
   currentPath,
   onPathChange,
-  useMock = true,
 }: DirectoryTreeProps) {
   const [entries, setEntries] = useState<FsEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +43,7 @@ export function DirectoryTree({
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchListForTree(currentPath || "/", useMock)
+    fetchListForTree(currentPath || "/")
       .then((list) => {
         if (!cancelled) setEntries(list);
       })
@@ -59,7 +56,7 @@ export function DirectoryTree({
     return () => {
       cancelled = true;
     };
-  }, [currentPath, useMock]);
+  }, [currentPath]);
 
   const handleBreadcrumb = useCallback(
     (index: number) => {
