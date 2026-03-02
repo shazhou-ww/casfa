@@ -4,6 +4,9 @@ const AUTH_KEY = "casfa-next-auth";
 const MOCK_TOKEN_KEY = "casfa-next-mock-token";
 const COGNITO_TOKEN_KEY = "casfa-next-cognito-token";
 
+const LOG = "[auth-store]";
+if (typeof console !== "undefined") console.log(LOG, "module loaded");
+
 export type User = {
   userId: string;
   name?: string;
@@ -14,7 +17,7 @@ export type AuthType = "mock" | "cognito" | null;
 
 function loadStoredUser(): User | null {
   try {
-    const raw = sessionStorage.getItem(AUTH_KEY);
+    const raw = localStorage.getItem(AUTH_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw) as User;
     if (!data?.userId) return null;
@@ -26,34 +29,81 @@ function loadStoredUser(): User | null {
 
 function saveStoredUser(user: User | null): void {
   if (user) {
-    sessionStorage.setItem(AUTH_KEY, JSON.stringify(user));
+    localStorage.setItem(AUTH_KEY, JSON.stringify(user));
   } else {
-    sessionStorage.removeItem(AUTH_KEY);
+    localStorage.removeItem(AUTH_KEY);
   }
 }
 
 function loadStoredMockToken(): string | null {
-  return sessionStorage.getItem(MOCK_TOKEN_KEY);
+  return localStorage.getItem(MOCK_TOKEN_KEY);
 }
 
 function saveStoredMockToken(token: string | null): void {
   if (token) {
-    sessionStorage.setItem(MOCK_TOKEN_KEY, token);
+    localStorage.setItem(MOCK_TOKEN_KEY, token);
   } else {
-    sessionStorage.removeItem(MOCK_TOKEN_KEY);
+    localStorage.removeItem(MOCK_TOKEN_KEY);
   }
 }
 
 function loadStoredCognitoToken(): string | null {
-  return sessionStorage.getItem(COGNITO_TOKEN_KEY);
+  return localStorage.getItem(COGNITO_TOKEN_KEY);
 }
 
 function saveStoredCognitoToken(token: string | null): void {
   if (token) {
-    sessionStorage.setItem(COGNITO_TOKEN_KEY, token);
+    localStorage.setItem(COGNITO_TOKEN_KEY, token);
   } else {
-    sessionStorage.removeItem(COGNITO_TOKEN_KEY);
+    localStorage.removeItem(COGNITO_TOKEN_KEY);
   }
+}
+
+/** Sync read from localStorage so new tab has isLoggedIn on first paint. */
+function getInitialAuthFromStorage() {
+  try {
+    const storedUser = loadStoredUser();
+    const cognitoToken = loadStoredCognitoToken();
+    const mockToken = loadStoredMockToken();
+    console.log(LOG, "getInitialAuthFromStorage", {
+      hasStoredUser: !!storedUser,
+      hasCognitoToken: !!cognitoToken,
+      hasMockToken: !!mockToken,
+    });
+    if (storedUser && cognitoToken) {
+      console.log(LOG, "getInitialAuthFromStorage → cognito restored");
+      return {
+        user: storedUser,
+        token: cognitoToken,
+        authType: "cognito" as const,
+        isLoggedIn: true,
+        initialized: true,
+        loading: false,
+      };
+    }
+    if (storedUser && mockToken) {
+      console.log(LOG, "getInitialAuthFromStorage → mock restored");
+      return {
+        user: storedUser,
+        token: mockToken,
+        authType: "mock" as const,
+        isLoggedIn: true,
+        initialized: true,
+        loading: false,
+      };
+    }
+    console.log(LOG, "getInitialAuthFromStorage → no stored auth");
+  } catch (e) {
+    console.warn(LOG, "getInitialAuthFromStorage error", e);
+  }
+  return {
+    user: null,
+    token: null,
+    authType: null,
+    initialized: false,
+    loading: true,
+    isLoggedIn: false,
+  };
 }
 
 type AuthStore = {
@@ -74,13 +124,7 @@ type AuthStore = {
 };
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
-  user: null,
-  token: null,
-  authType: null,
-  initialized: false,
-  loading: true,
-  isLoggedIn: false,
-
+  ...getInitialAuthFromStorage(),
   getToken: () => get().token,
 
   setAuthType: (authType) => set({ authType }),
@@ -93,8 +137,43 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   initialize: async () => {
-    if (get().initialized && get().isLoggedIn) return;
+    console.log(LOG, "initialize() start", { initialized: get().initialized, isLoggedIn: get().isLoggedIn });
+    if (get().initialized && get().isLoggedIn) {
+      console.log(LOG, "initialize() skip, already ok");
+      return;
+    }
     if (!get().initialized) set({ loading: true });
+
+    const storedUser = loadStoredUser();
+    const cognitoToken = loadStoredCognitoToken();
+    const mockToken = loadStoredMockToken();
+    console.log(LOG, "initialize() localStorage", { hasStoredUser: !!storedUser, hasCognitoToken: !!cognitoToken, hasMockToken: !!mockToken });
+    if (storedUser && cognitoToken) {
+      console.log(LOG, "initialize() → set from localStorage (cognito)");
+      set({
+        user: storedUser,
+        token: cognitoToken,
+        authType: "cognito",
+        isLoggedIn: true,
+        initialized: true,
+        loading: false,
+      });
+      return;
+    }
+    if (storedUser && mockToken) {
+      console.log(LOG, "initialize() → set from localStorage (mock)");
+      set({
+        user: storedUser,
+        token: mockToken,
+        authType: "mock",
+        isLoggedIn: true,
+        initialized: true,
+        loading: false,
+      });
+      return;
+    }
+
+    console.log(LOG, "initialize() → fetch /api/info");
     try {
       const infoRes = await fetch("/api/info");
       if (!infoRes.ok) {

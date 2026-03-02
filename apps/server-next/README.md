@@ -41,7 +41,7 @@ bun run dev          # 或 dev:cognito / dev:test
 - **`bun run dev`**：mock 鉴权，API 在 http://localhost:7101。
 - **`bun run dev:cognito`**：Cognito 鉴权，API 在 http://localhost:7101。
 
-本地使用 **Docker DynamoDB**（dev 端口 7102 持久化，local-test 端口 7112 in-memory）和 **serverless-s3-local**（S3 端口 4569）。启动 `bun run dev` / `dev:cognito` / `dev:test` 时会自动拉容器并建表；也可手动执行 `docker compose up -d dynamodb`（dev）或 `docker compose up -d dynamodb-test`（local-test）。
+本地使用 **Docker DynamoDB**（dev 端口 7102 持久化，local-test 端口 7112 in-memory）和 **serverless-s3-local**（S3 端口 4569）。启动 `bun run dev` / `dev:cognito` / `dev:test` 时会自动拉容器并执行 **检查与初始化 DynamoDB**（建表）；也可单独执行 `bun run dev:setup`（或 `bun run dev:setup -- --stage local-test`）仅做检查与建表、不启动服务。手动起容器：`docker compose up -d dynamodb`（dev）或 `docker compose up -d dynamodb-test`（local-test）。
 
 **清理本地数据库**：若需彻底清空 dev 数据，可 `docker compose down -v`（删除 DynamoDB volume）。曾用旧版 serverless-dynamodb 插件时若遗留 `.dynamodb` 目录，可执行 `bun run clean:db` 删除。
 
