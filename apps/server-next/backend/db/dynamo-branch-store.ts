@@ -113,6 +113,7 @@ export function createDynamoBranchStore(
             ":sk": SK_REALM,
           },
           Limit: 1,
+          ConsistentRead: true,
         })
       );
       const item = r.Items?.[0] as Record<string, unknown> | undefined;
