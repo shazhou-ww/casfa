@@ -464,23 +464,16 @@ export function createApp(deps: AppDeps) {
     });
   });
 
-  // MCP: GET with Accept: text/event-stream returns SSE (Cursor streamableHttp); else 405 JSON. POST is JSON-RPC with Bearer.
-  // Use a single-chunk body instead of an open ReadableStream so Lambda does not wait for the stream to close and hit timeout (504).
+  // MCP: GET /api/mcp — we do not support long-lived streaming (Lambda would timeout). Return 405 so clients use POST (JSON-RPC) only and stop polling.
   const mcpGetHandler = (c: { req: { header: (n: string) => string | undefined }; json: (body: unknown, status?: number) => Response }) => {
     const accept = c.req.header("Accept") ?? "";
-    if (accept.includes("text/event-stream")) {
-      return new Response(": mcp stream\n\n", {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        },
-      });
-    }
+    const isStreamRequest = accept.includes("text/event-stream");
     return c.json(
       {
         error: "METHOD_NOT_ALLOWED",
-        message: "MCP GET with Accept: text/event-stream for SSE; use POST for JSON-RPC.",
+        message: isStreamRequest
+          ? "Streaming (SSE/streamableHttp) not supported in this deployment; use POST /api/mcp for JSON-RPC."
+          : "Use POST /api/mcp for JSON-RPC.",
         jsonrpc: "2.0",
         id: 0,
         result: null,
