@@ -1,18 +1,25 @@
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import FolderIcon from "@mui/icons-material/Folder";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import {
   Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   List,
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  TextField,
   Toolbar,
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
-import { fetchList } from "../../lib/fs-api";
+import { createFolder, fetchList } from "../../lib/fs-api";
 import type { FsEntry } from "../../types/api";
 
 type DirectoryTreeProps = {
@@ -36,10 +43,15 @@ export function DirectoryTree({
   const [entries, setEntries] = useState<FsEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const pathParts = formatPath(currentPath);
 
-  useEffect(() => {
+  const loadEntries = useCallback(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -57,6 +69,11 @@ export function DirectoryTree({
       cancelled = true;
     };
   }, [currentPath]);
+
+  useEffect(() => {
+    const cancel = loadEntries();
+    return () => cancel?.();
+  }, [loadEntries, refreshKey]);
 
   const handleBreadcrumb = useCallback(
     (index: number) => {
@@ -88,6 +105,44 @@ export function DirectoryTree({
     const parent = "/" + pathParts.slice(0, -1).join("/");
     onPathChange(parent);
   }, [pathParts, onPathChange]);
+
+  const handleOpenCreateDialog = useCallback(() => {
+    setCreateDialogOpen(true);
+    setNewFolderName("");
+    setCreateError(null);
+  }, []);
+
+  const handleCloseCreateDialog = useCallback(() => {
+    if (!createLoading) {
+      setCreateDialogOpen(false);
+      setNewFolderName("");
+      setCreateError(null);
+    }
+  }, [createLoading]);
+
+  const handleCreateFolder = useCallback(async () => {
+    const name = newFolderName.trim();
+    if (!name) {
+      setCreateError("请输入文件夹名称");
+      return;
+    }
+    if (/[\\/:*?"<>|]/.test(name)) {
+      setCreateError("文件夹名称不能包含 \\ / : * ? \" < > |");
+      return;
+    }
+    setCreateLoading(true);
+    setCreateError(null);
+    try {
+      await createFolder(currentPath || "/", name);
+      setCreateDialogOpen(false);
+      setNewFolderName("");
+      setRefreshKey((k) => k + 1);
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : "创建失败");
+    } finally {
+      setCreateLoading(false);
+    }
+  }, [currentPath, newFolderName]);
 
   return (
     <Box display="flex" flexDirection="column" height="100%" overflow="hidden">
@@ -133,7 +188,47 @@ export function DirectoryTree({
             </Typography>
           ))
         )}
+        <Button
+          size="small"
+          startIcon={<CreateNewFolderIcon />}
+          onClick={handleOpenCreateDialog}
+          sx={{ ml: "auto" }}
+          aria-label="新建文件夹"
+        >
+          新建文件夹
+        </Button>
       </Toolbar>
+
+      <Dialog open={createDialogOpen} onClose={handleCloseCreateDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>新建文件夹</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="文件夹名称"
+            fullWidth
+            variant="outlined"
+            value={newFolderName}
+            onChange={(e) => setNewFolderName(e.target.value)}
+            error={!!createError}
+            helperText={createError}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleCreateFolder();
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseCreateDialog} disabled={createLoading}>
+            取消
+          </Button>
+          <Button onClick={handleCreateFolder} variant="contained" disabled={createLoading}>
+            {createLoading ? "创建中…" : "创建"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* List */}
       <Box sx={{ flex: 1, overflow: "auto" }}>
