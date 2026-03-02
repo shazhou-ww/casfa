@@ -18,6 +18,13 @@ import { createMcpHandler } from "./mcp/handler.ts";
 import { createMeController } from "./controllers/me.ts";
 import { createDevMockTokenController } from "./controllers/dev-mock-token.ts";
 import { ensureEmptyRoot } from "./services/root-resolver.ts";
+import {
+  createMcpAuthCode,
+  consumeMcpAuthCodeAsync,
+  createMcpDelegateToken,
+  cacheTokenForUsedCode,
+  getCachedTokenForUsedCode,
+} from "./services/mcp-oauth.ts";
 
 import type { KeyProvider } from "@casfa/core";
 
@@ -119,7 +126,7 @@ export function createApp(deps: AppDeps) {
     return c.redirect(`${base}/oauth2/authorize?${params.toString()}`, 302);
   });
 
-  // OAuth: exchange authorization code for tokens (client_secret or code_verifier, same as old server)
+  // OAuth: exchange authorization code for tokens (Cognito callback)
   app.post("/api/oauth/token", async (c) => {
     const { cognitoHostedUiUrl, cognitoClientId, cognitoClientSecret } = deps.config.auth;
     if (!cognitoHostedUiUrl || !cognitoClientId) {
@@ -276,7 +283,143 @@ export function createApp(deps: AppDeps) {
   app.post("/api/realm/:realmId/delegates/assign", (c) => delegates.assign(c));
   app.post("/api/realm/:realmId/delegates/:delegateId/revoke", (c) => delegates.revoke(c));
 
+  // MCP OAuth: create authorization code (requires user auth); frontend calls after user approves.
+  app.post("/api/oauth/mcp/authorize", authMiddleware, async (c) => {
+    const auth = c.get("auth");
+    if (!auth || auth.type !== "user") {
+      return c.json({ error: "UNAUTHORIZED", message: "User auth required" }, 401);
+    }
+    let body: {
+      client_id?: string;
+      redirect_uri?: string;
+      state?: string;
+      code_challenge?: string;
+      code_challenge_method?: string;
+    };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "BAD_REQUEST", message: "Invalid JSON" }, 400);
+    }
+    const { client_id, redirect_uri, state, code_challenge, code_challenge_method } = body;
+    if (!client_id || !redirect_uri || !state || !code_challenge) {
+      return c.json(
+        { error: "BAD_REQUEST", message: "Missing client_id, redirect_uri, state, or code_challenge" },
+        400
+      );
+    }
+    const realmId = auth.userId;
+    const code = createMcpAuthCode({
+      clientId: client_id,
+      redirectUri: redirect_uri,
+      codeChallenge: code_challenge,
+      codeChallengeMethod: code_challenge_method ?? "S256",
+      state,
+      realmId,
+    });
+    const sep = redirect_uri.includes("?") ? "&" : "?";
+    const redirectUrl = `${redirect_uri}${sep}code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
+    return c.json({ redirect_url: redirectUrl }, 200);
+  });
+
+  // MCP OAuth: exchange code for access token (Cursor POSTs here; discovery token_endpoint = /api/oauth/mcp/token)
+  app.post("/api/oauth/mcp/token", async (c) => {
+    const contentType = c.req.header("Content-Type") ?? "";
+    let params: Record<string, string>;
+    if (contentType.includes("application/x-www-form-urlencoded")) {
+      const text = await c.req.text();
+      params = Object.fromEntries(new URLSearchParams(text)) as Record<string, string>;
+    } else {
+      return c.json({ error: "BAD_REQUEST", message: "Content-Type must be application/x-www-form-urlencoded" }, 400);
+    }
+    const grant_type = params.grant_type;
+    const code = params.code;
+    const redirect_uri = params.redirect_uri;
+    const client_id = params.client_id;
+    const code_verifier = params.code_verifier;
+    if (grant_type !== "authorization_code" || !code || !redirect_uri || !client_id || !code_verifier) {
+      return c.json(
+        { error: "invalid_request", error_description: "Missing or invalid grant_type, code, redirect_uri, client_id, or code_verifier" },
+        400
+      );
+    }
+    const entry = await consumeMcpAuthCodeAsync(code, { client_id, redirect_uri, code_verifier });
+    if (!entry) {
+      const cached = getCachedTokenForUsedCode(code);
+      if (cached) {
+        return c.json({
+          access_token: cached.accessToken,
+          refresh_token: cached.refreshToken,
+          token_type: "Bearer",
+          expires_in: cached.expiresIn,
+          refresh_expires_in: cached.refreshExpiresIn,
+        });
+      }
+      return c.json(
+        { error: "invalid_grant", error_description: "Invalid or expired code or PKCE mismatch" },
+        400
+      );
+    }
+    const { accessToken, refreshToken, expiresIn, refreshExpiresIn } = await createMcpDelegateToken(
+      entry.realmId,
+      entry.clientId,
+      deps.config,
+      deps.delegateGrantStore
+    );
+    cacheTokenForUsedCode(code, accessToken, refreshToken, expiresIn, refreshExpiresIn);
+    return c.json({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      token_type: "Bearer",
+      expires_in: expiresIn,
+      refresh_expires_in: refreshExpiresIn,
+    });
+  });
+
+  // MCP: GET with Accept: text/event-stream returns SSE (Cursor streamableHttp); else 405 JSON. POST is JSON-RPC with Bearer.
+  // Catch-all under /api/mcp so Cursor OAuth/SSE probes never get 404 with empty body (which causes "Invalid OAuth error response: Unexpected end of JSON input").
+  const mcpGetHandler = (c: { req: { header: (n: string) => string | undefined }; json: (body: unknown, status?: number) => Response }) => {
+    const accept = c.req.header("Accept") ?? "";
+    if (accept.includes("text/event-stream")) {
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(": mcp stream\n\n"));
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      });
+    }
+    return c.json(
+      {
+        error: "METHOD_NOT_ALLOWED",
+        message: "MCP GET with Accept: text/event-stream for SSE; use POST for JSON-RPC.",
+        jsonrpc: "2.0",
+        id: 0,
+        result: null,
+      },
+      405
+    );
+  };
+  app.get("/api/mcp", authMiddleware, mcpGetHandler);
+  app.get("/api/mcp/", authMiddleware, mcpGetHandler);
+  // POST to exact path or any subpath (Cursor may POST to e.g. /api/mcp/sse or /api/mcp/messages)
   app.post("/api/mcp", authMiddleware, createMcpHandler({ ...rootResolverDeps, config: deps.config }));
+  app.post("/api/mcp/*", authMiddleware, createMcpHandler({ ...rootResolverDeps, config: deps.config }));
+  // Any other method/path under /api/mcp (e.g. GET /api/mcp/oauth) → JSON so no empty-body 404
+  app.all("/api/mcp/*", (c) =>
+    c.json(
+      {
+        error: "NOT_FOUND",
+        message: "Only POST /api/mcp (JSON-RPC) and GET /api/mcp (SSE with Bearer) are supported. No OAuth discovery.",
+      } satisfies ErrorBody,
+      404
+    )
+  );
 
   app.onError((err, c) => {
     const body: ErrorBody = {
