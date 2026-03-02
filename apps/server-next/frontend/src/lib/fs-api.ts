@@ -1,4 +1,5 @@
 import type { FsEntry } from "../types/api";
+import { apiFetch } from "./auth";
 
 const MOCK_ENTRIES_ROOT: FsEntry[] = [
   { name: "Documents", path: "/Documents", isDirectory: true },
@@ -15,7 +16,7 @@ export async function fetchList(path: string, useMock: boolean): Promise<FsEntry
     ];
   }
   const q = path ? `?path=${encodeURIComponent(path)}` : "";
-  const res = await fetch(`/api/fs/entries${q}`);
+  const res = await apiFetch(`/api/fs/entries${q}`);
   if (!res.ok) throw new Error("Failed to list directory");
   const data = await res.json();
   return data.entries ?? [];
