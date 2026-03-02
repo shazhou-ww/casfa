@@ -6,7 +6,7 @@ build:
   esbuild: false
 
 # Resources (placeholders): DynamoDB tables casfa-next-<table>, S3 bucket casfa-next-blob (shared),
-# S3 bucket casfa-next-frontend-${sls:stage} per stage. DynamoDB local ports: local-dev 7102, local-test 7112.
+# S3 bucket casfa-next-frontend-${sls:stage} per stage. DynamoDB local ports: local-dev 7102, local-test 7112. S3 local: 7104.
 
 provider:
   name: aws
@@ -51,6 +51,9 @@ provider:
           Resource:
             - !GetAtt BlobBucket.Arn
             - !Sub ${BlobBucket.Arn}/*
+        - Effect: Allow
+          Action: s3:GetObject
+          Resource: !Sub ${FrontendBucket.Arn}/index.html
   stackParameters:
     - ParameterKey: CloudFrontAlias
       ParameterValue: ${env:CLOUDFRONT_ALIAS, ''}
@@ -72,6 +75,7 @@ provider:
     DYNAMODB_TABLE_DELEGATES: ${env:DYNAMODB_TABLE_DELEGATES, 'casfa-next-${sls:stage}-delegates'}
     DYNAMODB_TABLE_GRANTS: ${env:DYNAMODB_TABLE_GRANTS, 'casfa-next-${sls:stage}-grants'}
     S3_BUCKET: ${env:S3_BUCKET, 'casfa-next-${sls:stage}-blob'}
+    FRONTEND_BUCKET: casfa-next-frontend-${sls:stage}
     S3_ENDPOINT: ${env:S3_ENDPOINT, ''}
     LOG_LEVEL: ${env:LOG_LEVEL, ''}
 
@@ -98,8 +102,9 @@ custom:
     noPrependStageInUrl: true
   s3:
     host: localhost
-    port: 4569
-    directory: .local-storage/s3
+    # Dev: 7104, persistent. Local-test: set S3_LOCAL_PORT=7114 and S3_LOCAL_DIRECTORY=.local-storage/s3-test (cleared each run).
+    port: ${env:S3_LOCAL_PORT, 7104}
+    directory: ${env:S3_LOCAL_DIRECTORY, '.local-storage/s3'}
   esbuild:
     bundle: true
     target: node20
@@ -237,7 +242,6 @@ resources:
               QueryStringBehavior: all
     FrontendCloudFront:
       Type: AWS::CloudFront::Distribution
-      DependsOn: SpaFallbackEdgeVersion
       Properties:
         DistributionConfig:
           Enabled: true
@@ -259,19 +263,19 @@ resources:
             AllowedMethods: [GET, HEAD, OPTIONS]
             Compress: true
             CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
-            LambdaFunctionAssociations:
-              - EventType: origin-response
-                LambdaFunctionARN: !Ref SpaFallbackEdgeVersion
           CacheBehaviors:
+            - PathPattern: /oauth/callback
+              TargetOriginId: ApiGateway
+              ViewerProtocolPolicy: https-only
+              AllowedMethods: [GET, HEAD, OPTIONS]
+              Compress: true
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
             - PathPattern: /api/*
               TargetOriginId: ApiGateway
               ViewerProtocolPolicy: https-only
               AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
               Compress: true
               CachePolicyId: !Ref ApiCachePolicy
-              LambdaFunctionAssociations:
-                - EventType: origin-response
-                  LambdaFunctionARN: !Ref SpaFallbackEdgeVersion
           Aliases: !If [UseCustomDomain, [!Ref CloudFrontAlias], !Ref AWS::NoValue]
           ViewerCertificate: !If
             - UseCustomDomain
@@ -279,7 +283,7 @@ resources:
               SslSupportMethod: sni-only
               MinimumProtocolVersion: TLSv1.2_2021
             - CloudFrontDefaultCertificate: true
-          # No CustomErrorResponses: API 403/404 must return JSON. SPA fallback via SpaFallbackEdge (origin-response).
+          # No CustomErrorResponses: API 403/404 must return JSON. Lambda@Edge not attached (caused 503).
     SpaFallbackEdgeRole:
       Type: AWS::IAM::Role
       Properties:
@@ -306,7 +310,6 @@ resources:
     SpaFallbackEdgeFunction:
       Type: AWS::Lambda::Function
       Properties:
-        FunctionName: casfa-next-spa-fallback-edge-${sls:stage}
         Runtime: nodejs18.x
         Handler: index.handler
         Code:

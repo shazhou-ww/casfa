@@ -4,7 +4,7 @@
  */
 process.env.MOCK_JWT_SECRET ??= "test-secret-e2e";
 process.env.DYNAMODB_ENDPOINT ??= "http://localhost:7102";
-process.env.S3_ENDPOINT ??= "http://localhost:4569";
+process.env.S3_ENDPOINT ??= "http://localhost:7104";
 process.env.S3_BUCKET ??= "casfa-next-local-test-blob";
 process.env.STAGE ??= "local-test";
 

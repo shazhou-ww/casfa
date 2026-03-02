@@ -16,6 +16,7 @@ export const ENV_NAMES = {
   DYNAMODB_TABLE_GRANTS: "DYNAMODB_TABLE_GRANTS",
   S3_BUCKET: "S3_BUCKET",
   S3_ENDPOINT: "S3_ENDPOINT",
+  FRONTEND_BUCKET: "FRONTEND_BUCKET",
   LOG_LEVEL: "LOG_LEVEL",
 } as const;
 
@@ -36,7 +37,9 @@ export type ServerConfig = {
   dynamodbTableGrants: string;
   /** S3 bucket for CAS blob */
   s3Bucket: string;
-  /** S3 endpoint for local (e.g. http://localhost:4569); omit for AWS */
+  /** S3 bucket for frontend static assets (used by Lambda to serve index.html for /oauth/callback) */
+  frontendBucket?: string;
+  /** S3 endpoint for local (e.g. http://localhost:7104); omit for AWS */
   s3Endpoint?: string;
   logLevel?: string;
 };
@@ -66,6 +69,7 @@ export function loadConfig(): ServerConfig {
     dynamodbTableGrants:
       process.env.DYNAMODB_TABLE_GRANTS ?? `casfa-next-${stage}-grants`,
     s3Bucket: process.env.S3_BUCKET ?? `casfa-next-${stage}-blob`,
+    frontendBucket: process.env.FRONTEND_BUCKET ?? undefined,
     s3Endpoint: process.env.S3_ENDPOINT,
     logLevel: process.env.LOG_LEVEL,
   };
