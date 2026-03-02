@@ -8,6 +8,7 @@ import type { ServerConfig } from "../config.ts";
 
 export type McpAuthCode = {
   clientId: string;
+  clientName?: string;
   redirectUri: string;
   codeChallenge: string;
   codeChallengeMethod: string;
