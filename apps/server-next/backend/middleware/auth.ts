@@ -120,6 +120,28 @@ export function createAuthMiddleware(deps: AuthMiddlewareDeps) {
 
     if (token.includes(".")) {
       try {
+        // MCP delegate token: format "header.payload.mcp" (no Cognito signature). Resolve by hash lookup only.
+        const parts = token.split(".");
+        if (parts.length === 3 && parts[2] === "mcp" && parts[1]) {
+          const decoded = atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"));
+          const obj = JSON.parse(decoded) as { sub?: string };
+          const realmId = obj.sub;
+          if (realmId && typeof realmId === "string") {
+            const tokenHash = await sha256Hex(token);
+            const grant = await deps.delegateGrantStore.getByAccessTokenHash(realmId, tokenHash);
+            if (grant) {
+              c.set("auth", {
+                type: "delegate",
+                realmId: grant.realmId,
+                delegateId: grant.delegateId,
+                clientId: grant.clientId,
+                permissions: grant.permissions,
+              } satisfies AuthContext);
+              return next();
+            }
+          }
+        }
+
         const payload = await jwtVerifier(token);
         const userId = payload.sub;
         const tokenHash = await sha256Hex(token);

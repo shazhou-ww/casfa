@@ -85,7 +85,11 @@ export function OAuthCallbackPage() {
           name: payload.name ?? undefined,
           email: payload.email ?? undefined,
         });
-        navigate("/", { replace: true });
+        // Redirect to state (returnUrl) if present and safe, else home (e.g. from MCP OAuth flow: /oauth/authorize?...)
+        const state = searchParams.get("state");
+        const target =
+          state && state.startsWith("/") && !state.startsWith("//") ? state : "/";
+        navigate(target, { replace: true });
       } catch (e) {
         setError(e instanceof Error ? e.message : "Sign-in failed");
       }

@@ -38,6 +38,7 @@ function formatExpiry(epochMs: number): string {
 
 function getStatus(item: DelegateListItem): "active" | "revoked" | "expired" {
   if (item.isRevoked) return "revoked";
+  if (item.refreshable) return "active";
   if (item.expiresAt != null && item.expiresAt < Date.now()) return "expired";
   return "active";
 }
@@ -149,9 +150,11 @@ export function DelegatesTab({ onCreateClick, onRevokeClick }: DelegatesTabProps
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2">
-                        {d.expiresAt != null
-                          ? formatExpiry(d.expiresAt)
-                          : "Never"}
+                        {d.refreshable
+                          ? "—"
+                          : d.expiresAt != null
+                            ? formatExpiry(d.expiresAt)
+                            : "Never"}
                       </Typography>
                     </TableCell>
                     <TableCell>

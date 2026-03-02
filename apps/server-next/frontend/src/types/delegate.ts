@@ -8,6 +8,8 @@ export type DelegateListItem = {
   expiresAt?: number;
   isRevoked: boolean;
   depth?: number;
+  /** When true, delegate can refresh tokens; do not show expires or expired status. */
+  refreshable?: boolean;
 };
 
 export type CreateDelegateResponse = {

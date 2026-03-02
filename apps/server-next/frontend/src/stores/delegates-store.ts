@@ -25,6 +25,7 @@ function mapDelegateItem(d: {
   permissions?: string[];
   createdAt: number;
   expiresAt?: number | null;
+  refreshable?: boolean;
 }): DelegateListItem {
   return {
     delegateId: d.delegateId,
@@ -32,6 +33,7 @@ function mapDelegateItem(d: {
     createdAt: d.createdAt,
     expiresAt: d.expiresAt ?? undefined,
     isRevoked: false,
+    refreshable: d.refreshable ?? false,
   };
 }
 
@@ -56,6 +58,7 @@ export const useDelegatesStore = create<DelegatesStore>((set, get) => ({
           permissions?: string[];
           createdAt: number;
           expiresAt?: number | null;
+          refreshable?: boolean;
         }>;
       };
       const list = (data.delegates ?? []).map(mapDelegateItem);

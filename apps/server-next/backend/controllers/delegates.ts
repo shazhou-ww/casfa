@@ -56,7 +56,8 @@ export function createDelegatesController(deps: DelegatesControllerDeps) {
         clientId: g.clientId,
         permissions: g.permissions,
         createdAt: g.createdAt,
-        expiresAt: g.expiresAt,
+        expiresAt: g.refreshTokenHash != null ? null : g.expiresAt,
+        refreshable: g.refreshTokenHash != null,
       }));
       return c.json({ delegates: list }, 200);
     },
