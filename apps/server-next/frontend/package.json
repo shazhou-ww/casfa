@@ -1,0 +1,5 @@
+{
+  "name": "@casfa-next/frontend",
+  "private": true,
+  "type": "module"
+}
