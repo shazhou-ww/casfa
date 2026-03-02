@@ -79,7 +79,7 @@ export type CognitoConfig = {
 
 export const loadCognitoConfig = (): CognitoConfig => ({
   userPoolId: process.env.COGNITO_USER_POOL_ID ?? "",
-  clientId: process.env.CASFA_COGNITO_CLIENT_ID ?? process.env.COGNITO_CLIENT_ID ?? "",
+  clientId: process.env.COGNITO_CLIENT_ID ?? "",
   region: process.env.COGNITO_REGION ?? "us-east-1",
   hostedUiUrl: process.env.COGNITO_HOSTED_UI_URL ?? "",
 });

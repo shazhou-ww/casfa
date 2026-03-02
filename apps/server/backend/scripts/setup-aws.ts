@@ -20,7 +20,7 @@
  *
  * Environment variables (loaded from root .env):
  *   COGNITO_USER_POOL_ID       - Cognito User Pool ID
- *   CASFA_COGNITO_CLIENT_ID    - Cognito App Client ID
+ *   COGNITO_CLIENT_ID          - Cognito App Client ID
  *   COGNITO_REGION             - AWS region (default: us-east-1)
  *   GOOGLE_CLIENT_ID           - Google OAuth client ID
  *   GOOGLE_CLIENT_SECRET       - Google OAuth client secret
@@ -68,7 +68,7 @@ import { createAllTables, createClient, listTables } from "./create-local-tables
 
 const region = process.env.COGNITO_REGION ?? "us-east-1";
 const userPoolId = process.env.COGNITO_USER_POOL_ID ?? "";
-const clientId = process.env.CASFA_COGNITO_CLIENT_ID ?? "";
+const clientId = process.env.COGNITO_CLIENT_ID ?? "";
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID ?? "";
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET ?? "";
@@ -261,7 +261,7 @@ async function setupCallbackUrls(autoYes: boolean): Promise<void> {
   console.log("─".repeat(50));
 
   if (!userPoolId || !clientId) {
-    console.log("⏭️  Skipped — COGNITO_USER_POOL_ID or CASFA_COGNITO_CLIENT_ID not set");
+    console.log("⏭️  Skipped — COGNITO_USER_POOL_ID or COGNITO_CLIENT_ID not set");
     return;
   }
 

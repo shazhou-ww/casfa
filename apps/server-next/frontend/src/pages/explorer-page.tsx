@@ -5,9 +5,11 @@ import { DirectoryTree } from "../components/explorer/directory-tree";
 import { pathToRoute, routeToPath } from "../lib/explorer-routes";
 import { useExplorerStore } from "../stores/explorer-store";
 import { useExplorerNavigate } from "../hooks/use-explorer-navigate";
+import { useAuthStore } from "../stores/auth-store";
 
 export function ExplorerPage() {
   const location = useLocation();
+  const realmId = useAuthStore((s) => s.user?.userId);
   const { setCurrentPath } = useExplorerStore();
   const setPath = useExplorerNavigate();
 
@@ -20,6 +22,7 @@ export function ExplorerPage() {
   return (
     <Box display="flex" flexDirection="column" height="100%" overflow="hidden">
       <DirectoryTree
+        key={realmId ?? "anon"}
         currentPath={pathFromRoute}
         onPathChange={setPath}
       />
