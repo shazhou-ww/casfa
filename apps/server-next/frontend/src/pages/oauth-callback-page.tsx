@@ -87,8 +87,22 @@ export function OAuthCallbackPage() {
         });
         // Redirect to state (returnUrl) if present and safe, else home (e.g. from MCP OAuth flow: /oauth/authorize?...)
         const state = searchParams.get("state");
-        const target =
-          state && state.startsWith("/") && !state.startsWith("//") ? state : "/";
+        let target = "/";
+        if (state) {
+          if (state.startsWith("casfa_return_")) {
+            try {
+              const stored = sessionStorage.getItem("casfa_oauth_return_url");
+              if (stored && stored.startsWith("/") && !stored.startsWith("//")) {
+                target = stored;
+                sessionStorage.removeItem("casfa_oauth_return_url");
+              }
+            } catch {
+              /* ignore */
+            }
+          } else if (state.startsWith("/") && !state.startsWith("//")) {
+            target = state;
+          }
+        }
         navigate(target, { replace: true });
       } catch (e) {
         setError(e instanceof Error ? e.message : "Sign-in failed");

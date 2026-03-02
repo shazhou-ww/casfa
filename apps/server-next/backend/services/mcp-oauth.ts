@@ -118,8 +118,7 @@ export function decodeMcpRefreshTokenPayload(token: string): { realmId: string; 
 
 const REFRESH_EXPIRES_IN_SEC = 60 * 24 * 60 * 60; // 60 days
 
-// TODO: revert after testing refresh — access token 1 min for verification
-const ACCESS_TOKEN_EXPIRES_SEC = 60; // 1 min (normal: 30 * 24 * 60 * 60)
+const ACCESS_TOKEN_EXPIRES_SEC = 30 * 24 * 60 * 60; // 30 days
 const ACCESS_TOKEN_EXPIRES_MS = ACCESS_TOKEN_EXPIRES_SEC * 1000;
 
 /** Generate new access + refresh token pair (and hashes). Does not insert into store. */
@@ -178,7 +177,7 @@ export async function createMcpDelegateToken(
 }> {
   const delegateId = crypto.randomUUID();
   const now = Date.now();
-  const expiresAt = now + ACCESS_TOKEN_EXPIRES_MS; // TODO: revert to 30 days after testing
+  const expiresAt = now + ACCESS_TOKEN_EXPIRES_MS;
 
   const pair = await generateMcpTokenPair(realmId, clientId, config);
   await delegateGrantStore.insert({

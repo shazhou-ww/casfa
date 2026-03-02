@@ -16,6 +16,7 @@ export function OAuthAuthorizePage() {
 
   const client_id = searchParams.get("client_id") ?? "";
   const [clientName, setClientName] = useState(client_id);
+  const [suggestedName, setSuggestedName] = useState<string>(client_id);
   const redirect_uri = searchParams.get("redirect_uri") ?? "";
   const state = searchParams.get("state") ?? "";
   const code_challenge = searchParams.get("code_challenge") ?? "";
@@ -24,6 +25,27 @@ export function OAuthAuthorizePage() {
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // Fetch client_name from registration (RFC 7591) so we show the name the client provided
+  useEffect(() => {
+    if (!client_id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch(`/api/oauth/mcp/client-info?client_id=${encodeURIComponent(client_id)}`);
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { client_name?: string | null };
+        const name = data.client_name?.trim() || client_id;
+        if (!cancelled) {
+          setSuggestedName(name);
+          setClientName((prev) => (prev === client_id ? name : prev));
+        }
+      } catch {
+        if (!cancelled) setSuggestedName(client_id);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [client_id]);
 
   // Not logged in: redirect to login with returnUrl so we come back here after
   useEffect(() => {
@@ -102,15 +124,15 @@ export function OAuthAuthorizePage() {
       <Card sx={{ maxWidth: 420, width: "100%", mx: 2 }}>
         <CardContent sx={{ p: 4 }}>
           <Typography variant="h6" component="h1" gutterBottom>
-            Authorize Cursor MCP
+            Authorize application
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Allow <strong>{client_id || "this client"}</strong> to access your Casfa realm (files and branches)?
+            Allow <strong>{suggestedName || client_id || "this client"}</strong> to access your Casfa realm (files and branches)?
           </Typography>
           <TextField
             fullWidth
-            label="Client name"
-            helperText={client_id ? `Caller suggested: ${client_id}. You can change this.` : undefined}
+            label="Display name"
+            helperText={client_id ? `Caller suggested: ${suggestedName || client_id}. You can change this.` : undefined}
             value={clientName}
             onChange={(e) => setClientName(e.target.value)}
             disabled={submitting || !!redirectUrl}
@@ -123,9 +145,9 @@ export function OAuthAuthorizePage() {
           )}
           {redirectUrl && (
             <Typography variant="body2" sx={{ mb: 2 }}>
-              Redirecting to Cursor… If nothing happens,{" "}
+              Redirecting… If nothing happens,{" "}
               <Typography component="a" href={redirectUrl} sx={{ color: "primary.main", cursor: "pointer", textDecoration: "underline" }}>
-                click here to open Cursor
+                click here to return to the application
               </Typography>
             </Typography>
           )}

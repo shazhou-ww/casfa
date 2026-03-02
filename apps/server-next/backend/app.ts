@@ -284,6 +284,42 @@ export function createApp(deps: AppDeps) {
   app.post("/api/realm/:realmId/delegates/assign", (c) => delegates.assign(c));
   app.post("/api/realm/:realmId/delegates/:delegateId/revoke", (c) => delegates.revoke(c));
 
+  // OAuth 2.0 Dynamic Client Registration (RFC 7591): client can send client_name; we store and return client_id.
+  const clientMetadataByClientId = new Map<string, { client_name?: string }>();
+  app.post("/api/oauth/mcp/register", async (c) => {
+    let body: { client_name?: string; redirect_uris?: string[] };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid_client_metadata", error_description: "Invalid JSON" }, 400);
+    }
+    const redirectUris = Array.isArray(body.redirect_uris) && body.redirect_uris.length > 0
+      ? body.redirect_uris
+      : ["cursor://anysphere.cursor-mcp/oauth/callback"];
+    const clientName = typeof body.client_name === "string" ? body.client_name.trim() || undefined : undefined;
+    const clientId = "casfa-" + crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+    clientMetadataByClientId.set(clientId, { client_name: clientName });
+    console.log("[mcp-oauth] register", { client_name: clientName, redirect_uris: redirectUris, issued_client_id: clientId });
+    return c.json(
+      {
+        client_id: clientId,
+        client_id_issued_at: Math.floor(Date.now() / 1000),
+        redirect_uris: redirectUris,
+        ...(clientName && { client_name: clientName }),
+      },
+      201
+    );
+  });
+  app.get("/api/oauth/mcp/client-info", (c) => {
+    const clientId = c.req.query("client_id");
+    if (!clientId) {
+      return c.json({ error: "BAD_REQUEST", message: "Missing client_id" }, 400);
+    }
+    const meta = clientMetadataByClientId.get(clientId);
+    console.log("[mcp-oauth] client-info", { client_id: clientId, found: !!meta, client_name: meta?.client_name ?? null });
+    return c.json({ client_name: meta?.client_name ?? null });
+  });
+
   // MCP OAuth: create authorization code (requires user auth); frontend calls after user approves.
   app.post("/api/oauth/mcp/authorize", authMiddleware, async (c) => {
     const auth = c.get("auth");
@@ -310,6 +346,7 @@ export function createApp(deps: AppDeps) {
         400
       );
     }
+    console.log("[mcp-oauth] authorize", { client_id, redirect_uri: redirect_uri.slice(0, 60) + (redirect_uri.length > 60 ? "…" : "") });
     const realmId = auth.userId;
     const code = createMcpAuthCode({
       clientId: client_id,
@@ -336,6 +373,7 @@ export function createApp(deps: AppDeps) {
       return c.json({ error: "BAD_REQUEST", message: "Content-Type must be application/x-www-form-urlencoded" }, 400);
     }
     const grant_type = params.grant_type;
+    console.log("[mcp-oauth] token", { grant_type, client_id: params.client_id ?? "(none)" });
 
     if (grant_type === "refresh_token") {
       const refresh_token = params.refresh_token;
@@ -346,12 +384,22 @@ export function createApp(deps: AppDeps) {
           400
         );
       }
-      const result = await refreshMcpTokens(
+      let result = await refreshMcpTokens(
         refresh_token,
         client_id,
         deps.config,
         deps.delegateGrantStore
       );
+      // DynamoDB GSI2 is eventually consistent; client often sends refresh immediately after code exchange, so retry once after short delay (local dev / DDB local)
+      if (!result) {
+        await new Promise((r) => setTimeout(r, 180));
+        result = await refreshMcpTokens(
+          refresh_token,
+          client_id,
+          deps.config,
+          deps.delegateGrantStore
+        );
+      }
       if (!result) {
         return c.json(
           { error: "invalid_grant", error_description: "Invalid or expired refresh token" },
