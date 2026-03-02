@@ -11,6 +11,20 @@ services:
       - dynamodb-data:/data
     restart: unless-stopped
 
+  # Persistent MinIO (S3-compatible) - for daily development, port 7104
+  minio:
+    image: minio/minio:latest
+    container_name: casfa-next-minio
+    ports:
+      - "7104:9000"
+    environment:
+      MINIO_ROOT_USER: S3RVER
+      MINIO_ROOT_PASSWORD: S3RVER00
+    command: server /data
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+
   # In-memory DynamoDB Local - for E2E / dev:test (clean each run)
   dynamodb-test:
     image: amazon/dynamodb-local:latest
@@ -23,3 +37,4 @@ services:
 
 volumes:
   dynamodb-data:
+  minio-data:

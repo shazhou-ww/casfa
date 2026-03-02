@@ -1,16 +1,45 @@
 /**
  * Start local-test: serverless offline on 7111 (API) and 7113 (lambda), mock auth.
- * Uses Docker dynamodb-test (7112, in-memory) and serverless-s3-local (4569).
+ * Uses Docker dynamodb-test (7112) and MinIO (7104) with bucket cleared each run.
  * Automatically runs dev-setup (check + init DynamoDB) before starting.
  */
 import { spawn, spawnSync } from "node:child_process";
+import { createConnection } from "node:net";
+import { resolve } from "node:path";
 import { isDynamoDBReady } from "./create-local-tables.ts";
+import { clearS3Bucket, ensureS3Bucket } from "./ensure-s3-bucket.ts";
 import { runSetup } from "./dev-setup.ts";
 
 const HTTP_PORT = 7111;
 const LAMBDA_PORT = 7113;
+const S3_PORT = 7104; // MinIO (same as dev)
+const S3_ENDPOINT = `http://localhost:${S3_PORT}`;
+const S3_BUCKET_TEST = "casfa-next-local-test-blob";
 const DYNAMODB_ENDPOINT = "http://localhost:7112";
-const appRoot = process.cwd();
+const appRoot = resolve(import.meta.dir, "..");
+
+function isPortOpen(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = createConnection(port, "127.0.0.1", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on("error", () => resolve(false));
+    socket.setTimeout(500, () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+async function waitForPort(port: number, label: string, maxWaitMs = 30_000): Promise<void> {
+  const step = 500;
+  for (let elapsed = 0; elapsed < maxWaitMs; elapsed += step) {
+    if (await isPortOpen(port)) return;
+    await new Promise((r) => setTimeout(r, step));
+  }
+  throw new Error(`${label} (port ${port}) did not become ready in time`);
+}
 
 function isDockerRunning(): boolean {
   const result = spawnSync("docker", ["info"], {
@@ -67,6 +96,19 @@ async function main(): Promise<void> {
     }
   }
 
+  // MinIO (S3): same port as dev, ensure bucket and clear for fresh test run
+  if (!(await isPortOpen(S3_PORT))) {
+    console.log("\nMinIO (S3) not running, starting...");
+    if (!startDockerService("minio")) {
+      console.error("Failed to start minio container.");
+      process.exit(1);
+    }
+    await waitForPort(S3_PORT, "MinIO (S3)");
+  }
+  await ensureS3Bucket(S3_ENDPOINT, S3_BUCKET_TEST);
+  await clearS3Bucket(S3_ENDPOINT, S3_BUCKET_TEST);
+  console.log(`S3 bucket ${S3_BUCKET_TEST} ensured and cleared.`);
+
   console.log("\nEnsuring DynamoDB tables exist (stage=local-test)...");
   await runSetup("local-test");
 
@@ -75,8 +117,10 @@ async function main(): Promise<void> {
     STAGE: "local-test",
     MOCK_JWT_SECRET: process.env.MOCK_JWT_SECRET ?? "test-secret-e2e",
     DYNAMODB_ENDPOINT,
-    S3_ENDPOINT: process.env.S3_ENDPOINT ?? "http://localhost:4569",
-    S3_BUCKET: process.env.S3_BUCKET ?? "casfa-next-local-test-blob",
+    S3_LOCAL_PORT: "7114",
+    S3_LOCAL_DIRECTORY: ".local-storage/s3-test",
+    S3_ENDPOINT: process.env.S3_ENDPOINT ?? S3_ENDPOINT,
+    S3_BUCKET: process.env.S3_BUCKET ?? S3_BUCKET_TEST,
   };
 
   spawn(

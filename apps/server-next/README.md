@@ -24,7 +24,7 @@
 bunx serverless login
 ```
 
-**本地 `bun run dev` 需要 Docker**：DynamoDB Local 通过 Docker 运行（dev 持久化端口 7102，local-test in-memory 端口 7112）。未起容器时，`bun run dev` 或 `bun run dev:cognito` 会自动执行 `docker compose up -d dynamodb`；`bun run dev:test` 会自动执行 `docker compose up -d dynamodb-test`。请先安装并启动 Docker Desktop。
+**本地 `bun run dev` 需要 Docker**：DynamoDB Local 与 MinIO（S3 兼容）通过 Docker 运行。dev 使用 `dynamodb`（端口 7102 持久化）和 `minio`（端口 7104）；local-test 使用 `dynamodb-test`（7112 in-memory），S3 同样使用 MinIO 7104、独立 bucket 每次启动前清空。未起容器时，`bun run dev` / `bun run dev:cognito` 会自动执行 `docker compose up -d dynamodb minio`；`bun run dev:test` 会拉齐 `dynamodb-test` 与 `minio` 并清空 test 用 bucket。请先安装并启动 Docker Desktop。
 
 在 `apps/server-next` 下执行：
 
@@ -41,7 +41,7 @@ bun run dev          # 或 dev:cognito / dev:test
 - **`bun run dev`**：mock 鉴权，API 在 http://localhost:7101。
 - **`bun run dev:cognito`**：Cognito 鉴权，API 在 http://localhost:7101。
 
-本地使用 **Docker DynamoDB**（dev 端口 7102 持久化，local-test 端口 7112 in-memory）和 **serverless-s3-local**（S3 端口 4569）。启动 `bun run dev` / `dev:cognito` / `dev:test` 时会自动拉容器并执行 **检查与初始化 DynamoDB**（建表）；也可单独执行 `bun run dev:setup`（或 `bun run dev:setup -- --stage local-test`）仅做检查与建表、不启动服务。手动起容器：`docker compose up -d dynamodb`（dev）或 `docker compose up -d dynamodb-test`（local-test）。
+本地使用 **Docker DynamoDB**（dev 端口 7102 持久化，local-test 端口 7112 in-memory）和 **Docker MinIO**（S3 兼容，端口 **7104**，dev 与 local-test 共用同一 MinIO 实例，通过不同 bucket 隔离：dev 用 `casfa-next-dev-blob` 持久化，local-test 用 `casfa-next-local-test-blob` 每次启动前清空）。启动 `bun run dev` / `dev:cognito` / `dev:test` 时会自动拉容器并执行 **检查与初始化 DynamoDB**（建表）及 **确保 S3 bucket 存在**；也可单独执行 `bun run dev:setup`（或 `bun run dev:setup -- --stage local-test`）仅做检查与建表、不启动服务。手动起容器：`docker compose up -d dynamodb minio`（dev）或 `docker compose up -d dynamodb-test minio`（local-test 需 dynamodb-test + minio）。
 
 **清理本地数据库**：若需彻底清空 dev 数据，可 `docker compose down -v`（删除 DynamoDB volume）。曾用旧版 serverless-dynamodb 插件时若遗留 `.dynamodb` 目录，可执行 `bun run clean:db` 删除。
 
@@ -53,7 +53,7 @@ bun run dev          # 或 dev:cognito / dev:test
 bun run dev:test
 ```
 
-启动 serverless-offline，API 在 http://localhost:7111；鉴权用 mock（`MOCK_JWT_SECRET`）。使用 Docker **dynamodb-test**（7112 in-memory）与 serverless-s3-local，通过 `--stage=local-test` 使用独立表名/桶名（`casfa-next-local-test-*`），与 dev 数据隔离。
+启动 serverless-offline，API 在 http://localhost:7111；鉴权用 mock（`MOCK_JWT_SECRET`）。使用 Docker **dynamodb-test**（7112 in-memory）与 **MinIO**（7104，bucket `casfa-next-local-test-blob` 每次启动前清空），通过 `--stage=local-test` 使用独立表名/桶名（`casfa-next-local-test-*`），与 dev 数据隔离。
 
 ### 备用：Bun 直起
 
@@ -101,7 +101,7 @@ AWS_PROFILE=AdministratorAccess-914369185440
 
 ## 环境变量（统一名称，各环境取值不同）
 
-- **DB / Blob**：不再使用进程内 memory；**DB 统一 DynamoDB，Blob 统一 S3**。本地开发用 Docker DynamoDB（7102 dev / 7112 local-test）和 serverless-s3-local（4569）。
+- **DB / Blob**：不再使用进程内 memory；**DB 统一 DynamoDB，Blob 统一 S3**。本地开发用 Docker DynamoDB（7102 dev / 7112 local-test）和 Docker MinIO（**7104**，dev 与 local-test 共用；dev 持久化 bucket，local-test 每次清空 bucket）。
 
 | 变量 | 说明 |
 |------|------|
@@ -111,7 +111,7 @@ AWS_PROFILE=AdministratorAccess-914369185440
 | `DYNAMODB_ENDPOINT` | 本地 DynamoDB 地址（dev: http://localhost:7102，local-test: http://localhost:7112）；不设则用 AWS。由 dev 脚本自动传入。 |
 | `DYNAMODB_TABLE_DELEGATES` / `DYNAMODB_TABLE_GRANTS` | 表名（默认 `casfa-next-<stage>-delegates/grants`） |
 | `S3_BUCKET` | CAS blob 桶名（默认 `casfa-next-<stage>-blob`） |
-| `S3_ENDPOINT` | 本地 S3 地址（如 http://localhost:4569）；不设则用 AWS |
+| `S3_ENDPOINT` | 本地 S3 地址（dev / local-test 均为 http://localhost:7104，MinIO）；不设则用 AWS |
 | `STAGE` / `SLS_STAGE` | 用于默认表名/桶名（dev / local-test / beta / prod） |
 | `LOG_LEVEL` | 可选 |
 | `AWS_PROFILE` | 仅用于本地/CI 部署时指定 AWS profile（可写在 `.env`，由 `bun run deploy` 读取） |
