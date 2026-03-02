@@ -292,6 +292,7 @@ export function createApp(deps: AppDeps) {
     }
     let body: {
       client_id?: string;
+      client_name?: string;
       redirect_uri?: string;
       state?: string;
       code_challenge?: string;
@@ -302,7 +303,7 @@ export function createApp(deps: AppDeps) {
     } catch {
       return c.json({ error: "BAD_REQUEST", message: "Invalid JSON" }, 400);
     }
-    const { client_id, redirect_uri, state, code_challenge, code_challenge_method } = body;
+    const { client_id, client_name, redirect_uri, state, code_challenge, code_challenge_method } = body;
     if (!client_id || !redirect_uri || !state || !code_challenge) {
       return c.json(
         { error: "BAD_REQUEST", message: "Missing client_id, redirect_uri, state, or code_challenge" },
@@ -312,6 +313,7 @@ export function createApp(deps: AppDeps) {
     const realmId = auth.userId;
     const code = createMcpAuthCode({
       clientId: client_id,
+      clientName: client_name?.trim() || undefined,
       redirectUri: redirect_uri,
       codeChallenge: code_challenge,
       codeChallengeMethod: code_challenge_method ?? "S256",
@@ -400,7 +402,7 @@ export function createApp(deps: AppDeps) {
     }
     const { accessToken, refreshToken, expiresIn, refreshExpiresIn } = await createMcpDelegateToken(
       entry.realmId,
-      entry.clientId,
+      entry.clientName ?? entry.clientId,
       deps.config,
       deps.delegateGrantStore
     );
