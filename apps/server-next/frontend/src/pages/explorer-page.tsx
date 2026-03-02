@@ -22,7 +22,6 @@ export function ExplorerPage() {
       <DirectoryTree
         currentPath={pathFromRoute}
         onPathChange={setPath}
-        useMock={true}
       />
     </Box>
   );
