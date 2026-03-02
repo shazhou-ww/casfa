@@ -465,16 +465,11 @@ export function createApp(deps: AppDeps) {
   });
 
   // MCP: GET with Accept: text/event-stream returns SSE (Cursor streamableHttp); else 405 JSON. POST is JSON-RPC with Bearer.
-  // Catch-all under /api/mcp so Cursor OAuth/SSE probes never get 404 with empty body (which causes "Invalid OAuth error response: Unexpected end of JSON input").
+  // Use a single-chunk body instead of an open ReadableStream so Lambda does not wait for the stream to close and hit timeout (504).
   const mcpGetHandler = (c: { req: { header: (n: string) => string | undefined }; json: (body: unknown, status?: number) => Response }) => {
     const accept = c.req.header("Accept") ?? "";
     if (accept.includes("text/event-stream")) {
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(new TextEncoder().encode(": mcp stream\n\n"));
-        },
-      });
-      return new Response(stream, {
+      return new Response(": mcp stream\n\n", {
         headers: {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
