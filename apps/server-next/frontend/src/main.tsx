@@ -55,13 +55,15 @@ const theme = createTheme({
   typography: {
     fontFamily:
       'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    h4: { fontWeight: 700, letterSpacing: "-0.02em" },
-    h5: { fontWeight: 600, letterSpacing: "-0.01em" },
-    h6: { fontWeight: 600, letterSpacing: "-0.01em" },
-    subtitle1: { fontWeight: 500 },
-    body2: { lineHeight: 1.6 },
-    caption: { letterSpacing: "0.01em" },
-    button: { fontWeight: 500, letterSpacing: "0.01em" },
+    fontSize: 14,
+    h4: { fontWeight: 700, letterSpacing: "-0.02em", fontSize: "1.5rem" },
+    h5: { fontWeight: 600, letterSpacing: "-0.01em", fontSize: "1.25rem" },
+    h6: { fontWeight: 600, letterSpacing: "-0.01em", fontSize: "1.125rem" },
+    subtitle1: { fontWeight: 500, fontSize: "0.9375rem" },
+    body1: { fontSize: "0.875rem" },
+    body2: { lineHeight: 1.6, fontSize: "0.8125rem" },
+    caption: { letterSpacing: "0.01em", fontSize: "0.75rem" },
+    button: { fontWeight: 500, letterSpacing: "0.01em", fontSize: "0.875rem" },
   },
   components: {
     MuiAppBar: {

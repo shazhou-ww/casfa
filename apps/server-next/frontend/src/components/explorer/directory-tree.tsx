@@ -1,3 +1,4 @@
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import FolderIcon from "@mui/icons-material/Folder";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import {
@@ -7,9 +8,11 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Toolbar,
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
+import { fetchList } from "../../lib/fs-api";
 import type { FsEntry } from "../../types/api";
 
 type DirectoryTreeProps = {
@@ -24,29 +27,8 @@ function formatPath(path: string): string[] {
   return path.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
 }
 
-const MOCK_ENTRIES: FsEntry[] = [
-  { name: "Documents", path: "/Documents", isDirectory: true },
-  { name: "Projects", path: "/Projects", isDirectory: true },
-  { name: "readme.txt", path: "/readme.txt", isDirectory: false, size: 1024 },
-];
-
-async function fetchList(path: string, useMock: boolean): Promise<FsEntry[]> {
-  if (useMock) {
-    if (!path || path === "/") {
-      return MOCK_ENTRIES;
-    }
-    // Subfolder mock
-    const base = path.replace(/^\/+|\/+$/g, "") || "root";
-    return [
-      { name: "subfolder", path: `${path}/subfolder`, isDirectory: true },
-      { name: "file.txt", path: `${path}/file.txt`, isDirectory: false, size: 512 },
-    ];
-  }
-  const q = path ? `?path=${encodeURIComponent(path)}` : "";
-  const res = await fetch(`/api/fs/entries${q}`);
-  if (!res.ok) throw new Error("Failed to list directory");
-  const data = await res.json();
-  return data.entries ?? [];
+async function fetchListForTree(path: string, useMock: boolean): Promise<FsEntry[]> {
+  return fetchList(path, useMock);
 }
 
 export function DirectoryTree({
@@ -64,7 +46,7 @@ export function DirectoryTree({
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchList(currentPath || "/", useMock)
+    fetchListForTree(currentPath || "/", useMock)
       .then((list) => {
         if (!cancelled) setEntries(list);
       })
@@ -100,29 +82,61 @@ export function DirectoryTree({
     [onPathChange]
   );
 
+  const handleUp = useCallback(() => {
+    if (pathParts.length === 0) return;
+    if (pathParts.length === 1) {
+      onPathChange("/");
+      return;
+    }
+    const parent = "/" + pathParts.slice(0, -1).join("/");
+    onPathChange(parent);
+  }, [pathParts, onPathChange]);
+
   return (
     <Box display="flex" flexDirection="column" height="100%" overflow="hidden">
-      {/* Breadcrumb */}
-      <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: "divider" }}>
-        <IconButton size="small" onClick={() => handleBreadcrumb(-1)} aria-label="Root">
-          <Typography variant="body2" color="primary">/</Typography>
+      {/* Toolbar: Up + breadcrumb (path segments only; root = no leading "/") */}
+      <Toolbar
+        variant="dense"
+        disableGutters
+        sx={{
+          borderBottom: 1,
+          borderColor: "divider",
+          minHeight: 40,
+          px: 1,
+          gap: 0.5,
+        }}
+      >
+        <IconButton
+          size="small"
+          onClick={handleUp}
+          disabled={pathParts.length === 0}
+          aria-label="Up to parent"
+          sx={{ mr: 0.5 }}
+        >
+          <ArrowUpwardIcon fontSize="small" />
         </IconButton>
-        {pathParts.map((part, i) => (
-          <Typography
-            key={i}
-            component="span"
-            variant="body2"
-            sx={{
-              cursor: "pointer",
-              "&:hover": { textDecoration: "underline" },
-              color: "text.secondary",
-            }}
-            onClick={() => handleBreadcrumb(i)}
-          >
-            /{part}
+        {pathParts.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            /
           </Typography>
-        ))}
-      </Box>
+        ) : (
+          pathParts.map((part, i) => (
+            <Typography
+              key={i}
+              component="span"
+              variant="body2"
+              sx={{
+                cursor: "pointer",
+                "&:hover": { textDecoration: "underline" },
+                color: i === pathParts.length - 1 ? "text.primary" : "text.secondary",
+              }}
+              onClick={() => handleBreadcrumb(i)}
+            >
+              {i > 0 ? " / " : ""}{part}
+            </Typography>
+          ))
+        )}
+      </Toolbar>
 
       {/* List */}
       <Box sx={{ flex: 1, overflow: "auto" }}>
@@ -164,11 +178,13 @@ export function DirectoryTree({
                 </ListItemIcon>
                 <ListItemText
                   primary={entry.name}
+                  primaryTypographyProps={{ variant: "body2" }}
                   secondary={
                     !entry.isDirectory && entry.size != null
                       ? `${(entry.size / 1024).toFixed(1)} KB`
                       : undefined
                   }
+                  secondaryTypographyProps={{ variant: "caption" }}
                 />
               </ListItemButton>
             ))}

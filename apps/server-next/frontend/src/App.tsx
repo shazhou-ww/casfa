@@ -14,13 +14,15 @@ export function App() {
 
       <Route element={<AuthGuard />}>
         <Route element={<Layout />}>
-          <Route path="/" element={<ExplorerPage />} />
+          <Route path="/" element={<Navigate to="/files" replace />} />
+          <Route path="/files" element={<ExplorerPage />} />
+          <Route path="/files/*" element={<ExplorerPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/delegates" element={<SettingsPage />} />
         </Route>
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/files" replace />} />
     </Routes>
   );
 }
