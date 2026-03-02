@@ -71,7 +71,11 @@ export function LoginPage() {
     loadConfig();
   }, [loadConfig]);
 
-  const redirectUri = `${window.location.origin}/oauth/callback`;
+const redirectUri = `${window.location.origin}/oauth/callback`;
+
+/** When returnUrl is long (e.g. MCP authorize URL), we store it here and pass a short state to Cognito to avoid truncation/mangling that causes "State does not match". */
+const COGNITO_STATE_PREFIX = "casfa_return_";
+const RETURN_URL_KEY = "casfa_oauth_return_url";
 
   const buildAuthUrl = (identityProvider: string, codeChallenge?: string, returnUrl?: string) => {
     if (!config) return "#";
@@ -86,9 +90,19 @@ export function LoginPage() {
       params.set("code_challenge", codeChallenge);
       params.set("code_challenge_method", "S256");
     }
-    // Preserve returnUrl (e.g. /oauth/authorize?...) so callback can redirect back to MCP auth flow
+    // Preserve returnUrl: use short state + sessionStorage to avoid Cognito truncating long URLs (causes "State does not match" on second step)
     if (returnUrl && returnUrl.startsWith("/")) {
-      params.set("state", returnUrl);
+      if (returnUrl.length > 200) {
+        const stateToken = COGNITO_STATE_PREFIX + Math.random().toString(36).slice(2, 14);
+        try {
+          sessionStorage.setItem(RETURN_URL_KEY, returnUrl);
+          params.set("state", stateToken);
+        } catch {
+          params.set("state", returnUrl);
+        }
+      } else {
+        params.set("state", returnUrl);
+      }
     }
     return `https://${config.domain}/oauth2/authorize?${params.toString()}`;
   };

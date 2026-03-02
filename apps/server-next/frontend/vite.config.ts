@@ -27,14 +27,14 @@ function readBody(req: Connect.IncomingMessage): Promise<Buffer> {
   });
 }
 
-/** OAuth discovery: Cursor requires authorization_endpoint, token_endpoint, response_types_supported, and registration_endpoint. */
+/** OAuth discovery: registration_endpoint points to backend so client can send client_name (RFC 7591). */
 function getMcpOAuthDiscovery(host: string): Record<string, unknown> {
   const issuer = `http://${host}`;
   return {
     issuer,
     authorization_endpoint: `${issuer}/oauth/authorize`,
     token_endpoint: `${issuer}/api/oauth/mcp/token`,
-    registration_endpoint: `${issuer}/.well-known/oauth-registration`,
+    registration_endpoint: `${issuer}/api/oauth/mcp/register`,
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
   };
@@ -49,29 +49,20 @@ function proxyApiWithRetry(): Connect.NextHandleFunction {
     const host = req.headers.host ?? "localhost:7100";
     // Serve .well-known discovery (authorization is at /oauth/authorize, token at /api/oauth/mcp/token).
     if (pathname.startsWith("/.well-known/oauth-authorization-server")) {
-      logMcp("GET .well-known/oauth-authorization-server → 200 (local)");
+      const discovery = getMcpOAuthDiscovery(host);
+      logMcp("GET .well-known/oauth-authorization-server → 200 (local)", {
+        Host: host,
+        registration_endpoint: (discovery as { registration_endpoint?: string }).registration_endpoint,
+      });
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify(getMcpOAuthDiscovery(host)));
-      return;
-    }
-    // Dynamic client registration: Cursor POSTs to register; return 201 with minimal client so it proceeds (then token exchange gets 400 "use Bearer").
-    if (pathname.startsWith("/.well-known/oauth-registration")) {
-      logMcp("POST .well-known/oauth-registration → 201 (local)");
-      res.statusCode = 201;
-      res.setHeader("Content-Type", "application/json");
-      res.end(
-        JSON.stringify({
-          client_id: "cursor-mcp-casfa-next-local",
-          client_id_issued_at: Math.floor(Date.now() / 1000),
-          redirect_uris: ["cursor://anysphere.cursor-mcp/oauth/callback"],
-        })
-      );
+      res.end(JSON.stringify(discovery));
       return;
     }
     if (!pathname.startsWith("/api")) {
       if (pathname.startsWith("/oauth")) {
-        logMcp("frontend route", { path: pathname, method: req.method });
+        const url = new URL(req.url ?? "", `http://${req.headers.host}`);
+        logMcp("frontend route", { path: pathname, method: req.method, query: url.search, client_id: url.searchParams.get("client_id") ?? undefined });
       }
       return next();
     }
@@ -84,15 +75,40 @@ function proxyApiWithRetry(): Connect.NextHandleFunction {
     const isMcp = pathname.startsWith("/api/mcp");
     const isMcpToken = pathname === "/api/oauth/mcp/token" && method === "POST";
     const isMcpAuthorize = pathname === "/api/oauth/mcp/authorize" && method === "POST";
+    const isMcpRegister = pathname === "/api/oauth/mcp/register" && method === "POST";
+    const isMcpClientInfo = pathname === "/api/oauth/mcp/client-info" && method === "GET";
     const authHeader = req.headers.authorization;
     const hasAuth = Boolean(authHeader?.startsWith("Bearer ") && authHeader.length > 10);
     const logMeta: Record<string, unknown> = { method, path: pathname };
     if (isMcp) logMeta.auth = hasAuth ? "Bearer present" : "no Bearer";
-    if (isMcpAuthorize) logMeta.note = "user consent → create auth code";
+    if (isMcpAuthorize) {
+      logMeta.note = "user consent → create auth code";
+      if (body) {
+        try {
+          const j = JSON.parse(body.toString("utf8")) as { client_id?: string };
+          logMeta.client_id = j.client_id ?? "(missing)";
+        } catch {
+          logMeta.client_id = "(body parse failed)";
+        }
+      }
+    }
+    if (isMcpRegister && body) {
+      try {
+        const j = JSON.parse(body.toString("utf8")) as { client_name?: string; redirect_uris?: string[] };
+        logMeta.client_name = j.client_name ?? "(none)";
+        logMeta.redirect_uris = j.redirect_uris ?? "(none)";
+      } catch {
+        logMeta.body_preview = body.length;
+      }
+    }
+    if (isMcpClientInfo) {
+      logMeta.client_id = url.searchParams.get("client_id") ?? "(missing)";
+    }
     if (isMcpToken && body) {
       try {
         const params = Object.fromEntries(new URLSearchParams(body.toString("utf8")));
         logMeta.grant_type = params.grant_type;
+        logMeta.client_id = params.client_id ?? "(none)";
         logMeta.has_code = Boolean(params.code);
         logMeta.code_len = params.code?.length ?? 0;
         logMeta.has_code_verifier = Boolean(params.code_verifier);
