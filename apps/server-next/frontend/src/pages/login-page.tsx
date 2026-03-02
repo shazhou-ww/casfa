@@ -30,6 +30,9 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnUrl = searchParams.get("returnUrl") ?? "/";
+  const initialize = useAuthStore((s) => s.initialize);
+  const initialized = useAuthStore((s) => s.initialized);
+  const isLoggedIn = useAuthStore((s) => s.isLoggedIn);
   const setUser = useAuthStore((s) => s.setUser);
   const setAuthTypeInStore = useAuthStore((s) => s.setAuthType);
   const setToken = useAuthStore((s) => s.setToken);
@@ -37,6 +40,16 @@ export function LoginPage() {
   const [authType, setAuthType] = useState<"mock" | "cognito" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
+  useEffect(() => {
+    if (initialized && isLoggedIn) {
+      navigate(returnUrl || "/", { replace: true });
+    }
+  }, [initialized, isLoggedIn, navigate, returnUrl]);
 
   const loadConfig = useCallback(async () => {
     setError(null);
@@ -146,6 +159,14 @@ const RETURN_URL_KEY = "casfa_oauth_return_url";
       setError("Sign in failed");
     }
   };
+
+  if (initialized && isLoggedIn) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   if (loading) {
     return (

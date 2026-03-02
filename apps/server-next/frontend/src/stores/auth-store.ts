@@ -4,6 +4,9 @@ const AUTH_KEY = "casfa-next-auth";
 const MOCK_TOKEN_KEY = "casfa-next-mock-token";
 const COGNITO_TOKEN_KEY = "casfa-next-cognito-token";
 
+const LOG = "[auth-store]";
+if (typeof console !== "undefined") console.log(LOG, "module loaded");
+
 export type User = {
   userId: string;
   name?: string;
@@ -56,6 +59,53 @@ function saveStoredCognitoToken(token: string | null): void {
   }
 }
 
+/** Sync read from localStorage so new tab has isLoggedIn on first paint. */
+function getInitialAuthFromStorage() {
+  try {
+    const storedUser = loadStoredUser();
+    const cognitoToken = loadStoredCognitoToken();
+    const mockToken = loadStoredMockToken();
+    console.log(LOG, "getInitialAuthFromStorage", {
+      hasStoredUser: !!storedUser,
+      hasCognitoToken: !!cognitoToken,
+      hasMockToken: !!mockToken,
+    });
+    if (storedUser && cognitoToken) {
+      console.log(LOG, "getInitialAuthFromStorage → cognito restored");
+      return {
+        user: storedUser,
+        token: cognitoToken,
+        authType: "cognito" as const,
+        isLoggedIn: true,
+        initialized: true,
+        loading: false,
+      };
+    }
+    if (storedUser && mockToken) {
+      console.log(LOG, "getInitialAuthFromStorage → mock restored");
+      return {
+        user: storedUser,
+        token: mockToken,
+        authType: "mock" as const,
+        isLoggedIn: true,
+        initialized: true,
+        loading: false,
+      };
+    }
+    console.log(LOG, "getInitialAuthFromStorage → no stored auth");
+  } catch (e) {
+    console.warn(LOG, "getInitialAuthFromStorage error", e);
+  }
+  return {
+    user: null,
+    token: null,
+    authType: null,
+    initialized: false,
+    loading: true,
+    isLoggedIn: false,
+  };
+}
+
 type AuthStore = {
   user: User | null;
   token: string | null;
@@ -74,13 +124,7 @@ type AuthStore = {
 };
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
-  user: null,
-  token: null,
-  authType: null,
-  initialized: false,
-  loading: true,
-  isLoggedIn: false,
-
+  ...getInitialAuthFromStorage(),
   getToken: () => get().token,
 
   setAuthType: (authType) => set({ authType }),
@@ -93,14 +137,19 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   initialize: async () => {
-    if (get().initialized && get().isLoggedIn) return;
+    console.log(LOG, "initialize() start", { initialized: get().initialized, isLoggedIn: get().isLoggedIn });
+    if (get().initialized && get().isLoggedIn) {
+      console.log(LOG, "initialize() skip, already ok");
+      return;
+    }
     if (!get().initialized) set({ loading: true });
 
-    // Restore from localStorage first so new tab / refresh doesn't redirect to login while waiting for /api/info
     const storedUser = loadStoredUser();
     const cognitoToken = loadStoredCognitoToken();
     const mockToken = loadStoredMockToken();
+    console.log(LOG, "initialize() localStorage", { hasStoredUser: !!storedUser, hasCognitoToken: !!cognitoToken, hasMockToken: !!mockToken });
     if (storedUser && cognitoToken) {
+      console.log(LOG, "initialize() → set from localStorage (cognito)");
       set({
         user: storedUser,
         token: cognitoToken,
@@ -112,6 +161,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       return;
     }
     if (storedUser && mockToken) {
+      console.log(LOG, "initialize() → set from localStorage (mock)");
       set({
         user: storedUser,
         token: mockToken,
@@ -123,6 +173,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       return;
     }
 
+    console.log(LOG, "initialize() → fetch /api/info");
     try {
       const infoRes = await fetch("/api/info");
       if (!infoRes.ok) {

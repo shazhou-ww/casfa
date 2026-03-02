@@ -24,16 +24,15 @@
 bunx serverless login
 ```
 
-**本地 `bun run dev` 需要 Java**：DynamoDB Local 官方实现是 Java JAR，本机需安装 **JRE 11+** 且 `java` 在 PATH 中。若未安装会报错 `spawn java ENOENT`。
+**本地 `bun run dev` 需要 Docker**：DynamoDB Local 通过 Docker 运行（dev 持久化端口 7102，local-test in-memory 端口 7112）。未起容器时，`bun run dev` 或 `bun run dev:cognito` 会自动执行 `docker compose up -d dynamodb`；`bun run dev:test` 会自动执行 `docker compose up -d dynamodb-test`。请先安装并启动 Docker Desktop。
 
-本项目使用维护版插件 **serverless-dynamodb**（替代已停更的 serverless-dynamodb-local），其 `sls dynamodb install` 使用当前有效的下载地址，可避免 403。装好 Java 后，在 `apps/server-next` 下执行：
+在 `apps/server-next` 下执行：
 
 ```bash
-bunx serverless dynamodb install   # 首次
-bun run dev
+bun run dev          # 或 dev:cognito / dev:test
 ```
 
-若不想装 Java，可用 **`bun run dev:bun`** 直起后端（端口 8802），并自行提供 DynamoDB/S3 端点（如真实 AWS 或 Docker 等）。
+若不想用 Docker，可用 **`bun run dev:bun`** 直起后端（端口 8802），并自行提供 DynamoDB/S3 端点（如真实 AWS 或其它本地实例）。
 
 ## 运行
 
@@ -42,17 +41,9 @@ bun run dev
 - **`bun run dev`**：mock 鉴权，API 在 http://localhost:7101。
 - **`bun run dev:cognito`**：Cognito 鉴权，API 在 http://localhost:7101。
 
-本地一律使用 **serverless-dynamodb-local**（DynamoDB 端口 7102）和 **serverless-s3-local**（S3 端口 4569）；首次需执行一次 `bunx serverless dynamodb install`。启动时用 `serverless offline start` 会自动拉起 DynamoDB 与 S3 本地服务。
+本地使用 **Docker DynamoDB**（dev 端口 7102 持久化，local-test 端口 7112 in-memory）和 **serverless-s3-local**（S3 端口 4569）。启动 `bun run dev` / `dev:cognito` / `dev:test` 时会自动拉容器并执行 **检查与初始化 DynamoDB**（建表）；也可单独执行 `bun run dev:setup`（或 `bun run dev:setup -- --stage local-test`）仅做检查与建表、不启动服务。手动起容器：`docker compose up -d dynamodb`（dev）或 `docker compose up -d dynamodb-test`（local-test）。
 
-**清理本地数据库**：若因旧数据导致报错（如 "key conditions were not unique"），可清空本地 DynamoDB 后重装并重启：
-
-```bash
-bun run clean:db
-bunx serverless dynamodb install
-bun run dev
-```
-
-**若出现 `NoClassDefFoundError: org/apache/commons/cli/ParseException`**：说明 DynamoDB Local 的 classpath 不完整（常见于 `clean:db` 后重装）。请务必在 **`apps/server-next` 目录下**执行 `bunx serverless dynamodb install`，确认 `.dynamodb` 内既有 `DynamoDBLocal.jar` 也有 `DynamoDBLocal_lib/` 目录。若仍报错，可改用 Docker 运行 DynamoDB Local：在 `serverless.yml` 的 `custom.serverless-dynamodb.start` 下取消注释 `docker: true`，并确保本机已安装 Docker。
+**清理本地数据库**：若需彻底清空 dev 数据，可 `docker compose down -v`（删除 DynamoDB volume）。曾用旧版 serverless-dynamodb 插件时若遗留 `.dynamodb` 目录，可执行 `bun run clean:db` 删除。
 
 **为何 DynamoDB Local 经常要重启？** 常见原因：（1）**持久化到文件**（`inMemory: false` + `dbPath`）：异常退出或 Ctrl+C 后，SQLite 文件可能被锁或损坏，下次启动失败或表现异常；（2）**进程生命周期**：DynamoDB 随 `serverless offline` 作为子进程启动，杀掉 dev 时 Java 进程有时未正确退出，端口 7102 被占；（3）**Java 进程**：DynamoDB Local 是 JAR，偶发崩溃后插件不会自动重启。**缓解**：本地开发已默认改为 **`inMemory: true`**（每次启动全新 DB，无文件锁问题）；若需要保留数据，可改回 `inMemory: false` 并取消注释 `dbPath: ".dynamodb"`，遇到问题再执行 `bun run clean:db` 后重装并重启。
 
@@ -62,7 +53,7 @@ bun run dev
 bun run dev:test
 ```
 
-启动 serverless-offline，API 在 http://localhost:7111；鉴权用 mock（`MOCK_JWT_SECRET`）。使用同一套 DynamoDB/S3 本地，通过 `--stage=local-test` 使用独立表名/桶名（`casfa-next-local-test-*`），与 dev 数据隔离。
+启动 serverless-offline，API 在 http://localhost:7111；鉴权用 mock（`MOCK_JWT_SECRET`）。使用 Docker **dynamodb-test**（7112 in-memory）与 serverless-s3-local，通过 `--stage=local-test` 使用独立表名/桶名（`casfa-next-local-test-*`），与 dev 数据隔离。
 
 ### 备用：Bun 直起
 
@@ -110,14 +101,14 @@ AWS_PROFILE=AdministratorAccess-914369185440
 
 ## 环境变量（统一名称，各环境取值不同）
 
-- **DB / Blob**：不再使用进程内 memory；**DB 统一 DynamoDB，Blob 统一 S3**。本地开发用 serverless-dynamodb-local 和 serverless-s3-local。
+- **DB / Blob**：不再使用进程内 memory；**DB 统一 DynamoDB，Blob 统一 S3**。本地开发用 Docker DynamoDB（7102 dev / 7112 local-test）和 serverless-s3-local（4569）。
 
 | 变量 | 说明 |
 |------|------|
 | `PORT` | HTTP 端口（dev:bun） |
 | `MOCK_JWT_SECRET` | 设则 mock 鉴权；**线上（beta/prod）部署时不要设**，部署脚本会忽略 |
 | `COGNITO_*` | Cognito 配置 |
-| `DYNAMODB_ENDPOINT` | 本地 DynamoDB 地址（如 http://localhost:7102）；不设则用 AWS |
+| `DYNAMODB_ENDPOINT` | 本地 DynamoDB 地址（dev: http://localhost:7102，local-test: http://localhost:7112）；不设则用 AWS。由 dev 脚本自动传入。 |
 | `DYNAMODB_TABLE_DELEGATES` / `DYNAMODB_TABLE_GRANTS` | 表名（默认 `casfa-next-<stage>-delegates/grants`） |
 | `S3_BUCKET` | CAS blob 桶名（默认 `casfa-next-<stage>-blob`） |
 | `S3_ENDPOINT` | 本地 S3 地址（如 http://localhost:4569）；不设则用 AWS |
