@@ -1,9 +1,9 @@
 /**
- * Start dev:test (serverless offline on 7111), wait for ready, run E2E with BASE_URL=http://localhost:7111, then stop.
+ * Start dev:test (Docker dynamodb-test + serverless offline on 7111), wait for ready,
+ * run E2E with BASE_URL=http://localhost:7111, then stop.
  * Run from apps/server-next (e.g. bun run test:e2e).
  */
 const OFFLINE_PORT = 7111;
-const LAMBDA_PORT = 7113;
 const BASE_URL = `http://localhost:${OFFLINE_PORT}`;
 const HEALTH_URL = `${BASE_URL}/api/health`;
 const WAIT_MS = 60_000;
@@ -24,48 +24,27 @@ async function waitForHealthy(): Promise<void> {
 }
 
 const appRoot = process.cwd();
-const serverless = Bun.spawn(
-  [
-    "bunx",
-    "serverless",
-    "offline",
-    "start",
-    "--httpPort",
-    String(OFFLINE_PORT),
-    "--lambdaPort",
-    String(LAMBDA_PORT),
-    "--stage",
-    "local-test",
-  ],
-  {
-    cwd: appRoot,
-    env: {
-      ...process.env,
-      STAGE: "local-test",
-      MOCK_JWT_SECRET: process.env.MOCK_JWT_SECRET ?? "test-secret-e2e",
-      DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? "http://localhost:7102",
-      S3_ENDPOINT: process.env.S3_ENDPOINT ?? "http://localhost:4569",
-      S3_BUCKET: process.env.S3_BUCKET ?? "casfa-next-local-test-blob",
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-  }
-);
+const devTestProcess = Bun.spawn(["bun", "run", "scripts/dev-test.ts"], {
+  cwd: appRoot,
+  env: { ...process.env },
+  stdout: "pipe",
+  stderr: "pipe",
+});
 
-function killOffline(): void {
+function killDevTest(): void {
   try {
-    serverless.kill();
+    devTestProcess.kill();
   } catch {
     // ignore
   }
 }
 
 process.on("SIGINT", () => {
-  killOffline();
+  killDevTest();
   process.exit(130);
 });
 process.on("SIGTERM", () => {
-  killOffline();
+  killDevTest();
   process.exit(143);
 });
 
@@ -79,10 +58,10 @@ try {
     stdin: "inherit",
   });
   const exitCode = await testRun.exited;
-  killOffline();
+  killDevTest();
   process.exit(exitCode);
 } catch (err) {
   console.error(err);
-  killOffline();
+  killDevTest();
   process.exit(1);
 }

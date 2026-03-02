@@ -76,7 +76,6 @@ provider:
     LOG_LEVEL: ${env:LOG_LEVEL, ''}
 
 plugins:
-  - serverless-dynamodb
   - serverless-s3-local
   - serverless-esbuild
   - serverless-offline
@@ -97,21 +96,6 @@ custom:
     httpPort: 7101
     lambdaPort: 7103
     noPrependStageInUrl: true
-  # DynamoDB Local (serverless-dynamodb = maintained fork; fixes 403 on install)
-  serverless-dynamodb:
-    stages:
-      - dev
-      - local-test
-    start:
-      port: 7102
-      migrate: true
-      # inMemory: true = 每次启动全新 DB，避免文件锁/损坏导致频繁重启；需要保留数据时改为 false 并用 dbPath
-      inMemory: true
-      # inMemory: false 时取消下面注释以持久化（可能遇到文件锁或异常退出后需 clean:db + 重启）
-      # inMemory: false
-      # dbPath: ".dynamodb"
-      # If Java install fails with NoClassDefFoundError (e.g. ParseException), use Docker instead:
-      # docker: true
   s3:
     host: localhost
     port: 4569
