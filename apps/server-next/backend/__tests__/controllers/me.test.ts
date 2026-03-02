@@ -3,11 +3,11 @@
  */
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
-import type { Env } from "../../backend/types.ts";
-import { createAuthMiddleware } from "../../backend/middleware/auth.ts";
-import { createMeController } from "../../backend/controllers/me.ts";
-import { createMemoryDelegateGrantStore } from "../../backend/db/delegate-grants.ts";
-import { createMemoryUserSettingsStore } from "../../backend/db/user-settings.ts";
+import type { Env } from "../../types.ts";
+import { createAuthMiddleware } from "../../middleware/auth.ts";
+import { createMeController } from "../../controllers/me.ts";
+import { createMemoryDelegateGrantStore } from "../../db/delegate-grants.ts";
+import { createMemoryUserSettingsStore } from "../../db/user-settings.ts";
 import { createMemoryDelegateStore } from "@casfa/realm";
 
 function makeJwt(sub: string, extra?: Record<string, unknown>): string {
