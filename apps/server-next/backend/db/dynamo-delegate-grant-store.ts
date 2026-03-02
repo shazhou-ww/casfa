@@ -1,6 +1,6 @@
 /**
  * DynamoDB-backed DelegateGrantStore.
- * Table: PK=GRANT#delegateId, SK=METADATA; GSI1: realm-hash-index (gsi1pk=REALM#realmId, gsi1sk=HASH#accessTokenHash).
+ * Table: PK=GRANT#delegateId, SK=METADATA; GSI1: realm-hash-index (gsi1pk=REALM#realmId, gsi1sk=HASH#accessTokenHash); GSI2: realm-refresh-index (gsi2pk=REALM#realmId, gsi2sk=REFRESH#refreshTokenHash).
  */
 import type { DynamoDBClientConfig } from "@aws-sdk/client-dynamodb";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
@@ -10,7 +10,6 @@ import {
   PutCommand,
   QueryCommand,
   DeleteCommand,
-  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type { DelegateGrant, DelegateGrantStore } from "./delegate-grants.ts";
 
@@ -19,6 +18,9 @@ const SK_METADATA = "METADATA";
 const GSI1_NAME = "realm-hash-index";
 const GSI1PK_PREFIX = "REALM#";
 const GSI1SK_PREFIX = "HASH#";
+const GSI2_NAME = "realm-refresh-index";
+const GSI2PK_PREFIX = "REALM#";
+const GSI2SK_PREFIX = "REFRESH#";
 
 export type DynamoDelegateGrantStoreConfig = {
   tableName: string;
@@ -37,8 +39,16 @@ function toGsi1Sk(accessTokenHash: string): string {
   return `${GSI1SK_PREFIX}${accessTokenHash}`;
 }
 
+function toGsi2Pk(realmId: string): string {
+  return `${GSI2PK_PREFIX}${realmId}`;
+}
+
+function toGsi2Sk(refreshTokenHash: string): string {
+  return `${GSI2SK_PREFIX}${refreshTokenHash}`;
+}
+
 function grantToItem(grant: DelegateGrant): Record<string, unknown> {
-  return {
+  const item: Record<string, unknown> = {
     pk: toPk(grant.delegateId),
     sk: SK_METADATA,
     gsi1pk: toGsi1Pk(grant.realmId),
@@ -52,6 +62,11 @@ function grantToItem(grant: DelegateGrant): Record<string, unknown> {
     createdAt: grant.createdAt,
     expiresAt: grant.expiresAt,
   };
+  if (grant.refreshTokenHash) {
+    item.gsi2pk = toGsi2Pk(grant.realmId);
+    item.gsi2sk = toGsi2Sk(grant.refreshTokenHash);
+  }
+  return item;
 }
 
 function itemToGrant(item: Record<string, unknown>): DelegateGrant {
@@ -109,6 +124,24 @@ export function createDynamoDelegateGrantStore(
           ExpressionAttributeValues: {
             ":pk": toGsi1Pk(realmId),
             ":sk": toGsi1Sk(hash),
+          },
+          Limit: 1,
+        })
+      );
+      const item = r.Items?.[0];
+      if (!item) return null;
+      return itemToGrant(item as Record<string, unknown>);
+    },
+
+    async getByRefreshTokenHash(realmId: string, refreshTokenHash: string) {
+      const r = await doc.send(
+        new QueryCommand({
+          TableName: tableName,
+          IndexName: GSI2_NAME,
+          KeyConditionExpression: "gsi2pk = :pk AND gsi2sk = :sk",
+          ExpressionAttributeValues: {
+            ":pk": toGsi2Pk(realmId),
+            ":sk": toGsi2Sk(refreshTokenHash),
           },
           Limit: 1,
         })
