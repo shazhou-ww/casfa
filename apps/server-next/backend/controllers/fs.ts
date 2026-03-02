@@ -57,7 +57,7 @@ export function createFsController(deps: FsControllerDeps) {
           emptyDictKey
         );
         const delegateId = await getEffectiveDelegateId(auth, deps);
-        await deps.delegateStore.setRoot(delegateId, newRootKey);
+        await deps.branchStore.setBranchRoot(delegateId, newRootKey);
         return c.json({ path: pathStr }, 201);
       } catch (err) {
         const message = err instanceof Error ? err.message : "mkdir failed";
@@ -93,7 +93,7 @@ export function createFsController(deps: FsControllerDeps) {
           rootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, pathStr);
         }
         const delegateId = await getEffectiveDelegateId(auth, deps);
-        await deps.delegateStore.setRoot(delegateId, rootKey);
+        await deps.branchStore.setBranchRoot(delegateId, rootKey);
         return c.json({ removed: paths.length }, 200);
       } catch (err) {
         const message = err instanceof Error ? err.message : "rm failed";
@@ -131,7 +131,7 @@ export function createFsController(deps: FsControllerDeps) {
         rootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, fromStr);
         rootKey = await addOrReplaceAtPath(deps.cas, deps.key, rootKey, toStr, nodeKey);
         const delegateId = await getEffectiveDelegateId(auth, deps);
-        await deps.delegateStore.setRoot(delegateId, rootKey);
+        await deps.branchStore.setBranchRoot(delegateId, rootKey);
         return c.json({ from: fromStr, to: toStr }, 200);
       } catch (err) {
         const message = err instanceof Error ? err.message : "mv failed";
@@ -168,7 +168,7 @@ export function createFsController(deps: FsControllerDeps) {
         }
         const newRootKey = await addOrReplaceAtPath(deps.cas, deps.key, rootKey, toStr, nodeKey);
         const delegateId = await getEffectiveDelegateId(auth, deps);
-        await deps.delegateStore.setRoot(delegateId, newRootKey);
+        await deps.branchStore.setBranchRoot(delegateId, newRootKey);
         return c.json({ from: fromStr, to: toStr }, 201);
       } catch (err) {
         const message = err instanceof Error ? err.message : "cp failed";

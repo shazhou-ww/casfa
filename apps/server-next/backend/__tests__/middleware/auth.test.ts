@@ -7,13 +7,13 @@ import { Hono } from "hono";
 import type { Env } from "../../types.ts";
 import { createAuthMiddleware } from "../../middleware/auth.ts";
 import { createMemoryDelegateGrantStore } from "../../db/delegate-grants.ts";
-import { createMemoryDelegateStore } from "@casfa/realm";
-import type { Delegate } from "@casfa/realm";
+import { createMemoryBranchStore } from "../../db/branch-store.ts";
+import type { Branch } from "../../types/branch.ts";
 
 function base64urlEncode(s: string): string {
   const bytes = new TextEncoder().encode(s);
   let binary = "";
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
@@ -39,18 +39,18 @@ async function sha256Hex(text: string): Promise<string> {
 
 describe("auth middleware", () => {
   it("returns 401 when Authorization header is missing", async () => {
-    const delegateStore = createMemoryDelegateStore();
+    const branchStore = createMemoryBranchStore();
     const delegateGrantStore = createMemoryDelegateGrantStore();
-    const auth = createAuthMiddleware({ delegateGrantStore, delegateStore });
+    const auth = createAuthMiddleware({ delegateGrantStore, branchStore });
     const app = new Hono<Env>().use("*", auth).get("/", (c) => c.json(c.get("auth")));
     const res = await app.request("http://localhost/");
     expect(res.status).toBe(401);
   });
 
   it("returns 401 when Bearer token is empty", async () => {
-    const delegateStore = createMemoryDelegateStore();
+    const branchStore = createMemoryBranchStore();
     const delegateGrantStore = createMemoryDelegateGrantStore();
-    const auth = createAuthMiddleware({ delegateGrantStore, delegateStore });
+    const auth = createAuthMiddleware({ delegateGrantStore, branchStore });
     const app = new Hono<Env>().use("*", auth).get("/", (c) => c.json(c.get("auth")));
     const res = await app.request("http://localhost/", {
       headers: { Authorization: "Bearer " },
@@ -59,9 +59,9 @@ describe("auth middleware", () => {
   });
 
   it("sets UserAuth when Bearer is valid JWT and no grant exists", async () => {
-    const delegateStore = createMemoryDelegateStore();
+    const branchStore = createMemoryBranchStore();
     const delegateGrantStore = createMemoryDelegateGrantStore();
-    const auth = createAuthMiddleware({ delegateGrantStore, delegateStore });
+    const auth = createAuthMiddleware({ delegateGrantStore, branchStore });
     const app = new Hono<Env>().use("*", auth).get("/", (c) => c.json(c.get("auth")));
     const jwt = makeJwt("user-123");
     const res = await app.request("http://localhost/", {
@@ -74,7 +74,7 @@ describe("auth middleware", () => {
   });
 
   it("sets DelegateAuth when Bearer is JWT and grant exists for token hash", async () => {
-    const delegateStore = createMemoryDelegateStore();
+    const branchStore = createMemoryBranchStore();
     const delegateGrantStore = createMemoryDelegateGrantStore();
     const jwt = makeJwt("user-456");
     const tokenHash = await sha256Hex(jwt);
@@ -88,7 +88,7 @@ describe("auth middleware", () => {
       createdAt: Date.now(),
       expiresAt: null,
     });
-    const auth = createAuthMiddleware({ delegateGrantStore, delegateStore });
+    const auth = createAuthMiddleware({ delegateGrantStore, branchStore });
     const app = new Hono<Env>().use("*", auth).get("/", (c) => c.json(c.get("auth")));
     const res = await app.request("http://localhost/", {
       headers: { Authorization: `Bearer ${jwt}` },
@@ -109,21 +109,19 @@ describe("auth middleware", () => {
   });
 
   it("sets WorkerAuth when Bearer is valid branch token", async () => {
-    const delegateStore = createMemoryDelegateStore();
+    const branchStore = createMemoryBranchStore();
     const delegateGrantStore = createMemoryDelegateGrantStore();
     const branchId = "branch-abc";
-    const delegate: Delegate = {
-      delegateId: branchId,
+    const branch: Branch = {
+      branchId,
       realmId: "realm-r1",
-      parentId: null,
+      parentId: "root-id",
       mountPath: "",
-      lifetime: "limited",
-      accessTokenHash: "",
       expiresAt: Date.now() + 3600_000,
     };
-    await delegateStore.insertDelegate(delegate);
+    await branchStore.insertBranch(branch);
     const token = base64urlEncode(branchId);
-    const auth = createAuthMiddleware({ delegateGrantStore, delegateStore });
+    const auth = createAuthMiddleware({ delegateGrantStore, branchStore });
     const app = new Hono<Env>().use("*", auth).get("/", (c) => c.json(c.get("auth")));
     const res = await app.request("http://localhost/", {
       headers: { Authorization: `Bearer ${token}` },
@@ -142,10 +140,10 @@ describe("auth middleware", () => {
   });
 
   it("returns 401 when branch token is not found in store", async () => {
-    const delegateStore = createMemoryDelegateStore();
+    const branchStore = createMemoryBranchStore();
     const delegateGrantStore = createMemoryDelegateGrantStore();
     const token = base64urlEncode("nonexistent-branch");
-    const auth = createAuthMiddleware({ delegateGrantStore, delegateStore });
+    const auth = createAuthMiddleware({ delegateGrantStore, branchStore });
     const app = new Hono<Env>().use("*", auth).get("/", (c) => c.json(c.get("auth")));
     const res = await app.request("http://localhost/", {
       headers: { Authorization: `Bearer ${token}` },
@@ -154,21 +152,19 @@ describe("auth middleware", () => {
   });
 
   it("returns 401 when branch token is expired", async () => {
-    const delegateStore = createMemoryDelegateStore();
+    const branchStore = createMemoryBranchStore();
     const delegateGrantStore = createMemoryDelegateGrantStore();
     const branchId = "expired-branch";
-    const delegate: Delegate = {
-      delegateId: branchId,
+    const branch: Branch = {
+      branchId,
       realmId: "realm-r1",
-      parentId: null,
+      parentId: "root-id",
       mountPath: "",
-      lifetime: "limited",
-      accessTokenHash: "",
       expiresAt: Date.now() - 1000,
     };
-    await delegateStore.insertDelegate(delegate);
+    await branchStore.insertBranch(branch);
     const token = base64urlEncode(branchId);
-    const auth = createAuthMiddleware({ delegateGrantStore, delegateStore });
+    const auth = createAuthMiddleware({ delegateGrantStore, branchStore });
     const app = new Hono<Env>().use("*", auth).get("/", (c) => c.json(c.get("auth")));
     const res = await app.request("http://localhost/", {
       headers: { Authorization: `Bearer ${token}` },

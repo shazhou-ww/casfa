@@ -9,10 +9,10 @@ import {
   getCurrentRoot,
   resolvePath,
   getNodeDecoded,
+  ensureEmptyRoot,
 } from "../services/root-resolver.ts";
 import { hashToKey } from "@casfa/core";
 import type { ServerConfig } from "../config.ts";
-import type { Delegate } from "@casfa/realm";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -163,8 +163,8 @@ async function handleToolsCall(
     if (name === "branches_list") {
       const realmId = getRealmId(auth);
       if (auth.type === "worker") {
-        const delegate = await deps.delegateStore.getDelegate(auth.branchId);
-        if (!delegate) {
+        const branch = await deps.branchStore.getBranch(auth.branchId);
+        if (!branch) {
           return mcpError(id, MCP_INVALID_PARAMS, "Branch not found");
         }
         return mcpSuccess(id, {
@@ -174,10 +174,10 @@ async function handleToolsCall(
               text: JSON.stringify({
                 branches: [
                   {
-                    branchId: delegate.delegateId,
-                    mountPath: delegate.mountPath,
-                    parentId: delegate.parentId,
-                    expiresAt: delegate.lifetime === "limited" ? delegate.expiresAt : undefined,
+                    branchId: branch.branchId,
+                    mountPath: branch.mountPath,
+                    parentId: branch.parentId,
+                    expiresAt: branch.expiresAt,
                   },
                 ],
               }),
@@ -185,15 +185,21 @@ async function handleToolsCall(
           ],
         });
       }
-      const delegates = await deps.delegateStore.listDelegates(realmId);
-      const branches = delegates.map((d) => ({
-        branchId: d.delegateId,
-        mountPath: d.mountPath,
-        parentId: d.parentId,
-        expiresAt: d.lifetime === "limited" ? d.expiresAt : undefined,
-      }));
+      const branches = await deps.branchStore.listBranches(realmId);
       return mcpSuccess(id, {
-        content: [{ type: "text" as const, text: JSON.stringify({ branches }) }],
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              branches: branches.map((b) => ({
+                branchId: b.branchId,
+                mountPath: b.mountPath,
+                parentId: b.parentId,
+                expiresAt: b.expiresAt,
+              })),
+            }),
+          },
+        ],
       });
     }
 
@@ -203,7 +209,7 @@ async function handleToolsCall(
         return mcpError(id, MCP_INVALID_PARAMS, "mountPath required");
       }
       const ttlSec = typeof args.ttl === "number" && args.ttl > 0 ? args.ttl : undefined;
-      const ttlMs = ttlSec != null ? Math.min(ttlSec * 1000, deps.config.auth.maxBranchTtlMs ?? 3600_000) : undefined;
+      const ttlMs = ttlSec != null ? Math.min(ttlSec * 1000, deps.config.auth.maxBranchTtlMs ?? 3600_000) : 3600_000;
       const parentBranchId = typeof args.parentBranchId === "string" ? args.parentBranchId.trim() || undefined : undefined;
       const realmId = getRealmId(auth);
 
@@ -211,16 +217,37 @@ async function handleToolsCall(
         if (!hasBranchManage(auth)) {
           return mcpError(id, MCP_INVALID_PARAMS, "branch_manage or user required");
         }
-        const rootFacade = await deps.realm.getRootDelegate(realmId, {});
-        const childFacade = await rootFacade.createChildDelegate(mountPath, { ttl: ttlMs });
+        let rootKey = await deps.branchStore.getRealmRoot(realmId);
+        if (rootKey === null) {
+          const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
+          await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
+          rootKey = emptyKey;
+        }
+        const rootRecord = await deps.branchStore.getRealmRootRecord(realmId);
+        if (!rootRecord) return mcpError(id, MCP_INVALID_PARAMS, "Realm root not found");
+        const childRootKey = await resolvePath(deps.cas, rootKey, mountPath);
+        if (childRootKey === null) {
+          return mcpError(id, MCP_INVALID_PARAMS, "mountPath does not resolve under realm root");
+        }
+        const branchId = crypto.randomUUID();
+        const now = Date.now();
+        const expiresAt = now + ttlMs;
+        await deps.branchStore.insertBranch({
+          branchId,
+          realmId,
+          parentId: rootRecord.branchId,
+          mountPath,
+          expiresAt,
+        });
+        await deps.branchStore.setBranchRoot(branchId, childRootKey);
         return mcpSuccess(id, {
           content: [
             {
               type: "text" as const,
               text: JSON.stringify({
-                branchId: childFacade.delegateId,
-                accessToken: base64urlEncode(childFacade.delegateId),
-                ...(childFacade.lifetime === "limited" && childFacade.expiresAt != null && { expiresAt: childFacade.expiresAt }),
+                branchId,
+                accessToken: base64urlEncode(branchId),
+                expiresAt,
               }),
             },
           ],
@@ -230,11 +257,11 @@ async function handleToolsCall(
       if (auth.type !== "worker" || auth.branchId !== parentBranchId) {
         return mcpError(id, MCP_INVALID_PARAMS, "Must be worker of parent branch");
       }
-      const parentDelegate = await deps.delegateStore.getDelegate(parentBranchId);
-      if (!parentDelegate) {
+      const parentBranch = await deps.branchStore.getBranch(parentBranchId);
+      if (!parentBranch) {
         return mcpError(id, MCP_INVALID_PARAMS, "Parent branch not found");
       }
-      const parentRootKey = await deps.delegateStore.getRoot(parentBranchId);
+      const parentRootKey = await deps.branchStore.getBranchRoot(parentBranchId);
       if (parentRootKey === null) {
         return mcpError(id, MCP_INVALID_PARAMS, "Parent branch has no root");
       }
@@ -244,44 +271,23 @@ async function handleToolsCall(
       }
       const childId = crypto.randomUUID();
       const now = Date.now();
-      const tokenStr = base64urlEncode(childId);
-      const accessTokenHash = await sha256Hex(tokenStr);
-      let childDelegate: Delegate;
-      let expiresAt: number | undefined;
-      if (ttlMs !== undefined && ttlMs > 0) {
-        expiresAt = now + ttlMs;
-        childDelegate = {
-          lifetime: "limited",
-          delegateId: childId,
-          realmId: parentDelegate.realmId,
-          parentId: parentBranchId,
-          mountPath,
-          accessTokenHash,
-          expiresAt,
-        };
-      } else {
-        const refreshHash = await sha256Hex(crypto.randomUUID());
-        childDelegate = {
-          lifetime: "unlimited",
-          delegateId: childId,
-          realmId: parentDelegate.realmId,
-          parentId: parentBranchId,
-          mountPath,
-          accessTokenHash,
-          refreshTokenHash: refreshHash,
-          accessExpiresAt: now + 3600_000,
-        };
-      }
-      await deps.delegateStore.insertDelegate(childDelegate);
-      await deps.delegateStore.setRoot(childId, childRootKey);
+      const expiresAt = now + ttlMs;
+      await deps.branchStore.insertBranch({
+        branchId: childId,
+        realmId: parentBranch.realmId,
+        parentId: parentBranchId,
+        mountPath,
+        expiresAt,
+      });
+      await deps.branchStore.setBranchRoot(childId, childRootKey);
       return mcpSuccess(id, {
         content: [
           {
             type: "text" as const,
             text: JSON.stringify({
               branchId: childId,
-              accessToken: tokenStr,
-              ...(expiresAt != null && { expiresAt }),
+              accessToken: base64urlEncode(childId),
+              expiresAt,
             }),
           },
         ],

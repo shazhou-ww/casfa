@@ -6,7 +6,8 @@ import type { Context } from "hono";
 import type { Env } from "../types.ts";
 import type { RootResolverDeps } from "../services/root-resolver.ts";
 import { resolvePath } from "../services/root-resolver.ts";
-import type { Delegate } from "@casfa/realm";
+import { ensureEmptyRoot } from "../services/root-resolver.ts";
+import type { Branch } from "../types/branch.ts";
 import type { ServerConfig } from "../config.ts";
 
 function base64urlEncode(s: string): string {
@@ -14,14 +15,6 @@ function base64urlEncode(s: string): string {
   let binary = "";
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-async function sha256Hex(text: string): Promise<string> {
-  const bytes = new TextEncoder().encode(text);
-  const hash = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 function hasBranchManage(auth: NonNullable<Env["Variables"]["auth"]>): boolean {
@@ -40,6 +33,7 @@ async function parseBody<T>(c: Context<Env>): Promise<T> {
 
 export function createBranchesController(deps: BranchesControllerDeps) {
   const maxTtlMs = deps.config.auth.maxBranchTtlMs ?? 3600_000;
+  const defaultTtlMs = 3600_000;
 
   return {
     async create(c: Context<Env>) {
@@ -53,7 +47,7 @@ export function createBranchesController(deps: BranchesControllerDeps) {
         if (!mountPath) {
           return c.json({ error: "BAD_REQUEST", message: "mountPath required" }, 400);
         }
-        const ttlMs = typeof body.ttl === "number" && body.ttl > 0 ? Math.min(body.ttl, maxTtlMs) : undefined;
+        const ttlMs = typeof body.ttl === "number" && body.ttl > 0 ? Math.min(body.ttl, maxTtlMs) : defaultTtlMs;
         const parentBranchId = typeof body.parentBranchId === "string" ? body.parentBranchId.trim() || undefined : undefined;
 
         const realmId = auth.type === "user" ? auth.userId : auth.realmId;
@@ -62,15 +56,34 @@ export function createBranchesController(deps: BranchesControllerDeps) {
           if (!hasBranchManage(auth)) {
             return c.json({ error: "FORBIDDEN", message: "branch_manage or user required" }, 403);
           }
-          const rootFacade = await deps.realm.getRootDelegate(realmId, {});
-          const childFacade = await rootFacade.createChildDelegate(mountPath, { ttl: ttlMs });
-          const branchId = childFacade.delegateId;
-          const expiresAt = childFacade.lifetime === "limited" ? childFacade.expiresAt : undefined;
+          let rootKey = await deps.branchStore.getRealmRoot(realmId);
+          if (rootKey === null) {
+            const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
+            await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
+            rootKey = emptyKey;
+          }
+          const rootRecord = await deps.branchStore.getRealmRootRecord(realmId);
+          if (!rootRecord) throw new Error("Realm root record not found");
+          const childRootKey = await resolvePath(deps.cas, rootKey, mountPath);
+          if (childRootKey === null) {
+            return c.json({ error: "BAD_REQUEST", message: "mountPath does not resolve under realm root" }, 400);
+          }
+          const branchId = crypto.randomUUID();
+          const now = Date.now();
+          const expiresAt = now + ttlMs;
+          await deps.branchStore.insertBranch({
+            branchId,
+            realmId,
+            parentId: rootRecord.branchId,
+            mountPath,
+            expiresAt,
+          });
+          await deps.branchStore.setBranchRoot(branchId, childRootKey);
           return c.json(
             {
               branchId,
               accessToken: base64urlEncode(branchId),
-              ...(expiresAt != null && { expiresAt }),
+              expiresAt,
             },
             201
           );
@@ -79,11 +92,11 @@ export function createBranchesController(deps: BranchesControllerDeps) {
         if (auth.type !== "worker" || auth.branchId !== parentBranchId) {
           return c.json({ error: "FORBIDDEN", message: "Must be worker of parent branch" }, 403);
         }
-        const parentDelegate = await deps.delegateStore.getDelegate(parentBranchId);
-        if (!parentDelegate) {
+        const parentBranch = await deps.branchStore.getBranch(parentBranchId);
+        if (!parentBranch) {
           return c.json({ error: "NOT_FOUND", message: "Parent branch not found" }, 404);
         }
-        const parentRootKey = await deps.delegateStore.getRoot(parentBranchId);
+        const parentRootKey = await deps.branchStore.getBranchRoot(parentBranchId);
         if (parentRootKey === null) {
           return c.json({ error: "NOT_FOUND", message: "Parent branch has no root" }, 404);
         }
@@ -93,41 +106,20 @@ export function createBranchesController(deps: BranchesControllerDeps) {
         }
         const childId = crypto.randomUUID();
         const now = Date.now();
-        const tokenStr = base64urlEncode(childId);
-        const accessTokenHash = await sha256Hex(tokenStr);
-        let childDelegate: Delegate;
-        let expiresAt: number | undefined;
-        if (ttlMs !== undefined && ttlMs > 0) {
-          expiresAt = now + ttlMs;
-          childDelegate = {
-            lifetime: "limited",
-            delegateId: childId,
-            realmId: parentDelegate.realmId,
-            parentId: parentBranchId,
-            mountPath,
-            accessTokenHash,
-            expiresAt,
-          };
-        } else {
-          const refreshHash = await sha256Hex(crypto.randomUUID());
-          childDelegate = {
-            lifetime: "unlimited",
-            delegateId: childId,
-            realmId: parentDelegate.realmId,
-            parentId: parentBranchId,
-            mountPath,
-            accessTokenHash,
-            refreshTokenHash: refreshHash,
-            accessExpiresAt: now + 3600_000,
-          };
-        }
-        await deps.delegateStore.insertDelegate(childDelegate);
-        await deps.delegateStore.setRoot(childId, childRootKey);
+        const expiresAt = now + ttlMs;
+        await deps.branchStore.insertBranch({
+          branchId: childId,
+          realmId: parentBranch.realmId,
+          parentId: parentBranchId,
+          mountPath,
+          expiresAt,
+        });
+        await deps.branchStore.setBranchRoot(childId, childRootKey);
         return c.json(
           {
             branchId: childId,
-            accessToken: tokenStr,
-            ...(expiresAt != null && { expiresAt }),
+            accessToken: base64urlEncode(childId),
+            expiresAt,
           },
           201
         );
@@ -144,28 +136,29 @@ export function createBranchesController(deps: BranchesControllerDeps) {
       const auth = c.get("auth");
       if (!auth) return c.json({ error: "FORBIDDEN", message: "Auth required" }, 403);
       if (auth.type === "worker") {
-        const delegate = await deps.delegateStore.getDelegate(auth.branchId);
-        if (!delegate) return c.json({ error: "NOT_FOUND", message: "Branch not found" }, 404);
+        const branch = await deps.branchStore.getBranch(auth.branchId);
+        if (!branch) return c.json({ error: "NOT_FOUND", message: "Branch not found" }, 404);
         return c.json({
           branches: [
             {
-              branchId: delegate.delegateId,
-              mountPath: delegate.mountPath,
-              parentId: delegate.parentId,
-              expiresAt: delegate.lifetime === "limited" ? delegate.expiresAt : undefined,
+              branchId: branch.branchId,
+              mountPath: branch.mountPath,
+              parentId: branch.parentId,
+              expiresAt: branch.expiresAt,
             },
           ],
         }, 200);
       }
       const realmId = auth.type === "user" ? auth.userId : auth.realmId;
-      const delegates = await deps.delegateStore.listDelegates(realmId);
-      const branches = delegates.map((d) => ({
-        branchId: d.delegateId,
-        mountPath: d.mountPath,
-        parentId: d.parentId,
-        expiresAt: d.lifetime === "limited" ? d.expiresAt : undefined,
-      }));
-      return c.json({ branches }, 200);
+      const branches = await deps.branchStore.listBranches(realmId);
+      return c.json({
+        branches: branches.map((b: Branch) => ({
+          branchId: b.branchId,
+          mountPath: b.mountPath,
+          parentId: b.parentId,
+          expiresAt: b.expiresAt,
+        })),
+      }, 200);
     },
 
     async revoke(c: Context<Env>) {
@@ -178,11 +171,11 @@ export function createBranchesController(deps: BranchesControllerDeps) {
         return c.json({ error: "BAD_REQUEST", message: "branchId required" }, 400);
       }
       const realmId = auth.type === "user" ? auth.userId : auth.realmId;
-      const delegate = await deps.delegateStore.getDelegate(branchId);
-      if (!delegate || delegate.realmId !== realmId) {
+      const branch = await deps.branchStore.getBranch(branchId);
+      if (!branch || branch.realmId !== realmId) {
         return c.json({ error: "NOT_FOUND", message: "Branch not found" }, 404);
       }
-      await deps.delegateStore.removeDelegate(branchId);
+      await deps.branchStore.removeBranch(branchId);
       return c.json({ revoked: branchId }, 200);
     },
 
@@ -196,24 +189,29 @@ export function createBranchesController(deps: BranchesControllerDeps) {
       if (branchId !== auth.branchId) {
         return c.json({ error: "FORBIDDEN", message: "Can only complete own branch" }, 403);
       }
-      const delegate = await deps.delegateStore.getDelegate(branchId);
-      if (!delegate) {
+      const branch = await deps.branchStore.getBranch(branchId);
+      if (!branch) {
         return c.json({ error: "NOT_FOUND", message: "Branch not found" }, 404);
       }
-      const parentId = delegate.parentId;
+      const parentId = branch.parentId;
       if (parentId === null) {
         return c.json({ error: "BAD_REQUEST", message: "Cannot complete root branch" }, 400);
       }
-      const childRootKey = await deps.delegateStore.getRoot(branchId);
+      const childRootKey = await deps.branchStore.getBranchRoot(branchId);
       if (childRootKey === null) {
         return c.json({ error: "NOT_FOUND", message: "Branch has no root" }, 404);
       }
-      const parentRootKey = await deps.delegateStore.getRoot(parentId);
+      const realmId = branch.realmId;
+      const rootRecord = await deps.branchStore.getRealmRootRecord(realmId);
+      const isParentRoot = rootRecord !== null && rootRecord.branchId === parentId;
+      const parentRootKey = isParentRoot
+        ? await deps.branchStore.getRealmRoot(realmId)
+        : await deps.branchStore.getBranchRoot(parentId);
       if (parentRootKey === null) {
         return c.json({ error: "NOT_FOUND", message: "Parent has no root" }, 404);
       }
       const { replaceSubtreeAtPath } = await import("../services/tree-mutations.ts");
-      const segments = delegate.mountPath.split("/").filter((s) => s.length > 0);
+      const segments = branch.mountPath.split("/").filter((s: string) => s.length > 0);
       if (segments.length === 0) {
         return c.json({ error: "BAD_REQUEST", message: "Invalid mount path" }, 400);
       }
@@ -224,8 +222,12 @@ export function createBranchesController(deps: BranchesControllerDeps) {
         segments,
         childRootKey
       );
-      await deps.delegateStore.setRoot(parentId, newParentRootKey);
-      await deps.delegateStore.setClosed(branchId);
+      if (isParentRoot) {
+        await deps.branchStore.setRealmRoot(realmId, newParentRootKey);
+      } else {
+        await deps.branchStore.setBranchRoot(parentId, newParentRootKey);
+      }
+      await deps.branchStore.removeBranch(branchId);
       return c.json({ completed: branchId }, 200);
     },
   };

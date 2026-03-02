@@ -1,18 +1,20 @@
 /**
- * E2E test setup: in-memory server, shared singleton, test helpers.
- * Set STORAGE_TYPE=memory and MOCK_JWT_SECRET before loading app deps.
+ * E2E test setup: in-process server uses DynamoDB + S3 (set DYNAMODB_ENDPOINT, S3_ENDPOINT when not using BASE_URL).
+ * When BASE_URL is set, tests hit existing serverless-offline (which uses serverless-dynamodb-local + serverless-s3-local).
  */
-process.env.STORAGE_TYPE ??= "memory";
 process.env.MOCK_JWT_SECRET ??= "test-secret-e2e";
+process.env.DYNAMODB_ENDPOINT ??= "http://localhost:7102";
+process.env.S3_ENDPOINT ??= "http://localhost:4569";
+process.env.S3_BUCKET ??= "casfa-next-local-test-blob";
+process.env.STAGE ??= "local-test";
 
 import { loadConfig } from "../backend/config.ts";
 import { createApp } from "../backend/app.ts";
 import { createCasFacade } from "../backend/services/cas.ts";
-import { createRealmFacadeFromConfig } from "../backend/services/realm.ts";
-import { createMemoryDelegateGrantStore } from "../backend/db/delegate-grants.ts";
+import { createDynamoDelegateGrantStore } from "../backend/db/dynamo-delegate-grant-store.ts";
+import { createDynamoBranchStore } from "../backend/db/dynamo-branch-store.ts";
 import { createMemoryDerivedDataStore } from "../backend/db/derived-data.ts";
 import { createMemoryUserSettingsStore } from "../backend/db/user-settings.ts";
-import { createMemoryDelegateStore } from "@casfa/realm";
 
 export type TestServer = {
   url: string;
@@ -191,19 +193,27 @@ function createRemoteTestServer(baseUrl: string): TestServer {
 export function startTestServer(options?: { port?: number }): TestServer {
   const config = loadConfig();
   const { cas, key } = createCasFacade(config);
-  const delegateStore = createMemoryDelegateStore();
-  const realm = createRealmFacadeFromConfig(cas, key, config, delegateStore);
-  const delegateGrantStore = createMemoryDelegateGrantStore();
+  const branchStore = createDynamoBranchStore({
+    tableName: config.dynamodbTableDelegates,
+    clientConfig: config.dynamodbEndpoint
+      ? { endpoint: config.dynamodbEndpoint, region: "us-east-1" }
+      : undefined,
+  });
+  const delegateGrantStore = createDynamoDelegateGrantStore({
+    tableName: config.dynamodbTableGrants,
+    clientConfig: config.dynamodbEndpoint
+      ? { endpoint: config.dynamodbEndpoint, region: "us-east-1" }
+      : undefined,
+  });
   const derivedDataStore = createMemoryDerivedDataStore();
   const userSettingsStore = createMemoryUserSettingsStore();
   const app = createApp({
     config,
     cas,
     key,
-    realm,
+    branchStore,
     delegateGrantStore,
     derivedDataStore,
-    delegateStore,
     userSettingsStore,
   });
 

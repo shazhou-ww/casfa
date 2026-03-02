@@ -213,7 +213,7 @@ export function createFilesController(deps: FilesControllerDeps) {
           fileNodeKey
         );
         const delegateId = await getEffectiveDelegateId(auth, deps);
-        await deps.delegateStore.setRoot(delegateId, newRootKey);
+        await deps.branchStore.setBranchRoot(delegateId, newRootKey);
         return c.json({ path: pathStr, key: fileNodeKey }, 201);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Upload failed";

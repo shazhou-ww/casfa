@@ -3,7 +3,7 @@
  */
 import type { Context } from "hono";
 import type { Env } from "../types.ts";
-import type { RootResolverDeps } from "../services/root-resolver.ts";
+import type { RealmInfoService } from "../services/realm-info.ts";
 
 function hasRealmAccess(auth: NonNullable<Env["Variables"]["auth"]>): boolean {
   if (auth.type === "user") return true;
@@ -11,7 +11,9 @@ function hasRealmAccess(auth: NonNullable<Env["Variables"]["auth"]>): boolean {
   return false;
 }
 
-export type RealmControllerDeps = RootResolverDeps;
+export type RealmControllerDeps = {
+  realmInfoService: RealmInfoService;
+};
 
 export function createRealmController(deps: RealmControllerDeps) {
   return {
@@ -21,13 +23,14 @@ export function createRealmController(deps: RealmControllerDeps) {
         return c.json({ error: "FORBIDDEN", message: "Realm access required" }, 403);
       }
       const realmId = auth.type === "user" ? auth.userId : auth.realmId;
-      const info = await deps.realm.info(realmId);
+      const info = await deps.realmInfoService.info(realmId);
       return c.json(
         {
           realmId,
           lastGcTime: info.lastGcTime,
           nodeCount: info.nodeCount,
           totalBytes: info.totalBytes,
+          branchCount: info.branchCount,
           delegateCount: info.delegateCount,
         },
         200
@@ -40,7 +43,7 @@ export function createRealmController(deps: RealmControllerDeps) {
         return c.json({ error: "FORBIDDEN", message: "Realm access required" }, 403);
       }
       const realmId = auth.type === "user" ? auth.userId : auth.realmId;
-      const info = await deps.realm.info(realmId);
+      const info = await deps.realmInfoService.info(realmId);
       return c.json(
         {
           nodeCount: info.nodeCount,
@@ -62,7 +65,7 @@ export function createRealmController(deps: RealmControllerDeps) {
         };
         const cutOffTime =
           typeof body.cutOffTime === "number" ? body.cutOffTime : Date.now() - 86400_000;
-        await deps.realm.gc(realmId, cutOffTime);
+        await deps.realmInfoService.gc(realmId, cutOffTime);
         return c.json({ gc: true, cutOffTime }, 200);
       } catch (err) {
         throw err;

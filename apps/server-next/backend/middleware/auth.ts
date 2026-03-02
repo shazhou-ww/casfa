@@ -1,7 +1,7 @@
 import type { Context, Next } from "hono";
 import type { AuthContext, Env } from "../types.ts";
 import type { DelegateGrantStore } from "../db/delegate-grants.ts";
-import type { DelegateStore } from "@casfa/realm";
+import type { BranchStore } from "../db/branch-store.ts";
 import type { ServerConfig } from "../config.ts";
 import * as jose from "jose";
 import { createCognitoJwtVerifier } from "../auth/cognito-jwks.ts";
@@ -88,7 +88,7 @@ export type AuthMiddlewareDeps = {
   }>;
   config?: ServerConfig;
   delegateGrantStore: DelegateGrantStore;
-  delegateStore: DelegateStore;
+  branchStore: BranchStore;
 };
 
 export function createAuthMiddleware(deps: AuthMiddlewareDeps) {
@@ -157,21 +157,17 @@ export function createAuthMiddleware(deps: AuthMiddlewareDeps) {
     if (!branchId) {
       return c.json({ error: "UNAUTHORIZED", message: "Invalid branch token" }, 401);
     }
-    const delegate = await deps.delegateStore.getDelegate(branchId);
-    if (!delegate) {
+    const branch = await deps.branchStore.getBranch(branchId);
+    if (!branch) {
       return c.json({ error: "UNAUTHORIZED", message: "Branch not found" }, 401);
     }
-    const exp =
-      delegate.lifetime === "limited"
-        ? delegate.expiresAt
-        : delegate.accessExpiresAt;
-    if (Date.now() > exp) {
+    if (Date.now() > branch.expiresAt) {
       return c.json({ error: "UNAUTHORIZED", message: "Branch token expired" }, 401);
     }
     const auth: AuthContext = {
       type: "worker",
-      realmId: delegate.realmId,
-      branchId: delegate.delegateId,
+      realmId: branch.realmId,
+      branchId: branch.branchId,
       access: "readwrite",
     };
     c.set("auth", auth);
