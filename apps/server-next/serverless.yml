@@ -1,6 +1,9 @@
-service: casfa-server-next
+service: casfa-next
 
 frameworkVersion: "4"
+
+# Resources (placeholders): DynamoDB tables casfa-next-<table>, S3 bucket casfa-next-blob (shared),
+# S3 bucket casfa-next-frontend-${sls:stage} per stage. DynamoDB local ports: local-dev 7102, local-test 7112.
 
 provider:
   name: aws
