@@ -7,6 +7,10 @@
     "casfa": {
       "type": "http",
       "url": "https://casfa.shazhou.me/api/mcp"
+    },
+    "casfa-next-local": {
+      "type": "http",
+      "url": "http://localhost:7100/api/mcp"
     }
   }
 }

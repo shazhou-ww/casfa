@@ -13,7 +13,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "../stores/auth-store";
 import {
   generateCodeVerifier,
@@ -28,7 +28,11 @@ type OAuthConfig = {
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnUrl = searchParams.get("returnUrl") ?? "/";
   const setUser = useAuthStore((s) => s.setUser);
+  const setAuthTypeInStore = useAuthStore((s) => s.setAuthType);
+  const setToken = useAuthStore((s) => s.setToken);
   const [config, setConfig] = useState<OAuthConfig | null>(null);
   const [authType, setAuthType] = useState<"mock" | "cognito" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +73,7 @@ export function LoginPage() {
 
   const redirectUri = `${window.location.origin}/oauth/callback`;
 
-  const buildAuthUrl = (identityProvider: string, codeChallenge?: string) => {
+  const buildAuthUrl = (identityProvider: string, codeChallenge?: string, returnUrl?: string) => {
     if (!config) return "#";
     const params = new URLSearchParams({
       client_id: config.clientId,
@@ -82,6 +86,10 @@ export function LoginPage() {
       params.set("code_challenge", codeChallenge);
       params.set("code_challenge_method", "S256");
     }
+    // Preserve returnUrl (e.g. /oauth/authorize?...) so callback can redirect back to MCP auth flow
+    if (returnUrl && returnUrl.startsWith("/")) {
+      params.set("state", returnUrl);
+    }
     return `https://${config.domain}/oauth2/authorize?${params.toString()}`;
   };
 
@@ -90,16 +98,39 @@ export function LoginPage() {
     const verifier = generateCodeVerifier();
     saveCodeVerifier(verifier);
     const codeChallenge = await computeCodeChallenge(verifier);
-    window.location.href = buildAuthUrl(identityProvider, codeChallenge);
+    window.location.href = buildAuthUrl(identityProvider, codeChallenge, returnUrl);
   };
 
-  const handleSignInMock = () => {
-    setUser({
-      userId: "mock-user-1",
-      name: "Mock User",
-      email: "mock@example.com",
-    });
-    navigate("/", { replace: true });
+  const handleSignInMock = async () => {
+    try {
+      const tokenRes = await fetch("/api/dev/mock-token");
+      if (!tokenRes.ok) {
+        setError("Failed to get mock token");
+        return;
+      }
+      const data = (await tokenRes.json()) as { token?: string };
+      const token = data.token ?? null;
+      if (!token) {
+        setError("No token in response");
+        return;
+      }
+      setAuthTypeInStore("mock");
+      setToken(token);
+      const meRes = await fetch("/api/me", { headers: { Authorization: `Bearer ${token}` } });
+      if (!meRes.ok) {
+        setError("Failed to get user");
+        return;
+      }
+      const me = (await meRes.json()) as { userId?: string; name?: string; email?: string };
+      setUser({
+        userId: me.userId ?? "unknown",
+        name: me.name,
+        email: me.email,
+      });
+      navigate(returnUrl, { replace: true });
+    } catch {
+      setError("Sign in failed");
+    }
   };
 
   if (loading) {

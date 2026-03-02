@@ -3,6 +3,7 @@ import { AuthGuard } from "./components/auth-guard";
 import { Layout } from "./components/layout";
 import { ExplorerPage } from "./pages/explorer-page";
 import { LoginPage } from "./pages/login-page";
+import { OAuthAuthorizePage } from "./pages/oauth-authorize-page";
 import { OAuthCallbackPage } from "./pages/oauth-callback-page";
 import { SettingsPage } from "./pages/settings-page";
 
@@ -10,6 +11,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/oauth/authorize" element={<OAuthAuthorizePage />} />
       <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
 
       <Route element={<AuthGuard />}>
