@@ -51,7 +51,7 @@ process.on("SIGTERM", () => {
 
 try {
   await waitForHealthy();
-  const testRun = Bun.spawn(["bun", "test", "e2e/"], {
+  const testRun = Bun.spawn(["bun", "test", "tests/"], {
     cwd: appRoot,
     env: { ...process.env, BASE_URL },
     stdout: "inherit",
