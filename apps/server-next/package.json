@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "clean": "rimraf .serverless .esbuild .local-storage",
-    "dev": "bun run scripts/dev.ts",
+    "dev": "concurrently -n api,web -c blue,green \"bun run scripts/dev.ts\" \"bun run --cwd frontend dev\"",
+    "dev:cognito": "concurrently -n api,web -c blue,green \"bun run scripts/dev-cognito.ts\" \"bun run --cwd frontend dev\"",
     "dev:test": "bun run scripts/dev-test.ts",
     "dev:bun": "bun run backend/index.ts",
     "typecheck": "tsc --noEmit",
@@ -25,6 +26,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "concurrently": "^9.2.1",
     "esbuild": "^0.24.0",
     "rimraf": "^6.0.1",
     "serverless": "^4.0.0",
