@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 const AUTH_KEY = "casfa-next-auth";
 const MOCK_TOKEN_KEY = "casfa-next-mock-token";
+const COGNITO_TOKEN_KEY = "casfa-next-cognito-token";
 
 export type User = {
   userId: string;
@@ -43,6 +44,18 @@ function saveStoredMockToken(token: string | null): void {
   }
 }
 
+function loadStoredCognitoToken(): string | null {
+  return sessionStorage.getItem(COGNITO_TOKEN_KEY);
+}
+
+function saveStoredCognitoToken(token: string | null): void {
+  if (token) {
+    sessionStorage.setItem(COGNITO_TOKEN_KEY, token);
+  } else {
+    sessionStorage.removeItem(COGNITO_TOKEN_KEY);
+  }
+}
+
 type AuthStore = {
   user: User | null;
   token: string | null;
@@ -53,6 +66,8 @@ type AuthStore = {
   initialize: () => Promise<void>;
   logout: () => void;
   setUser: (user: User | null) => void;
+  /** Set authType (e.g. "cognito" in OAuth callback so setToken persists). */
+  setAuthType: (authType: AuthType) => void;
   /** Internal: set token (e.g. after refresh); for mock also persists to sessionStorage */
   setToken: (token: string | null) => void;
   getToken: () => string | null;
@@ -68,13 +83,18 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   getToken: () => get().token,
 
+  setAuthType: (authType) => set({ authType }),
+
   setToken: (token) => {
-    if (get().authType === "mock") saveStoredMockToken(token);
+    const authType = get().authType;
+    if (authType === "mock") saveStoredMockToken(token);
+    if (authType === "cognito") saveStoredCognitoToken(token);
     set({ token });
   },
 
   initialize: async () => {
-    set({ loading: true });
+    if (get().initialized && get().isLoggedIn) return;
+    if (!get().initialized) set({ loading: true });
     try {
       const infoRes = await fetch("/api/info");
       if (!infoRes.ok) {
@@ -126,10 +146,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       }
 
       if (authType === "cognito") {
-        const stored = loadStoredUser();
-        if (stored) {
+        const storedUser = loadStoredUser();
+        const storedToken = loadStoredCognitoToken();
+        if (storedUser && storedToken) {
           set({
-            user: stored,
+            user: storedUser,
+            token: storedToken,
             isLoggedIn: true,
             initialized: true,
             loading: false,
@@ -140,6 +162,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
             loading: false,
             isLoggedIn: false,
             user: null,
+            token: null,
           });
         }
         return;
@@ -154,11 +177,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   logout: () => {
     saveStoredUser(null);
     const authType = get().authType;
-    if (authType === "mock") {
-      saveStoredMockToken(null);
-      set({ token: null });
-    }
-    set({ user: null, isLoggedIn: false });
+    if (authType === "mock") saveStoredMockToken(null);
+    if (authType === "cognito") saveStoredCognitoToken(null);
+    set({ user: null, token: null, isLoggedIn: false });
   },
 
   setUser: (user) => {

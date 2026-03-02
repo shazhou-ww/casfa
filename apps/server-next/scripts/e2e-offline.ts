@@ -25,13 +25,27 @@ async function waitForHealthy(): Promise<void> {
 
 const appRoot = process.cwd();
 const serverless = Bun.spawn(
-  ["bunx", "serverless", "offline", "--httpPort", String(OFFLINE_PORT), "--lambdaPort", String(LAMBDA_PORT)],
+  [
+    "bunx",
+    "serverless",
+    "offline",
+    "start",
+    "--httpPort",
+    String(OFFLINE_PORT),
+    "--lambdaPort",
+    String(LAMBDA_PORT),
+    "--stage",
+    "local-test",
+  ],
   {
     cwd: appRoot,
     env: {
       ...process.env,
-      STORAGE_TYPE: "memory",
+      STAGE: "local-test",
       MOCK_JWT_SECRET: process.env.MOCK_JWT_SECRET ?? "test-secret-e2e",
+      DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? "http://localhost:7102",
+      S3_ENDPOINT: process.env.S3_ENDPOINT ?? "http://localhost:4569",
+      S3_BUCKET: process.env.S3_BUCKET ?? "casfa-next-local-test-blob",
     },
     stdout: "pipe",
     stderr: "pipe",

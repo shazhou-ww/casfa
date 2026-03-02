@@ -18,18 +18,23 @@ provider:
     cors: true
   environment:
     PORT: ${env:PORT, '8802'}
-    STORAGE_TYPE: ${env:STORAGE_TYPE, 'memory'}
-    STORAGE_FS_PATH: ${env:STORAGE_FS_PATH, ''}
     MOCK_JWT_SECRET: ${env:MOCK_JWT_SECRET, ''}
     MAX_BRANCH_TTL_MS: ${env:MAX_BRANCH_TTL_MS, ''}
     COGNITO_REGION: ${env:COGNITO_REGION, ''}
     COGNITO_USER_POOL_ID: ${env:COGNITO_USER_POOL_ID, ''}
     COGNITO_CLIENT_ID: ${env:COGNITO_CLIENT_ID, ''}
+    COGNITO_HOSTED_UI_URL: ${env:COGNITO_HOSTED_UI_URL, ''}
+    COGNITO_CLIENT_SECRET: ${env:COGNITO_CLIENT_SECRET, ''}
     DYNAMODB_ENDPOINT: ${env:DYNAMODB_ENDPOINT, ''}
-    S3_BUCKET: ${env:S3_BUCKET, ''}
+    DYNAMODB_TABLE_DELEGATES: ${env:DYNAMODB_TABLE_DELEGATES, 'casfa-next-${sls:stage}-delegates'}
+    DYNAMODB_TABLE_GRANTS: ${env:DYNAMODB_TABLE_GRANTS, 'casfa-next-${sls:stage}-grants'}
+    S3_BUCKET: ${env:S3_BUCKET, 'casfa-next-${sls:stage}-blob'}
+    S3_ENDPOINT: ${env:S3_ENDPOINT, ''}
     LOG_LEVEL: ${env:LOG_LEVEL, ''}
 
 plugins:
+  - serverless-dynamodb
+  - serverless-s3-local
   - serverless-esbuild
   - serverless-offline
 
@@ -38,10 +43,24 @@ custom:
     httpPort: 7101
     lambdaPort: 7103
     noPrependStageInUrl: true
+  # DynamoDB Local (serverless-dynamodb = maintained fork; fixes 403 on install)
+  serverless-dynamodb:
+    stages:
+      - dev
+      - local-test
+    start:
+      port: 7102
+      migrate: true
+  s3:
+    host: localhost
+    port: 4569
+    directory: .local-storage/s3
   esbuild:
     bundle: true
     target: node20
-    format: esm
+    format: cjs
+    outExtension:
+      ".js": ".cjs"
     sourcemap: true
     packagePath: ./package.json
 
@@ -50,3 +69,152 @@ functions:
     handler: backend/lambda.handler
     events:
       - httpApi: '*'
+
+# Frontend: S3 bucket + CloudFront (SPA; /api -> API Gateway)
+# DynamoDB tables for delegates/grants; S3 bucket for CAS blob (serverless-s3-local creates locally)
+resources:
+  Resources:
+    # DynamoDB: delegates + roots (realm/branch state)
+    DelegatesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: casfa-next-${sls:stage}-delegates
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: pk
+            AttributeType: S
+          - AttributeName: sk
+            AttributeType: S
+          - AttributeName: gsi1pk
+            AttributeType: S
+          - AttributeName: gsi1sk
+            AttributeType: S
+        KeySchema:
+          - AttributeName: pk
+            KeyType: HASH
+          - AttributeName: sk
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: realm-index
+            KeySchema:
+              - AttributeName: gsi1pk
+                KeyType: HASH
+              - AttributeName: gsi1sk
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+    # DynamoDB: delegate grants (access token auth)
+    DelegateGrantsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: casfa-next-${sls:stage}-grants
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: pk
+            AttributeType: S
+          - AttributeName: sk
+            AttributeType: S
+          - AttributeName: gsi1pk
+            AttributeType: S
+          - AttributeName: gsi1sk
+            AttributeType: S
+        KeySchema:
+          - AttributeName: pk
+            KeyType: HASH
+          - AttributeName: sk
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: realm-hash-index
+            KeySchema:
+              - AttributeName: gsi1pk
+                KeyType: HASH
+              - AttributeName: gsi1sk
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+    # S3 bucket for CAS blob (used by serverless-s3-local locally)
+    BlobBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: casfa-next-${sls:stage}-blob
+    FrontendBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: casfa-next-frontend-${sls:stage}
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+    FrontendOAC:
+      Type: AWS::CloudFront::OriginAccessControl
+      Properties:
+        OriginAccessControlConfig:
+          Name: casfa-next-frontend-oac-${sls:stage}
+          OriginAccessControlOriginType: s3
+          SigningBehavior: always
+          SigningProtocol: sigv4
+    FrontendCloudFront:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Enabled: true
+          DefaultRootObject: index.html
+          Origins:
+            - Id: S3Frontend
+              DomainName: !GetAtt FrontendBucket.RegionalDomainName
+              OriginAccessControlId: !GetAtt FrontendOAC.Id
+              S3OriginConfig:
+                OriginAccessIdentity: ""
+            - Id: ApiGateway
+              DomainName: !Sub ${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
+              CustomOriginConfig:
+                HTTPSPort: 443
+                OriginProtocolPolicy: https-only
+          DefaultCacheBehavior:
+            TargetOriginId: S3Frontend
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS]
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          CacheBehaviors:
+            - PathPattern: /api/*
+              TargetOriginId: ApiGateway
+              ViewerProtocolPolicy: https-only
+              AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+              Compress: true
+              CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          CustomErrorResponses:
+            - ErrorCode: 403
+              ResponseCode: 200
+              ResponsePagePath: /index.html
+            - ErrorCode: 404
+              ResponseCode: 200
+              ResponsePagePath: /index.html
+    FrontendBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      DependsOn: FrontendCloudFront
+      Properties:
+        Bucket: !Ref FrontendBucket
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Sid: AllowCloudFrontOAC
+              Effect: Allow
+              Principal:
+                Service: cloudfront.amazonaws.com
+              Action: s3:GetObject
+              Resource: !Sub ${FrontendBucket.Arn}/*
+              Condition:
+                StringEquals:
+                  AWS:SourceArn: !Sub arn:aws:cloudfront:${AWS::AccountId}:distribution/${FrontendCloudFront}
+  Outputs:
+    FrontendUrl:
+      Description: CloudFront URL for frontend
+      Value: !Sub https://${FrontendCloudFront.DomainName}
+    FrontendBucketName:
+      Description: S3 bucket for frontend assets
+      Value: !Ref FrontendBucket
+    FrontendDistributionId:
+      Description: CloudFront distribution ID (for cache invalidation)
+      Value: !Ref FrontendCloudFront

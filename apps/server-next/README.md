@@ -24,6 +24,17 @@
 bunx serverless login
 ```
 
+**本地 `bun run dev` 需要 Java**：DynamoDB Local 官方实现是 Java JAR，本机需安装 **JRE 11+** 且 `java` 在 PATH 中。若未安装会报错 `spawn java ENOENT`。
+
+本项目使用维护版插件 **serverless-dynamodb**（替代已停更的 serverless-dynamodb-local），其 `sls dynamodb install` 使用当前有效的下载地址，可避免 403。装好 Java 后，在 `apps/server-next` 下执行：
+
+```bash
+bunx serverless dynamodb install   # 首次
+bun run dev
+```
+
+若不想装 Java，可用 **`bun run dev:bun`** 直起后端（端口 8802），并自行提供 DynamoDB/S3 端点（如真实 AWS 或 Docker 等）。
+
 ## 运行
 
 ### 本地开发（local-dev，端口 710x）

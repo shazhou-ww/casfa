@@ -204,7 +204,7 @@ Resources:
           CAS_USAGE_TABLE: !Ref UsageTable
           # Cognito
           COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
-          CASFA_COGNITO_CLIENT_ID: !Ref CognitoClientId
+          COGNITO_CLIENT_ID: !Ref CognitoClientId
           COGNITO_REGION: !Ref CognitoRegion
           COGNITO_HOSTED_UI_URL: !Ref CognitoHostedUiUrl
           # Redis (disabled initially; enable when ElastiCache is provisioned)
