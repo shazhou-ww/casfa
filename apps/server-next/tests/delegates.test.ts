@@ -17,14 +17,14 @@ describe("Delegates", () => {
   });
 
   it("assign returns accessToken and delegateId", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const result = await ctx.helpers.assignDelegate(token, realmId);
     expect(result.accessToken).toBeDefined();
     expect(result.delegateId).toBeDefined();
   });
 
   it("delegate token can list realm files", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const { accessToken } = await ctx.helpers.assignDelegate(token, realmId);
     const res = await ctx.helpers.authRequest(
       accessToken,
@@ -37,7 +37,7 @@ describe("Delegates", () => {
   });
 
   it("delegate token can list branches", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const { accessToken } = await ctx.helpers.assignDelegate(token, realmId);
     const res = await ctx.helpers.authRequest(
       accessToken,
@@ -50,7 +50,7 @@ describe("Delegates", () => {
   });
 
   it("list delegates returns array", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     await ctx.helpers.assignDelegate(token, realmId);
     const res = await ctx.helpers.authRequest(
       token,
@@ -64,7 +64,7 @@ describe("Delegates", () => {
   });
 
   it("revoke delegate then token fails", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const { accessToken, delegateId } = await ctx.helpers.assignDelegate(
       token,
       realmId

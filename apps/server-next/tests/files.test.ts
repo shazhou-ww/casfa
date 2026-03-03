@@ -17,7 +17,7 @@ describe("Files (User)", () => {
   });
 
   it("list root returns 200 and entries array", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const res = await ctx.helpers.authRequest(
       token,
       "GET",
@@ -29,7 +29,7 @@ describe("Files (User)", () => {
   });
 
   it("mkdir then list shows directory", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const mkdirRes = await ctx.helpers.authRequest(
       token,
       "POST",
@@ -49,7 +49,7 @@ describe("Files (User)", () => {
   });
 
   it("upload file then stat and get content", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     // Ensure root exists (list or mkdir already ran; same realm)
     const listRes = await ctx.helpers.authRequest(
       token,
@@ -95,7 +95,7 @@ describe("Files (User)", () => {
   });
 
   it("stat root (directory) returns kind directory", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const res = await ctx.helpers.authRequest(
       token,
       "GET",
@@ -107,7 +107,7 @@ describe("Files (User)", () => {
   });
 
   it("rm removes entry then list does not show it", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(
       token,
       "POST",
@@ -134,7 +134,7 @@ describe("Files (User)", () => {
   });
 
   it("mv moves file then get at new path returns content", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(
       token,
       "POST",
@@ -165,7 +165,7 @@ describe("Files (User)", () => {
   });
 
   it("cp copies file then get at new path returns same content", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     await fetch(`${ctx.baseUrl}/api/realm/${realmId}/files/source.txt`, {
       method: "PUT",
       headers: {

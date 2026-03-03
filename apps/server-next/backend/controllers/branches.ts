@@ -5,7 +5,7 @@
 import type { Context } from "hono";
 import type { Env } from "../types.ts";
 import type { RootResolverDeps } from "../services/root-resolver.ts";
-import { resolvePath } from "../services/root-resolver.ts";
+import { ensureEmptyRoot, resolvePath } from "../services/root-resolver.ts";
 import { completeBranch } from "../services/branch-complete.ts";
 import type { Branch } from "../types/branch.ts";
 import type { ServerConfig } from "../config.ts";
@@ -55,6 +55,10 @@ export function createBranchesController(deps: BranchesControllerDeps) {
         if (!parentBranchId) {
           if (!hasBranchManage(auth)) {
             return c.json({ error: "FORBIDDEN", message: "branch_manage or user required" }, 403);
+          }
+          if (auth.type === "user" || auth.type === "delegate") {
+            const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
+            await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
           }
           const rootRecord = await deps.branchStore.getRealmRootRecord(realmId);
           if (!rootRecord) {

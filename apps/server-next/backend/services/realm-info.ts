@@ -9,7 +9,7 @@ import { hashToKey } from "@casfa/core";
 import type { BranchStore } from "../db/branch-store.ts";
 import type { DelegateGrantStore } from "../db/delegate-grants.ts";
 import type { RealmUsageStore } from "../db/realm-usage-store.ts";
-import { getNodeDecoded } from "./root-resolver.ts";
+import { ensureEmptyRoot, getNodeDecoded } from "./root-resolver.ts";
 
 export type RealmInfoResult = {
   lastGcTime: number | null;
@@ -31,6 +31,8 @@ export type RealmInfoService = {
   info(realmId: string): Promise<RealmInfoResult>;
   gc(realmId: string, cutOffTime: number): Promise<void>;
   recordNewKey(realmId: string, nodeKey: string): void;
+  /** Lazy-create realm root if missing (e.g. mock user with no OAuth). Idempotent; DynamoDB uses create-if-not-exist. */
+  ensureRealmForUser(realmId: string): Promise<void>;
 };
 
 /** One-time BFS from root keys to collect all reachable node keys. */
@@ -134,6 +136,11 @@ export function createRealmInfoService(deps: RealmInfoServiceDeps): RealmInfoSer
 
     recordNewKey(realmId: string, nodeKey: string) {
       deps.realmUsageStore.appendNewKey(realmId, nodeKey).catch(() => {});
+    },
+
+    async ensureRealmForUser(realmId: string) {
+      const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
+      await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
     },
   };
 }

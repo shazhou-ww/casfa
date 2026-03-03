@@ -40,18 +40,19 @@ function getPathParam(c: Context<Env>): string {
   return path;
 }
 
-/** If rootKey is null and auth is user, ensure realm root then return getCurrentRoot again; otherwise return rootKey. */
-async function ensureRootForUser(
+/** If rootKey is null and auth is user or delegate, ensure realm root then return getCurrentRoot again; otherwise return rootKey. */
+async function ensureRootForUserOrDelegate(
   auth: NonNullable<Env["Variables"]["auth"]>,
   rootKey: string | null,
   deps: FilesControllerDeps
 ): Promise<string | null> {
   if (rootKey !== null) return rootKey;
-  if (auth.type !== "user") return null;
+  if (auth.type !== "user" && auth.type !== "delegate") return null;
+  const realmId = auth.type === "user" ? auth.userId : auth.realmId;
   try {
     const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
-    await deps.branchStore.ensureRealmRoot(auth.userId, emptyKey);
-    return deps.branchStore.getRealmRoot(auth.userId);
+    await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
+    return deps.branchStore.getRealmRoot(realmId);
   } catch (err) {
     console.error("[files] ensureRealmRoot failed:", err instanceof Error ? err.message : err);
     return null;
@@ -75,7 +76,7 @@ async function getRootForWrite(
     return { rootKey };
   }
   let rootKey = await getCurrentRoot(auth, deps);
-  rootKey = await ensureRootForUser(auth, rootKey, deps);
+  rootKey = await ensureRootForUserOrDelegate(auth, rootKey, deps);
   if (rootKey === null) return { status: 404, message: "Realm not initialized. Open your profile or realm first." };
   return { rootKey };
 }
@@ -90,7 +91,7 @@ export function createFilesController(deps: FilesControllerDeps) {
       const pathStr = getPathParam(c);
       try {
         let rootKey = await getCurrentRoot(auth, deps);
-        rootKey = await ensureRootForUser(auth, rootKey, deps);
+        rootKey = await ensureRootForUserOrDelegate(auth, rootKey, deps);
         if (rootKey === null) {
           if (auth.type === "worker") return c.json({ entries: [] }, 200);
           return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
@@ -148,7 +149,7 @@ export function createFilesController(deps: FilesControllerDeps) {
       const pathStr = getPathParam(c);
       try {
         let rootKey = await getCurrentRoot(auth, deps);
-        rootKey = await ensureRootForUser(auth, rootKey, deps);
+        rootKey = await ensureRootForUserOrDelegate(auth, rootKey, deps);
         if (rootKey === null) {
           if (auth.type === "worker" && pathStr === "") return c.json({ kind: "directory" }, 200);
           if (auth.type === "worker") return c.json({ error: "NOT_FOUND", message: "Path not found" }, 404);
@@ -201,7 +202,7 @@ export function createFilesController(deps: FilesControllerDeps) {
       const pathStr = getPathParam(c);
       try {
         let rootKey = await getCurrentRoot(auth, deps);
-        rootKey = await ensureRootForUser(auth, rootKey, deps);
+        rootKey = await ensureRootForUserOrDelegate(auth, rootKey, deps);
         if (rootKey === null) {
           if (auth.type === "worker" && pathStr === "") return c.json({ entries: [] }, 200);
           if (auth.type === "worker") return c.json({ error: "NOT_FOUND", message: "Path not found" }, 404);

@@ -1,8 +1,10 @@
 /**
  * Start dev:test (Docker dynamodb-test + serverless offline on 7111), wait for ready,
- * run E2E with BASE_URL=http://localhost:7111, then stop.
+ * run E2E with BASE_URL=http://localhost:7111, then stop dev:test and dynamodb-test container.
  * Run from apps/server-next (e.g. bun run test:e2e).
  */
+import { spawnSync } from "node:child_process";
+
 const OFFLINE_PORT = 7111;
 const BASE_URL = `http://localhost:${OFFLINE_PORT}`;
 const HEALTH_URL = `${BASE_URL}/api/health`;
@@ -39,12 +41,24 @@ function killDevTest(): void {
   }
 }
 
+/** Stop DynamoDB test container after e2e so dev:test is not left running. */
+function stopDynamoDBTest(): void {
+  spawnSync("docker", ["compose", "stop", "dynamodb-test"], {
+    cwd: appRoot,
+    encoding: "utf-8",
+    shell: true,
+    stdio: "pipe",
+  });
+}
+
 process.on("SIGINT", () => {
   killDevTest();
+  stopDynamoDBTest();
   process.exit(130);
 });
 process.on("SIGTERM", () => {
   killDevTest();
+  stopDynamoDBTest();
   process.exit(143);
 });
 
@@ -59,9 +73,11 @@ try {
   });
   const exitCode = await testRun.exited;
   killDevTest();
+  stopDynamoDBTest();
   process.exit(exitCode);
 } catch (err) {
   console.error(err);
   killDevTest();
+  stopDynamoDBTest();
   process.exit(1);
 }

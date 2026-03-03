@@ -103,7 +103,8 @@ async function main(): Promise<void> {
   const env = {
     ...process.env,
     STAGE: "local-test",
-    MOCK_JWT_SECRET: process.env.MOCK_JWT_SECRET ?? "test-secret-e2e",
+    // E2E: use decode-only mock verifier so both user JWT and server-issued delegate/branch tokens are accepted.
+    MOCK_JWT_SECRET: "",
     DYNAMODB_ENDPOINT,
     S3_LOCAL_PORT: "7114",
     S3_LOCAL_DIRECTORY: ".local-storage/s3-test",

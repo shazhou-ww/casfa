@@ -50,6 +50,11 @@ async function getRootForWrite(
     }
     return { rootKey };
   }
+  if (auth.type === "user" || auth.type === "delegate") {
+    const realmId = getRealmId(auth);
+    const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
+    await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
+  }
   const rootKey = await getCurrentRoot(auth, deps);
   if (rootKey === null) return { status: 404, message: "Realm not initialized. Open your profile or realm first." };
   return { rootKey };
