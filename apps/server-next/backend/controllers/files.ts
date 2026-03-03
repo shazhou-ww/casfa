@@ -13,7 +13,6 @@ import {
   ensureEmptyRoot,
 } from "../services/root-resolver.ts";
 import { addOrReplaceAtPath } from "../services/tree-mutations.ts";
-import { UTF8_BOM, prependUtf8BomIfText } from "../utils/utf8-bom.ts";
 import { encodeFileNode, hashToKey } from "@casfa/core";
 import { streamFromBytes } from "@casfa/cas";
 
@@ -260,16 +259,8 @@ export function createFilesController(deps: FilesControllerDeps) {
         const contentType =
           c.req.header("Content-Type")?.split(";")[0]?.trim() ||
           "application/octet-stream";
-        const willPrependBom = contentType.startsWith("text/");
-        if (willPrependBom && raw.byteLength + UTF8_BOM.length > MAX_BODY) {
-          return c.json(
-            { error: "BAD_REQUEST", message: `Body too large (max ${MAX_BODY} bytes)` },
-            400
-          );
-        }
-        const dataToStore = prependUtf8BomIfText(contentType, data);
         const encoded = await encodeFileNode(
-          { data: dataToStore, fileSize: dataToStore.length, contentType },
+          { data, fileSize: data.length, contentType },
           deps.key
         );
         const fileNodeKey = hashToKey(encoded.hash);

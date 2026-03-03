@@ -16,7 +16,8 @@
 
 ## 2. 范围与规则
 
-- **适用写入路径**：优先实现 **MCP `fs_write`**；可选在 REST `PUT /api/realm/:realmId/files/:path` 中，当请求 `Content-Type` 为 `text/*` 时对 body 同样 prepend BOM，与 MCP 一致。
+- **适用写入路径**：**仅 MCP `fs_write`** 对 text/* 添加 UTF-8 BOM。REST `PUT /api/realm/:realmId/files/:path` **不对内容做任何修改**，原样存储请求 body。
+- **MCP 约定**：MCP 提供的读写针对 **text/* 文件**，强制 UTF-8 编码；写入时对 text/* 自动添加 BOM 以便浏览器/编辑器正确识别。
 - **规则**：仅当 **contentType 为 `text/*`** 时在字节前拼接 UTF-8 BOM；其它类型（`application/octet-stream`、`application/json` 等）不添加。
 - **原因**：`text/*` 多为人类可读文本，BOM 有助于识别；JSON 等不加，避免部分解析器报错。
 
@@ -29,10 +30,9 @@
 - **文件**：`apps/server-next/backend/mcp/handler.ts`
 - **逻辑**：在 `const bytes = new TextEncoder().encode(content)` 之后，若 `contentType.startsWith("text/")`，则构造 `new Uint8Array([0xEF, 0xBB, 0xBF, ...bytes])`，以该 buffer 作为 `data`，`fileSize` 为 `data.length`（含 3 字节 BOM），再调用 `encodeFileNode`；否则沿用原 `bytes`。
 
-### 3.2 REST 上传（可选）
+### 3.2 REST 上传
 
-- **文件**：`apps/server-next/backend/controllers/files.ts` 的 `upload` 方法。
-- **逻辑**：若请求头 `Content-Type` 为 `text/*`，在写入 CAS 前对 `data`（Uint8Array）prepend BOM，再 `encodeFileNode`。
+- **不修改**：REST 上传保持原样存储，不对 body 做 BOM 或其它编码处理。
 
 ---
 

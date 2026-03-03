@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Prepend UTF-8 BOM to text file content when writing via MCP fs_write (and optionally REST upload) for text/* content types, so browser preview/download shows Chinese correctly.
+**Goal:** Prepend UTF-8 BOM to text file content when writing **via MCP fs_write only** for text/* content types, so browser preview/download shows Chinese correctly. REST upload does not modify content.
 
-**Architecture:** In fs_write handler, after encoding content to bytes, if contentType starts with "text/", prepend 0xEF 0xBB 0xBF then pass to encodeFileNode. Optional: same in files.upload when Content-Type is text/*.
+**Architecture:** In fs_write handler only, after encoding content to bytes, if contentType starts with "text/", prepend 0xEF 0xBB 0xBF then pass to encodeFileNode. REST files.upload stores body as-is.
 
 **Tech Stack:** Bun, server-next backend (Hono). Design: `docs/plans/2026-03-03-txt-encoding-utf8-bom-design.md`.
 
@@ -36,42 +36,7 @@ git commit -m "feat(server-next): prepend UTF-8 BOM for text/* in MCP fs_write"
 
 ---
 
-## Task 2 (Optional): REST upload — prepend BOM for text/*
-
-**Files:**
-- Modify: `apps/server-next/backend/controllers/files.ts`
-
-**Step 1: In upload(), after reading body and before encodeFileNode**
-
-If `contentType` (from header, normalized) starts with `"text/"`, prepend UTF-8 BOM to `data`:
-
-```ts
-const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf]);
-if (contentType.startsWith("text/")) {
-  const withBom = new Uint8Array(UTF8_BOM.length + data.length);
-  withBom.set(UTF8_BOM);
-  withBom.set(data, UTF8_BOM.length);
-  data = withBom;
-}
-```
-
-Then pass `data` and `data.length` to `encodeFileNode` (and keep 4MB check on the resulting size if needed). Ensure the rest of the handler uses this `data`.
-
-**Step 2: Run tests**
-
-Run: `cd apps/server-next && bun test tests/files.test.ts` (or relevant E2E).  
-Expected: pass.
-
-**Step 3: Commit**
-
-```bash
-git add apps/server-next/backend/controllers/files.ts
-git commit -m "feat(server-next): prepend UTF-8 BOM for text/* in file upload"
-```
-
----
-
-## Task 3: E2E or manual verification
+## Task 2: E2E or manual verification
 
 **Step 1: Verify BOM in written file**
 
