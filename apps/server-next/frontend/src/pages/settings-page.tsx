@@ -1,15 +1,18 @@
 import KeyIcon from "@mui/icons-material/Key";
+import StorageIcon from "@mui/icons-material/Storage";
 import { Alert, Box, List, ListItemButton, ListItemIcon, ListItemText, Snackbar, Typography } from "@mui/material";
 import { useCallback, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { CreateDelegateDialog } from "../components/settings/delegates/create-delegate-dialog";
 import { DelegatesTab } from "../components/settings/delegates-tab";
 import { RevokeDelegateDialog } from "../components/settings/delegates/revoke-dialog";
+import { StorageTab } from "../components/settings/storage-tab";
 import { TokenDisplay } from "../components/settings/delegates/token-display";
 import type { CreateDelegateResponse, DelegateListItem } from "../types/delegate";
 import { useDelegatesStore } from "../stores/delegates-store";
 
 const DELEGATES_TAB = "delegates";
+const STORAGE_TAB = "storage";
 
 const SIDEBAR_WIDTH = 220;
 
@@ -24,7 +27,8 @@ export function SettingsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const pathPart = location.pathname.replace(/^\/settings\/?/, "") || DELEGATES_TAB;
-  const tabValue = pathPart === DELEGATES_TAB ? DELEGATES_TAB : DELEGATES_TAB;
+  const tabValue =
+    pathPart === "storage" ? STORAGE_TAB : pathPart === "delegates" || pathPart === "" ? DELEGATES_TAB : DELEGATES_TAB;
 
   const [createOpen, setCreateOpen] = useState(false);
   const [tokenData, setTokenData] = useState<TokenData | null>(null);
@@ -38,7 +42,9 @@ export function SettingsPage() {
 
   const handleNav = useCallback(
     (value: string) => {
-      if (value === DELEGATES_TAB) {
+      if (value === STORAGE_TAB) {
+        navigate("/settings/storage", { replace: true });
+      } else if (value === DELEGATES_TAB) {
         navigate("/settings/delegates", { replace: true });
       }
     },
@@ -105,11 +111,21 @@ export function SettingsPage() {
             </ListItemIcon>
             <ListItemText primary="Delegates" primaryTypographyProps={{ variant: "body2" }} />
           </ListItemButton>
+          <ListItemButton
+            selected={tabValue === STORAGE_TAB}
+            onClick={() => handleNav(STORAGE_TAB)}
+          >
+            <ListItemIcon sx={{ minWidth: 36 }}>
+              <StorageIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText primary="存储" primaryTypographyProps={{ variant: "body2" }} />
+          </ListItemButton>
         </List>
       </Box>
       {/* Right content */}
       <Box sx={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column" }}>
         <Box sx={{ flex: 1, p: 3, pt: 2, overflow: "auto" }}>
+          {tabValue === STORAGE_TAB && <StorageTab />}
           {tabValue === DELEGATES_TAB && (
             <DelegatesTab
               onCreateClick={handleCreateClick}
