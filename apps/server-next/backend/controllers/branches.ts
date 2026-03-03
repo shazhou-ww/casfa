@@ -195,6 +195,10 @@ export function createBranchesController(deps: BranchesControllerDeps) {
       if (branchId !== auth.branchId) {
         return c.json({ error: "FORBIDDEN", message: "Can only complete own branch" }, 403);
       }
+      const branch = await deps.branchStore.getBranch(branchId);
+      if (!branch) {
+        return c.json({ error: "NOT_FOUND", message: "Branch not found" }, 404);
+      }
       try {
         const result = await completeBranch(branchId, deps);
         return c.json(result, 200);
