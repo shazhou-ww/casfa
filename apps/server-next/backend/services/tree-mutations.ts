@@ -26,13 +26,16 @@ function resolveSegment(
   return null;
 }
 
+export type OnNodePut = (nodeKey: string) => void;
+
 /** Replace existing entry at path; path must exist. Returns new root key. */
 export async function replaceSubtreeAtPath(
   cas: CasFacade,
   keyProvider: KeyProvider,
   rootKey: string,
   segments: string[],
-  newChildKey: string
+  newChildKey: string,
+  onNodePut?: OnNodePut
 ): Promise<string> {
   if (segments.length === 0) throw new Error("Path must not be empty");
   const node = await getNodeDecoded(cas, rootKey);
@@ -49,8 +52,10 @@ export async function replaceSubtreeAtPath(
       { children: newChildren, childNames: newNames },
       keyProvider
     );
-    await cas.putNode(hashToKey(encoded.hash), streamFromBytes(encoded.bytes));
-    return hashToKey(encoded.hash);
+    const key = hashToKey(encoded.hash);
+    await cas.putNode(key, streamFromBytes(encoded.bytes));
+    onNodePut?.(key);
+    return key;
   }
   const firstKey = resolveSegment(node, segments[0]!);
   if (firstKey === null) throw new Error(`Segment ${segments[0]} not found`);
@@ -59,7 +64,8 @@ export async function replaceSubtreeAtPath(
     keyProvider,
     firstKey,
     segments.slice(1),
-    newChildKey
+    newChildKey,
+    onNodePut
   );
   const newChildren = children.slice();
   const newNames = names.slice();
@@ -68,8 +74,10 @@ export async function replaceSubtreeAtPath(
     { children: newChildren, childNames: newNames },
     keyProvider
   );
-  await cas.putNode(hashToKey(encoded.hash), streamFromBytes(encoded.bytes));
-  return hashToKey(encoded.hash);
+  const key = hashToKey(encoded.hash);
+  await cas.putNode(key, streamFromBytes(encoded.bytes));
+  onNodePut?.(key);
+  return key;
 }
 
 /** Add or replace a single entry in a dict. Returns new dict key. */
@@ -78,7 +86,8 @@ export async function addOrReplaceInDict(
   keyProvider: KeyProvider,
   dictKey: string,
   name: string,
-  childKey: string
+  childKey: string,
+  onNodePut?: OnNodePut
 ): Promise<string> {
   const node = await getNodeDecoded(cas, dictKey);
   if (!node || node.kind !== "dict") throw new Error("Not a dict");
@@ -101,8 +110,10 @@ export async function addOrReplaceInDict(
     { children: newChildren, childNames: newNames },
     keyProvider
   );
-  await cas.putNode(hashToKey(encoded.hash), streamFromBytes(encoded.bytes));
-  return hashToKey(encoded.hash);
+  const key = hashToKey(encoded.hash);
+  await cas.putNode(key, streamFromBytes(encoded.bytes));
+  onNodePut?.(key);
+  return key;
 }
 
 /** Add or replace entry at path (path = parentPath/fileName). Parent must exist. Returns new root key. */
@@ -111,7 +122,8 @@ export async function addOrReplaceAtPath(
   keyProvider: KeyProvider,
   rootKey: string,
   pathStr: string,
-  newChildKey: string
+  newChildKey: string,
+  onNodePut?: OnNodePut
 ): Promise<string> {
   const segments = normalizePath(pathStr);
   if (segments.length === 0) throw new Error("Path must not be empty");
@@ -125,7 +137,8 @@ export async function addOrReplaceAtPath(
     keyProvider,
     parentKey,
     fileName,
-    newChildKey
+    newChildKey,
+    onNodePut
   );
   if (segments.length === 1) return newParentKey;
   return replaceSubtreeAtPath(
@@ -133,7 +146,8 @@ export async function addOrReplaceAtPath(
     keyProvider,
     rootKey,
     segments.slice(0, -1),
-    newParentKey
+    newParentKey,
+    onNodePut
   );
 }
 
@@ -142,7 +156,8 @@ export async function removeEntryAtPath(
   cas: CasFacade,
   keyProvider: KeyProvider,
   rootKey: string,
-  pathStr: string
+  pathStr: string,
+  onNodePut?: OnNodePut
 ): Promise<string> {
   const segments = normalizePath(pathStr);
   if (segments.length === 0) throw new Error("Path must not be empty");
@@ -165,12 +180,14 @@ export async function removeEntryAtPath(
   );
   const newParentKey = hashToKey(encoded.hash);
   await cas.putNode(newParentKey, streamFromBytes(encoded.bytes));
+  onNodePut?.(newParentKey);
   if (segments.length === 1) return newParentKey;
   return replaceSubtreeAtPath(
     cas,
     keyProvider,
     rootKey,
     segments.slice(0, -1),
-    newParentKey
+    newParentKey,
+    onNodePut
   );
 }

@@ -13,6 +13,8 @@ export type RootResolverDeps = {
   branchStore: BranchStore;
   cas: CasFacade;
   key: KeyProvider;
+  /** Optional: record new node keys for realm usage (retained + new since GC). */
+  recordNewKey?: (realmId: string, nodeKey: string) => void;
 };
 
 /** Create empty dict root in CAS and return its key. */

@@ -12,6 +12,7 @@ import { loadConfig } from "./config.ts";
 import { createDynamoDelegateGrantStore } from "./db/dynamo-delegate-grant-store.ts";
 import { createDynamoBranchStore } from "./db/dynamo-branch-store.ts";
 import { createMemoryDerivedDataStore } from "./db/derived-data.ts";
+import { createMemoryRealmUsageStore } from "./db/realm-usage-store.ts";
 import { createMemoryUserSettingsStore } from "./db/user-settings.ts";
 import { createCasFacade } from "./services/cas.ts";
 
@@ -30,6 +31,7 @@ const delegateGrantStore = createDynamoDelegateGrantStore({
     : undefined,
 });
 const derivedDataStore = createMemoryDerivedDataStore();
+const realmUsageStore = createMemoryRealmUsageStore();
 const userSettingsStore = createMemoryUserSettingsStore();
 
 const app = createApp({
@@ -39,6 +41,7 @@ const app = createApp({
   branchStore,
   delegateGrantStore,
   derivedDataStore,
+  realmUsageStore,
   userSettingsStore,
 });
 

@@ -6,6 +6,7 @@ import type { CasFacade } from "@casfa/cas";
 import type { DelegateGrantStore } from "./db/delegate-grants.ts";
 import type { DerivedDataStore } from "./db/derived-data.ts";
 import type { BranchStore } from "./db/branch-store.ts";
+import type { RealmUsageStore } from "./db/realm-usage-store.ts";
 import { createRealmInfoService } from "./services/realm-info.ts";
 import { createAuthMiddleware } from "./middleware/auth.ts";
 import { createRealmMiddleware } from "./middleware/realm.ts";
@@ -40,6 +41,7 @@ export type AppDeps = {
   branchStore: BranchStore;
   delegateGrantStore: DelegateGrantStore;
   derivedDataStore: DerivedDataStore;
+  realmUsageStore: RealmUsageStore;
   userSettingsStore: UserSettingsStore;
 };
 
@@ -269,6 +271,7 @@ export function createApp(deps: AppDeps) {
         if (sub) {
           const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
           await deps.branchStore.ensureRealmRoot(sub, emptyKey);
+          await deps.realmUsageStore.appendNewKey(sub, emptyKey);
         }
       } catch (err) {
         // still return tokens; /files will retry ensureRootForUser or repair root
@@ -293,13 +296,16 @@ export function createApp(deps: AppDeps) {
 
   const realmInfoService = createRealmInfoService({
     cas: deps.cas,
+    key: deps.key,
     branchStore: deps.branchStore,
     delegateGrantStore: deps.delegateGrantStore,
+    realmUsageStore: deps.realmUsageStore,
   });
   const rootResolverDeps = {
     branchStore: deps.branchStore,
     cas: deps.cas,
     key: deps.key,
+    recordNewKey: (realmId: string, nodeKey: string) => realmInfoService.recordNewKey(realmId, nodeKey),
   };
   const files = createFilesController(rootResolverDeps);
   const fs = createFsController(rootResolverDeps);
