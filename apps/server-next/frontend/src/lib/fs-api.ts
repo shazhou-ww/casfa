@@ -152,3 +152,78 @@ export async function createFolder(parentPath: string, name: string): Promise<vo
     throw new Error(data.message ?? data.error ?? "Failed to create folder");
   }
 }
+
+function normalizePath(path: string): string {
+  return !path || path === "/" ? "" : path.replace(/^\/+/, "").replace(/\/+$/, "");
+}
+
+/**
+ * Delete a file or directory at the given path.
+ */
+export async function deletePath(path: string): Promise<void> {
+  const realmId = useAuthStore.getState().user?.userId;
+  if (!realmId) {
+    throw new Error("Not authenticated: realmId (user) not loaded");
+  }
+  const normalized = normalizePath(path);
+  if (normalized === "") {
+    throw new Error("Path required");
+  }
+  const res = await apiFetch(`/api/realm/${realmId}/fs/rm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: normalized }),
+  });
+  if (!res.ok) {
+    const data = (await res.json()) as { message?: string };
+    throw new Error(data.message ?? "Delete failed");
+  }
+}
+
+/**
+ * Move a file or directory from one path to another.
+ */
+export async function movePath(from: string, to: string): Promise<void> {
+  const realmId = useAuthStore.getState().user?.userId;
+  if (!realmId) {
+    throw new Error("Not authenticated: realmId (user) not loaded");
+  }
+  const fromNorm = normalizePath(from);
+  const toNorm = normalizePath(to);
+  if (fromNorm === "" || toNorm === "") {
+    throw new Error("from and to required");
+  }
+  const res = await apiFetch(`/api/realm/${realmId}/fs/mv`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from: fromNorm, to: toNorm }),
+  });
+  if (!res.ok) {
+    const data = (await res.json()) as { message?: string };
+    throw new Error(data.message ?? "Move failed");
+  }
+}
+
+/**
+ * Copy a file or directory from one path to another.
+ */
+export async function copyPath(from: string, to: string): Promise<void> {
+  const realmId = useAuthStore.getState().user?.userId;
+  if (!realmId) {
+    throw new Error("Not authenticated: realmId (user) not loaded");
+  }
+  const fromNorm = normalizePath(from);
+  const toNorm = normalizePath(to);
+  if (fromNorm === "" || toNorm === "") {
+    throw new Error("from and to required");
+  }
+  const res = await apiFetch(`/api/realm/${realmId}/fs/cp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from: fromNorm, to: toNorm }),
+  });
+  if (!res.ok) {
+    const data = (await res.json()) as { message?: string };
+    throw new Error(data.message ?? "Copy failed");
+  }
+}
