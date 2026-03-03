@@ -85,6 +85,8 @@ export function DirectoryTree({
   const [moveCopyLoading, setMoveCopyLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const dragCountRef = useRef(0);
 
   const pathParts = formatPath(currentPath);
 
@@ -278,20 +280,18 @@ export function DirectoryTree({
 
   const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
-  const handleFileSelect = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files;
-      if (!files?.length) return;
+  const doUploadFiles = useCallback(
+    async (files: File[] | FileList) => {
+      const fileArray = Array.from(files);
+      if (!fileArray.length) return;
       const basePath = (currentPath || "/").replace(/^\/+|\/+$/g, "");
       let ok = 0;
-      let skipped = 0;
       setUploading(true);
       try {
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i]!;
+        for (let i = 0; i < fileArray.length; i++) {
+          const file = fileArray[i]!;
           if (file.size > MAX_FILE_BYTES) {
             setSnackbar({ message: `${file.name} 超过 4MB，已跳过`, severity: "error" });
-            skipped++;
             continue;
           }
           const pathArg = basePath ? `${basePath}/${file.name}` : file.name;
@@ -300,7 +300,7 @@ export function DirectoryTree({
             ok++;
           } catch (err) {
             setSnackbar({
-              message: (err instanceof Error ? err.message : "上传失败") + (files.length > 1 ? ` (${file.name})` : ""),
+              message: (err instanceof Error ? err.message : "上传失败") + (fileArray.length > 1 ? ` (${file.name})` : ""),
               severity: "error",
             });
           }
@@ -311,10 +311,46 @@ export function DirectoryTree({
         }
       } finally {
         setUploading(false);
-        e.target.value = "";
       }
     },
     [currentPath]
+  );
+
+  const handleFileSelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files?.length) return;
+      await doUploadFiles(files);
+      e.target.value = "";
+    },
+    [doUploadFiles]
+  );
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCountRef.current += 1;
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCountRef.current = Math.max(0, dragCountRef.current - 1);
+    if (dragCountRef.current === 0) setDragOver(false);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      dragCountRef.current = 0;
+      const files = e.dataTransfer?.files;
+      if (files?.length) await doUploadFiles(files);
+    },
+    [doUploadFiles]
   );
 
   return (
@@ -549,8 +585,35 @@ export function DirectoryTree({
         </DialogActions>
       </Dialog>
 
-      {/* List */}
-      <Box sx={{ flex: 1, overflow: "auto" }}>
+      {/* List with drag-drop */}
+      <Box
+        sx={{ flex: 1, overflow: "hidden", position: "relative" }}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+        {dragOver && (
+          <Box
+            sx={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 10,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              bgcolor: "action.hover",
+              border: "2px dashed",
+              borderColor: "primary.main",
+              borderRadius: 1,
+            }}
+          >
+            <Typography variant="body1" color="primary.main">
+              释放以上传
+            </Typography>
+          </Box>
+        )}
+      <Box sx={{ flex: 1, overflow: "auto", height: "100%" }}>
         {loading && (
           <Box display="flex" justifyContent="center" py={4}>
             <Typography variant="body2" color="text.secondary">
@@ -613,6 +676,7 @@ export function DirectoryTree({
             ))}
           </List>
         )}
+      </Box>
       </Box>
 
       <Snackbar
