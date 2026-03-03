@@ -47,7 +47,12 @@ export function createMemoryBranchStore(): BranchStore {
     },
 
     async ensureRealmRoot(realmId: string, emptyRootKey: string) {
-      if (realmRootBranchId.has(realmId)) return;
+      const existingBranchId = realmRootBranchId.get(realmId);
+      if (existingBranchId) {
+        if (roots.get(existingBranchId) !== undefined) return;
+        await this.setBranchRoot(existingBranchId, emptyRootKey);
+        return;
+      }
       const branchId = crypto.randomUUID();
       await this.insertBranch({
         branchId,

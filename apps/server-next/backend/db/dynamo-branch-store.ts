@@ -162,7 +162,60 @@ export function createDynamoBranchStore(
           Limit: 1,
         })
       );
-      if (r.Items?.[0]?.rootBranchId) return;
+      const existing = r.Items?.[0] as { rootBranchId?: string } | undefined;
+      if (existing?.rootBranchId) {
+        const branchId = existing.rootBranchId;
+        const currentRoot = await this.getBranchRoot(branchId);
+        if (currentRoot !== null) return;
+        await this.setBranchRoot(branchId, emptyRootKey);
+        return;
+      }
+      const legacy = await doc.send(
+        new QueryCommand({
+          TableName: tableName,
+          IndexName: GSI1_NAME,
+          KeyConditionExpression: "gsi1pk = :pk AND gsi1sk = :sk",
+          ExpressionAttributeValues: {
+            ":pk": toGsi1Pk(realmId),
+            ":sk": GSI1SK_ROOT,
+          },
+          Limit: 1,
+        })
+      );
+      const legItem = legacy.Items?.[0] as Record<string, unknown> | undefined;
+      if (legItem?.pk) {
+        const pk = legItem.pk as string;
+        const branchId = pk.startsWith(PK_PREFIX) ? pk.slice(PK_PREFIX.length) : pk;
+        const currentRoot = await this.getBranchRoot(branchId);
+        if (currentRoot !== null) {
+          try {
+            await doc.send(
+              new PutCommand({
+                TableName: tableName,
+                Item: { pk: realmPk(realmId), sk: SK_REALM, rootBranchId: branchId },
+                ConditionExpression: "attribute_not_exists(pk)",
+              })
+            );
+          } catch {
+            /* another writer wrote REALM row */
+          }
+          return;
+        }
+        try {
+          await doc.send(
+            new PutCommand({
+              TableName: tableName,
+              Item: { pk: realmPk(realmId), sk: SK_REALM, rootBranchId: branchId },
+              ConditionExpression: "attribute_not_exists(pk)",
+            })
+          );
+        } catch (e: unknown) {
+          if ((e as { name?: string })?.name === "ConditionalCheckFailedException") return;
+          throw e;
+        }
+        await this.setBranchRoot(branchId, emptyRootKey);
+        return;
+      }
       const branchId = crypto.randomUUID();
       await this.insertBranch({
         branchId,
