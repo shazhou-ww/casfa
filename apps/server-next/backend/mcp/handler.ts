@@ -12,6 +12,7 @@ import {
   getEffectiveDelegateId,
 } from "../services/root-resolver.ts";
 import { addOrReplaceAtPath, removeEntryAtPath } from "../services/tree-mutations.ts";
+import { completeBranch } from "../services/branch-complete.ts";
 import { encodeDictNode, hashToKey } from "@casfa/core";
 import { streamFromBytes } from "@casfa/cas";
 import type { ServerConfig } from "../config.ts";
@@ -101,6 +102,16 @@ const MCP_TOOLS = [
         parentBranchId: { type: "string" as const, description: "Optional parent branch (Worker only)" },
       },
       required: ["mountPath"] as string[],
+    },
+  },
+  {
+    name: "branch_complete",
+    description:
+      "Complete the current branch (Worker only): merge into parent and invalidate this branch.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+      required: [] as string[],
     },
   },
   {
@@ -346,6 +357,19 @@ async function handleToolsCall(
           },
         ],
       });
+    }
+
+    if (name === "branch_complete") {
+      if (auth.type !== "worker") {
+        return mcpError(id, MCP_INVALID_PARAMS, "Only Worker can complete a branch");
+      }
+      try {
+        const result = await completeBranch(auth.branchId, deps);
+        return mcpSuccess(id, { content: [{ type: "text" as const, text: JSON.stringify(result) }] });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return mcpError(id, MCP_INVALID_PARAMS, message);
+      }
     }
 
     if (name === "fs_mkdir") {

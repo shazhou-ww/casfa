@@ -6,6 +6,7 @@ import type { Context } from "hono";
 import type { Env } from "../types.ts";
 import type { RootResolverDeps } from "../services/root-resolver.ts";
 import { resolvePath } from "../services/root-resolver.ts";
+import { completeBranch } from "../services/branch-complete.ts";
 import type { Branch } from "../types/branch.ts";
 import type { ServerConfig } from "../config.ts";
 
@@ -189,46 +190,23 @@ export function createBranchesController(deps: BranchesControllerDeps) {
       if (branchId !== auth.branchId) {
         return c.json({ error: "FORBIDDEN", message: "Can only complete own branch" }, 403);
       }
-      const branch = await deps.branchStore.getBranch(branchId);
-      if (!branch) {
-        return c.json({ error: "NOT_FOUND", message: "Branch not found" }, 404);
+      try {
+        const result = await completeBranch(branchId, deps);
+        return c.json(result, 200);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (
+          message.includes("Branch not found") ||
+          message.includes("has no root") ||
+          message.includes("Parent has no root")
+        ) {
+          return c.json({ error: "NOT_FOUND", message }, 404);
+        }
+        if (message.includes("Cannot complete root") || message.includes("Invalid mount path")) {
+          return c.json({ error: "BAD_REQUEST", message }, 400);
+        }
+        throw err;
       }
-      const parentId = branch.parentId;
-      if (parentId === null) {
-        return c.json({ error: "BAD_REQUEST", message: "Cannot complete root branch" }, 400);
-      }
-      const childRootKey = await deps.branchStore.getBranchRoot(branchId);
-      if (childRootKey === null) {
-        return c.json({ error: "NOT_FOUND", message: "Branch has no root" }, 404);
-      }
-      const realmId = branch.realmId;
-      const rootRecord = await deps.branchStore.getRealmRootRecord(realmId);
-      const isParentRoot = rootRecord !== null && rootRecord.branchId === parentId;
-      const parentRootKey = isParentRoot
-        ? await deps.branchStore.getRealmRoot(realmId)
-        : await deps.branchStore.getBranchRoot(parentId);
-      if (parentRootKey === null) {
-        return c.json({ error: "NOT_FOUND", message: "Parent has no root" }, 404);
-      }
-      const { replaceSubtreeAtPath } = await import("../services/tree-mutations.ts");
-      const segments = branch.mountPath.split("/").filter((s: string) => s.length > 0);
-      if (segments.length === 0) {
-        return c.json({ error: "BAD_REQUEST", message: "Invalid mount path" }, 400);
-      }
-      const newParentRootKey = await replaceSubtreeAtPath(
-        deps.cas,
-        deps.key,
-        parentRootKey,
-        segments,
-        childRootKey
-      );
-      if (isParentRoot) {
-        await deps.branchStore.setRealmRoot(realmId, newParentRootKey);
-      } else {
-        await deps.branchStore.setBranchRoot(parentId, newParentRootKey);
-      }
-      await deps.branchStore.removeBranch(branchId);
-      return c.json({ completed: branchId }, 200);
     },
   };
 }
