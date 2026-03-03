@@ -95,14 +95,15 @@ export function createAuthMiddleware(deps: AuthMiddlewareDeps) {
   let jwtVerifier = deps.jwtVerifier;
   if (jwtVerifier == null) {
     const auth = deps.config?.auth;
-    if (auth?.cognitoRegion && auth?.cognitoUserPoolId) {
+    // Prefer mock when MOCK_JWT_SECRET is set; otherwise use Cognito.
+    if (auth?.mockJwtSecret) {
+      jwtVerifier = createMockSecretJwtVerifier(auth.mockJwtSecret);
+    } else if (auth?.cognitoRegion && auth?.cognitoUserPoolId) {
       jwtVerifier = createCognitoJwtVerifier({
         region: auth.cognitoRegion,
         userPoolId: auth.cognitoUserPoolId,
         clientId: auth.cognitoClientId,
       });
-    } else if (auth?.mockJwtSecret) {
-      jwtVerifier = createMockSecretJwtVerifier(auth.mockJwtSecret);
     } else {
       jwtVerifier = mockJwtVerify;
     }
