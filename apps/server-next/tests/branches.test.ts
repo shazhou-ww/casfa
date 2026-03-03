@@ -118,6 +118,35 @@ describe("Branches / Worker", () => {
     expect(data.branches?.some((b) => b.branchId === branchId)).toBe(false);
   });
 
+  it("complete after revoke returns 404", async () => {
+    const token = ctx.helpers.createUserToken(realmId);
+    await ctx.helpers.authRequest(
+      token,
+      "POST",
+      `/api/realm/${realmId}/fs/mkdir`,
+      { path: "toRevoke" }
+    );
+    const { accessToken: workerToken, branchId } = await ctx.helpers.createBranch(
+      token,
+      realmId,
+      { mountPath: "toRevoke" }
+    );
+    await ctx.helpers.authRequest(
+      token,
+      "POST",
+      `/api/realm/${realmId}/branches/${branchId}/revoke`
+    );
+    const completeRes = await ctx.helpers.authRequest(
+      workerToken,
+      "POST",
+      "/api/realm/me/branches/me/complete"
+    );
+    expect(completeRes.status).toBe(404);
+    const data = (await completeRes.json()) as { error?: string; message?: string };
+    expect(data.error).toBe("NOT_FOUND");
+    expect(data.message).toContain("Branch not found");
+  });
+
   it("complete merges sub-branch into parent", async () => {
     const token = ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(
