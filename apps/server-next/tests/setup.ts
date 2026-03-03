@@ -14,6 +14,7 @@ import { createCasFacade } from "../backend/services/cas.ts";
 import { createDynamoDelegateGrantStore } from "../backend/db/dynamo-delegate-grant-store.ts";
 import { createDynamoBranchStore } from "../backend/db/dynamo-branch-store.ts";
 import { createMemoryDerivedDataStore } from "../backend/db/derived-data.ts";
+import { createMemoryRealmUsageStore } from "../backend/db/realm-usage-store.ts";
 import { createMemoryUserSettingsStore } from "../backend/db/user-settings.ts";
 
 export type TestServer = {
@@ -206,6 +207,7 @@ export function startTestServer(options?: { port?: number }): TestServer {
       : undefined,
   });
   const derivedDataStore = createMemoryDerivedDataStore();
+  const realmUsageStore = createMemoryRealmUsageStore();
   const userSettingsStore = createMemoryUserSettingsStore();
   const app = createApp({
     config,
@@ -214,6 +216,7 @@ export function startTestServer(options?: { port?: number }): TestServer {
     branchStore,
     delegateGrantStore,
     derivedDataStore,
+    realmUsageStore,
     userSettingsStore,
   });
 

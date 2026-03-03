@@ -23,6 +23,10 @@ function hasFileWrite(auth: NonNullable<Env["Variables"]["auth"]>): boolean {
   return auth.access === "readwrite";
 }
 
+function getRealmId(auth: NonNullable<Env["Variables"]["auth"]>): string {
+  return auth.type === "user" ? auth.userId : auth.realmId;
+}
+
 export type FsControllerDeps = RootResolverDeps;
 
 async function parseBodyJson<T>(c: Context<Env>): Promise<T> {
@@ -46,15 +50,19 @@ export function createFsController(deps: FsControllerDeps) {
         if (rootKey === null) {
           return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
+        const realmId = getRealmId(auth);
+        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
         const emptyDict = await encodeDictNode({ children: [], childNames: [] }, deps.key);
         const emptyDictKey = hashToKey(emptyDict.hash);
         await deps.cas.putNode(emptyDictKey, streamFromBytes(emptyDict.bytes));
+        deps.recordNewKey?.(realmId, emptyDictKey);
         const newRootKey = await addOrReplaceAtPath(
           deps.cas,
           deps.key,
           rootKey,
           pathStr,
-          emptyDictKey
+          emptyDictKey,
+          onNodePut
         );
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
@@ -87,10 +95,12 @@ export function createFsController(deps: FsControllerDeps) {
         if (rootKey === null) {
           return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
+        const realmId = getRealmId(auth);
+        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
         for (const p of paths) {
           const pathStr = p.trim().replace(/^\/+|\/+$/g, "");
           if (!pathStr) continue;
-          rootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, pathStr);
+          rootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, pathStr, onNodePut);
         }
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, rootKey);
@@ -128,8 +138,10 @@ export function createFsController(deps: FsControllerDeps) {
         if (nodeKey === null) {
           return c.json({ error: "NOT_FOUND", message: "from path not found" }, 404);
         }
-        rootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, fromStr);
-        rootKey = await addOrReplaceAtPath(deps.cas, deps.key, rootKey, toStr, nodeKey);
+        const realmId = getRealmId(auth);
+        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
+        rootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, fromStr, onNodePut);
+        rootKey = await addOrReplaceAtPath(deps.cas, deps.key, rootKey, toStr, nodeKey, onNodePut);
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, rootKey);
         return c.json({ from: fromStr, to: toStr }, 200);
@@ -166,7 +178,9 @@ export function createFsController(deps: FsControllerDeps) {
         if (nodeKey === null) {
           return c.json({ error: "NOT_FOUND", message: "from path not found" }, 404);
         }
-        const newRootKey = await addOrReplaceAtPath(deps.cas, deps.key, rootKey, toStr, nodeKey);
+        const realmId = getRealmId(auth);
+        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
+        const newRootKey = await addOrReplaceAtPath(deps.cas, deps.key, rootKey, toStr, nodeKey, onNodePut);
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
         return c.json({ from: fromStr, to: toStr }, 201);

@@ -28,6 +28,10 @@ function hasFileWrite(auth: NonNullable<Env["Variables"]["auth"]>): boolean {
   return auth.access === "readwrite";
 }
 
+function getRealmId(auth: NonNullable<Env["Variables"]["auth"]>): string {
+  return auth.type === "user" ? auth.userId : auth.realmId;
+}
+
 export type FilesControllerDeps = RootResolverDeps;
 
 function getPathParam(c: Context<Env>): string {
@@ -261,12 +265,16 @@ export function createFilesController(deps: FilesControllerDeps) {
         );
         const fileNodeKey = hashToKey(encoded.hash);
         await deps.cas.putNode(fileNodeKey, streamFromBytes(encoded.bytes));
+        const realmId = getRealmId(auth);
+        deps.recordNewKey?.(realmId, fileNodeKey);
+        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
         const newRootKey = await addOrReplaceAtPath(
           deps.cas,
           deps.key,
           rootKey,
           pathStr,
-          fileNodeKey
+          fileNodeKey,
+          onNodePut
         );
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);

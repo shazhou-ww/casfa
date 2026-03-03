@@ -385,15 +385,19 @@ async function handleToolsCall(
         return mcpError(id, MCP_INVALID_PARAMS, "Realm not initialized. Open your profile or realm first.");
       }
       try {
+        const realmId = getRealmId(auth);
+        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
         const emptyDict = await encodeDictNode({ children: [], childNames: [] }, deps.key);
         const emptyDictKey = hashToKey(emptyDict.hash);
         await deps.cas.putNode(emptyDictKey, streamFromBytes(emptyDict.bytes));
+        deps.recordNewKey?.(realmId, emptyDictKey);
         const newRootKey = await addOrReplaceAtPath(
           deps.cas,
           deps.key,
           rootKey,
           pathStr,
-          emptyDictKey
+          emptyDictKey,
+          onNodePut
         );
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
@@ -426,7 +430,9 @@ async function handleToolsCall(
         return mcpError(id, MCP_INVALID_PARAMS, "Realm not initialized. Open your profile or realm first.");
       }
       try {
-        const newRootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, pathStr);
+        const realmId = getRealmId(auth);
+        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
+        const newRootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, pathStr, onNodePut);
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
         return mcpSuccess(id, {
@@ -463,8 +469,10 @@ async function handleToolsCall(
         if (nodeKey === null) {
           return mcpError(id, MCP_INVALID_PARAMS, "from path not found");
         }
-        let newRootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, fromStr);
-        newRootKey = await addOrReplaceAtPath(deps.cas, deps.key, newRootKey, toStr, nodeKey);
+        const realmId = getRealmId(auth);
+        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
+        let newRootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, fromStr, onNodePut);
+        newRootKey = await addOrReplaceAtPath(deps.cas, deps.key, newRootKey, toStr, nodeKey, onNodePut);
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
         return mcpSuccess(id, {
@@ -501,7 +509,9 @@ async function handleToolsCall(
         if (nodeKey === null) {
           return mcpError(id, MCP_INVALID_PARAMS, "from path not found");
         }
-        const newRootKey = await addOrReplaceAtPath(deps.cas, deps.key, rootKey, toStr, nodeKey);
+        const realmId = getRealmId(auth);
+        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
+        const newRootKey = await addOrReplaceAtPath(deps.cas, deps.key, rootKey, toStr, nodeKey, onNodePut);
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
         return mcpSuccess(id, {
