@@ -4,11 +4,12 @@
 import { describe, expect, it } from "bun:test";
 import type { CasFacade } from "@casfa/cas";
 import { createCasFacade } from "@casfa/cas";
-import { createCasStorageFromBuffer } from "@casfa/cas";
+import { createCasStorageFromBuffer, streamFromBytes } from "@casfa/cas";
 import { encodeDictNode, hashToKey } from "@casfa/core";
 import type { KeyProvider } from "@casfa/core";
 import { computeSizeFlagByte } from "@casfa/core";
-import { tryRemoveEntryAtPath, removeEntryAtPath } from "../../services/tree-mutations.ts";
+import { tryRemoveEntryAtPath, removeEntryAtPath, ensurePathThenAddOrReplace, addOrReplaceAtPath } from "../../services/tree-mutations.ts";
+import { resolvePath } from "../../services/root-resolver.ts";
 
 function createKeyProvider(): KeyProvider {
   return {
@@ -64,5 +65,29 @@ describe("tryRemoveEntryAtPath", () => {
     expect(out).not.toBe(rootKey);
     const expected = await removeEntryAtPath(cas, key, rootKey, "a/b");
     expect(out).toBe(expected);
+  });
+});
+
+describe("ensurePathThenAddOrReplace", () => {
+  it("when path exists same as addOrReplaceAtPath", async () => {
+    const { cas, key, rootKey } = await createMockCasWithTree();
+    const emptyDict = await encodeDictNode({ children: [], childNames: [] }, key);
+    const emptyKey = hashToKey(emptyDict.hash);
+    await cas.putNode(emptyKey, streamFromBytes(emptyDict.bytes));
+    const out = await ensurePathThenAddOrReplace(cas, key, rootKey, "a/c", emptyKey);
+    expect(out).not.toBe(rootKey);
+    const expected = await addOrReplaceAtPath(cas, key, rootKey, "a/c", emptyKey);
+    expect(out).toBe(expected);
+  });
+
+  it("when path has missing segments creates dirs then add", async () => {
+    const { cas, key, rootKey } = await createMockCasWithTree();
+    const emptyDict = await encodeDictNode({ children: [], childNames: [] }, key);
+    const leafKey = hashToKey(emptyDict.hash);
+    await cas.putNode(leafKey, streamFromBytes(emptyDict.bytes));
+    const out = await ensurePathThenAddOrReplace(cas, key, rootKey, "a/x/y", leafKey);
+    expect(out).not.toBe(rootKey);
+    const resolved = await resolvePath(cas, out, "a/x/y");
+    expect(resolved).toBe(leafKey);
   });
 });
