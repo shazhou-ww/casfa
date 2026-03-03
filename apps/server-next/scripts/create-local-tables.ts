@@ -64,7 +64,6 @@ async function createTable(
   const name = input.TableName!;
   try {
     await client.send(new CreateTableCommand(input));
-    console.log(`Created table: ${name}`);
   } catch (err: unknown) {
     if (
       err &&
@@ -150,9 +149,7 @@ export async function ensureTables(
 
 async function main(): Promise<void> {
   const { stage, endpoint } = parseArgs();
-  console.log(`Creating tables for stage=${stage} at ${endpoint}...`);
   await ensureTables(endpoint, stage);
-  console.log("Done.");
 }
 
 if (import.meta.main) {

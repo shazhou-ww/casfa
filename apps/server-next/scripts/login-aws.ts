@@ -68,7 +68,6 @@ if (!profile) {
   process.exit(1);
 }
 
-console.log(`Running aws sso login --profile ${profile} ...`);
 const result = spawnSync("aws", ["sso", "login", "--profile", profile], {
   stdio: "inherit",
   shell: true,

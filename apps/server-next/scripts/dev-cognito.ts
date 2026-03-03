@@ -52,7 +52,6 @@ function ensureAwsSsoLogin(): void {
     stdio: "pipe",
   });
   if (checkResult.status === 0) return;
-  console.log("\nAWS SSO not logged in or token expired. Running bun run login:aws ...");
   const loginResult = spawnSync("bun", ["run", "login:aws"], {
     cwd: appRoot,
     stdio: "inherit",
@@ -74,7 +73,6 @@ function isDockerRunning(): boolean {
 }
 
 function startDockerService(serviceName: string): boolean {
-  console.log(`\nStarting ${serviceName} container...`);
   const result = spawnSync("docker", ["compose", "up", "-d", serviceName], {
     cwd: appRoot,
     encoding: "utf-8",
@@ -90,11 +88,7 @@ async function waitForDynamoDB(
   delayMs = 1000
 ): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
-    console.log(`  Attempt ${i + 1}/${maxAttempts}...`);
-    if (await isDynamoDBReady(endpoint)) {
-      console.log("DynamoDB is ready!");
-      return true;
-    }
+    if (await isDynamoDBReady(endpoint)) return true;
     await new Promise((r) => setTimeout(r, delayMs));
   }
   return false;
@@ -125,11 +119,7 @@ async function waitForPort(
   delayMs = 1000
 ): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
-    console.log(`  Waiting for ${label} on port ${port} (${i + 1}/${maxAttempts})...`);
-    if (await isPortOpen("127.0.0.1", port)) {
-      console.log(`${label} is ready!`);
-      return true;
-    }
+    if (await isPortOpen("127.0.0.1", port)) return true;
     await new Promise((r) => setTimeout(r, delayMs));
   }
   return false;
@@ -144,39 +134,30 @@ async function main(): Promise<void> {
   }
 
   if (!(await isDynamoDBReady(DYNAMODB_ENDPOINT))) {
-    console.log(`\nDynamoDB is not running at ${DYNAMODB_ENDPOINT}`);
     if (!startDockerService("dynamodb")) {
       console.error("Failed to start dynamodb container.");
       process.exit(1);
     }
-    console.log("\nWaiting for DynamoDB to be ready...");
     if (!(await waitForDynamoDB(DYNAMODB_ENDPOINT))) {
       console.error("DynamoDB failed to start properly.");
       process.exit(1);
     }
   }
 
-  console.log("\nEnsuring DynamoDB tables exist...");
   await runSetup("dev");
 
   if (!(await isPortOpen("127.0.0.1", S3_PORT))) {
-    console.log("\nMinIO (S3) is not running at port " + S3_PORT);
     if (!startDockerService("minio")) {
       console.error("Failed to start minio container.");
       process.exit(1);
     }
-    console.log("  Giving MinIO a few seconds to bind port...");
     await new Promise((r) => setTimeout(r, 3000));
     if (!(await waitForPort(S3_PORT, "MinIO (S3)", 60, 1000))) {
-      console.error("MinIO did not become ready in time.");
-      console.error("From apps/server-next run: docker compose ps && docker compose logs minio");
+      console.error("MinIO did not become ready in time. Run: docker compose ps && docker compose logs minio");
       process.exit(1);
     }
-  } else {
-    console.log("\nMinIO (S3) already running on port " + S3_PORT);
   }
 
-  console.log("\nEnsuring S3 bucket exists...");
   await ensureS3Bucket(S3_ENDPOINT, S3_BUCKET_DEV);
 
   const env = {
@@ -187,7 +168,6 @@ async function main(): Promise<void> {
     S3_BUCKET: process.env.S3_BUCKET ?? S3_BUCKET_DEV,
   };
 
-  console.log(`\nStarting API (Bun) on http://localhost:${HTTP_PORT} ...\n`);
   spawn("bun", ["run", "backend/index.ts"], {
     cwd: appRoot,
     env,

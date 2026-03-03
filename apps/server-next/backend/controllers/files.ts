@@ -49,7 +49,7 @@ async function ensureRootForUser(
     await deps.branchStore.ensureRealmRoot(auth.userId, emptyKey);
     return deps.branchStore.getRealmRoot(auth.userId);
   } catch (err) {
-    console.warn("[files] ensureRealmRoot failed:", err instanceof Error ? err.message : err);
+    console.error("[files] ensureRealmRoot failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -64,9 +64,7 @@ export function createFilesController(deps: FilesControllerDeps) {
       const pathStr = getPathParam(c);
       try {
         let rootKey = await getCurrentRoot(auth, deps);
-        console.log("[files-root] list pathStr=%j auth.type=%s getCurrentRoot=>%s", pathStr, auth.type, rootKey ?? "null");
         rootKey = await ensureRootForUser(auth, rootKey, deps);
-        console.log("[files-root] after ensureRootForUser=>%s", rootKey ?? "null");
         if (rootKey === null) {
           return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
@@ -74,23 +72,15 @@ export function createFilesController(deps: FilesControllerDeps) {
         if (nodeKey === null) {
           return c.json({ error: "NOT_FOUND", message: "Path not found" }, 404);
         }
-        console.log("[files-root] resolvePath=>nodeKey=%j", nodeKey);
         let node = await getNodeDecoded(deps.cas, nodeKey);
-        console.log("[files-root] getNodeDecoded(nodeKey)=>%s", node ? "ok" : "null");
         const shouldRepair = !node && pathStr === "" && nodeKey === rootKey && auth.type === "user";
-        console.log("[files-root] repair? pathStr==='' && !node && nodeKey===rootKey && user => %s", shouldRepair);
         if (shouldRepair) {
           try {
-            console.log("[files-root] repair: ensureEmptyRoot...");
             const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
-            console.log("[files-root] repair: ensureEmptyRoot=>emptyKey=%j", emptyKey);
             await deps.branchStore.setRealmRoot(auth.userId, emptyKey);
-            console.log("[files-root] repair: setRealmRoot done");
             const newRootKey = await deps.branchStore.getRealmRoot(auth.userId);
-            console.log("[files-root] repair: getRealmRoot=>newRootKey=%j", newRootKey ?? "null");
             if (newRootKey) {
               node = await getNodeDecoded(deps.cas, newRootKey);
-              console.log("[files-root] repair: getNodeDecoded(newRootKey)=>%s", node ? "ok" : "null");
             }
           } catch (err) {
             console.error("[files-root] repair failed:", err instanceof Error ? err.message : err);

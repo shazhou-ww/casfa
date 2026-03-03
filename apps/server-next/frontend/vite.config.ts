@@ -10,12 +10,8 @@ const API_PORT = 7101;
 const RETRY_DELAY_MS = 1000;
 const MAX_RETRIES = 60; // ~60s max wait
 
-const LOG_PREFIX = "[vite-mcp]";
-
-function logMcp(msg: string, extra?: Record<string, unknown>) {
-  const ts = new Date().toISOString();
-  const extraStr = extra ? " " + JSON.stringify(extra) : "";
-  console.log(`${LOG_PREFIX} ${ts} ${msg}${extraStr}`);
+function logMcp(_msg: string, _extra?: Record<string, unknown>) {
+  // Logging disabled; keep for optional debug.
 }
 
 function readBody(req: Connect.IncomingMessage): Promise<Buffer> {
