@@ -561,8 +561,18 @@ async function handleToolsCall(
           ? args.contentType.split(";")[0]?.trim().slice(0, 256) || "text/plain"
           : "text/plain";
       const bytes = new TextEncoder().encode(content);
+      const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf]);
+      const data =
+        contentType.startsWith("text/")
+          ? (() => {
+              const withBom = new Uint8Array(UTF8_BOM.length + bytes.length);
+              withBom.set(UTF8_BOM);
+              withBom.set(bytes, UTF8_BOM.length);
+              return withBom;
+            })()
+          : bytes;
       const MAX_BYTES = 4 * 1024 * 1024;
-      if (bytes.length > MAX_BYTES) {
+      if (data.length > MAX_BYTES) {
         return mcpError(id, MCP_INVALID_PARAMS, `Content too large (max ${MAX_BYTES} bytes)`);
       }
       const rootKey = await getCurrentRoot(auth, deps);
@@ -572,7 +582,7 @@ async function handleToolsCall(
       try {
         const realmId = getRealmId(auth);
         const encoded = await encodeFileNode(
-          { data: bytes, fileSize: bytes.length, contentType },
+          { data, fileSize: data.length, contentType },
           deps.key
         );
         const fileNodeKey = hashToKey(encoded.hash);
