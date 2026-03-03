@@ -192,6 +192,52 @@ export async function removeEntryAtPath(
   );
 }
 
+/** Ensure path exists (create missing dirs as empty dicts), then add or replace entry. Returns new root key. */
+export async function ensurePathThenAddOrReplace(
+  cas: CasFacade,
+  keyProvider: KeyProvider,
+  rootKey: string,
+  pathStr: string,
+  newChildKey: string,
+  onNodePut?: OnNodePut
+): Promise<string> {
+  const segments = normalizePath(pathStr);
+  if (segments.length === 0) throw new Error("Path must not be empty");
+  const emptyEncoded = await encodeDictNode(
+    { children: [], childNames: [] },
+    keyProvider
+  );
+  const emptyDictKey = hashToKey(emptyEncoded.hash);
+  const exists = await cas.hasNode(emptyDictKey);
+  if (!exists) {
+    await cas.putNode(emptyDictKey, streamFromBytes(emptyEncoded.bytes));
+    onNodePut?.(emptyDictKey);
+  }
+  let root = rootKey;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const pathPrefix = segments.slice(0, i + 1).join("/");
+    const resolved = await resolvePath(cas, root, pathPrefix);
+    if (resolved === null) {
+      root = await addOrReplaceAtPath(
+        cas,
+        keyProvider,
+        root,
+        pathPrefix,
+        emptyDictKey,
+        onNodePut
+      );
+    }
+  }
+  return addOrReplaceAtPath(
+    cas,
+    keyProvider,
+    root,
+    pathStr,
+    newChildKey,
+    onNodePut
+  );
+}
+
 /** Remove entry at path if it exists; no-op otherwise. Returns new root key (or rootKey unchanged). */
 export async function tryRemoveEntryAtPath(
   cas: CasFacade,
