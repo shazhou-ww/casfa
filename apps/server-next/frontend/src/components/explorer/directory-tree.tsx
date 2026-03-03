@@ -1,4 +1,5 @@
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import FolderIcon from "@mui/icons-material/Folder";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
@@ -22,7 +23,7 @@ import {
   Toolbar,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createFolder,
   fetchList,
@@ -34,6 +35,7 @@ import {
   deletePath,
   movePath,
   copyPath,
+  uploadFile,
 } from "../../lib/fs-api";
 import type { FsEntry } from "../../types/api";
 
@@ -81,6 +83,8 @@ export function DirectoryTree({
   const [snackbar, setSnackbar] = useState<{ message: string; severity: "success" | "error" } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [moveCopyLoading, setMoveCopyLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const pathParts = formatPath(currentPath);
 
@@ -272,6 +276,47 @@ export function DirectoryTree({
     }
   }, [moveCopyDialog]);
 
+  const MAX_FILE_BYTES = 4 * 1024 * 1024;
+
+  const handleFileSelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files?.length) return;
+      const basePath = (currentPath || "/").replace(/^\/+|\/+$/g, "");
+      let ok = 0;
+      let skipped = 0;
+      setUploading(true);
+      try {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i]!;
+          if (file.size > MAX_FILE_BYTES) {
+            setSnackbar({ message: `${file.name} 超过 4MB，已跳过`, severity: "error" });
+            skipped++;
+            continue;
+          }
+          const pathArg = basePath ? `${basePath}/${file.name}` : file.name;
+          try {
+            await uploadFile(pathArg, file);
+            ok++;
+          } catch (err) {
+            setSnackbar({
+              message: (err instanceof Error ? err.message : "上传失败") + (files.length > 1 ? ` (${file.name})` : ""),
+              severity: "error",
+            });
+          }
+        }
+        if (ok > 0) {
+          setRefreshKey((k) => k + 1);
+          setSnackbar({ message: ok === 1 ? "已上传" : `已上传 ${ok} 个文件`, severity: "success" });
+        }
+      } finally {
+        setUploading(false);
+        e.target.value = "";
+      }
+    },
+    [currentPath]
+  );
+
   return (
     <Box display="flex" flexDirection="column" height="100%" overflow="hidden">
       {/* Toolbar: Up + breadcrumb (path segments only; root = no leading "/") */}
@@ -316,6 +361,23 @@ export function DirectoryTree({
             </Typography>
           ))
         )}
+        <Button
+          size="small"
+          startIcon={<CloudUploadIcon />}
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          sx={{ ml: 1 }}
+          aria-label="上传"
+        >
+          上传
+        </Button>
+        <input
+          type="file"
+          multiple
+          ref={fileInputRef}
+          style={{ display: "none" }}
+          onChange={handleFileSelect}
+        />
         <Button
           size="small"
           startIcon={<CreateNewFolderIcon />}
