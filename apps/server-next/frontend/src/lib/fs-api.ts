@@ -157,6 +157,32 @@ function normalizePath(path: string): string {
   return !path || path === "/" ? "" : path.replace(/^\/+/, "").replace(/\/+$/, "");
 }
 
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Upload a file to the given path (path must include file name).
+ * Uses PUT /api/realm/:realmId/files/:path. Max 4MB per file.
+ */
+export async function uploadFile(path: string, file: File): Promise<void> {
+  const realmId = useAuthStore.getState().user?.userId;
+  if (!realmId) throw new Error("Not authenticated");
+  const normalized = normalizePath(path);
+  if (!normalized) throw new Error("Path must include file name");
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error(`File too large (max ${MAX_UPLOAD_BYTES} bytes)`);
+  }
+  const url = `/api/realm/${realmId}/files/${normalized}`;
+  const res = await apiFetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+    body: file,
+  });
+  if (!res.ok) {
+    const data = (await res.json()) as { message?: string };
+    throw new Error(data.message ?? "Upload failed");
+  }
+}
+
 /**
  * Delete a file or directory at the given path.
  */
