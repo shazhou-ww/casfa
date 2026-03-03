@@ -11,7 +11,7 @@ import {
   getNodeDecoded,
   getEffectiveDelegateId,
 } from "../services/root-resolver.ts";
-import { addOrReplaceAtPath } from "../services/tree-mutations.ts";
+import { addOrReplaceAtPath, removeEntryAtPath } from "../services/tree-mutations.ts";
 import { encodeDictNode, hashToKey } from "@casfa/core";
 import { streamFromBytes } from "@casfa/cas";
 import type { ServerConfig } from "../config.ts";
@@ -145,6 +145,41 @@ const MCP_TOOLS = [
         path: { type: "string" as const, description: "File path" },
       },
       required: ["path"] as string[],
+    },
+  },
+  {
+    name: "fs_rm",
+    description: "Remove a file or directory at the given path. Requires file_write.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        path: { type: "string" as const, description: "Path to remove" },
+      },
+      required: ["path"] as string[],
+    },
+  },
+  {
+    name: "fs_mv",
+    description: "Move or rename a file or directory. Requires file_write.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        from: { type: "string" as const, description: "Source path" },
+        to: { type: "string" as const, description: "Destination path" },
+      },
+      required: ["from", "to"] as string[],
+    },
+  },
+  {
+    name: "fs_cp",
+    description: "Copy a file or directory to a new path. Requires file_write.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        from: { type: "string" as const, description: "Source path" },
+        to: { type: "string" as const, description: "Destination path" },
+      },
+      required: ["from", "to"] as string[],
     },
   },
 ];
@@ -343,6 +378,113 @@ async function handleToolsCall(
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "mkdir failed";
+        if (
+          message.includes("must not contain") ||
+          message.includes("Parent path not found") ||
+          message.includes("Not a dict")
+        ) {
+          return mcpError(id, MCP_INVALID_PARAMS, message);
+        }
+        throw err;
+      }
+    }
+
+    if (name === "fs_rm") {
+      if (!hasFileWrite(auth)) {
+        return mcpError(id, MCP_INVALID_PARAMS, "file_write required");
+      }
+      const pathStr = typeof args.path === "string" ? String(args.path).trim().replace(/^\/+|\/+$/g, "") : "";
+      if (!pathStr) {
+        return mcpError(id, MCP_INVALID_PARAMS, "path required");
+      }
+      const rootKey = await getCurrentRoot(auth, deps);
+      if (rootKey === null) {
+        return mcpError(id, MCP_INVALID_PARAMS, "Realm not initialized. Open your profile or realm first.");
+      }
+      try {
+        const newRootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, pathStr);
+        const delegateId = await getEffectiveDelegateId(auth, deps);
+        await deps.branchStore.setBranchRoot(delegateId, newRootKey);
+        return mcpSuccess(id, {
+          content: [{ type: "text" as const, text: JSON.stringify({ path: pathStr }) }],
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "fs_rm failed";
+        if (
+          message.includes("must not contain") ||
+          message.includes("not found") ||
+          message.includes("Parent path")
+        ) {
+          return mcpError(id, MCP_INVALID_PARAMS, message);
+        }
+        throw err;
+      }
+    }
+
+    if (name === "fs_mv") {
+      if (!hasFileWrite(auth)) {
+        return mcpError(id, MCP_INVALID_PARAMS, "file_write required");
+      }
+      const rootKey = await getCurrentRoot(auth, deps);
+      if (rootKey === null) {
+        return mcpError(id, MCP_INVALID_PARAMS, "Realm not initialized. Open your profile or realm first.");
+      }
+      const fromStr = typeof args.from === "string" ? String(args.from).trim().replace(/^\/+|\/+$/g, "") : "";
+      const toStr = typeof args.to === "string" ? String(args.to).trim().replace(/^\/+|\/+$/g, "") : "";
+      if (!fromStr || !toStr) {
+        return mcpError(id, MCP_INVALID_PARAMS, "from and to required");
+      }
+      try {
+        const nodeKey = await resolvePath(deps.cas, rootKey, fromStr);
+        if (nodeKey === null) {
+          return mcpError(id, MCP_INVALID_PARAMS, "from path not found");
+        }
+        let newRootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, fromStr);
+        newRootKey = await addOrReplaceAtPath(deps.cas, deps.key, newRootKey, toStr, nodeKey);
+        const delegateId = await getEffectiveDelegateId(auth, deps);
+        await deps.branchStore.setBranchRoot(delegateId, newRootKey);
+        return mcpSuccess(id, {
+          content: [{ type: "text" as const, text: JSON.stringify({ from: fromStr, to: toStr }) }],
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "fs_mv failed";
+        if (
+          message.includes("must not contain") ||
+          message.includes("Parent path not found") ||
+          message.includes("Not a dict")
+        ) {
+          return mcpError(id, MCP_INVALID_PARAMS, message);
+        }
+        throw err;
+      }
+    }
+
+    if (name === "fs_cp") {
+      if (!hasFileWrite(auth)) {
+        return mcpError(id, MCP_INVALID_PARAMS, "file_write required");
+      }
+      const rootKey = await getCurrentRoot(auth, deps);
+      if (rootKey === null) {
+        return mcpError(id, MCP_INVALID_PARAMS, "Realm not initialized. Open your profile or realm first.");
+      }
+      const fromStr = typeof args.from === "string" ? String(args.from).trim().replace(/^\/+|\/+$/g, "") : "";
+      const toStr = typeof args.to === "string" ? String(args.to).trim().replace(/^\/+|\/+$/g, "") : "";
+      if (!fromStr || !toStr) {
+        return mcpError(id, MCP_INVALID_PARAMS, "from and to required");
+      }
+      try {
+        const nodeKey = await resolvePath(deps.cas, rootKey, fromStr);
+        if (nodeKey === null) {
+          return mcpError(id, MCP_INVALID_PARAMS, "from path not found");
+        }
+        const newRootKey = await addOrReplaceAtPath(deps.cas, deps.key, rootKey, toStr, nodeKey);
+        const delegateId = await getEffectiveDelegateId(auth, deps);
+        await deps.branchStore.setBranchRoot(delegateId, newRootKey);
+        return mcpSuccess(id, {
+          content: [{ type: "text" as const, text: JSON.stringify({ from: fromStr, to: toStr }) }],
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "fs_cp failed";
         if (
           message.includes("must not contain") ||
           message.includes("Parent path not found") ||
