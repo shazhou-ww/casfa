@@ -10,6 +10,7 @@ import {
   resolvePath,
   getNodeDecoded,
   getEffectiveDelegateId,
+  ensureEmptyRoot,
 } from "../services/root-resolver.ts";
 import { addOrReplaceAtPath, removeEntryAtPath } from "../services/tree-mutations.ts";
 import { completeBranch } from "../services/branch-complete.ts";
@@ -75,6 +76,27 @@ function hasFileWrite(auth: NonNullable<Env["Variables"]["auth"]>): boolean {
   if (auth.type === "user") return true;
   if (auth.type === "delegate") return auth.permissions.includes("file_write");
   return auth.access === "readwrite";
+}
+
+/** Root for write tools; worker NUL -> create empty root first. */
+async function getRootForMcpWrite(
+  auth: NonNullable<Env["Variables"]["auth"]>,
+  deps: McpHandlerDeps
+): Promise<{ rootKey: string } | { error: string }> {
+  if (auth.type === "worker") {
+    const branch = await deps.branchStore.getBranch(auth.branchId);
+    if (!branch) return { error: "Branch not found" };
+    let rootKey = await getCurrentRoot(auth, deps);
+    if (rootKey === null) {
+      const emptyRootKey = await ensureEmptyRoot(deps.cas, deps.key);
+      await deps.branchStore.setBranchRoot(auth.branchId, emptyRootKey);
+      rootKey = emptyRootKey;
+    }
+    return { rootKey };
+  }
+  const rootKey = await getCurrentRoot(auth, deps);
+  if (rootKey === null) return { error: "Realm not initialized. Open your profile or realm first." };
+  return { rootKey };
 }
 
 // ---------------------------------------------------------------------------
@@ -398,10 +420,11 @@ async function handleToolsCall(
       if (!pathStr) {
         return mcpError(id, MCP_INVALID_PARAMS, "path required");
       }
-      const rootKey = await getCurrentRoot(auth, deps);
-      if (rootKey === null) {
-        return mcpError(id, MCP_INVALID_PARAMS, "Realm not initialized. Open your profile or realm first.");
+      const rootResult = await getRootForMcpWrite(auth, deps);
+      if ("error" in rootResult) {
+        return mcpError(id, MCP_INVALID_PARAMS, rootResult.error);
       }
+      const rootKey = rootResult.rootKey;
       try {
         const realmId = getRealmId(auth);
         const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
@@ -443,10 +466,11 @@ async function handleToolsCall(
       if (!pathStr) {
         return mcpError(id, MCP_INVALID_PARAMS, "path required");
       }
-      const rootKey = await getCurrentRoot(auth, deps);
-      if (rootKey === null) {
-        return mcpError(id, MCP_INVALID_PARAMS, "Realm not initialized. Open your profile or realm first.");
+      const rootResult = await getRootForMcpWrite(auth, deps);
+      if ("error" in rootResult) {
+        return mcpError(id, MCP_INVALID_PARAMS, rootResult.error);
       }
+      const rootKey = rootResult.rootKey;
       try {
         const realmId = getRealmId(auth);
         const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
@@ -473,10 +497,11 @@ async function handleToolsCall(
       if (!hasFileWrite(auth)) {
         return mcpError(id, MCP_INVALID_PARAMS, "file_write required");
       }
-      const rootKey = await getCurrentRoot(auth, deps);
-      if (rootKey === null) {
-        return mcpError(id, MCP_INVALID_PARAMS, "Realm not initialized. Open your profile or realm first.");
+      const rootResult = await getRootForMcpWrite(auth, deps);
+      if ("error" in rootResult) {
+        return mcpError(id, MCP_INVALID_PARAMS, rootResult.error);
       }
+      const rootKey = rootResult.rootKey;
       const fromStr = typeof args.from === "string" ? String(args.from).trim().replace(/^\/+|\/+$/g, "") : "";
       const toStr = typeof args.to === "string" ? String(args.to).trim().replace(/^\/+|\/+$/g, "") : "";
       if (!fromStr || !toStr) {
@@ -513,10 +538,11 @@ async function handleToolsCall(
       if (!hasFileWrite(auth)) {
         return mcpError(id, MCP_INVALID_PARAMS, "file_write required");
       }
-      const rootKey = await getCurrentRoot(auth, deps);
-      if (rootKey === null) {
-        return mcpError(id, MCP_INVALID_PARAMS, "Realm not initialized. Open your profile or realm first.");
+      const rootResult = await getRootForMcpWrite(auth, deps);
+      if ("error" in rootResult) {
+        return mcpError(id, MCP_INVALID_PARAMS, rootResult.error);
       }
+      const rootKey = rootResult.rootKey;
       const fromStr = typeof args.from === "string" ? String(args.from).trim().replace(/^\/+|\/+$/g, "") : "";
       const toStr = typeof args.to === "string" ? String(args.to).trim().replace(/^\/+|\/+$/g, "") : "";
       if (!fromStr || !toStr) {
@@ -567,10 +593,11 @@ async function handleToolsCall(
       if (data.length > MAX_BYTES) {
         return mcpError(id, MCP_INVALID_PARAMS, `Content too large (max ${MAX_BYTES} bytes)`);
       }
-      const rootKey = await getCurrentRoot(auth, deps);
-      if (rootKey === null) {
-        return mcpError(id, MCP_INVALID_PARAMS, "Realm not initialized. Open your profile or realm first.");
+      const rootResult = await getRootForMcpWrite(auth, deps);
+      if ("error" in rootResult) {
+        return mcpError(id, MCP_INVALID_PARAMS, rootResult.error);
       }
+      const rootKey = rootResult.rootKey;
       try {
         const realmId = getRealmId(auth);
         const encoded = await encodeFileNode(
@@ -612,11 +639,21 @@ async function handleToolsCall(
     if (!hasFileRead(auth)) {
       return mcpError(id, MCP_INVALID_PARAMS, "file_read required");
     }
-    const rootKey = await getCurrentRoot(auth, deps);
+    const pathStr = typeof args.path === "string" ? String(args.path).trim().replace(/^\/+|\/+$/g, "") : "";
+    let rootKey = await getCurrentRoot(auth, deps);
     if (rootKey === null) {
+      if (auth.type === "worker") {
+        if (pathStr !== "") return mcpError(id, MCP_INVALID_PARAMS, "Path not found");
+        if (name === "fs_ls") {
+          return mcpSuccess(id, { content: [{ type: "text" as const, text: JSON.stringify({ entries: [] }) }] });
+        }
+        if (name === "fs_stat") {
+          return mcpSuccess(id, { content: [{ type: "text" as const, text: JSON.stringify({ kind: "directory" }) }] });
+        }
+        return mcpError(id, MCP_INVALID_PARAMS, "Path not found");
+      }
       return mcpError(id, MCP_INVALID_PARAMS, "Realm or branch root not found");
     }
-    const pathStr = typeof args.path === "string" ? String(args.path).trim().replace(/^\/+|\/+$/g, "") : "";
     const nodeKey = await resolvePath(deps.cas, rootKey, pathStr);
     if (nodeKey === null) {
       return mcpError(id, MCP_INVALID_PARAMS, "Path not found");
