@@ -5,7 +5,12 @@
 import type { BranchStore } from "../db/branch-store.ts";
 import type { CasFacade } from "@casfa/cas";
 import type { KeyProvider } from "@casfa/core";
-import { replaceSubtreeAtPath } from "./tree-mutations.ts";
+import {
+  replaceSubtreeAtPath,
+  tryRemoveEntryAtPath,
+  ensurePathThenAddOrReplace,
+} from "./tree-mutations.ts";
+import { resolvePath } from "./root-resolver.ts";
 
 export type BranchCompleteDeps = {
   branchStore: BranchStore;
@@ -24,7 +29,6 @@ export async function completeBranch(
   if (parentId === null) throw new Error("Cannot complete root branch");
 
   const childRootKey = await deps.branchStore.getBranchRoot(branchId);
-  if (childRootKey === null) throw new Error("Branch has no root");
 
   const realmId = branch.realmId;
   const rootRecord = await deps.branchStore.getRealmRootRecord(realmId);
@@ -37,13 +41,39 @@ export async function completeBranch(
   const segments = branch.mountPath.split("/").filter(Boolean);
   if (segments.length === 0) throw new Error("Invalid mount path");
 
-  const newParentRootKey = await replaceSubtreeAtPath(
-    deps.cas,
-    deps.key,
-    parentRootKey,
-    segments,
-    childRootKey
-  );
+  let newParentRootKey: string;
+
+  if (childRootKey === null) {
+    newParentRootKey = await tryRemoveEntryAtPath(
+      deps.cas,
+      deps.key,
+      parentRootKey,
+      branch.mountPath
+    );
+  } else {
+    const pathExists = await resolvePath(
+      deps.cas,
+      parentRootKey,
+      branch.mountPath
+    );
+    if (pathExists === null) {
+      newParentRootKey = await ensurePathThenAddOrReplace(
+        deps.cas,
+        deps.key,
+        parentRootKey,
+        branch.mountPath,
+        childRootKey
+      );
+    } else {
+      newParentRootKey = await replaceSubtreeAtPath(
+        deps.cas,
+        deps.key,
+        parentRootKey,
+        segments,
+        childRootKey
+      );
+    }
+  }
 
   if (isParentRoot) {
     await deps.branchStore.setRealmRoot(realmId, newParentRootKey);
