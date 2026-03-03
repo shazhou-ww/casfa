@@ -1,0 +1,33 @@
+service: image-workshop
+
+frameworkVersion: "4"
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  httpApi:
+    payload: '2.0'
+    cors: true
+  environment:
+    BFL_API_KEY: ${env:BFL_API_KEY, ''}
+
+functions:
+  mcp:
+    handler: src/lambda.handler
+    timeout: 90
+    events:
+      - httpApi: '*'
+
+build:
+  esbuild: true
+
+plugins:
+  - serverless-offline
+
+custom:
+  serverless-offline:
+    httpPort: ${env:MCP_PORT, 7201}
+    lambdaPort: 7203
+    noPrependStageInUrl: true
