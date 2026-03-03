@@ -259,8 +259,25 @@ export function createFilesController(deps: FilesControllerDeps) {
         const contentType =
           c.req.header("Content-Type")?.split(";")[0]?.trim() ||
           "application/octet-stream";
+        const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf]);
+        const willPrependBom = contentType.startsWith("text/");
+        if (willPrependBom && raw.byteLength + UTF8_BOM.length > MAX_BODY) {
+          return c.json(
+            { error: "BAD_REQUEST", message: `Body too large (max ${MAX_BODY} bytes)` },
+            400
+          );
+        }
+        const dataToStore =
+          willPrependBom
+            ? (() => {
+                const withBom = new Uint8Array(UTF8_BOM.length + data.length);
+                withBom.set(UTF8_BOM);
+                withBom.set(data, UTF8_BOM.length);
+                return withBom;
+              })()
+            : data;
         const encoded = await encodeFileNode(
-          { data, fileSize: data.length, contentType },
+          { data: dataToStore, fileSize: dataToStore.length, contentType },
           deps.key
         );
         const fileNodeKey = hashToKey(encoded.hash);
