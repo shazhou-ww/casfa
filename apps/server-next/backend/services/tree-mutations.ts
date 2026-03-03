@@ -191,3 +191,44 @@ export async function removeEntryAtPath(
     onNodePut
   );
 }
+
+/** Remove entry at path if it exists; no-op otherwise. Returns new root key (or rootKey unchanged). */
+export async function tryRemoveEntryAtPath(
+  cas: CasFacade,
+  keyProvider: KeyProvider,
+  rootKey: string,
+  pathStr: string,
+  onNodePut?: OnNodePut
+): Promise<string> {
+  const segments = normalizePath(pathStr);
+  if (segments.length === 0) return rootKey;
+  const parentPath = segments.slice(0, -1).join("/");
+  const fileName = segments[segments.length - 1]!;
+  const parentKey =
+    parentPath === "" ? rootKey : await resolvePath(cas, rootKey, parentPath);
+  if (parentKey === null) return rootKey;
+  const node = await getNodeDecoded(cas, parentKey);
+  if (!node || node.kind !== "dict") return rootKey;
+  const names = node.childNames ?? [];
+  const children = node.children ?? [];
+  const nameIdx = names.indexOf(fileName);
+  if (nameIdx < 0) return rootKey;
+  const newNames = names.filter((_, i) => i !== nameIdx);
+  const newChildren = children.filter((_, i) => i !== nameIdx);
+  const encoded = await encodeDictNode(
+    { children: newChildren, childNames: newNames },
+    keyProvider
+  );
+  const newParentKey = hashToKey(encoded.hash);
+  await cas.putNode(newParentKey, streamFromBytes(encoded.bytes));
+  onNodePut?.(newParentKey);
+  if (segments.length === 1) return newParentKey;
+  return replaceSubtreeAtPath(
+    cas,
+    keyProvider,
+    rootKey,
+    segments.slice(0, -1),
+    newParentKey,
+    onNodePut
+  );
+}
