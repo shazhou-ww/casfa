@@ -64,7 +64,7 @@ export function createRealmController(deps: RealmControllerDeps) {
           cutOffTime?: number;
         };
         const cutOffTime =
-          typeof body.cutOffTime === "number" ? body.cutOffTime : Date.now() - 86400_000;
+          typeof body.cutOffTime === "number" ? body.cutOffTime : Date.now() - 900_000;
         await deps.realmInfoService.gc(realmId, cutOffTime);
         return c.json({ gc: true, cutOffTime }, 200);
       } catch (err) {
