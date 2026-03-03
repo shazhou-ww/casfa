@@ -69,4 +69,39 @@ describe("MCP", () => {
     const parsed = JSON.parse(text!) as { entries?: unknown[] };
     expect(Array.isArray(parsed.entries)).toBe(true);
   });
+
+  it("tools/call fs_write writes file then fs_read returns content", async () => {
+    const token = ctx.helpers.createUserToken(realmId);
+    const writeRes = await ctx.helpers.mcpRequest(token, "tools/call", {
+      name: "fs_write",
+      arguments: { path: "hello.txt", content: "Hello MCP" },
+    });
+    expect(writeRes.status).toBe(200);
+    const writeData = (await writeRes.json()) as {
+      result?: { content?: { type: string; text: string }[] };
+      error?: { message: string };
+    };
+    if (writeData.error) {
+      throw new Error(`fs_write failed: ${writeData.error.message}`);
+    }
+    expect(writeData.result?.content).toBeDefined();
+    const writeText = writeData.result?.content?.[0]?.text;
+    expect(writeText).toBeDefined();
+    const writeParsed = JSON.parse(writeText!) as { path?: string };
+    expect(writeParsed.path).toBe("hello.txt");
+
+    const readRes = await ctx.helpers.mcpRequest(token, "tools/call", {
+      name: "fs_read",
+      arguments: { path: "hello.txt" },
+    });
+    expect(readRes.status).toBe(200);
+    const readData = (await readRes.json()) as {
+      result?: { content?: { type: string; text: string }[] };
+    };
+    expect(readData.result?.content).toBeDefined();
+    const readText = readData.result?.content?.[0]?.text;
+    expect(readText).toBeDefined();
+    const readParsed = JSON.parse(readText!) as { content?: string };
+    expect(readParsed.content).toBe("Hello MCP");
+  });
 });
