@@ -3,6 +3,7 @@ import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import FolderIcon from "@mui/icons-material/Folder";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import {
+  Alert,
   Box,
   Button,
   Dialog,
@@ -14,6 +15,9 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Menu,
+  MenuItem,
+  Snackbar,
   TextField,
   Toolbar,
   Typography,
@@ -27,6 +31,9 @@ import {
   createFileBlobUrl,
   revokeFileBlobUrl,
   isImageContentType,
+  deletePath,
+  movePath,
+  copyPath,
 } from "../../lib/fs-api";
 import type { FsEntry } from "../../types/api";
 
@@ -61,6 +68,19 @@ export function DirectoryTree({
   const [previewName, setPreviewName] = useState("");
   const [fileActionLoading, setFileActionLoading] = useState(false);
   const [fileActionError, setFileActionError] = useState<string | null>(null);
+  const [contextMenuAnchor, setContextMenuAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenuEntry, setContextMenuEntry] = useState<FsEntry | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteEntry, setDeleteEntry] = useState<FsEntry | null>(null);
+  const [moveCopyDialog, setMoveCopyDialog] = useState<{
+    open: boolean;
+    mode: "move" | "copy";
+    entry: FsEntry | null;
+    targetPath: string;
+  }>({ open: false, mode: "move", entry: null, targetPath: "" });
+  const [snackbar, setSnackbar] = useState<{ message: string; severity: "success" | "error" } | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [moveCopyLoading, setMoveCopyLoading] = useState(false);
 
   const pathParts = formatPath(currentPath);
 
@@ -195,6 +215,63 @@ export function DirectoryTree({
     }
   }, [currentPath, newFolderName]);
 
+  const closeContextMenu = useCallback(() => {
+    setContextMenuAnchor(null);
+    setContextMenuEntry(null);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteEntry) return;
+    setDeleteLoading(true);
+    try {
+      await deletePath(deleteEntry.path);
+      setRefreshKey((k) => k + 1);
+      setDeleteDialogOpen(false);
+      setDeleteEntry(null);
+      setSnackbar({ message: "已删除", severity: "success" });
+    } catch (e) {
+      setSnackbar({ message: e instanceof Error ? e.message : "删除失败", severity: "error" });
+    } finally {
+      setDeleteLoading(false);
+    }
+  }, [deleteEntry]);
+
+  const handleMoveCopyConfirm = useCallback(async () => {
+    const { entry, targetPath: raw, mode } = moveCopyDialog;
+    if (!entry) return;
+    const targetPath = raw.replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/") || "";
+    if (!targetPath) {
+      setSnackbar({ message: "请输入目标路径", severity: "error" });
+      return;
+    }
+    const entryPathNorm = (entry.path || "").replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
+    if (targetPath === entryPathNorm) {
+      setSnackbar({ message: "目标路径不能与源路径相同", severity: "error" });
+      return;
+    }
+    setMoveCopyLoading(true);
+    try {
+      if (mode === "move") {
+        await movePath(entry.path, targetPath ? `/${targetPath}` : "/");
+      } else {
+        await copyPath(entry.path, targetPath ? `/${targetPath}` : "/");
+      }
+      setRefreshKey((k) => k + 1);
+      setMoveCopyDialog({ open: false, mode: "move", entry: null, targetPath: "" });
+      setSnackbar({
+        message: mode === "move" ? "已移动" : "已复制",
+        severity: "success",
+      });
+    } catch (e) {
+      setSnackbar({
+        message: e instanceof Error ? e.message : mode === "move" ? "移动失败" : "复制失败",
+        severity: "error",
+      });
+    } finally {
+      setMoveCopyLoading(false);
+    }
+  }, [moveCopyDialog]);
+
   return (
     <Box display="flex" flexDirection="column" height="100%" overflow="hidden">
       {/* Toolbar: Up + breadcrumb (path segments only; root = no leading "/") */}
@@ -310,6 +387,106 @@ export function DirectoryTree({
         </DialogActions>
       </Dialog>
 
+      <Menu
+        open={!!contextMenuAnchor}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenuAnchor ? { top: contextMenuAnchor.y, left: contextMenuAnchor.x } : undefined
+        }
+        onClose={closeContextMenu}
+      >
+        <MenuItem
+          disabled={!contextMenuEntry}
+          onClick={() => {
+            setDeleteEntry(contextMenuEntry);
+            setDeleteDialogOpen(true);
+            closeContextMenu();
+          }}
+        >
+          删除
+        </MenuItem>
+        <MenuItem
+          disabled={!contextMenuEntry}
+          onClick={() => {
+            setMoveCopyDialog({
+              open: true,
+              mode: "move",
+              entry: contextMenuEntry,
+              targetPath: "",
+            });
+            closeContextMenu();
+          }}
+        >
+          移动
+        </MenuItem>
+        <MenuItem
+          disabled={!contextMenuEntry}
+          onClick={() => {
+            setMoveCopyDialog({
+              open: true,
+              mode: "copy",
+              entry: contextMenuEntry,
+              targetPath: "",
+            });
+            closeContextMenu();
+          }}
+        >
+          复制
+        </MenuItem>
+      </Menu>
+
+      <Dialog open={deleteDialogOpen} onClose={() => !deleteLoading && (setDeleteDialogOpen(false), setDeleteEntry(null))}>
+        <DialogTitle>确认删除</DialogTitle>
+        <DialogContent>
+          <Typography>确定要删除 {deleteEntry?.name} 吗？</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setDeleteDialogOpen(false); setDeleteEntry(null); }} disabled={deleteLoading}>
+            取消
+          </Button>
+          <Button onClick={handleDeleteConfirm} variant="contained" color="error" disabled={deleteLoading}>
+            {deleteLoading ? "删除中…" : "确认"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={moveCopyDialog.open}
+        onClose={() => !moveCopyLoading && setMoveCopyDialog((d) => ({ ...d, open: false }))}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>{moveCopyDialog.mode === "move" ? "移动" : "复制"}</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="目标路径"
+            fullWidth
+            variant="outlined"
+            value={moveCopyDialog.targetPath}
+            onChange={(e) =>
+              setMoveCopyDialog((d) => ({ ...d, targetPath: e.target.value }))
+            }
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setMoveCopyDialog((d) => ({ ...d, open: false }))}
+            disabled={moveCopyLoading}
+          >
+            取消
+          </Button>
+          <Button
+            onClick={handleMoveCopyConfirm}
+            variant="contained"
+            disabled={moveCopyLoading}
+          >
+            {moveCopyLoading ? "处理中…" : "确认"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* List */}
       <Box sx={{ flex: 1, overflow: "auto" }}>
         {loading && (
@@ -346,6 +523,11 @@ export function DirectoryTree({
               <ListItemButton
                 key={entry.path}
                 onClick={() => handleEntryClick(entry)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenuAnchor({ x: e.clientX, y: e.clientY });
+                  setContextMenuEntry(entry);
+                }}
                 disabled={fileActionLoading}
               >
                 <ListItemIcon sx={{ minWidth: 36 }}>
@@ -370,6 +552,19 @@ export function DirectoryTree({
           </List>
         )}
       </Box>
+
+      <Snackbar
+        open={!!snackbar}
+        autoHideDuration={4000}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        onClose={() => setSnackbar(null)}
+      >
+        {snackbar && (
+          <Alert severity={snackbar.severity} onClose={() => setSnackbar(null)}>
+            {snackbar.message}
+          </Alert>
+        )}
+      </Snackbar>
     </Box>
   );
 }
