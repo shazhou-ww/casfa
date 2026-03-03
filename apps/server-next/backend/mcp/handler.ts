@@ -13,7 +13,7 @@ import {
 } from "../services/root-resolver.ts";
 import { addOrReplaceAtPath, removeEntryAtPath } from "../services/tree-mutations.ts";
 import { completeBranch } from "../services/branch-complete.ts";
-import { encodeDictNode, hashToKey } from "@casfa/core";
+import { encodeDictNode, encodeFileNode, hashToKey } from "@casfa/core";
 import { streamFromBytes } from "@casfa/cas";
 import type { ServerConfig } from "../config.ts";
 
@@ -191,6 +191,23 @@ const MCP_TOOLS = [
         to: { type: "string" as const, description: "Destination path" },
       },
       required: ["from", "to"] as string[],
+    },
+  },
+  {
+    name: "fs_write",
+    description:
+      "Write a text file at the given path (UTF-8). Creates or overwrites. Single file ≤4MB. Text content only.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        path: { type: "string" as const, description: "File path including file name" },
+        content: { type: "string" as const, description: "Text content (UTF-8)" },
+        contentType: {
+          type: "string" as const,
+          description: "Optional; default text/plain (e.g. text/markdown, application/json)",
+        },
+      },
+      required: ["path", "content"] as string[],
     },
   },
 ];
@@ -521,6 +538,65 @@ async function handleToolsCall(
         const message = err instanceof Error ? err.message : "fs_cp failed";
         if (
           message.includes("must not contain") ||
+          message.includes("Parent path not found") ||
+          message.includes("Not a dict")
+        ) {
+          return mcpError(id, MCP_INVALID_PARAMS, message);
+        }
+        throw err;
+      }
+    }
+
+    if (name === "fs_write") {
+      if (!hasFileWrite(auth)) {
+        return mcpError(id, MCP_INVALID_PARAMS, "file_write required");
+      }
+      const pathStr = typeof args.path === "string" ? String(args.path).trim().replace(/^\/+|\/+$/g, "") : "";
+      if (!pathStr) {
+        return mcpError(id, MCP_INVALID_PARAMS, "path required");
+      }
+      const content = typeof args.content === "string" ? args.content : "";
+      const contentType =
+        typeof args.contentType === "string"
+          ? args.contentType.split(";")[0]?.trim().slice(0, 256) || "text/plain"
+          : "text/plain";
+      const bytes = new TextEncoder().encode(content);
+      const MAX_BYTES = 4 * 1024 * 1024;
+      if (bytes.length > MAX_BYTES) {
+        return mcpError(id, MCP_INVALID_PARAMS, `Content too large (max ${MAX_BYTES} bytes)`);
+      }
+      const rootKey = await getCurrentRoot(auth, deps);
+      if (rootKey === null) {
+        return mcpError(id, MCP_INVALID_PARAMS, "Realm not initialized. Open your profile or realm first.");
+      }
+      try {
+        const realmId = getRealmId(auth);
+        const encoded = await encodeFileNode(
+          { data: bytes, fileSize: bytes.length, contentType },
+          deps.key
+        );
+        const fileNodeKey = hashToKey(encoded.hash);
+        await deps.cas.putNode(fileNodeKey, streamFromBytes(encoded.bytes));
+        deps.recordNewKey?.(realmId, fileNodeKey);
+        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
+        const newRootKey = await addOrReplaceAtPath(
+          deps.cas,
+          deps.key,
+          rootKey,
+          pathStr,
+          fileNodeKey,
+          onNodePut
+        );
+        const delegateId = await getEffectiveDelegateId(auth, deps);
+        await deps.branchStore.setBranchRoot(delegateId, newRootKey);
+        return mcpSuccess(id, {
+          content: [{ type: "text" as const, text: JSON.stringify({ path: pathStr }) }],
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "fs_write failed";
+        if (
+          message.includes("must not contain") ||
+          message.includes("Path must not be empty") ||
           message.includes("Parent path not found") ||
           message.includes("Not a dict")
         ) {
