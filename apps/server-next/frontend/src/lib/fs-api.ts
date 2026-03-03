@@ -2,6 +2,104 @@ import type { FsEntry } from "../types/api";
 import { useAuthStore } from "../stores/auth-store";
 import { apiFetch } from "./auth";
 
+function normalizedPathSegments(path: string): string {
+  const p = !path || path === "/" ? "" : path.replace(/^\/+/, "").replace(/\/+$/, "");
+  return p;
+}
+
+function filesBaseUrl(): string {
+  const realmId = useAuthStore.getState().user?.userId;
+  if (!realmId) throw new Error("Not authenticated: realmId (user) not loaded");
+  return `/api/realm/${realmId}/files`;
+}
+
+export type FileStat = {
+  kind: "file" | "directory";
+  size?: number;
+  contentType?: string;
+};
+
+/**
+ * Get file/directory metadata (kind, size, contentType for files).
+ * Uses GET with query meta=1.
+ */
+export async function fetchFileStat(path: string): Promise<FileStat> {
+  const base = filesBaseUrl();
+  const segs = normalizedPathSegments(path);
+  const url = segs ? `${base}/${segs}` : base;
+  const res = await apiFetch(`${url}?meta=1`);
+  if (!res.ok) {
+    let message = "Failed to stat";
+    try {
+      const data = (await res.json()) as { message?: string };
+      if (data?.message) message = data.message;
+    } catch {
+      // response may not be JSON
+    }
+    throw new Error(message);
+  }
+  const data = (await res.json()) as { kind: "file" | "directory"; size?: number; contentType?: string };
+  return {
+    kind: data.kind,
+    ...(data.size !== undefined && { size: data.size }),
+    ...(data.contentType !== undefined && { contentType: data.contentType }),
+  };
+}
+
+/**
+ * Fetch file content as Blob. Path is full path e.g. "/folder/file.png".
+ * Fails if the path is a directory.
+ */
+export async function fetchFileBlob(path: string): Promise<Blob> {
+  const base = filesBaseUrl();
+  const segs = normalizedPathSegments(path);
+  if (!segs) throw new Error("Path must point to a file");
+  const url = `${base}/${segs}`;
+  const res = await apiFetch(url);
+  if (!res.ok) {
+    let message = "Failed to fetch file";
+    try {
+      const data = (await res.json()) as { message?: string };
+      if (data?.message) message = data.message;
+    } catch {
+      // response may not be JSON
+    }
+    throw new Error(message);
+  }
+  return res.blob();
+}
+
+/**
+ * Create a blob URL for a file. Call revokeFileBlobUrl when done to avoid leaks.
+ */
+export function createFileBlobUrl(blob: Blob): string {
+  return URL.createObjectURL(blob);
+}
+
+/**
+ * Revoke a blob URL created with createFileBlobUrl.
+ */
+export function revokeFileBlobUrl(url: string): void {
+  URL.revokeObjectURL(url);
+}
+
+/** MIME types we treat as image for preview */
+const IMAGE_CONTENT_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "image/bmp",
+  "image/avif",
+]);
+
+export function isImageContentType(contentType: string | undefined): boolean {
+  if (!contentType) return false;
+  const base = contentType.split(";")[0].trim().toLowerCase();
+  return IMAGE_CONTENT_TYPES.has(base);
+}
+
 export async function fetchList(path: string): Promise<FsEntry[]> {
   const realmId = useAuthStore.getState().user?.userId;
   if (!realmId) {

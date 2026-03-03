@@ -19,7 +19,15 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
-import { createFolder, fetchList } from "../../lib/fs-api";
+import {
+  createFolder,
+  fetchList,
+  fetchFileStat,
+  fetchFileBlob,
+  createFileBlobUrl,
+  revokeFileBlobUrl,
+  isImageContentType,
+} from "../../lib/fs-api";
 import type { FsEntry } from "../../types/api";
 
 type DirectoryTreeProps = {
@@ -48,6 +56,11 @@ export function DirectoryTree({
   const [createError, setCreateError] = useState<string | null>(null);
   const [createLoading, setCreateLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewName, setPreviewName] = useState("");
+  const [fileActionLoading, setFileActionLoading] = useState(false);
+  const [fileActionError, setFileActionError] = useState<string | null>(null);
 
   const pathParts = formatPath(currentPath);
 
@@ -87,13 +100,51 @@ export function DirectoryTree({
     [pathParts, onPathChange]
   );
 
-  const handleEntryClick = useCallback(
-    (entry: FsEntry) => {
+  const handleClosePreview = useCallback(() => {
+    if (previewBlobUrl) {
+      revokeFileBlobUrl(previewBlobUrl);
+      setPreviewBlobUrl(null);
+    }
+    setPreviewOpen(false);
+    setPreviewName("");
+  }, [previewBlobUrl]);
+
+  const handleFileClick = useCallback(
+    async (entry: FsEntry) => {
       if (entry.isDirectory) {
         onPathChange(entry.path || "/");
+        return;
+      }
+      const filePath = entry.path || "/";
+      setFileActionLoading(true);
+      setFileActionError(null);
+      try {
+        const stat = await fetchFileStat(filePath);
+        if (stat.kind !== "file") return;
+        const blob = await fetchFileBlob(filePath);
+        const url = createFileBlobUrl(blob);
+        if (isImageContentType(stat.contentType)) {
+          setPreviewBlobUrl(url);
+          setPreviewName(entry.name);
+          setPreviewOpen(true);
+        } else {
+          window.open(url, "_blank", "noopener");
+          setTimeout(() => revokeFileBlobUrl(url), 60_000);
+        }
+      } catch (e) {
+        setFileActionError(e instanceof Error ? e.message : "打开文件失败");
+      } finally {
+        setFileActionLoading(false);
       }
     },
     [onPathChange]
+  );
+
+  const handleEntryClick = useCallback(
+    (entry: FsEntry) => {
+      handleFileClick(entry);
+    },
+    [handleFileClick]
   );
 
   const handleUp = useCallback(() => {
@@ -230,12 +281,48 @@ export function DirectoryTree({
         </DialogActions>
       </Dialog>
 
+      <Dialog
+        open={previewOpen}
+        onClose={handleClosePreview}
+        maxWidth={false}
+        PaperProps={{
+          sx: { maxHeight: "90vh", maxWidth: "90vw" },
+        }}
+      >
+        <DialogTitle>{previewName}</DialogTitle>
+        <DialogContent sx={{ p: 0, "&:first-of-type": { padding: 0 } }}>
+          {previewBlobUrl && (
+            <Box
+              component="img"
+              src={previewBlobUrl}
+              alt={previewName}
+              sx={{
+                maxWidth: "100%",
+                maxHeight: "80vh",
+                objectFit: "contain",
+                display: "block",
+              }}
+            />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleClosePreview}>关闭</Button>
+        </DialogActions>
+      </Dialog>
+
       {/* List */}
       <Box sx={{ flex: 1, overflow: "auto" }}>
         {loading && (
           <Box display="flex" justifyContent="center" py={4}>
             <Typography variant="body2" color="text.secondary">
               Loading…
+            </Typography>
+          </Box>
+        )}
+        {fileActionError && (
+          <Box py={1} px={2}>
+            <Typography variant="body2" color="error">
+              {fileActionError}
             </Typography>
           </Box>
         )}
@@ -259,7 +346,7 @@ export function DirectoryTree({
               <ListItemButton
                 key={entry.path}
                 onClick={() => handleEntryClick(entry)}
-                disabled={!entry.isDirectory}
+                disabled={fileActionLoading}
               >
                 <ListItemIcon sx={{ minWidth: 36 }}>
                   {entry.isDirectory ? (
