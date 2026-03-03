@@ -58,6 +58,28 @@ async function ensureRootForUser(
   }
 }
 
+/** Root for write (upload); worker NUL -> create empty root first. */
+async function getRootForWrite(
+  auth: NonNullable<Env["Variables"]["auth"]>,
+  deps: FilesControllerDeps
+): Promise<{ rootKey: string } | { status: 404; message: string }> {
+  if (auth.type === "worker") {
+    const branch = await deps.branchStore.getBranch(auth.branchId);
+    if (!branch) return { status: 404, message: "Branch not found" };
+    let rootKey = await getCurrentRoot(auth, deps);
+    if (rootKey === null) {
+      const emptyRootKey = await ensureEmptyRoot(deps.cas, deps.key);
+      await deps.branchStore.setBranchRoot(auth.branchId, emptyRootKey);
+      rootKey = emptyRootKey;
+    }
+    return { rootKey };
+  }
+  let rootKey = await getCurrentRoot(auth, deps);
+  rootKey = await ensureRootForUser(auth, rootKey, deps);
+  if (rootKey === null) return { status: 404, message: "Realm not initialized. Open your profile or realm first." };
+  return { rootKey };
+}
+
 export function createFilesController(deps: FilesControllerDeps) {
   return {
     async list(c: Context<Env>) {
@@ -70,6 +92,7 @@ export function createFilesController(deps: FilesControllerDeps) {
         let rootKey = await getCurrentRoot(auth, deps);
         rootKey = await ensureRootForUser(auth, rootKey, deps);
         if (rootKey === null) {
+          if (auth.type === "worker") return c.json({ entries: [] }, 200);
           return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
         const nodeKey = await resolvePath(deps.cas, rootKey, pathStr);
@@ -127,6 +150,8 @@ export function createFilesController(deps: FilesControllerDeps) {
         let rootKey = await getCurrentRoot(auth, deps);
         rootKey = await ensureRootForUser(auth, rootKey, deps);
         if (rootKey === null) {
+          if (auth.type === "worker" && pathStr === "") return c.json({ kind: "directory" }, 200);
+          if (auth.type === "worker") return c.json({ error: "NOT_FOUND", message: "Path not found" }, 404);
           return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
         const nodeKey = await resolvePath(deps.cas, rootKey, pathStr);
@@ -178,6 +203,8 @@ export function createFilesController(deps: FilesControllerDeps) {
         let rootKey = await getCurrentRoot(auth, deps);
         rootKey = await ensureRootForUser(auth, rootKey, deps);
         if (rootKey === null) {
+          if (auth.type === "worker" && pathStr === "") return c.json({ entries: [] }, 200);
+          if (auth.type === "worker") return c.json({ error: "NOT_FOUND", message: "Path not found" }, 404);
           return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
         }
         const nodeKey = await resolvePath(deps.cas, rootKey, pathStr);
@@ -250,11 +277,11 @@ export function createFilesController(deps: FilesControllerDeps) {
         if (pathSegments.length === 0) {
           return c.json({ error: "BAD_REQUEST", message: "Path must include file name" }, 400);
         }
-        let rootKey = await getCurrentRoot(auth, deps);
-        rootKey = await ensureRootForUser(auth, rootKey, deps);
-        if (rootKey === null) {
-          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
+        const rootResult = await getRootForWrite(auth, deps);
+        if ("status" in rootResult) {
+          return c.json({ error: "NOT_FOUND", message: rootResult.message }, rootResult.status);
         }
+        const rootKey = rootResult.rootKey;
         const data = new Uint8Array(raw);
         const contentType =
           c.req.header("Content-Type")?.split(";")[0]?.trim() ||
