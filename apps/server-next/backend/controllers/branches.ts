@@ -72,7 +72,24 @@ export function createBranchesController(deps: BranchesControllerDeps) {
           }
           const childRootKey = await resolvePath(deps.cas, rootKey, mountPath);
           if (childRootKey === null) {
-            return c.json({ error: "BAD_REQUEST", message: "mountPath does not resolve under realm root" }, 400);
+            const branchId = crypto.randomUUID();
+            const now = Date.now();
+            const expiresAt = now + ttlMs;
+            await deps.branchStore.insertBranch({
+              branchId,
+              realmId,
+              parentId: rootRecord.branchId,
+              mountPath,
+              expiresAt,
+            });
+            return c.json(
+              {
+                branchId,
+                accessToken: base64urlEncode(branchId),
+                expiresAt,
+              },
+              201
+            );
           }
           const branchId = crypto.randomUUID();
           const now = Date.now();
@@ -104,11 +121,28 @@ export function createBranchesController(deps: BranchesControllerDeps) {
         }
         const parentRootKey = await deps.branchStore.getBranchRoot(parentBranchId);
         if (parentRootKey === null) {
-          return c.json({ error: "NOT_FOUND", message: "Parent branch has no root" }, 404);
+          return c.json({ error: "BAD_REQUEST", message: "Parent branch has no root" }, 400);
         }
         const childRootKey = await resolvePath(deps.cas, parentRootKey, mountPath);
         if (childRootKey === null) {
-          return c.json({ error: "BAD_REQUEST", message: "mountPath does not resolve under parent root" }, 400);
+          const childId = crypto.randomUUID();
+          const now = Date.now();
+          const expiresAt = now + ttlMs;
+          await deps.branchStore.insertBranch({
+            branchId: childId,
+            realmId: parentBranch.realmId,
+            parentId: parentBranchId,
+            mountPath,
+            expiresAt,
+          });
+          return c.json(
+            {
+              branchId: childId,
+              accessToken: base64urlEncode(childId),
+              expiresAt,
+            },
+            201
+          );
         }
         const childId = crypto.randomUUID();
         const now = Date.now();

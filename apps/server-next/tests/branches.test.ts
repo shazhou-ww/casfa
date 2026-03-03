@@ -47,6 +47,26 @@ describe("Branches / Worker", () => {
     expect(data.message).toContain("Realm not initialized");
   });
 
+  it("create branch with non-existent mountPath returns 201 (NUL root)", async () => {
+    const token = ctx.helpers.createUserToken(realmId);
+    await ctx.helpers.authRequest(
+      token,
+      "POST",
+      `/api/realm/${realmId}/fs/mkdir`,
+      { path: "base" }
+    );
+    const res = await ctx.helpers.authRequest(
+      token,
+      "POST",
+      `/api/realm/${realmId}/branches`,
+      { mountPath: "base/does/not/exist" }
+    );
+    expect(res.status).toBe(201);
+    const data = (await res.json()) as { branchId?: string; accessToken?: string };
+    expect(data.branchId).toBeDefined();
+    expect(data.accessToken).toBeDefined();
+  });
+
   it("worker token can list own branch", async () => {
     const token = ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(
