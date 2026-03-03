@@ -9,6 +9,7 @@ import {
   getCurrentRoot,
   resolvePath,
   getEffectiveDelegateId,
+  ensureEmptyRoot,
 } from "../services/root-resolver.ts";
 import {
   addOrReplaceAtPath,
@@ -33,6 +34,27 @@ async function parseBodyJson<T>(c: Context<Env>): Promise<T> {
   return c.req.json<T>().catch(() => ({} as T));
 }
 
+/** Resolve root for write; for worker with NUL root, create empty root first. */
+async function getRootForWrite(
+  auth: NonNullable<Env["Variables"]["auth"]>,
+  deps: FsControllerDeps
+): Promise<{ rootKey: string } | { status: 404; message: string }> {
+  if (auth.type === "worker") {
+    const branch = await deps.branchStore.getBranch(auth.branchId);
+    if (!branch) return { status: 404, message: "Branch not found" };
+    let rootKey = await getCurrentRoot(auth, deps);
+    if (rootKey === null) {
+      const emptyRootKey = await ensureEmptyRoot(deps.cas, deps.key);
+      await deps.branchStore.setBranchRoot(auth.branchId, emptyRootKey);
+      rootKey = emptyRootKey;
+    }
+    return { rootKey };
+  }
+  const rootKey = await getCurrentRoot(auth, deps);
+  if (rootKey === null) return { status: 404, message: "Realm not initialized. Open your profile or realm first." };
+  return { rootKey };
+}
+
 export function createFsController(deps: FsControllerDeps) {
   return {
     async mkdir(c: Context<Env>) {
@@ -46,10 +68,11 @@ export function createFsController(deps: FsControllerDeps) {
         if (!pathStr) {
           return c.json({ error: "BAD_REQUEST", message: "path required" }, 400);
         }
-        const rootKey = await getCurrentRoot(auth, deps);
-        if (rootKey === null) {
-          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
+        const rootResult = await getRootForWrite(auth, deps);
+        if ("status" in rootResult) {
+          return c.json({ error: "NOT_FOUND", message: rootResult.message }, rootResult.status);
         }
+        const rootKey = rootResult.rootKey;
         const realmId = getRealmId(auth);
         const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
         const emptyDict = await encodeDictNode({ children: [], childNames: [] }, deps.key);
@@ -91,10 +114,11 @@ export function createFsController(deps: FsControllerDeps) {
         if (paths.length === 0) {
           return c.json({ error: "BAD_REQUEST", message: "path or paths required" }, 400);
         }
-        let rootKey = await getCurrentRoot(auth, deps);
-        if (rootKey === null) {
-          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
+        const rootResult = await getRootForWrite(auth, deps);
+        if ("status" in rootResult) {
+          return c.json({ error: "NOT_FOUND", message: rootResult.message }, rootResult.status);
         }
+        let rootKey = rootResult.rootKey;
         const realmId = getRealmId(auth);
         const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
         for (const p of paths) {
@@ -130,10 +154,11 @@ export function createFsController(deps: FsControllerDeps) {
         if (!fromStr || !toStr) {
           return c.json({ error: "BAD_REQUEST", message: "from and to required" }, 400);
         }
-        let rootKey = await getCurrentRoot(auth, deps);
-        if (rootKey === null) {
-          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
+        const rootResult = await getRootForWrite(auth, deps);
+        if ("status" in rootResult) {
+          return c.json({ error: "NOT_FOUND", message: rootResult.message }, rootResult.status);
         }
+        let rootKey = rootResult.rootKey;
         const nodeKey = await resolvePath(deps.cas, rootKey, fromStr);
         if (nodeKey === null) {
           return c.json({ error: "NOT_FOUND", message: "from path not found" }, 404);
@@ -170,10 +195,11 @@ export function createFsController(deps: FsControllerDeps) {
         if (!fromStr || !toStr) {
           return c.json({ error: "BAD_REQUEST", message: "from and to required" }, 400);
         }
-        const rootKey = await getCurrentRoot(auth, deps);
-        if (rootKey === null) {
-          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
+        const rootResult = await getRootForWrite(auth, deps);
+        if ("status" in rootResult) {
+          return c.json({ error: "NOT_FOUND", message: rootResult.message }, rootResult.status);
         }
+        const rootKey = rootResult.rootKey;
         const nodeKey = await resolvePath(deps.cas, rootKey, fromStr);
         if (nodeKey === null) {
           return c.json({ error: "NOT_FOUND", message: "from path not found" }, 404);
