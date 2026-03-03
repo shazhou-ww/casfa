@@ -32,6 +32,21 @@ describe("Branches / Worker", () => {
     expect(result.accessToken).toBeDefined();
   });
 
+  it("create branch without realm root returns 404", async () => {
+    const freshRealm = "e2e-no-root-" + crypto.randomUUID();
+    const token = ctx.helpers.createUserToken(freshRealm);
+    const res = await ctx.helpers.authRequest(
+      token,
+      "POST",
+      `/api/realm/${freshRealm}/branches`,
+      { mountPath: "any" }
+    );
+    expect(res.status).toBe(404);
+    const data = (await res.json()) as { error?: string; message?: string };
+    expect(data.error).toBe("NOT_FOUND");
+    expect(data.message).toContain("Realm not initialized");
+  });
+
   it("worker token can list own branch", async () => {
     const token = ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(

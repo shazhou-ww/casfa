@@ -56,6 +56,13 @@ export function createBranchesController(deps: BranchesControllerDeps) {
           if (!hasBranchManage(auth)) {
             return c.json({ error: "FORBIDDEN", message: "branch_manage or user required" }, 403);
           }
+          const rootRecord = await deps.branchStore.getRealmRootRecord(realmId);
+          if (!rootRecord) {
+            return c.json(
+              { error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." },
+              404
+            );
+          }
           const rootKey = await deps.branchStore.getRealmRoot(realmId);
           if (rootKey === null) {
             return c.json(
@@ -63,8 +70,6 @@ export function createBranchesController(deps: BranchesControllerDeps) {
               404
             );
           }
-          const rootRecord = await deps.branchStore.getRealmRootRecord(realmId);
-          if (!rootRecord) throw new Error("Realm root record not found");
           const childRootKey = await resolvePath(deps.cas, rootKey, mountPath);
           if (childRootKey === null) {
             return c.json({ error: "BAD_REQUEST", message: "mountPath does not resolve under realm root" }, 400);
