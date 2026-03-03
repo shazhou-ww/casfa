@@ -146,12 +146,7 @@ async function main(): Promise<number> {
   const profile = loadAwsProfile();
   const deployEnv = loadEnvForDeploy(stage);
   const env: Record<string, string | undefined> = { ...process.env, ...deployEnv };
-  if (profile) {
-    env.AWS_PROFILE = profile;
-    console.log(`Using AWS_PROFILE from .env: ${profile}`);
-  } else {
-    console.log("No AWS_PROFILE in .env; using existing env.");
-  }
+  if (profile) env.AWS_PROFILE = profile;
 
   // Production (beta/prod): use Cognito only — do not pass MOCK_JWT_SECRET so Lambda never uses mock auth.
   const isProdLike = stage !== "dev" && stage !== "local-test";
@@ -170,7 +165,6 @@ async function main(): Promise<number> {
       );
       return 1;
     }
-    console.log(`[${stage}] Using Cognito auth (COGNITO_USER_POOL_ID set, MOCK_JWT_SECRET omitted).`);
   }
 
   // Custom domain for CloudFront: beta -> beta.casfa.shazhou.me, prod -> casfa.shazhou.me (prod DNS 暂不覆盖旧版)
@@ -184,14 +178,10 @@ async function main(): Promise<number> {
     if (certArn) {
       env.CLOUDFRONT_ALIAS = domain;
       env.ACM_CERTIFICATE_ARN = certArn;
-      console.log(`[${stage}] CloudFront custom domain: ${domain} (ACM cert set).`);
-    } else {
-      console.log(`[${stage}] No ACM_CERTIFICATE_ARN; deploying without custom domain (set in .env to use https://${domain}).`);
     }
   }
 
   // 1. Build frontend
-  console.log("\n[1/4] Building frontend...");
   const frontendDir = join(CWD, "frontend");
   if (!existsSync(frontendDir)) {
     console.error("frontend/ not found in cwd");
@@ -209,7 +199,6 @@ async function main(): Promise<number> {
   }
 
   // 2. Deploy stack (API + S3 + CloudFront)
-  console.log("\n[2/4] Deploying stack (API + frontend bucket + CloudFront)...");
   const deployCode = await run(
     ["bunx", "serverless", "deploy", "--stage", stage, ...serverlessArgs],
     env
@@ -277,7 +266,6 @@ async function main(): Promise<number> {
   }
 
   // 3. Upload frontend to S3
-  console.log("\n[3/4] Uploading frontend to S3...");
   const syncCode = await run(
     ["aws", "s3", "sync", distDir, `s3://${bucket}`, "--delete"],
     env
@@ -288,7 +276,6 @@ async function main(): Promise<number> {
   }
 
   // 4. Invalidate CloudFront
-  console.log("\n[4/4] Invalidating CloudFront cache...");
   const invalCode = await run(
     ["aws", "cloudfront", "create-invalidation", "--distribution-id", distributionId, "--paths", "/*"],
     env
@@ -296,13 +283,6 @@ async function main(): Promise<number> {
   if (invalCode !== 0) {
     console.error("cloudfront create-invalidation failed");
     return invalCode;
-  }
-
-  console.log("\nDeploy complete.");
-  if (frontendUrl) console.log(`Frontend: ${frontendUrl}`);
-  const customDomain = env.CLOUDFRONT_ALIAS;
-  if (customDomain) {
-    console.log(`Custom domain: https://${customDomain} (add CNAME ${customDomain} -> CloudFront distribution if not already).`);
   }
   return 0;
 }

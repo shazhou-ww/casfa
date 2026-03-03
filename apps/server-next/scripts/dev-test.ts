@@ -51,7 +51,6 @@ function isDockerRunning(): boolean {
 }
 
 function startDockerService(serviceName: string): boolean {
-  console.log(`\nStarting ${serviceName} container...`);
   const result = spawnSync("docker", ["compose", "up", "-d", serviceName], {
     cwd: appRoot,
     encoding: "utf-8",
@@ -67,11 +66,7 @@ async function waitForDynamoDB(
   delayMs = 1000
 ): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
-    console.log(`  Attempt ${i + 1}/${maxAttempts}...`);
-    if (await isDynamoDBReady(endpoint)) {
-      console.log("DynamoDB is ready!");
-      return true;
-    }
+    if (await isDynamoDBReady(endpoint)) return true;
     await new Promise((r) => setTimeout(r, delayMs));
   }
   return false;
@@ -84,21 +79,17 @@ async function main(): Promise<void> {
   }
 
   if (!(await isDynamoDBReady(DYNAMODB_ENDPOINT))) {
-    console.log(`\nDynamoDB is not running at ${DYNAMODB_ENDPOINT}`);
     if (!startDockerService("dynamodb-test")) {
       console.error("Failed to start dynamodb-test container.");
       process.exit(1);
     }
-    console.log("\nWaiting for DynamoDB to be ready...");
     if (!(await waitForDynamoDB(DYNAMODB_ENDPOINT))) {
       console.error("DynamoDB failed to start properly.");
       process.exit(1);
     }
   }
 
-  // MinIO (S3): same port as dev, ensure bucket and clear for fresh test run
   if (!(await isPortOpen(S3_PORT))) {
-    console.log("\nMinIO (S3) not running, starting...");
     if (!startDockerService("minio")) {
       console.error("Failed to start minio container.");
       process.exit(1);
@@ -107,9 +98,6 @@ async function main(): Promise<void> {
   }
   await ensureS3Bucket(S3_ENDPOINT, S3_BUCKET_TEST);
   await clearS3Bucket(S3_ENDPOINT, S3_BUCKET_TEST);
-  console.log(`S3 bucket ${S3_BUCKET_TEST} ensured and cleared.`);
-
-  console.log("\nEnsuring DynamoDB tables exist (stage=local-test)...");
   await runSetup("local-test");
 
   const env = {

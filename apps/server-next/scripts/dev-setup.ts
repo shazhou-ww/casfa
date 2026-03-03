@@ -52,9 +52,6 @@ function setupEnvFile(): void {
   const examplePath = resolve(appRoot, ".env.example");
   if (!existsSync(envPath) && existsSync(examplePath)) {
     copyFileSync(examplePath, envPath);
-    console.log("✓ Created .env from .env.example");
-  } else if (existsSync(envPath)) {
-    console.log("✓ .env exists");
   }
 }
 
@@ -64,10 +61,7 @@ function setupEnvFile(): void {
 async function waitForDynamoDB(endpoint: string, maxAttempts = MAX_RETRIES): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
     if (await isDynamoDBReady(endpoint)) return true;
-    if (i < maxAttempts - 1) {
-      console.log(`Waiting for DynamoDB at ${endpoint}... (${i + 1}/${maxAttempts})`);
-      await Bun.sleep(RETRY_DELAY_MS);
-    }
+    if (i < maxAttempts - 1) await Bun.sleep(RETRY_DELAY_MS);
   }
   return false;
 }
@@ -90,29 +84,14 @@ async function main(): Promise<void> {
   const endpoint = getEndpoint(stage);
   const container = getContainerName(stage);
 
-  console.log(`🚀 server-next - Development Setup (stage=${stage})\n`);
-
   setupEnvFile();
-
-  console.log(`\nChecking DynamoDB at ${endpoint}...`);
   const isRunning = await waitForDynamoDB(endpoint);
 
   if (!isRunning) {
-    console.error("\n❌ DynamoDB Local is not running!");
-    console.error(`   Start it with: docker compose up -d ${container}`);
-    console.error("   Then run this setup again: bun run dev:setup");
+    console.error("DynamoDB Local is not running. Start it with: docker compose up -d " + container + ", then run bun run dev:setup");
     process.exit(1);
   }
-  console.log("✓ DynamoDB Local is running");
-
-  console.log("\nEnsuring DynamoDB tables exist...");
   await runSetup(stage);
-
-  console.log("\n✅ Development environment ready!");
-  console.log("   Start with: bun run dev");
-  if (stage === "local-test") {
-    console.log("   Or run dev:test: bun run dev:test");
-  }
 }
 
 main().catch((err) => {

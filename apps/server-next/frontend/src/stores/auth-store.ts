@@ -4,9 +4,6 @@ const AUTH_KEY = "casfa-next-auth";
 const MOCK_TOKEN_KEY = "casfa-next-mock-token";
 const COGNITO_TOKEN_KEY = "casfa-next-cognito-token";
 
-const LOG = "[auth-store]";
-if (typeof console !== "undefined") console.log(LOG, "module loaded");
-
 export type User = {
   userId: string;
   name?: string;
@@ -65,13 +62,7 @@ function getInitialAuthFromStorage() {
     const storedUser = loadStoredUser();
     const cognitoToken = loadStoredCognitoToken();
     const mockToken = loadStoredMockToken();
-    console.log(LOG, "getInitialAuthFromStorage", {
-      hasStoredUser: !!storedUser,
-      hasCognitoToken: !!cognitoToken,
-      hasMockToken: !!mockToken,
-    });
     if (storedUser && cognitoToken) {
-      console.log(LOG, "getInitialAuthFromStorage → cognito restored");
       return {
         user: storedUser,
         token: cognitoToken,
@@ -82,7 +73,6 @@ function getInitialAuthFromStorage() {
       };
     }
     if (storedUser && mockToken) {
-      console.log(LOG, "getInitialAuthFromStorage → mock restored");
       return {
         user: storedUser,
         token: mockToken,
@@ -92,9 +82,8 @@ function getInitialAuthFromStorage() {
         loading: false,
       };
     }
-    console.log(LOG, "getInitialAuthFromStorage → no stored auth");
   } catch (e) {
-    console.warn(LOG, "getInitialAuthFromStorage error", e);
+    console.error("[auth-store] getInitialAuthFromStorage error", e);
   }
   return {
     user: null,
@@ -137,9 +126,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   initialize: async () => {
-    console.log(LOG, "initialize() start", { initialized: get().initialized, isLoggedIn: get().isLoggedIn });
     if (get().initialized && get().isLoggedIn) {
-      console.log(LOG, "initialize() skip, already ok");
       return;
     }
     if (!get().initialized) set({ loading: true });
@@ -147,9 +134,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const storedUser = loadStoredUser();
     const cognitoToken = loadStoredCognitoToken();
     const mockToken = loadStoredMockToken();
-    console.log(LOG, "initialize() localStorage", { hasStoredUser: !!storedUser, hasCognitoToken: !!cognitoToken, hasMockToken: !!mockToken });
     if (storedUser && cognitoToken) {
-      console.log(LOG, "initialize() → set from localStorage (cognito)");
       set({
         user: storedUser,
         token: cognitoToken,
@@ -161,7 +146,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       return;
     }
     if (storedUser && mockToken) {
-      console.log(LOG, "initialize() → set from localStorage (mock)");
       set({
         user: storedUser,
         token: mockToken,
@@ -173,7 +157,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       return;
     }
 
-    console.log(LOG, "initialize() → fetch /api/info");
     try {
       const infoRes = await fetch("/api/info");
       if (!infoRes.ok) {
