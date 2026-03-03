@@ -38,6 +38,32 @@ function loadEnv(filePath: string): void {
 loadEnv(rootEnvPath);
 loadEnv(resolve(appRoot, ".env"));
 
+function ensureAwsSsoLogin(): void {
+  const profile = process.env.AWS_PROFILE?.trim();
+  if (!profile) {
+    console.error(
+      "dev:cognito requires AWS_PROFILE. Set AWS_PROFILE in .env (in apps/server-next or repo root), then run: bun run login:aws"
+    );
+    process.exit(1);
+  }
+  const checkResult = spawnSync("aws", ["sts", "get-caller-identity", "--profile", profile], {
+    encoding: "utf-8",
+    shell: true,
+    stdio: "pipe",
+  });
+  if (checkResult.status === 0) return;
+  console.log("\nAWS SSO not logged in or token expired. Running bun run login:aws ...");
+  const loginResult = spawnSync("bun", ["run", "login:aws"], {
+    cwd: appRoot,
+    stdio: "inherit",
+    shell: true,
+  });
+  if (loginResult.status !== 0) {
+    console.error("login:aws failed. Please run: bun run login:aws");
+    process.exit(1);
+  }
+}
+
 function isDockerRunning(): boolean {
   const result = spawnSync("docker", ["info"], {
     encoding: "utf-8",
@@ -110,6 +136,8 @@ async function waitForPort(
 }
 
 async function main(): Promise<void> {
+  ensureAwsSsoLogin();
+
   if (!isDockerRunning()) {
     console.error("Error: Docker is not running. Please start Docker and try again.");
     process.exit(1);

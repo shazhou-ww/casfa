@@ -8,6 +8,7 @@
     "clean:db": "rimraf .dynamodb",
     "dev": "concurrently -n api,web -c blue,green \"bun run scripts/dev.ts\" \"bun run --cwd frontend dev\"",
     "dev:cognito": "concurrently -n api,web -c blue,green \"bun run scripts/dev-cognito.ts\" \"bun run --cwd frontend dev\"",
+    "login:aws": "bun run scripts/login-aws.ts",
     "dev:setup": "bun run scripts/dev-setup.ts",
     "dev:test": "bun run scripts/dev-test.ts",
     "dev:bun": "bun run backend/index.ts",
