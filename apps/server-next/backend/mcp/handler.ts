@@ -13,6 +13,7 @@ import {
 } from "../services/root-resolver.ts";
 import { addOrReplaceAtPath, removeEntryAtPath } from "../services/tree-mutations.ts";
 import { completeBranch } from "../services/branch-complete.ts";
+import { prependUtf8BomIfText } from "../utils/utf8-bom.ts";
 import { encodeDictNode, encodeFileNode, hashToKey } from "@casfa/core";
 import { streamFromBytes } from "@casfa/cas";
 import type { ServerConfig } from "../config.ts";
@@ -561,16 +562,7 @@ async function handleToolsCall(
           ? args.contentType.split(";")[0]?.trim().slice(0, 256) || "text/plain"
           : "text/plain";
       const bytes = new TextEncoder().encode(content);
-      const UTF8_BOM = new Uint8Array([0xef, 0xbb, 0xbf]);
-      const data =
-        contentType.startsWith("text/")
-          ? (() => {
-              const withBom = new Uint8Array(UTF8_BOM.length + bytes.length);
-              withBom.set(UTF8_BOM);
-              withBom.set(bytes, UTF8_BOM.length);
-              return withBom;
-            })()
-          : bytes;
+      const data = prependUtf8BomIfText(contentType, bytes);
       const MAX_BYTES = 4 * 1024 * 1024;
       if (data.length > MAX_BYTES) {
         return mcpError(id, MCP_INVALID_PARAMS, `Content too large (max ${MAX_BYTES} bytes)`);
