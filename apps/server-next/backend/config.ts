@@ -4,6 +4,8 @@
  */
 export const ENV_NAMES = {
   PORT: "PORT",
+  /** Public base URL of this Casfa API (e.g. http://localhost:7100). Returned by branch_create so clients can pass it to image-workshop as casfaBaseUrl. */
+  API_BASE_URL: "API_BASE_URL",
   MOCK_JWT_SECRET: "MOCK_JWT_SECRET",
   MAX_BRANCH_TTL_MS: "MAX_BRANCH_TTL_MS",
   COGNITO_REGION: "COGNITO_REGION",
@@ -22,6 +24,8 @@ export const ENV_NAMES = {
 
 export type ServerConfig = {
   port: number;
+  /** Public base URL of this API (no trailing slash). Returned in branch_create for use as casfaBaseUrl in image-workshop. */
+  apiBaseUrl?: string;
   auth: {
     mockJwtSecret?: string;
     maxBranchTtlMs?: number;
@@ -60,8 +64,10 @@ export function loadConfig(): ServerConfig {
     cognitoHostedUiUrl: process.env.COGNITO_HOSTED_UI_URL,
     cognitoClientSecret: process.env.COGNITO_CLIENT_SECRET,
   };
+  const apiBaseUrl = process.env.API_BASE_URL?.replace(/\/$/, "") || undefined;
   return {
     port,
+    apiBaseUrl,
     auth,
     dynamodbEndpoint: process.env.DYNAMODB_ENDPOINT,
     dynamodbTableDelegates:
