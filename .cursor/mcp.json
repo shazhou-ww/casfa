@@ -8,6 +8,9 @@
     },
     "casfa-next-local": {
       "url": "http://localhost:7100/api/mcp"
+    },
+    "image-workshop": {
+      "url": "http://localhost:7201"
     }
   }
 }
