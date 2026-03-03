@@ -94,6 +94,11 @@ async function getRootForMcpWrite(
     }
     return { rootKey };
   }
+  if (auth.type === "user" || auth.type === "delegate") {
+    const realmId = getRealmId(auth);
+    const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
+    await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
+  }
   const rootKey = await getCurrentRoot(auth, deps);
   if (rootKey === null) return { error: "Realm not initialized. Open your profile or realm first." };
   return { rootKey };
@@ -321,6 +326,10 @@ async function handleToolsCall(
       if (!parentBranchId) {
         if (!hasBranchManage(auth)) {
           return mcpError(id, MCP_INVALID_PARAMS, "branch_manage or user required");
+        }
+        if (auth.type === "user" || auth.type === "delegate") {
+          const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
+          await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
         }
         const rootKey = await deps.branchStore.getRealmRoot(realmId);
         if (rootKey === null) {
@@ -638,6 +647,11 @@ async function handleToolsCall(
     // fs_ls, fs_stat, fs_read
     if (!hasFileRead(auth)) {
       return mcpError(id, MCP_INVALID_PARAMS, "file_read required");
+    }
+    if (auth.type === "user" || auth.type === "delegate") {
+      const realmId = getRealmId(auth);
+      const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
+      await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
     }
     const pathStr = typeof args.path === "string" ? String(args.path).trim().replace(/^\/+|\/+$/g, "") : "";
     let rootKey = await getCurrentRoot(auth, deps);

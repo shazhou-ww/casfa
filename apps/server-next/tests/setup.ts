@@ -1,21 +1,22 @@
 /**
- * E2E test setup: in-process server uses DynamoDB + S3 (set DYNAMODB_ENDPOINT, S3_ENDPOINT when not using BASE_URL).
- * When BASE_URL is set, tests hit existing serverless-offline (which uses serverless-dynamodb-local + serverless-s3-local).
+ * E2E test setup.
+ * When BASE_URL is set: hit serverless-offline (DynamoDB + S3 via dev-test), mock auth uses decode-only verifier.
+ * When BASE_URL is not set: in-process server with memory stores (no DynamoDB/S3), mock auth decode-only so user and delegate tokens work.
  */
-process.env.MOCK_JWT_SECRET ??= "test-secret-e2e";
 process.env.DYNAMODB_ENDPOINT ??= "http://localhost:7102";
 process.env.S3_ENDPOINT ??= "http://localhost:7104";
 process.env.S3_BUCKET ??= "casfa-next-local-test-blob";
 process.env.STAGE ??= "local-test";
 
+import * as jose from "jose";
 import { loadConfig } from "../backend/config.ts";
 import { createApp } from "../backend/app.ts";
 import { createCasFacade } from "../backend/services/cas.ts";
-import { createDynamoDelegateGrantStore } from "../backend/db/dynamo-delegate-grant-store.ts";
-import { createDynamoBranchStore } from "../backend/db/dynamo-branch-store.ts";
 import { createMemoryDerivedDataStore } from "../backend/db/derived-data.ts";
 import { createMemoryRealmUsageStore } from "../backend/db/realm-usage-store.ts";
 import { createMemoryUserSettingsStore } from "../backend/db/user-settings.ts";
+import { createMemoryDelegateGrantStore } from "../backend/db/delegate-grants.ts";
+import { createMemoryBranchStore } from "../backend/db/branch-store.ts";
 
 export type TestServer = {
   url: string;
@@ -24,7 +25,7 @@ export type TestServer = {
 };
 
 export type TestHelpers = {
-  createUserToken(realmId: string): string;
+  createUserToken(realmId: string): Promise<string>;
   authRequest(
     token: string,
     method: string,
@@ -44,27 +45,15 @@ export type TestHelpers = {
   mcpRequest(token: string, method: string, params?: unknown): Promise<Response>;
 };
 
-function base64urlEncode(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-/** Minimal JWT for e2e: server mock verifier only decodes payload, no signature check. */
-function createUserToken(realmId: string): string {
-  const header = base64urlEncode(
-    new TextEncoder().encode(JSON.stringify({ alg: "HS256", typ: "JWT" }))
-  );
-  const payload = base64urlEncode(
-    new TextEncoder().encode(
-      JSON.stringify({
-        sub: realmId,
-        exp: Math.floor(Date.now() / 1000) + 3600,
-      })
-    )
-  );
-  const signature = base64urlEncode(new TextEncoder().encode("e2e"));
-  return `${header}.${payload}.${signature}`;
+/** E2E JWT: signed with same secret as startTestServer's testConfig (and dev-test when BASE_URL is set). */
+async function createUserToken(realmId: string): Promise<string> {
+  const secret = "test-secret-e2e";
+  const key = new Uint8Array(new TextEncoder().encode(secret));
+  return await new jose.SignJWT({})
+    .setSubject(realmId)
+    .setExpirationTime("1h")
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .sign(key);
 }
 
 function createHelpers(url: string): TestHelpers {
@@ -193,24 +182,28 @@ function createRemoteTestServer(baseUrl: string): TestServer {
 
 export function startTestServer(options?: { port?: number }): TestServer {
   const config = loadConfig();
-  const { cas, key } = createCasFacade(config);
-  const branchStore = createDynamoBranchStore({
-    tableName: config.dynamodbTableDelegates,
-    clientConfig: config.dynamodbEndpoint
-      ? { endpoint: config.dynamodbEndpoint, region: "us-east-1" }
-      : undefined,
-  });
-  const delegateGrantStore = createDynamoDelegateGrantStore({
-    tableName: config.dynamodbTableGrants,
-    clientConfig: config.dynamodbEndpoint
-      ? { endpoint: config.dynamodbEndpoint, region: "us-east-1" }
-      : undefined,
-  });
+  // E2E in-process: force mock auth but use decode-only verifier (no mockJwtSecret) so that
+  // 1) our signed user token is accepted (payload valid), 2) server-issued delegate token (header.payload.sig) is accepted.
+  const testConfig: typeof config = {
+    ...config,
+    auth: {
+      ...config.auth,
+      mockJwtSecret: undefined,
+      cognitoRegion: undefined,
+      cognitoUserPoolId: undefined,
+      cognitoClientId: undefined,
+      cognitoHostedUiUrl: undefined,
+      cognitoClientSecret: undefined,
+    },
+  };
+  const { cas, key } = createCasFacade(testConfig);
+  const branchStore = createMemoryBranchStore();
+  const delegateGrantStore = createMemoryDelegateGrantStore();
   const derivedDataStore = createMemoryDerivedDataStore();
   const realmUsageStore = createMemoryRealmUsageStore();
   const userSettingsStore = createMemoryUserSettingsStore();
   const app = createApp({
-    config,
+    config: testConfig,
     cas,
     key,
     branchStore,

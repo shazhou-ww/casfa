@@ -17,7 +17,7 @@ describe("Branches / Worker", () => {
   });
 
   it("create branch returns branchId and accessToken", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const mkdirRes = await ctx.helpers.authRequest(
       token,
       "POST",
@@ -32,23 +32,23 @@ describe("Branches / Worker", () => {
     expect(result.accessToken).toBeDefined();
   });
 
-  it("create branch without realm root returns 404", async () => {
-    const freshRealm = "e2e-no-root-" + crypto.randomUUID();
-    const token = ctx.helpers.createUserToken(freshRealm);
+  it("create branch on fresh realm lazy-creates realm and returns 201", async () => {
+    const freshRealm = "e2e-fresh-" + crypto.randomUUID();
+    const token = await ctx.helpers.createUserToken(freshRealm);
     const res = await ctx.helpers.authRequest(
       token,
       "POST",
       `/api/realm/${freshRealm}/branches`,
       { mountPath: "any" }
     );
-    expect(res.status).toBe(404);
-    const data = (await res.json()) as { error?: string; message?: string };
-    expect(data.error).toBe("NOT_FOUND");
-    expect(data.message).toContain("Realm not initialized");
+    expect(res.status).toBe(201);
+    const data = (await res.json()) as { branchId?: string; accessToken?: string };
+    expect(data.branchId).toBeDefined();
+    expect(data.accessToken).toBeDefined();
   });
 
   it("create branch with non-existent mountPath returns 201 (NUL root)", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(
       token,
       "POST",
@@ -68,7 +68,7 @@ describe("Branches / Worker", () => {
   });
 
   it("worker token can list own branch", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(
       token,
       "POST",
@@ -91,7 +91,7 @@ describe("Branches / Worker", () => {
   });
 
   it("worker token can list files at root", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(
       token,
       "POST",
@@ -112,7 +112,7 @@ describe("Branches / Worker", () => {
   });
 
   it("revoke branch then branch not in list", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(
       token,
       "POST",
@@ -138,8 +138,8 @@ describe("Branches / Worker", () => {
     expect(data.branches?.some((b) => b.branchId === branchId)).toBe(false);
   });
 
-  it("complete after revoke returns 404", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+  it("complete after revoke returns 401 (revoked branch token invalid)", async () => {
+    const token = await ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(
       token,
       "POST",
@@ -161,14 +161,13 @@ describe("Branches / Worker", () => {
       "POST",
       "/api/realm/me/branches/me/complete"
     );
-    expect(completeRes.status).toBe(404);
+    expect(completeRes.status).toBe(401);
     const data = (await completeRes.json()) as { error?: string; message?: string };
-    expect(data.error).toBe("NOT_FOUND");
-    expect(data.message).toContain("Branch not found");
+    expect(data.error).toBe("UNAUTHORIZED");
   });
 
   it("complete merges sub-branch into parent", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(
       token,
       "POST",

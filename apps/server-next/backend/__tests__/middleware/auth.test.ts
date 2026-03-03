@@ -3,6 +3,7 @@
  * Bearer branch token → worker or 401.
  */
 import { describe, expect, it } from "bun:test";
+import * as jose from "jose";
 import { Hono } from "hono";
 import type { Env } from "../../types.ts";
 import { createAuthMiddleware } from "../../middleware/auth.ts";
@@ -137,6 +138,31 @@ describe("auth middleware", () => {
     expect(body.realmId).toBe("realm-r1");
     expect(body.branchId).toBe(branchId);
     expect(body.access).toBe("readwrite");
+  });
+
+  it("accepts HS256 JWT signed with mockJwtSecret when config is passed", async () => {
+    const branchStore = createMemoryBranchStore();
+    const delegateGrantStore = createMemoryDelegateGrantStore();
+    const secret = "test-secret-e2e";
+    const key = new Uint8Array(new TextEncoder().encode(secret));
+    const token = await new jose.SignJWT({})
+      .setSubject("user-789")
+      .setExpirationTime("1h")
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .sign(key);
+    const auth = createAuthMiddleware({
+      delegateGrantStore,
+      branchStore,
+      config: { auth: { mockJwtSecret: secret } } as any,
+    });
+    const app = new Hono<Env>().use("*", auth).get("/", (c) => c.json(c.get("auth")));
+    const res = await app.request("http://localhost/", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { type: string; userId: string };
+    expect(body.type).toBe("user");
+    expect(body.userId).toBe("user-789");
   });
 
   it("returns 401 when branch token is not found in store", async () => {

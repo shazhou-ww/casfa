@@ -17,7 +17,7 @@ describe("Realm", () => {
   });
 
   it("GET realm info returns realmId and counts", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const res = await ctx.helpers.authRequest(
       token,
       "GET",
@@ -38,7 +38,7 @@ describe("Realm", () => {
   });
 
   it("GET realm usage returns nodeCount and totalBytes", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const res = await ctx.helpers.authRequest(
       token,
       "GET",
@@ -51,7 +51,7 @@ describe("Realm", () => {
   });
 
   it("POST realm gc returns gc true and cutOffTime", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const cutOffTime = Date.now() - 3600_000;
     const res = await ctx.helpers.authRequest(
       token,

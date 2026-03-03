@@ -17,7 +17,7 @@ describe("MCP", () => {
   });
 
   it("initialize returns protocolVersion and capabilities", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const res = await ctx.helpers.mcpRequest(token, "initialize");
     expect(res.status).toBe(200);
     const data = (await res.json()) as {
@@ -28,7 +28,7 @@ describe("MCP", () => {
   });
 
   it("tools/list returns tools array", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const res = await ctx.helpers.mcpRequest(token, "tools/list");
     expect(res.status).toBe(200);
     const data = (await res.json()) as { result?: { tools?: unknown[] } };
@@ -37,7 +37,7 @@ describe("MCP", () => {
   });
 
   it("tools/call branches_list returns content", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const res = await ctx.helpers.mcpRequest(token, "tools/call", {
       name: "branches_list",
       arguments: {},
@@ -54,7 +54,7 @@ describe("MCP", () => {
   });
 
   it("tools/call fs_ls returns entries", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const res = await ctx.helpers.mcpRequest(token, "tools/call", {
       name: "fs_ls",
       arguments: { path: "" },
@@ -71,7 +71,7 @@ describe("MCP", () => {
   });
 
   it("tools/call fs_write writes file then fs_read returns content", async () => {
-    const token = ctx.helpers.createUserToken(realmId);
+    const token = await ctx.helpers.createUserToken(realmId);
     const writeRes = await ctx.helpers.mcpRequest(token, "tools/call", {
       name: "fs_write",
       arguments: { path: "hello.txt", content: "Hello MCP" },

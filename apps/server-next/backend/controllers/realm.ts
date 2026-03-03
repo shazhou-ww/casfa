@@ -23,6 +23,9 @@ export function createRealmController(deps: RealmControllerDeps) {
         return c.json({ error: "FORBIDDEN", message: "Realm access required" }, 403);
       }
       const realmId = auth.type === "user" ? auth.userId : auth.realmId;
+      if (auth.type === "user") {
+        await deps.realmInfoService.ensureRealmForUser(realmId);
+      }
       const info = await deps.realmInfoService.info(realmId);
       return c.json(
         {
@@ -43,6 +46,9 @@ export function createRealmController(deps: RealmControllerDeps) {
         return c.json({ error: "FORBIDDEN", message: "Realm access required" }, 403);
       }
       const realmId = auth.type === "user" ? auth.userId : auth.realmId;
+      if (auth.type === "user") {
+        await deps.realmInfoService.ensureRealmForUser(realmId);
+      }
       const info = await deps.realmInfoService.info(realmId);
       return c.json(
         {
@@ -59,6 +65,9 @@ export function createRealmController(deps: RealmControllerDeps) {
         return c.json({ error: "FORBIDDEN", message: "Realm access required" }, 403);
       }
       const realmId = auth.type === "user" ? auth.userId : auth.realmId;
+      if (auth.type === "user") {
+        await deps.realmInfoService.ensureRealmForUser(realmId);
+      }
       try {
         const body = (await c.req.json<{ cutOffTime?: number }>().catch(() => ({}))) as {
           cutOffTime?: number;
