@@ -9,8 +9,11 @@ import {
   getCurrentRoot,
   resolvePath,
   getNodeDecoded,
+  getEffectiveDelegateId,
 } from "../services/root-resolver.ts";
-import { hashToKey } from "@casfa/core";
+import { addOrReplaceAtPath } from "../services/tree-mutations.ts";
+import { encodeDictNode, hashToKey } from "@casfa/core";
+import { streamFromBytes } from "@casfa/cas";
 import type { ServerConfig } from "../config.ts";
 
 // ---------------------------------------------------------------------------
@@ -66,6 +69,12 @@ function hasBranchManage(auth: NonNullable<Env["Variables"]["auth"]>): boolean {
   return false;
 }
 
+function hasFileWrite(auth: NonNullable<Env["Variables"]["auth"]>): boolean {
+  if (auth.type === "user") return true;
+  if (auth.type === "delegate") return auth.permissions.includes("file_write");
+  return auth.access === "readwrite";
+}
+
 // ---------------------------------------------------------------------------
 // Tool definitions
 // ---------------------------------------------------------------------------
@@ -83,7 +92,7 @@ const MCP_TOOLS = [
   {
     name: "branch_create",
     description:
-      "Create a branch. Without parentBranchId creates under realm root (requires branch_manage). With parentBranchId creates sub-branch (Worker only, parent must be own branch).",
+      "Create a branch. Without parentBranchId creates under realm root (requires branch_manage). With parentBranchId creates sub-branch (Worker only, parent must be own branch). Returns branchId, accessToken, expiresAt; when API_BASE_URL is configured also returns baseUrl for use as casfaBaseUrl in image-workshop flux_image.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -92,6 +101,17 @@ const MCP_TOOLS = [
         parentBranchId: { type: "string" as const, description: "Optional parent branch (Worker only)" },
       },
       required: ["mountPath"] as string[],
+    },
+  },
+  {
+    name: "fs_mkdir",
+    description: "Create a directory at the given path. Parent path must exist. Required for creating a path before branch_create (e.g. create 'images' then create branch with mountPath 'images').",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        path: { type: "string" as const, description: "Directory path to create (e.g. 'images' or 'output/generated')" },
+      },
+      required: ["path"] as string[],
     },
   },
   {
@@ -245,6 +265,7 @@ async function handleToolsCall(
                 branchId,
                 accessToken: base64urlEncode(branchId),
                 expiresAt,
+                ...(deps.config.apiBaseUrl && { baseUrl: deps.config.apiBaseUrl }),
               }),
             },
           ],
@@ -285,10 +306,52 @@ async function handleToolsCall(
               branchId: childId,
               accessToken: base64urlEncode(childId),
               expiresAt,
+              ...(deps.config.apiBaseUrl && { baseUrl: deps.config.apiBaseUrl }),
             }),
           },
         ],
       });
+    }
+
+    if (name === "fs_mkdir") {
+      if (!hasFileWrite(auth)) {
+        return mcpError(id, MCP_INVALID_PARAMS, "file_write required");
+      }
+      const pathStr = typeof args.path === "string" ? String(args.path).trim().replace(/^\/+|\/+$/g, "") : "";
+      if (!pathStr) {
+        return mcpError(id, MCP_INVALID_PARAMS, "path required");
+      }
+      const rootKey = await getCurrentRoot(auth, deps);
+      if (rootKey === null) {
+        return mcpError(id, MCP_INVALID_PARAMS, "Realm not initialized. Open your profile or realm first.");
+      }
+      try {
+        const emptyDict = await encodeDictNode({ children: [], childNames: [] }, deps.key);
+        const emptyDictKey = hashToKey(emptyDict.hash);
+        await deps.cas.putNode(emptyDictKey, streamFromBytes(emptyDict.bytes));
+        const newRootKey = await addOrReplaceAtPath(
+          deps.cas,
+          deps.key,
+          rootKey,
+          pathStr,
+          emptyDictKey
+        );
+        const delegateId = await getEffectiveDelegateId(auth, deps);
+        await deps.branchStore.setBranchRoot(delegateId, newRootKey);
+        return mcpSuccess(id, {
+          content: [{ type: "text" as const, text: JSON.stringify({ path: pathStr }) }],
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "mkdir failed";
+        if (
+          message.includes("must not contain") ||
+          message.includes("Parent path not found") ||
+          message.includes("Not a dict")
+        ) {
+          return mcpError(id, MCP_INVALID_PARAMS, message);
+        }
+        throw err;
+      }
     }
 
     // fs_ls, fs_stat, fs_read
@@ -299,6 +362,7 @@ async function handleToolsCall(
     if (rootKey === null) {
       return mcpError(id, MCP_INVALID_PARAMS, "Realm or branch root not found");
     }
+    const pathStr = typeof args.path === "string" ? String(args.path).trim().replace(/^\/+|\/+$/g, "") : "";
     const nodeKey = await resolvePath(deps.cas, rootKey, pathStr);
     if (nodeKey === null) {
       return mcpError(id, MCP_INVALID_PARAMS, "Path not found");
