@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { Glob } from "bun";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import {
@@ -12,6 +13,33 @@ import { ensureLocalTables, isDynamoDBReady } from "../local/dynamodb-local.js";
 import { ensureLocalBuckets } from "../local/minio-local.js";
 import { loadEnvFiles } from "../utils/env.js";
 
+async function hasMatchingFiles(cwd: string, pattern: string): Promise<boolean> {
+  const glob = new Glob(pattern);
+  for await (const _ of glob.scan({ cwd, onlyFiles: true })) {
+    return true;
+  }
+  return false;
+}
+
+async function runBunTest(
+  cwd: string,
+  pattern: string,
+  env?: Record<string, string | undefined>,
+): Promise<number> {
+  if (!(await hasMatchingFiles(cwd, pattern))) {
+    console.log("  No test files found, skipping");
+    return 0;
+  }
+  const proc = Bun.spawn(["bun", "test", pattern], {
+    cwd,
+    env: env ? { ...process.env, ...env } : undefined,
+    stdout: "inherit",
+    stderr: "inherit",
+    stdin: "inherit",
+  });
+  return proc.exited;
+}
+
 export async function testUnitCommand(options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
@@ -19,19 +47,21 @@ export async function testUnitCommand(options?: { cellDir?: string }): Promise<v
   const pattern = config.testing?.unit ?? "**/__tests__/*.test.ts";
   console.log(`Running unit tests: ${pattern}`);
 
-  const proc = Bun.spawn(["bun", "test", pattern], {
-    cwd: cellDir,
-    stdout: "inherit",
-    stderr: "inherit",
-    stdin: "inherit",
-  });
-  const exitCode = await proc.exited;
+  const exitCode = await runBunTest(cellDir, pattern);
   process.exit(exitCode);
 }
 
 export async function testE2eCommand(options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
+
+  const pattern = config.testing?.e2e ?? "tests/*.test.ts";
+  if (!(await hasMatchingFiles(cellDir, pattern))) {
+    console.log(`Running e2e tests: ${pattern}`);
+    console.log("  No test files found, skipping");
+    return;
+  }
+
   const envMap = loadEnvFiles(cellDir);
   const resolved = resolveConfig(config, envMap, "test");
 
@@ -137,22 +167,13 @@ export async function testE2eCommand(options?: { cellDir?: string }): Promise<vo
     }
 
     // Run e2e tests
-    const pattern = config.testing?.e2e ?? "tests/*.test.ts";
     console.log(`\nRunning e2e tests: ${pattern}`);
 
-    const testProc = Bun.spawn(["bun", "test", pattern], {
-      cwd: cellDir,
-      env: {
-        ...process.env,
-        ...resolved.envVars,
-        PORT: String(httpPort),
-        API_BASE_URL: `http://localhost:${httpPort}`,
-      },
-      stdout: "inherit",
-      stderr: "inherit",
-      stdin: "inherit",
+    const testExitCode = await runBunTest(cellDir, pattern, {
+      ...resolved.envVars,
+      PORT: String(httpPort),
+      API_BASE_URL: `http://localhost:${httpPort}`,
     });
-    const testExitCode = await testProc.exited;
     process.exit(testExitCode);
   } finally {
     for (const child of children) {
@@ -168,17 +189,10 @@ export async function testCommand(options?: { cellDir?: string }): Promise<void>
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
 
-  // Run unit tests (don't exit on completion, check code)
   const unitPattern = config.testing?.unit ?? "**/__tests__/*.test.ts";
   console.log(`Running unit tests: ${unitPattern}`);
 
-  const unitProc = Bun.spawn(["bun", "test", unitPattern], {
-    cwd: cellDir,
-    stdout: "inherit",
-    stderr: "inherit",
-    stdin: "inherit",
-  });
-  const unitExitCode = await unitProc.exited;
+  const unitExitCode = await runBunTest(cellDir, unitPattern);
   if (unitExitCode !== 0) {
     console.error("\nUnit tests failed");
     process.exit(unitExitCode);
