@@ -209,16 +209,11 @@ export async function devCommand(options?: {
   if (resolved.frontend) {
     const frontendDir = resolve(cellDir, resolved.frontend.dir);
 
-    const cellBuildDir = resolve(cellDir, ".cell");
-    mkdirSync(cellBuildDir, { recursive: true });
-    const devViteConfig = resolve(cellBuildDir, "vite-dev.config.ts");
-    const userConfigPath = resolve(frontendDir, "vite.config.ts");
-    const relUserConfig = relative(dirname(devViteConfig), userConfigPath).replace(/\.ts$/, "");
-    const userConfigImport = relUserConfig.startsWith(".") ? relUserConfig : `./${relUserConfig}`;
+    const devViteConfig = resolve(frontendDir, ".vite-dev.config.ts");
     writeFileSync(
       devViteConfig,
       [
-        `import baseConfig from "${userConfigImport}";`,
+        `import baseConfig from "./vite.config";`,
         `import { defineConfig, mergeConfig } from "vite";`,
         `export default mergeConfig(baseConfig, defineConfig({`,
         `  server: {`,
