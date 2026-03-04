@@ -1,0 +1,468 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`generateTemplate full template snapshot 1`] = `
+"AWSTemplateFormatVersion: 2010-09-09
+Conditions:
+  UseCustomDomain:
+    Fn::Not:
+      - Fn::Equals:
+          - beta.casfa.shazhou.me
+          - ""
+Resources:
+  DelegatesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    Properties:
+      TableName: casfa-next-delegates
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: realm-index
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+  GrantsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    Properties:
+      TableName: casfa-next-grants
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+        - AttributeName: gsi2pk
+          AttributeType: S
+        - AttributeName: gsi2sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: realm-hash-index
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: realm-refresh-index
+          KeySchema:
+            - AttributeName: gsi2pk
+              KeyType: HASH
+            - AttributeName: gsi2sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+  BlobBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: casfa-next-blob
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: casfa-next-frontend
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Code:
+        S3Bucket: PLACEHOLDER
+        S3Key: build/api/code.zip
+      Timeout: 30
+      MemorySize: 1024
+      Role:
+        Fn::GetAtt:
+          - LambdaExecutionRole
+          - Arn
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_DELEGATES: casfa-next-delegates
+          DYNAMODB_TABLE_GRANTS: casfa-next-grants
+          S3_BUCKET_BLOB: casfa-next-blob
+          FRONTEND_BUCKET: casfa-next-frontend
+          COGNITO_REGION: us-east-1
+          COGNITO_CLIENT_SECRET: "{{resolve:secretsmanager:casfa-next/COGNITO_CLIENT_SECRET}}"
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:Scan
+                Resource:
+                  - Fn::GetAtt:
+                      - DelegatesTable
+                      - Arn
+                  - Fn::Sub: \${DelegatesTable.Arn}/index/*
+                  - Fn::GetAtt:
+                      - GrantsTable
+                      - Arn
+                  - Fn::Sub: \${GrantsTable.Arn}/index/*
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - Fn::GetAtt:
+                      - BlobBucket
+                      - Arn
+                  - Fn::Sub: \${BlobBucket.Arn}/*
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource:
+                  Fn::Sub: \${FrontendBucket.Arn}/index.html
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: casfa-next-api
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - "*"
+        AllowHeaders:
+          - "*"
+  ApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId:
+        Ref: HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::GetAtt:
+          - ApiFunction
+          - Arn
+      PayloadFormatVersion: "2.0"
+  ApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId:
+        Ref: HttpApi
+      RouteKey: $default
+      Target:
+        Fn::Sub: integrations/\${ApiIntegration}
+  ApiLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: ApiFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: arn:aws:execute-api:\${AWS::Region}:\${AWS::AccountId}:\${HttpApi}/*
+  HttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId:
+        Ref: HttpApi
+      StageName: $default
+      AutoDeploy: true
+  FrontendOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: casfa-next-frontend-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+  ApiCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: casfa-next-api-cache
+        Comment: Forward Authorization header to API Gateway; cache key includes
+          Authorization so per-user
+        DefaultTTL: 1
+        MaxTTL: 1
+        MinTTL: 0
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          HeadersConfig:
+            HeaderBehavior: whitelist
+            Headers:
+              - Authorization
+          CookiesConfig:
+            CookieBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: all
+  FrontendCloudFront:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: S3Frontend
+            DomainName:
+              Fn::GetAtt:
+                - FrontendBucket
+                - RegionalDomainName
+            OriginAccessControlId:
+              Fn::GetAtt:
+                - FrontendOAC
+                - Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+          - Id: ApiGateway
+            DomainName:
+              Fn::Sub: \${HttpApi}.execute-api.\${AWS::Region}.amazonaws.com
+            CustomOriginConfig:
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+        DefaultCacheBehavior:
+          TargetOriginId: S3Frontend
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        CacheBehaviors:
+          - PathPattern: /oauth/callback
+            TargetOriginId: ApiGateway
+            ViewerProtocolPolicy: https-only
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            Compress: true
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          - PathPattern: /api/*
+            TargetOriginId: ApiGateway
+            ViewerProtocolPolicy: https-only
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - POST
+              - PATCH
+              - DELETE
+            Compress: true
+            CachePolicyId:
+              Ref: ApiCachePolicy
+        Aliases:
+          Fn::If:
+            - UseCustomDomain
+            - - beta.casfa.shazhou.me
+            - Ref: AWS::NoValue
+        ViewerCertificate:
+          Fn::If:
+            - UseCustomDomain
+            - AcmCertificateArn: arn:aws:acm:us-east-1:123456789012:certificate/abc-def
+              SslSupportMethod: sni-only
+              MinimumProtocolVersion: TLSv1.2_2021
+            - CloudFrontDefaultCertificate: true
+  SpaFallbackEdgeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+          - Effect: Allow
+            Principal:
+              Service: edgelambda.amazonaws.com
+            Action: sts:AssumeRole
+  SpaFallbackEdgeRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: SpaFallbackEdgeS3
+      Roles:
+        - Ref: SpaFallbackEdgeRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: s3:GetObject
+            Resource:
+              Fn::Sub: \${FrontendBucket.Arn}/index.html
+  SpaFallbackEdgeFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Code:
+        ZipFile: >-
+          const AWS = require('aws-sdk');
+
+          function parse(d) {
+            if (!d || typeof d !== 'string') return null;
+            const p = d.toLowerCase().split('.');
+            if (p.length >= 4 && p[1] === 's3') return { bucket: p[0], region: p[2] || 'us-east-1' };
+            return null;
+          }
+
+          exports.handler = async (event) => {
+            const r = event.Records && event.Records[0] && event.Records[0].cf;
+            if (!r) return event;
+            const req = r.request;
+            const res = r.response;
+            const status = parseInt(res.status, 10);
+            if (status !== 403 && status !== 404) return event;
+            if (req.uri.startsWith('/api')) return event;
+            const o = parse(req.origin && req.origin.s3 && req.origin.s3.domainName);
+            if (!o) return event;
+            const s3 = new AWS.S3({ region: o.region });
+            try {
+              const out = await s3.getObject({ Bucket: o.bucket, Key: 'index.html' }).promise();
+              const body = out.Body.toString('utf-8');
+              const b64 = Buffer.from(body, 'utf-8').toString('base64');
+              res.status = '200';
+              res.statusDescription = 'OK';
+              res.body = b64;
+              res.bodyEncoding = 'base64';
+              res.headers['content-type'] = [{ key: 'Content-Type', value: 'text/html; charset=utf-8' }];
+              res.headers['content-length'] = [{ key: 'Content-Length', value: String(Buffer.byteLength(body, 'utf-8')) }];
+            } catch (e) {}
+            return event;
+          };
+      Role:
+        Fn::GetAtt:
+          - SpaFallbackEdgeRole
+          - Arn
+      MemorySize: 128
+      Timeout: 5
+  SpaFallbackEdgeVersion:
+    Type: AWS::Lambda::Version
+    DependsOn: SpaFallbackEdgeFunction
+    Properties:
+      FunctionName:
+        Ref: SpaFallbackEdgeFunction
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DependsOn: FrontendCloudFront
+    Properties:
+      Bucket:
+        Ref: FrontendBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource:
+              Fn::Sub: \${FrontendBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn:
+                  Fn::Sub: arn:aws:cloudfront::\${AWS::AccountId}:distribution/\${FrontendCloudFront}
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: UseCustomDomain
+    Properties:
+      Type: A
+      Name: beta.casfa.shazhou.me
+      HostedZoneName: shazhou.me.
+      AliasTarget:
+        DNSName:
+          Fn::GetAtt:
+            - FrontendCloudFront
+            - DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+Outputs:
+  DelegatesTableArn:
+    Value:
+      Fn::GetAtt:
+        - DelegatesTable
+        - Arn
+  GrantsTableArn:
+    Value:
+      Fn::GetAtt:
+        - GrantsTable
+        - Arn
+  BlobBucketName:
+    Value:
+      Ref: BlobBucket
+  BlobBucketArn:
+    Value:
+      Fn::GetAtt:
+        - BlobBucket
+        - Arn
+  FrontendBucketName:
+    Description: S3 bucket for frontend assets
+    Value:
+      Ref: FrontendBucket
+  FrontendBucketArn:
+    Value:
+      Fn::GetAtt:
+        - FrontendBucket
+        - Arn
+  HttpApiId:
+    Value:
+      Ref: HttpApi
+  HttpApiEndpoint:
+    Value:
+      Fn::Sub: https://\${HttpApi}.execute-api.\${AWS::Region}.amazonaws.com
+  FrontendUrl:
+    Description: CloudFront URL for frontend
+    Value:
+      Fn::Sub: https://\${FrontendCloudFront.DomainName}
+  FrontendDistributionId:
+    Description: CloudFront distribution ID (for cache invalidation)
+    Value:
+      Ref: FrontendCloudFront
+"
+`;

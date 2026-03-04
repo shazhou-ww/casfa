@@ -25,6 +25,7 @@ export interface ResolvedBucket {
 export interface ResolvedConfig {
   name: string;
   envVars: Record<string, string>;
+  secretRefs: Record<string, string>;
   tables: ResolvedTable[];
   buckets: ResolvedBucket[];
   frontendBucketName: string;
@@ -51,6 +52,7 @@ export function resolveConfig(
   stage: Stage,
 ): ResolvedConfig {
   const envVars: Record<string, string> = {};
+  const secretRefs: Record<string, string> = {};
 
   // 1. Params → env vars
   if (config.params) {
@@ -58,6 +60,7 @@ export function resolveConfig(
       if (typeof value === "string") {
         envVars[key] = value;
       } else if (isSecretRef(value)) {
+        secretRefs[key] = value.secret;
         const envValue = envMap[value.secret];
         if (envValue === undefined) {
           if (stage === "cloud") {
@@ -110,6 +113,7 @@ export function resolveConfig(
   return {
     name: config.name,
     envVars,
+    secretRefs,
     tables,
     buckets,
     frontendBucketName,
