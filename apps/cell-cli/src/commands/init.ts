@@ -31,7 +31,6 @@ cognito:
   userPoolId: !Param COGNITO_USER_POOL_ID
   clientId: !Param COGNITO_CLIENT_ID
   hostedUiUrl: !Param COGNITO_HOSTED_UI_URL
-  clientSecret: !Param COGNITO_CLIENT_SECRET
 
 domain: {}
 
@@ -49,7 +48,6 @@ COGNITO_REGION=
 COGNITO_USER_POOL_ID=
 COGNITO_CLIENT_ID=
 COGNITO_HOSTED_UI_URL=
-COGNITO_CLIENT_SECRET=
 `;
 
 const GITIGNORE_ENTRIES = [".cell/", ".env"];
