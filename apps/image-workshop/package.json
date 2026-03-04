@@ -8,6 +8,7 @@
     "build": "bun ../cell-cli/src/cli.ts build",
     "deploy": "bun ../cell-cli/src/cli.ts deploy",
     "typecheck": "bun ../cell-cli/src/cli.ts typecheck",
+    "test": "bun ../cell-cli/src/cli.ts test",
     "lint": "bun ../cell-cli/src/cli.ts lint"
   },
   "dependencies": {
