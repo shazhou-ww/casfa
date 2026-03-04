@@ -11,3 +11,9 @@ export {
   createMockJwtVerifier,
   createMockJwt,
 } from "./jwt-verifier.ts";
+
+export {
+  exchangeCodeForTokens,
+  refreshCognitoTokens,
+  buildCognitoAuthorizeUrl,
+} from "./cognito-client.ts";
