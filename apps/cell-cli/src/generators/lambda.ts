@@ -17,19 +17,28 @@ export function generateLambda(config: ResolvedConfig): CfnFragment {
     }
   }
 
+  const useVpc = config.network?.vpc === true;
+
   for (const [key, entry] of Object.entries(config.backend.entries)) {
     const logicalId = `${toPascalCase(key)}Function`;
+    const functionProps: Record<string, unknown> = {
+      Runtime: config.backend.runtime,
+      Handler: "index.handler",
+      Code: { S3Bucket: "PLACEHOLDER", S3Key: `build/${key}/code.zip` },
+      Timeout: entry.timeout,
+      MemorySize: entry.memory,
+      Role: { "Fn::GetAtt": ["LambdaExecutionRole", "Arn"] },
+      Environment: { Variables: envVariables },
+    };
+    if (useVpc) {
+      functionProps.VpcConfig = {
+        SubnetIds: [{ Ref: "PrivateSubnetA" }, { Ref: "PrivateSubnetB" }],
+        SecurityGroupIds: [{ Ref: "LambdaSecurityGroup" }],
+      };
+    }
     resources[logicalId] = {
       Type: "AWS::Lambda::Function",
-      Properties: {
-        Runtime: config.backend.runtime,
-        Handler: "index.handler",
-        Code: { S3Bucket: "PLACEHOLDER", S3Key: `build/${key}/code.zip` },
-        Timeout: entry.timeout,
-        MemorySize: entry.memory,
-        Role: { "Fn::GetAtt": ["LambdaExecutionRole", "Arn"] },
-        Environment: { Variables: envVariables },
-      },
+      Properties: functionProps,
     };
   }
 
@@ -91,7 +100,12 @@ export function generateLambda(config: ResolvedConfig): CfnFragment {
           },
         ],
       },
-      ManagedPolicyArns: ["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"],
+      ManagedPolicyArns: [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        ...(useVpc
+          ? ["arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"]
+          : []),
+      ],
       Policies: [
         {
           PolicyName: "LambdaPolicy",

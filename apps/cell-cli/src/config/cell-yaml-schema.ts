@@ -68,12 +68,20 @@ export interface CognitoConfig {
 export interface DomainConfig {
   zone: string;
   host: string;
-  certificate: ResolvedValue;
+  /** ACM certificate ARN. If omitted, cell-cli auto-creates one via DNS validation. */
+  certificate?: ResolvedValue;
+  /** Populated at deploy time by looking up Route53 hosted zone. */
+  hostedZoneId?: string;
 }
 
 export interface TestingConfig {
   unit: string;
   e2e: string;
+}
+
+export interface NetworkConfig {
+  vpc: boolean;
+  nat?: boolean;
 }
 
 export interface CellConfig {
@@ -86,5 +94,6 @@ export interface CellConfig {
   params?: Record<string, ResolvedValue>;
   cognito?: CognitoConfig;
   domain?: DomainConfig;
+  network?: NetworkConfig;
   testing?: TestingConfig;
 }

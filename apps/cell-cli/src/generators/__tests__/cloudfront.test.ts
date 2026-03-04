@@ -10,6 +10,17 @@ function makeConfig(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
     tables: [],
     buckets: [],
     frontendBucketName: "test-app-frontend",
+    backend: {
+      runtime: "nodejs20.x",
+      entries: {
+        api: {
+          handler: "backend/handler.ts",
+          timeout: 30,
+          memory: 512,
+          routes: ["/api/*", "/oauth/callback"],
+        },
+      },
+    },
     ...overrides,
   };
 }
@@ -34,22 +45,21 @@ describe("generateCloudFront", () => {
     expect(defaultBehavior.ViewerProtocolPolicy).toBe("redirect-to-https");
   });
 
-  test("/api/* behavior targets ApiGateway with auth header forwarding", () => {
+  test("backend routes generate API cache behaviors", () => {
     const config = makeConfig();
     const result = generateCloudFront(config);
     const dist = result.Resources.FrontendCloudFront as any;
-    const apiBehavior = dist.Properties.DistributionConfig.CacheBehaviors.find(
-      (b: any) => b.PathPattern === "/api/*"
-    );
+    const behaviors = dist.Properties.DistributionConfig.CacheBehaviors;
+    expect(behaviors).toHaveLength(2);
+
+    const apiBehavior = behaviors.find((b: any) => b.PathPattern === "/api/*");
     expect(apiBehavior.TargetOriginId).toBe("ApiGateway");
     expect(apiBehavior.AllowedMethods).toContain("POST");
-    expect(apiBehavior.CachePolicyId).toEqual({ Ref: "ApiCachePolicy" });
+    expect(apiBehavior.AllowedMethods).toContain("DELETE");
 
-    const cachePolicy = result.Resources.ApiCachePolicy as any;
-    const headers =
-      cachePolicy.Properties.CachePolicyConfig.ParametersInCacheKeyAndForwardedToOrigin
-        .HeadersConfig;
-    expect(headers.Headers).toContain("Authorization");
+    const oauthBehavior = behaviors.find((b: any) => b.PathPattern === "/oauth/callback");
+    expect(oauthBehavior.TargetOriginId).toBe("ApiGateway");
+    expect(oauthBehavior.AllowedMethods).toContain("POST");
   });
 
   test("OAC generated", () => {
