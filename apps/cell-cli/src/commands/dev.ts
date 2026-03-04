@@ -1,5 +1,7 @@
 import { resolve, dirname, relative } from "node:path";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { createServer, mergeConfig, defineConfig, type UserConfig } from "vite";
+import react from "@vitejs/plugin-react";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import { isSecretRef } from "../config/cell-yaml-schema.js";
@@ -206,75 +208,59 @@ export async function devCommand(options?: {
     }
   }
 
-  // Frontend: start Vite dev server with API proxy
+  // Frontend: start Vite dev server with API proxy (in-process via Vite JS API)
+  let viteServer: Awaited<ReturnType<typeof createServer>> | undefined;
   if (resolved.frontend) {
     const frontendDir = resolve(cellDir, resolved.frontend.dir);
     ensureIndexHtml(frontendDir, config);
 
-    const hasUserConfig = existsSync(resolve(frontendDir, "vite.config.ts"));
-    const devViteConfig = resolve(frontendDir, ".vite-dev.config.ts");
-    const lines: string[] = [];
-    if (hasUserConfig) {
-      lines.push(
-        `import baseConfig from "./vite.config";`,
-        `import { mergeConfig, defineConfig } from "vite";`,
-        `import react from "@vitejs/plugin-react";`,
-        `export default mergeConfig(baseConfig, defineConfig({`,
-      );
+    const proxyConfig: UserConfig = defineConfig({
+      plugins: [react()],
+      server: {
+        port: frontendPort,
+        proxy: {
+          "/api": { target: `http://localhost:${httpPort}`, changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api/, "") },
+          "/oauth": { target: `http://localhost:${httpPort}`, changeOrigin: true },
+        },
+      },
+    });
+
+    let finalConfig: UserConfig;
+    const userConfigPath = resolve(frontendDir, "vite.config.ts");
+    if (existsSync(userConfigPath)) {
+      const userMod = await import(userConfigPath);
+      const userConfig = userMod.default ?? userMod;
+      finalConfig = mergeConfig(userConfig, proxyConfig);
     } else {
-      lines.push(
-        `import { defineConfig } from "vite";`,
-        `import react from "@vitejs/plugin-react";`,
-        `export default defineConfig({`,
-        `  plugins: [react()],`,
-      );
+      finalConfig = proxyConfig;
     }
-    lines.push(
-      `  server: {`,
-      `    proxy: {`,
-      `      "/api": { target: "http://localhost:${httpPort}", changeOrigin: true, rewrite: (path) => path.replace(/^\\/api/, "") },`,
-      `      "/oauth": { target: "http://localhost:${httpPort}", changeOrigin: true },`,
-      `    },`,
-      `  },`,
-      hasUserConfig ? `}));` : `});`,
-      "",
-    );
-    writeFileSync(devViteConfig, lines.join("\n"));
 
     console.log(`Starting frontend [web] on port ${frontendPort}...`);
-    const proc = Bun.spawn(
-      ["bunx", "vite", "--config", devViteConfig, "--port", String(frontendPort)],
-      {
-        cwd: frontendDir,
-        env: { ...process.env, ...resolved.envVars },
-        stdout: "pipe",
-        stderr: "pipe",
-      },
-    );
-    children.push(proc);
-    pipeWithLabel(
-      proc.stdout as ReadableStream<Uint8Array>,
-      "web",
-      process.stdout,
-    );
-    pipeWithLabel(
-      proc.stderr as ReadableStream<Uint8Array>,
-      "web",
-      process.stderr,
-    );
+    viteServer = await createServer({
+      ...finalConfig,
+      root: frontendDir,
+      configFile: false,
+    });
+    await viteServer.listen();
+    viteServer.printUrls();
   }
 
-  const cleanup = () => {
+  const cleanup = async () => {
+    if (viteServer) {
+      await viteServer.close();
+    }
     for (const child of children) {
       child.kill();
     }
     process.exit(0);
   };
-  process.on("SIGINT", cleanup);
-  process.on("SIGTERM", cleanup);
+  process.on("SIGINT", () => cleanup());
+  process.on("SIGTERM", () => cleanup());
 
   if (children.length > 0) {
     await Promise.race(children.map((c) => c.exited));
-    cleanup();
+    await cleanup();
+  } else if (viteServer) {
+    await new Promise(() => {});
   }
 }
