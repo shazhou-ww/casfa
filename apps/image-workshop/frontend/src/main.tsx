@@ -5,7 +5,7 @@ function App() {
   const [status, setStatus] = useState<"checking" | "online" | "offline">("checking");
 
   useEffect(() => {
-    fetch("/mcp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "initialize", id: 1, params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "probe", version: "0.1.0" } } }) })
+    fetch("/api/mcp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "initialize", id: 1, params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "probe", version: "0.1.0" } } }) })
       .then((r) => (r.ok ? setStatus("online") : setStatus("offline")))
       .catch(() => setStatus("offline"));
   }, []);
