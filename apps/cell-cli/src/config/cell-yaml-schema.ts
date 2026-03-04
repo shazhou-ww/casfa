@@ -59,7 +59,7 @@ export interface CognitoConfig {
   userPoolId: ResolvedValue;
   clientId: ResolvedValue;
   hostedUiUrl: ResolvedValue;
-  clientSecret: ResolvedValue;
+  clientSecret?: ResolvedValue;
 }
 
 export interface DomainConfig {

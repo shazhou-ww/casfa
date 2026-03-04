@@ -27,7 +27,6 @@ params:
   COGNITO_CLIENT_ID: rrr40170csj0160ptr9lusi3k
   COGNITO_HOSTED_UI_URL: https://casfa-auth.auth.us-east-1.amazoncognito.com
   ACM_CERTIFICATE_ARN: ""
-  COGNITO_CLIENT_SECRET: !Secret
   BFL_API_KEY: !Secret
 
 cognito:
@@ -35,7 +34,6 @@ cognito:
   userPoolId: !Param COGNITO_USER_POOL_ID
   clientId: !Param COGNITO_CLIENT_ID
   hostedUiUrl: !Param COGNITO_HOSTED_UI_URL
-  clientSecret: !Param COGNITO_CLIENT_SECRET
 
 domain:
   zone: shazhou.me
