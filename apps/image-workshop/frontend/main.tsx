@@ -1,9 +1,56 @@
+import AddIcon from "@mui/icons-material/Add";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import DoneIcon from "@mui/icons-material/Done";
+import GoogleIcon from "@mui/icons-material/Google";
+import LogoutIcon from "@mui/icons-material/Logout";
+import MicrosoftIcon from "@mui/icons-material/Microsoft";
+import {
+  Alert,
+  AppBar,
+  Box,
+  Button,
+  Checkbox,
+  Chip,
+  CircularProgress,
+  Container,
+  CssBaseline,
+  createTheme,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
+  IconButton,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  ThemeProvider,
+  Toolbar,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import { StrictMode, useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { apiFetch } from "./lib/api";
 import { getAuth, logout, setTokens, subscribe } from "./lib/auth";
 
-// ── Types ──
+const theme = createTheme({
+  palette: {
+    mode: "light",
+    primary: { main: "#2563eb" },
+    error: { main: "#ef4444" },
+    background: { default: "#f8fafc" },
+  },
+  shape: { borderRadius: 10 },
+  typography: { fontFamily: "'Inter', system-ui, -apple-system, sans-serif" },
+});
+
 type Delegate = {
   delegateId: string;
   clientName: string;
@@ -21,32 +68,7 @@ type NewDelegate = {
   expiresAt: number;
 };
 
-// ── Styles ──
-const colors = {
-  bg: "#fafafa",
-  card: "#fff",
-  border: "#e5e7eb",
-  primary: "#2563eb",
-  primaryHover: "#1d4ed8",
-  danger: "#ef4444",
-  dangerHover: "#dc2626",
-  text: "#111827",
-  textSecondary: "#6b7280",
-  green: "#22c55e",
-  greenBg: "#f0fdf4",
-};
-
-const btnBase: React.CSSProperties = {
-  padding: "10px 20px",
-  borderRadius: 8,
-  border: "none",
-  fontWeight: 500,
-  fontSize: 14,
-  cursor: "pointer",
-  transition: "background 0.15s",
-};
-
-// ── OAuth Callback Handler ──
+// ── OAuth Callback ──
 function OAuthCallback() {
   const [status, setStatus] = useState("Exchanging code…");
 
@@ -66,8 +88,7 @@ function OAuthCallback() {
       .then(async (r) => {
         if (!r.ok) throw new Error(`Token exchange failed: ${r.status}`);
         const data = await r.json();
-        const token = data.id_token ?? data.access_token;
-        setTokens(token, data.refresh_token);
+        setTokens(data.id_token ?? data.access_token, data.refresh_token);
         window.history.replaceState({}, "", "/");
         window.location.reload();
       })
@@ -75,86 +96,67 @@ function OAuthCallback() {
   }, []);
 
   return (
-    <div style={{ textAlign: "center", marginTop: 120, fontFamily: "system-ui" }}>
-      <p style={{ color: colors.textSecondary }}>{status}</p>
-    </div>
+    <Box
+      sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}
+    >
+      <Typography color="text.secondary">{status}</Typography>
+    </Box>
   );
 }
 
 // ── Login Page ──
 function LoginPage() {
   return (
-    <div
-      style={{
-        fontFamily: "system-ui, -apple-system, sans-serif",
+    <Box
+      sx={{
         minHeight: "100vh",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: colors.bg,
+        bgcolor: "background.default",
       }}
     >
-      <div
-        style={{
-          background: colors.card,
-          borderRadius: 16,
-          padding: "48px 40px",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-          textAlign: "center",
-          maxWidth: 400,
-          width: "100%",
-        }}
-      >
-        <h1 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 8px", color: colors.text }}>
+      <Paper elevation={1} sx={{ p: 5, maxWidth: 420, width: "100%", textAlign: "center" }}>
+        <Typography variant="h5" fontWeight={700} gutterBottom>
           Image Workshop
-        </h1>
-        <p style={{ color: colors.textSecondary, margin: "0 0 32px", fontSize: 14 }}>
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
           Sign in to manage delegates and access MCP tools
-        </p>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <a
+        </Typography>
+        <Stack spacing={1.5}>
+          <Button
+            variant="outlined"
+            size="large"
+            startIcon={<GoogleIcon />}
             href="/oauth/authorize?identity_provider=Google"
-            style={{
-              ...btnBase,
-              display: "block",
-              textDecoration: "none",
-              background: colors.card,
-              color: colors.text,
-              border: `1px solid ${colors.border}`,
-              textAlign: "center" as const,
-            }}
+            fullWidth
           >
             Sign in with Google
-          </a>
-
-          <a
+          </Button>
+          <Button
+            variant="outlined"
+            size="large"
+            startIcon={<MicrosoftIcon />}
             href="/oauth/authorize?identity_provider=Microsoft"
-            style={{
-              ...btnBase,
-              display: "block",
-              textDecoration: "none",
-              background: colors.card,
-              color: colors.text,
-              border: `1px solid ${colors.border}`,
-              textAlign: "center" as const,
-            }}
+            fullWidth
           >
             Sign in with Microsoft
-          </a>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </Stack>
+      </Paper>
+    </Box>
   );
 }
 
-// ── Create Delegate Form ──
-function CreateDelegateForm({
+// ── Create Delegate Dialog ──
+function CreateDelegateDialog({
+  open,
   onCreated,
-  onCancel,
+  onClose,
 }: {
+  open: boolean;
   onCreated: (d: NewDelegate) => void;
-  onCancel: () => void;
+  onClose: () => void;
 }) {
   const [name, setName] = useState("");
   const [useMcp, setUseMcp] = useState(true);
@@ -181,8 +183,8 @@ function CreateDelegateForm({
         }),
       });
       if (!res.ok) throw new Error(`Failed: ${res.status}`);
-      const data = await res.json();
-      onCreated(data);
+      onCreated(await res.json());
+      setName("");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -190,90 +192,68 @@ function CreateDelegateForm({
   }, [name, useMcp, manageDelegates, ttlHours, onCreated]);
 
   return (
-    <div
-      style={{
-        background: colors.card,
-        borderRadius: 12,
-        border: `1px solid ${colors.border}`,
-        padding: 24,
-        marginBottom: 16,
-      }}
-    >
-      <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 600 }}>Create Delegate</h3>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <input
-          placeholder="Client name (e.g. Claude Desktop)"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 6,
-            border: `1px solid ${colors.border}`,
-            fontSize: 14,
-          }}
-        />
-        <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-          <input type="checkbox" checked={useMcp} onChange={(e) => setUseMcp(e.target.checked)} />
-          use_mcp
-        </label>
-        <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-          <input
-            type="checkbox"
-            checked={manageDelegates}
-            onChange={(e) => setManageDelegates(e.target.checked)}
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Create Delegate</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          <TextField
+            label="Client Name"
+            placeholder="e.g. Claude Desktop"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            size="small"
+            fullWidth
+            autoFocus
           />
-          manage_delegates
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-          TTL (hours):
-          <input
+          <Box>
+            <Typography variant="body2" fontWeight={500} sx={{ mb: 0.5 }}>
+              Permissions
+            </Typography>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={useMcp}
+                  onChange={(e) => setUseMcp(e.target.checked)}
+                  size="small"
+                />
+              }
+              label="use_mcp"
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={manageDelegates}
+                  onChange={(e) => setManageDelegates(e.target.checked)}
+                  size="small"
+                />
+              }
+              label="manage_delegates"
+            />
+          </Box>
+          <TextField
+            label="TTL (hours)"
             type="number"
-            min={1}
-            max={8760}
             value={ttlHours}
             onChange={(e) => setTtlHours(Number(e.target.value))}
-            style={{
-              width: 80,
-              padding: "6px 8px",
-              borderRadius: 6,
-              border: `1px solid ${colors.border}`,
-              fontSize: 14,
-            }}
+            size="small"
+            slotProps={{ htmlInput: { min: 1, max: 8760 } }}
+            sx={{ width: 150 }}
           />
-        </label>
-        {error && <p style={{ color: colors.danger, fontSize: 13, margin: 0 }}>{error}</p>}
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={creating || !name.trim()}
-            style={{ ...btnBase, background: colors.primary, color: "#fff", flex: 1 }}
-          >
-            {creating ? "Creating…" : "Create"}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{ ...btnBase, background: "#f3f4f6", color: colors.text }}
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
+          {error && <Alert severity="error">{error}</Alert>}
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="contained" onClick={submit} disabled={creating || !name.trim()}>
+          {creating ? "Creating…" : "Create"}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 
-// ── Token Display (shown after creation) ──
-function TokenDisplay({
-  token,
-  label,
-  onDone,
-}: {
-  token: NewDelegate;
-  label?: string;
-  onDone: () => void;
-}) {
+// ── Token Display ──
+function TokenDisplay({ token, onDone }: { token: NewDelegate; onDone: () => void }) {
   const [copied, setCopied] = useState<string | null>(null);
 
   const copy = useCallback((text: string, field: string) => {
@@ -283,78 +263,44 @@ function TokenDisplay({
   }, []);
 
   return (
-    <div
-      style={{
-        background: colors.greenBg,
-        borderRadius: 12,
-        border: `1px solid ${colors.green}`,
-        padding: 20,
-        marginBottom: 16,
-      }}
-    >
-      <h4 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600, color: "#166534" }}>
-        {label ?? "Delegate Created"} — {token.clientName}
-      </h4>
-      <div style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 8 }}>
-        <div>
-          <span style={{ fontWeight: 500 }}>Access Token:</span>
-          <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-            <code
-              style={{
+    <Alert severity="success" sx={{ mb: 2 }} action={<Button onClick={onDone}>Done</Button>}>
+      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+        Delegate Created — {token.clientName}
+      </Typography>
+      {(["accessToken", "refreshToken"] as const).map((field) => (
+        <Box key={field} sx={{ mb: 1 }}>
+          <Typography variant="caption" fontWeight={500}>
+            {field === "accessToken" ? "Access Token" : "Refresh Token"}
+          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mt: 0.5 }}>
+            <Box
+              component="code"
+              sx={{
                 flex: 1,
-                padding: "6px 8px",
-                background: "#fff",
-                borderRadius: 4,
+                p: 0.75,
+                bgcolor: "grey.50",
+                borderRadius: 1,
                 fontSize: 11,
                 wordBreak: "break-all",
-                border: `1px solid ${colors.border}`,
+                border: "1px solid",
+                borderColor: "grey.300",
               }}
             >
-              {token.accessToken}
-            </code>
-            <button
-              type="button"
-              onClick={() => copy(token.accessToken, "access")}
-              style={{ ...btnBase, padding: "4px 10px", fontSize: 12, background: "#e5e7eb" }}
-            >
-              {copied === "access" ? "Copied!" : "Copy"}
-            </button>
-          </div>
-        </div>
-        <div>
-          <span style={{ fontWeight: 500 }}>Refresh Token:</span>
-          <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-            <code
-              style={{
-                flex: 1,
-                padding: "6px 8px",
-                background: "#fff",
-                borderRadius: 4,
-                fontSize: 11,
-                wordBreak: "break-all",
-                border: `1px solid ${colors.border}`,
-              }}
-            >
-              {token.refreshToken}
-            </code>
-            <button
-              type="button"
-              onClick={() => copy(token.refreshToken, "refresh")}
-              style={{ ...btnBase, padding: "4px 10px", fontSize: 12, background: "#e5e7eb" }}
-            >
-              {copied === "refresh" ? "Copied!" : "Copy"}
-            </button>
-          </div>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onDone}
-        style={{ ...btnBase, marginTop: 12, background: "#dcfce7", color: "#166534", fontSize: 13 }}
-      >
-        Done
-      </button>
-    </div>
+              {token[field]}
+            </Box>
+            <Tooltip title={copied === field ? "Copied!" : "Copy"}>
+              <IconButton size="small" onClick={() => copy(token[field], field)}>
+                {copied === field ? (
+                  <DoneIcon fontSize="small" />
+                ) : (
+                  <ContentCopyIcon fontSize="small" />
+                )}
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </Box>
+      ))}
+    </Alert>
   );
 }
 
@@ -395,29 +341,16 @@ function DelegatesPage() {
     [fetchDelegates]
   );
 
-  const formatDate = (ts: number) => new Date(ts).toLocaleString();
-
   return (
-    <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 16,
-        }}
-      >
-        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Delegates</h2>
-        {!showCreate && (
-          <button
-            type="button"
-            onClick={() => setShowCreate(true)}
-            style={{ ...btnBase, background: colors.primary, color: "#fff" }}
-          >
-            Create Delegate
-          </button>
-        )}
-      </div>
+    <>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+        <Typography variant="h6" fontWeight={600}>
+          Delegates
+        </Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setShowCreate(true)}>
+          Create Delegate
+        </Button>
+      </Box>
 
       {newToken && (
         <TokenDisplay
@@ -429,100 +362,75 @@ function DelegatesPage() {
         />
       )}
 
-      {showCreate && (
-        <CreateDelegateForm
-          onCreated={(d) => {
-            setNewToken(d);
-            setShowCreate(false);
-          }}
-          onCancel={() => setShowCreate(false)}
-        />
-      )}
+      <CreateDelegateDialog
+        open={showCreate}
+        onCreated={(d) => {
+          setNewToken(d);
+          setShowCreate(false);
+        }}
+        onClose={() => setShowCreate(false)}
+      />
 
       {loading ? (
-        <p style={{ color: colors.textSecondary, fontSize: 14 }}>Loading…</p>
+        <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+          <CircularProgress />
+        </Box>
       ) : delegates.length === 0 ? (
-        <p style={{ color: colors.textSecondary, fontSize: 14 }}>
-          No delegates yet. Create one to get started.
-        </p>
+        <Paper variant="outlined" sx={{ p: 4, textAlign: "center" }}>
+          <Typography color="text.secondary">
+            No delegates yet. Create one to get started.
+          </Typography>
+        </Paper>
       ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: 13,
-            }}
-          >
-            <thead>
-              <tr
-                style={{
-                  borderBottom: `2px solid ${colors.border}`,
-                  textAlign: "left",
-                }}
-              >
-                <th style={{ padding: "8px 12px", fontWeight: 600 }}>Name</th>
-                <th style={{ padding: "8px 12px", fontWeight: 600 }}>Permissions</th>
-                <th style={{ padding: "8px 12px", fontWeight: 600 }}>Created</th>
-                <th style={{ padding: "8px 12px", fontWeight: 600 }}>Expires</th>
-                <th style={{ padding: "8px 12px", fontWeight: 600 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        <TableContainer component={Paper} variant="outlined">
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Name</TableCell>
+                <TableCell>Permissions</TableCell>
+                <TableCell>Created</TableCell>
+                <TableCell>Expires</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
               {delegates.map((d) => (
-                <tr key={d.delegateId} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  <td style={{ padding: "10px 12px" }}>{d.clientName}</td>
-                  <td style={{ padding: "10px 12px" }}>
-                    {d.permissions.map((p) => (
-                      <span
-                        key={p}
-                        style={{
-                          display: "inline-block",
-                          padding: "2px 8px",
-                          borderRadius: 4,
-                          background: "#f3f4f6",
-                          fontSize: 11,
-                          marginRight: 4,
-                        }}
-                      >
-                        {p}
-                      </span>
-                    ))}
-                  </td>
-                  <td style={{ padding: "10px 12px", color: colors.textSecondary }}>
-                    {formatDate(d.createdAt)}
-                  </td>
-                  <td style={{ padding: "10px 12px", color: colors.textSecondary }}>
-                    {d.expiresAt ? formatDate(d.expiresAt) : "Never"}
-                  </td>
-                  <td style={{ padding: "10px 12px" }}>
-                    <button
-                      type="button"
+                <TableRow key={d.delegateId} hover>
+                  <TableCell>{d.clientName}</TableCell>
+                  <TableCell>
+                    <Stack direction="row" spacing={0.5}>
+                      {d.permissions.map((p) => (
+                        <Chip key={p} label={p} size="small" variant="outlined" />
+                      ))}
+                    </Stack>
+                  </TableCell>
+                  <TableCell sx={{ color: "text.secondary" }}>
+                    {new Date(d.createdAt).toLocaleString()}
+                  </TableCell>
+                  <TableCell sx={{ color: "text.secondary" }}>
+                    {d.expiresAt ? new Date(d.expiresAt).toLocaleString() : "Never"}
+                  </TableCell>
+                  <TableCell align="right">
+                    <Button
+                      size="small"
+                      color="error"
                       onClick={() => revoke(d.delegateId)}
                       disabled={revoking === d.delegateId}
-                      style={{
-                        ...btnBase,
-                        padding: "4px 12px",
-                        fontSize: 12,
-                        background: "#fef2f2",
-                        color: colors.danger,
-                        border: `1px solid #fecaca`,
-                      }}
                     >
                       {revoking === d.delegateId ? "Revoking…" : "Revoke"}
-                    </button>
-                  </td>
-                </tr>
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
-    </div>
+    </>
   );
 }
 
-// ── Main App ──
+// ── App ──
 function App() {
   const auth = useSyncExternalStore(subscribe, getAuth);
 
@@ -535,54 +443,37 @@ function App() {
   }
 
   return (
-    <div
-      style={{
-        fontFamily: "system-ui, -apple-system, sans-serif",
-        minHeight: "100vh",
-        background: colors.bg,
-      }}
-    >
-      <header
-        style={{
-          background: colors.card,
-          borderBottom: `1px solid ${colors.border}`,
-          padding: "12px 24px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
+    <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+      <AppBar
+        position="static"
+        color="default"
+        elevation={0}
+        sx={{ borderBottom: 1, borderColor: "divider" }}
       >
-        <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: colors.text }}>
-          Image Workshop
-        </h1>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 13, color: colors.textSecondary }}>
+        <Toolbar>
+          <Typography variant="h6" fontWeight={700} sx={{ flexGrow: 1 }}>
+            Image Workshop
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>
             {auth.email ?? auth.userId}
-          </span>
-          <button
-            type="button"
-            onClick={logout}
-            style={{
-              ...btnBase,
-              padding: "6px 14px",
-              fontSize: 13,
-              background: "#f3f4f6",
-              color: colors.text,
-            }}
-          >
+          </Typography>
+          <Button size="small" startIcon={<LogoutIcon />} onClick={logout}>
             Logout
-          </button>
-        </div>
-      </header>
-      <main style={{ maxWidth: 900, margin: "32px auto", padding: "0 24px" }}>
+          </Button>
+        </Toolbar>
+      </AppBar>
+      <Container maxWidth="md" sx={{ py: 4 }}>
         <DelegatesPage />
-      </main>
-    </div>
+      </Container>
+    </Box>
   );
 }
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <App />
+    </ThemeProvider>
   </StrictMode>
 );
