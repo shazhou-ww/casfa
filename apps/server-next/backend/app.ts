@@ -61,7 +61,7 @@ export function createApp(deps: AppDeps) {
   app.get("/api/info", (c) =>
     c.json({
       storageType: "s3",
-      authType: deps.config.auth.cognitoUserPoolId ? "cognito" : "mock",
+      authType: deps.config.auth.mockJwtSecret ? "mock" : (deps.config.auth.cognitoUserPoolId ? "cognito" : "mock"),
     }, 200)
   );
 
