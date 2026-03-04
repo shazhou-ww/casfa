@@ -39,7 +39,7 @@ describe("generateCloudFront", () => {
     const result = generateCloudFront(config);
     const dist = result.Resources.FrontendCloudFront as any;
     const apiBehavior = dist.Properties.DistributionConfig.CacheBehaviors.find(
-      (b: any) => b.PathPattern === "/api/*",
+      (b: any) => b.PathPattern === "/api/*"
     );
     expect(apiBehavior.TargetOriginId).toBe("ApiGateway");
     expect(apiBehavior.AllowedMethods).toContain("POST");
@@ -47,8 +47,8 @@ describe("generateCloudFront", () => {
 
     const cachePolicy = result.Resources.ApiCachePolicy as any;
     const headers =
-      cachePolicy.Properties.CachePolicyConfig
-        .ParametersInCacheKeyAndForwardedToOrigin.HeadersConfig;
+      cachePolicy.Properties.CachePolicyConfig.ParametersInCacheKeyAndForwardedToOrigin
+        .HeadersConfig;
     expect(headers.Headers).toContain("Authorization");
   });
 
@@ -57,12 +57,8 @@ describe("generateCloudFront", () => {
     const result = generateCloudFront(config);
     const oac = result.Resources.FrontendOAC as any;
     expect(oac.Type).toBe("AWS::CloudFront::OriginAccessControl");
-    expect(oac.Properties.OriginAccessControlConfig.SigningBehavior).toBe(
-      "always",
-    );
-    expect(oac.Properties.OriginAccessControlConfig.SigningProtocol).toBe(
-      "sigv4",
-    );
+    expect(oac.Properties.OriginAccessControlConfig.SigningBehavior).toBe("always");
+    expect(oac.Properties.OriginAccessControlConfig.SigningProtocol).toBe("sigv4");
   });
 
   test("custom domain with ACM cert (conditional)", () => {
@@ -80,9 +76,7 @@ describe("generateCloudFront", () => {
     expect(aliases["Fn::If"][1]).toContain("app.example.com");
 
     const cert = dist.Properties.DistributionConfig.ViewerCertificate;
-    expect(cert["Fn::If"][1].AcmCertificateArn).toBe(
-      "arn:aws:acm:us-east-1:123:certificate/abc",
-    );
+    expect(cert["Fn::If"][1].AcmCertificateArn).toBe("arn:aws:acm:us-east-1:123:certificate/abc");
     expect(cert["Fn::If"][1].SslSupportMethod).toBe("sni-only");
   });
 
@@ -102,7 +96,7 @@ describe("generateCloudFront", () => {
     expect(policy.DependsOn).toBe("FrontendCloudFront");
     const statement = policy.Properties.PolicyDocument.Statement[0];
     expect(statement.Condition.StringEquals["AWS:SourceArn"]["Fn::Sub"]).toContain(
-      "FrontendCloudFront",
+      "FrontendCloudFront"
     );
   });
 });

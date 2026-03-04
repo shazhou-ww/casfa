@@ -2,9 +2,7 @@ import { resolve } from "node:path";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { loadEnvFiles } from "../utils/env.js";
 
-export async function statusCommand(options?: {
-  cellDir?: string;
-}): Promise<void> {
+export async function statusCommand(options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
   const envMap = loadEnvFiles(cellDir);
@@ -16,20 +14,12 @@ export async function statusCommand(options?: {
   const stackName = config.name;
 
   const proc = Bun.spawn(
-    [
-      "aws",
-      "cloudformation",
-      "describe-stacks",
-      "--stack-name",
-      stackName,
-      "--output",
-      "json",
-    ],
+    ["aws", "cloudformation", "describe-stacks", "--stack-name", stackName, "--output", "json"],
     {
       env: awsEnv,
       stdout: "pipe",
       stderr: "pipe",
-    },
+    }
   );
 
   const stdout = await new Response(proc.stdout).text();
@@ -55,9 +45,7 @@ export async function statusCommand(options?: {
     console.log(`Created: ${stack.CreationTime}`);
   }
 
-  const outputs = stack.Outputs as
-    | Array<{ OutputKey: string; OutputValue: string }>
-    | undefined;
+  const outputs = stack.Outputs as Array<{ OutputKey: string; OutputValue: string }> | undefined;
   if (outputs && outputs.length > 0) {
     console.log("\nOutputs:");
     for (const { OutputKey, OutputValue } of outputs) {

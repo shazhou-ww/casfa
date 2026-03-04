@@ -44,7 +44,7 @@ export function generateDynamoDB(config: ResolvedConfig): CfnFragment {
             KeyType: i === 0 ? "HASH" : "RANGE",
           })),
           Projection: { ProjectionType: gsi.projection },
-        }),
+        })
       );
     }
 

@@ -69,7 +69,7 @@ name: test
 params:
   A: !Param B
   B: !Param A
-`),
+`)
     ).toThrow(/[Cc]ircular/);
   });
 
@@ -79,7 +79,7 @@ params:
 name: test
 params:
   A: !Param NONEXISTENT
-`),
+`)
     ).toThrow(/non-existent/i);
   });
 });

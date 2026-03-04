@@ -1,7 +1,6 @@
 import { resolve } from "node:path";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
-import { loadEnvFiles } from "../utils/env.js";
 import {
   isDockerRunning,
   startDynamoDB,
@@ -9,12 +8,11 @@ import {
   stopContainer,
   waitForPort,
 } from "../local/docker.js";
-import { isDynamoDBReady, ensureLocalTables } from "../local/dynamodb-local.js";
+import { ensureLocalTables, isDynamoDBReady } from "../local/dynamodb-local.js";
 import { ensureLocalBuckets } from "../local/minio-local.js";
+import { loadEnvFiles } from "../utils/env.js";
 
-export async function testUnitCommand(options?: {
-  cellDir?: string;
-}): Promise<void> {
+export async function testUnitCommand(options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
 
@@ -31,15 +29,13 @@ export async function testUnitCommand(options?: {
   process.exit(exitCode);
 }
 
-export async function testE2eCommand(options?: {
-  cellDir?: string;
-}): Promise<void> {
+export async function testE2eCommand(options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
   const envMap = loadEnvFiles(cellDir);
   const resolved = resolveConfig(config, envMap, "test");
 
-  const portBase = parseInt(envMap["PORT_BASE"] ?? "7100", 10);
+  const portBase = parseInt(envMap.PORT_BASE ?? "7100", 10);
   const httpPort = portBase + 11;
   const dynamodbPort = portBase + 12;
   const s3Port = portBase + 14;
@@ -80,7 +76,7 @@ export async function testE2eCommand(options?: {
       }
       console.log("DynamoDB ready");
 
-      resolved.envVars["DYNAMODB_ENDPOINT"] = endpoint;
+      resolved.envVars.DYNAMODB_ENDPOINT = endpoint;
       await ensureLocalTables(endpoint, resolved.tables);
       console.log(`Created ${resolved.tables.length} table(s)`);
     }
@@ -105,7 +101,7 @@ export async function testE2eCommand(options?: {
       console.log("MinIO ready");
 
       const s3Endpoint = `http://localhost:${s3Port}`;
-      resolved.envVars["S3_ENDPOINT"] = s3Endpoint;
+      resolved.envVars.S3_ENDPOINT = s3Endpoint;
       const allBucketNames = [
         ...resolved.buckets.map((b) => b.bucketName),
         resolved.frontendBucketName,
@@ -168,9 +164,7 @@ export async function testE2eCommand(options?: {
   }
 }
 
-export async function testCommand(options?: {
-  cellDir?: string;
-}): Promise<void> {
+export async function testCommand(options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
 

@@ -1,9 +1,6 @@
 import { resolve } from "node:path";
 
-export async function lintCommand(options?: {
-  fix?: boolean;
-  cellDir?: string;
-}): Promise<void> {
+export async function lintCommand(options?: { fix?: boolean; cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
 
   const args = options?.fix

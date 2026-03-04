@@ -2,10 +2,7 @@ import { resolve } from "node:path";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { loadEnvFiles } from "../utils/env.js";
 
-export async function logsCommand(options?: {
-  cellDir?: string;
-  follow?: boolean;
-}): Promise<void> {
+export async function logsCommand(options?: { cellDir?: string; follow?: boolean }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
   const envMap = loadEnvFiles(cellDir);

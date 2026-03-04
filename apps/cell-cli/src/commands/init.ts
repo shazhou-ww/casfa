@@ -1,5 +1,5 @@
-import { resolve, basename } from "node:path";
-import { writeFileSync, readFileSync, existsSync, appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, resolve } from "node:path";
 
 const CELL_YAML_SKELETON = (name: string) => `name: ${name}
 
@@ -52,10 +52,7 @@ COGNITO_HOSTED_UI_URL=
 
 const GITIGNORE_ENTRIES = [".cell/", ".env"];
 
-export async function initCommand(
-  name?: string,
-  options?: { cellDir?: string },
-): Promise<void> {
+export async function initCommand(name?: string, options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const cellName = name || basename(cellDir);
 
@@ -81,11 +78,11 @@ export async function initCommand(
     const toAdd = GITIGNORE_ENTRIES.filter((e) => !lines.includes(e));
     if (toAdd.length > 0) {
       const suffix = content.endsWith("\n") ? "" : "\n";
-      appendFileSync(gitignorePath, suffix + toAdd.join("\n") + "\n");
+      appendFileSync(gitignorePath, `${suffix + toAdd.join("\n")}\n`);
       console.log("Updated .gitignore");
     }
   } else {
-    writeFileSync(gitignorePath, GITIGNORE_ENTRIES.join("\n") + "\n");
+    writeFileSync(gitignorePath, `${GITIGNORE_ENTRIES.join("\n")}\n`);
     console.log("Created .gitignore");
   }
 

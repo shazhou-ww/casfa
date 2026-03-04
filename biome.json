@@ -34,6 +34,18 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["apps/cell-cli/src/generators/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noTemplateCurlyInString": "off"
+          }
+        }
+      }
+    }
+  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "double",

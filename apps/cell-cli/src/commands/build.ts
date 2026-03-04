@@ -1,14 +1,12 @@
-import { resolve, relative, dirname } from "node:path";
-import { mkdirSync, existsSync, cpSync } from "node:fs";
-import { build } from "esbuild";
-import { build as viteBuild, mergeConfig, defineConfig, type UserConfig } from "vite";
+import { cpSync, existsSync, mkdirSync } from "node:fs";
+import { dirname, relative, resolve } from "node:path";
 import react from "@vitejs/plugin-react";
+import { build } from "esbuild";
+import { defineConfig, mergeConfig, type UserConfig, build as viteBuild } from "vite";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { ensureIndexHtml } from "../utils/frontend.js";
 
-export async function buildCommand(options?: {
-  cellDir?: string;
-}): Promise<void> {
+export async function buildCommand(options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
   const buildDir = resolve(cellDir, ".cell/build");

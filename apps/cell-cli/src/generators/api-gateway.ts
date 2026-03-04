@@ -52,8 +52,7 @@ export function generateApiGateway(config: ResolvedConfig): CfnFragment {
         Action: "lambda:InvokeFunction",
         Principal: "apigateway.amazonaws.com",
         SourceArn: {
-          "Fn::Sub":
-            "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*",
+          "Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*",
         },
       },
     };
@@ -73,8 +72,7 @@ export function generateApiGateway(config: ResolvedConfig): CfnFragment {
   };
   outputs.HttpApiEndpoint = {
     Value: {
-      "Fn::Sub":
-        "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com",
+      "Fn::Sub": "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com",
     },
   };
 
