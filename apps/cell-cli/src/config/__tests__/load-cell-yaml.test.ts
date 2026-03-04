@@ -82,4 +82,33 @@ params:
 `)
     ).toThrow(/non-existent/i);
   });
+
+  test("!Env with explicit name resolves to an env ref marker", () => {
+    const config = parseCellYaml(`
+name: test
+params:
+  MY_VAR: !Env SOME_ENV_VAR
+`);
+    expect(config.params?.MY_VAR).toEqual({ env: "SOME_ENV_VAR" });
+  });
+
+  test("!Env with no arg fills env name from param key", () => {
+    const config = parseCellYaml(`
+name: test
+params:
+  GOOGLE_CLIENT_ID: !Env
+`);
+    expect(config.params?.GOOGLE_CLIENT_ID).toEqual({ env: "GOOGLE_CLIENT_ID" });
+  });
+
+  test("!Param referencing an !Env resolves to the env ref", () => {
+    const config = parseCellYaml(`
+name: test
+params:
+  SOURCE: !Env SHARED_VALUE
+  ALIAS: !Param SOURCE
+`);
+    expect(config.params?.SOURCE).toEqual({ env: "SHARED_VALUE" });
+    expect(config.params?.ALIAS).toEqual({ env: "SHARED_VALUE" });
+  });
 });

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { parseDocument, type SchemaOptions } from "yaml";
-import type { CellConfig, RawParamValue, SecretRef } from "./cell-yaml-schema.js";
-import { isParamRef, isSecretRef } from "./cell-yaml-schema.js";
+import type { CellConfig, EnvRef, RawParamValue, ResolvedValue, SecretRef } from "./cell-yaml-schema.js";
+import { isEnvRef, isParamRef, isSecretRef } from "./cell-yaml-schema.js";
 import { resolveParams } from "./resolve-params.js";
 
 const customTags: SchemaOptions["customTags"] = [
@@ -18,6 +18,12 @@ const customTags: SchemaOptions["customTags"] = [
       return { $ref: value };
     },
   },
+  {
+    tag: "!Env",
+    resolve(value: string) {
+      return { env: value || null };
+    },
+  },
 ];
 
 /** A fully-formed SecretRef: exactly `{ secret: "<string>" }` with no other keys */
@@ -31,11 +37,22 @@ function isTerminalSecretRef(node: unknown): node is SecretRef {
   );
 }
 
+/** A fully-formed EnvRef: exactly `{ env: "<string>" }` with no other keys */
+function isTerminalEnvRef(node: unknown): node is EnvRef {
+  return (
+    typeof node === "object" &&
+    node !== null &&
+    "env" in node &&
+    typeof (node as Record<string, unknown>).env === "string" &&
+    Object.keys(node).length === 1
+  );
+}
+
 /**
  * Walk a plain JS object/array tree and replace any `{ $ref }` values
  * with their resolved counterparts from the resolved params map.
  */
-function deepResolveRefs(node: unknown, resolved: Record<string, string | SecretRef>): unknown {
+function deepResolveRefs(node: unknown, resolved: Record<string, ResolvedValue>): unknown {
   if (node === null || node === undefined) return node;
   if (isParamRef(node)) {
     const val = resolved[node.$ref];
@@ -49,6 +66,7 @@ function deepResolveRefs(node: unknown, resolved: Record<string, string | Secret
   }
   if (typeof node === "object") {
     if (isTerminalSecretRef(node)) return node;
+    if (isTerminalEnvRef(node)) return node;
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(node)) {
       result[k] = deepResolveRefs(v, resolved);
@@ -59,7 +77,7 @@ function deepResolveRefs(node: unknown, resolved: Record<string, string | Secret
 }
 
 /**
- * Load and parse a cell.yaml file with custom `!Param` and `!Secret` tags.
+ * Load and parse a cell.yaml file with custom `!Param`, `!Secret`, and `!Env` tags.
  *
  * Resolution flow:
  * 1. Parse YAML with custom tags
@@ -83,6 +101,8 @@ export function parseCellYaml(content: string): CellConfig {
   for (const [key, value] of Object.entries(params)) {
     if (isSecretRef(value) && value.secret === null) {
       (value as { secret: string | null }).secret = key;
+    } else if (isEnvRef(value) && value.env === null) {
+      (value as { env: string | null }).env = key;
     }
   }
 

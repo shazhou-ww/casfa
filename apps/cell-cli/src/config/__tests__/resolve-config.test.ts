@@ -121,6 +121,38 @@ describe("resolveConfig", () => {
     expect(resolved.envVars.FRONTEND_BUCKET).toBe("my-app-frontend");
   });
 
+  test("cloud: env ref resolved from env map", () => {
+    const config = makeConfig({
+      params: { GOOGLE_CLIENT_ID: { env: "GOOGLE_CLIENT_ID" } },
+    });
+    const resolved = resolveConfig(config, { GOOGLE_CLIENT_ID: "abc123" }, "cloud");
+    expect(resolved.envVars.GOOGLE_CLIENT_ID).toBe("abc123");
+  });
+
+  test("cloud: missing env ref throws error", () => {
+    const config = makeConfig({
+      params: { GOOGLE_CLIENT_ID: { env: "GOOGLE_CLIENT_ID" } },
+    });
+    expect(() => resolveConfig(config, {}, "cloud")).toThrow(/[Mm]issing env var.*GOOGLE_CLIENT_ID/);
+  });
+
+  test("dev: missing env ref warns but continues", () => {
+    const config = makeConfig({
+      params: { GOOGLE_CLIENT_ID: { env: "GOOGLE_CLIENT_ID" } },
+    });
+    const resolved = resolveConfig(config, {}, "dev");
+    expect(resolved.envVars.GOOGLE_CLIENT_ID).toBeUndefined();
+  });
+
+  test("env ref is not added to secretRefs", () => {
+    const config = makeConfig({
+      params: { MY_VAR: { env: "MY_VAR" } },
+    });
+    const resolved = resolveConfig(config, { MY_VAR: "value" }, "cloud");
+    expect(resolved.secretRefs).toEqual({});
+    expect(resolved.envVars.MY_VAR).toBe("value");
+  });
+
   test("passthrough fields preserved", () => {
     const config = makeConfig({
       backend: {

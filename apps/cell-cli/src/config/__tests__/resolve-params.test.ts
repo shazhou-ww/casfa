@@ -65,4 +65,26 @@ describe("resolveParams", () => {
       ALIAS: { secret: "DB_PASSWORD" },
     });
   });
+
+  test("env ref values pass through unchanged", () => {
+    const result = resolveParams({
+      A: { env: "SOME_VAR" },
+      B: "plain",
+    });
+    expect(result).toEqual({
+      A: { env: "SOME_VAR" },
+      B: "plain",
+    });
+  });
+
+  test("$ref referencing an env ref resolves to the env ref", () => {
+    const result = resolveParams({
+      SOURCE: { env: "SHARED_VAR" },
+      ALIAS: { $ref: "SOURCE" },
+    });
+    expect(result).toEqual({
+      SOURCE: { env: "SHARED_VAR" },
+      ALIAS: { env: "SHARED_VAR" },
+    });
+  });
 });
