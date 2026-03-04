@@ -1,7 +1,9 @@
-import { resolve } from "node:path";
+import { resolve, dirname, relative } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import { isSecretRef } from "../config/cell-yaml-schema.js";
+import type { BackendEntry } from "../config/cell-yaml-schema.js";
 import { loadEnvFiles } from "../utils/env.js";
 import {
   isDockerRunning,
@@ -11,6 +13,47 @@ import {
 } from "../local/docker.js";
 import { isDynamoDBReady, ensureLocalTables } from "../local/dynamodb-local.js";
 import { ensureLocalBuckets } from "../local/minio-local.js";
+
+function resolveAppPath(cellDir: string, entry: BackendEntry): string {
+  if (entry.app) {
+    return resolve(cellDir, entry.app);
+  }
+  const handlerDir = dirname(resolve(cellDir, entry.handler));
+  const candidate = resolve(handlerDir, "app.ts");
+  if (existsSync(candidate)) {
+    return candidate;
+  }
+  throw new Error(
+    `Cannot find Hono app module. Either set "app" in cell.yaml backend entry, or create app.ts next to ${entry.handler}`,
+  );
+}
+
+function generateDevServer(
+  cellDir: string,
+  entryName: string,
+  appPath: string,
+  port: number,
+): string {
+  const cellBuildDir = resolve(cellDir, ".cell");
+  mkdirSync(cellBuildDir, { recursive: true });
+  const devServerPath = resolve(cellBuildDir, `dev-${entryName}.ts`);
+  const relPath = relative(dirname(devServerPath), appPath).replace(
+    /\.ts$/,
+    "",
+  );
+  const importPath = relPath.startsWith(".") ? relPath : `./${relPath}`;
+  writeFileSync(
+    devServerPath,
+    [
+      `import { app } from "${importPath}";`,
+      `const port = parseInt(process.env.PORT || "${port}");`,
+      `console.log(\`Listening on http://localhost:\${port}\`);`,
+      `Bun.serve({ port, fetch: app.fetch });`,
+      "",
+    ].join("\n"),
+  );
+  return devServerPath;
+}
 
 function pipeWithLabel(
   stream: ReadableStream<Uint8Array>,
@@ -47,7 +90,6 @@ export async function devCommand(options?: {
   const envMap = loadEnvFiles(cellDir);
   const resolved = resolveConfig(config, envMap, "dev");
 
-  // Check secrets
   if (config.params) {
     for (const [key, value] of Object.entries(config.params)) {
       if (isSecretRef(value) && !(value.secret in envMap)) {
@@ -131,12 +173,18 @@ export async function devCommand(options?: {
   // Child processes
   const children: ReturnType<typeof Bun.spawn>[] = [];
 
+  // Backend: generate dev server wrapper for each entry, start with Bun.serve()
   if (resolved.backend) {
     for (const [name, entry] of Object.entries(resolved.backend.entries)) {
-      const handlerPath = resolve(cellDir, entry.handler);
-      const env = { ...process.env, ...resolved.envVars, PORT: String(httpPort) };
+      const appPath = resolveAppPath(cellDir, entry);
+      const devServerPath = generateDevServer(cellDir, name, appPath, httpPort);
+      const env = {
+        ...process.env,
+        ...resolved.envVars,
+        PORT: String(httpPort),
+      };
       console.log(`Starting backend [${name}] on port ${httpPort}...`);
-      const proc = Bun.spawn(["bun", "run", handlerPath], {
+      const proc = Bun.spawn(["bun", "run", devServerPath], {
         cwd: cellDir,
         env,
         stdout: "pipe",
@@ -156,6 +204,7 @@ export async function devCommand(options?: {
     }
   }
 
+  // Frontend: start Vite dev server
   if (resolved.frontend) {
     const frontendPort = httpPort + 100;
     const frontendDir = resolve(cellDir, resolved.frontend.dir);

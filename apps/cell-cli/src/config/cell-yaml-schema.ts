@@ -20,6 +20,8 @@ export function isParamRef(v: unknown): v is ParamRef {
 
 export interface BackendEntry {
   handler: string;
+  /** Path to the Hono app module (exports `app`). Used by `cell dev` to start Bun.serve(). If omitted, CLI looks for app.ts in the same directory as handler. */
+  app?: string;
   timeout: number;
   memory: number;
   routes: string[];
