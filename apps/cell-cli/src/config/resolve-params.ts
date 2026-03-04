@@ -1,17 +1,17 @@
-import type { RawParamValue, SecretRef } from "./cell-yaml-schema.js";
-import { isParamRef, isSecretRef } from "./cell-yaml-schema.js";
+import type { EnvRef, RawParamValue, ResolvedValue, SecretRef } from "./cell-yaml-schema.js";
+import { isEnvRef, isParamRef, isSecretRef } from "./cell-yaml-schema.js";
 
 /**
  * Resolve all `{ $ref }` references in a params map via topological sort.
- * After resolution, only `string` and `SecretRef` values remain.
+ * After resolution, only `string`, `SecretRef`, and `EnvRef` values remain.
  */
 export function resolveParams(
   params: Record<string, RawParamValue>
-): Record<string, string | SecretRef> {
-  const resolved = new Map<string, string | SecretRef>();
+): Record<string, ResolvedValue> {
+  const resolved = new Map<string, ResolvedValue>();
   const visiting = new Set<string>();
 
-  function resolve(key: string, chain: string[]): string | SecretRef {
+  function resolve(key: string, chain: string[]): ResolvedValue {
     if (resolved.has(key)) return resolved.get(key)!;
 
     if (!(key in params)) {
@@ -29,11 +29,13 @@ export function resolveParams(
     visiting.add(key);
 
     const value = params[key];
-    let result: string | SecretRef;
+    let result: ResolvedValue;
 
     if (isParamRef(value)) {
       result = resolve(value.$ref, [...chain, key]);
     } else if (isSecretRef(value)) {
+      result = value;
+    } else if (isEnvRef(value)) {
       result = value;
     } else {
       result = value;

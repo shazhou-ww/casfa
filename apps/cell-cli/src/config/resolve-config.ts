@@ -8,7 +8,7 @@ import type {
   TableConfig,
   TestingConfig,
 } from "./cell-yaml-schema.js";
-import { isSecretRef } from "./cell-yaml-schema.js";
+import { isEnvRef, isSecretRef } from "./cell-yaml-schema.js";
 
 export type Stage = "dev" | "test" | "cloud";
 
@@ -64,6 +64,18 @@ export function resolveConfig(
           }
           console.warn(
             `Warning: secret "${value.secret}" not found in env map (stage=${stage}), skipping`
+          );
+        } else {
+          envVars[key] = envValue;
+        }
+      } else if (isEnvRef(value)) {
+        const envValue = envMap[value.env];
+        if (envValue === undefined) {
+          if (stage === "cloud") {
+            throw new Error(`Missing env var "${value.env}" in env map for cloud stage`);
+          }
+          console.warn(
+            `Warning: env var "${value.env}" not found in env map (stage=${stage}), skipping`
           );
         } else {
           envVars[key] = envValue;

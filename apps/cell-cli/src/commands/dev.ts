@@ -3,7 +3,7 @@ import { dirname, relative, resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { createServer, defineConfig, mergeConfig, type UserConfig } from "vite";
 import type { BackendEntry } from "../config/cell-yaml-schema.js";
-import { isSecretRef } from "../config/cell-yaml-schema.js";
+import { isEnvRef, isSecretRef } from "../config/cell-yaml-schema.js";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import { ensureCognitoDevCallbackUrl } from "../local/cognito-dev.js";
@@ -88,6 +88,8 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
     for (const [key, value] of Object.entries(config.params)) {
       if (isSecretRef(value) && !(value.secret in envMap)) {
         console.warn(`⚠ Secret "${value.secret}" (param "${key}") not found in .env files`);
+      } else if (isEnvRef(value) && !(value.env in envMap)) {
+        console.warn(`⚠ Env var "${value.env}" (param "${key}") not found in .env files`);
       }
     }
   }

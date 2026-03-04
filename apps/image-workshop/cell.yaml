@@ -26,13 +26,13 @@ frontend:
       src: main.tsx
 
 params:
-  COGNITO_REGION: us-east-1
-  COGNITO_USER_POOL_ID: us-east-1_gMTKxXOKo
-  COGNITO_CLIENT_ID: rrr40170csj0160ptr9lusi3k
-  COGNITO_HOSTED_UI_URL: https://casfa-auth.auth.us-east-1.amazoncognito.com
-  GOOGLE_CLIENT_ID: 1084492958564-ngqgsjbss5ta8676oa101rrg9prcankv.apps.googleusercontent.com
+  COGNITO_REGION: !Env
+  COGNITO_USER_POOL_ID: !Env
+  COGNITO_CLIENT_ID: !Env
+  COGNITO_HOSTED_UI_URL: !Env
+  GOOGLE_CLIENT_ID: !Env
   GOOGLE_CLIENT_SECRET: !Secret
-  MICROSOFT_CLIENT_ID: 38da332e-7a20-4765-acae-c249e74c6a6a
+  MICROSOFT_CLIENT_ID: !Env
   MICROSOFT_CLIENT_SECRET: !Secret
   BFL_API_KEY: !Secret
 

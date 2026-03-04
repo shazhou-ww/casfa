@@ -1,17 +1,24 @@
 /** A sensitive value that needs runtime resolution (from .env locally, Secrets Manager in cloud) */
 export type SecretRef = { secret: string };
 
-/** After YAML loading, only two value types remain */
-export type ResolvedValue = string | SecretRef;
+/** A non-sensitive value resolved from environment variables */
+export type EnvRef = { env: string };
+
+/** After YAML loading, only three value types remain */
+export type ResolvedValue = string | SecretRef | EnvRef;
 
 /** Internal: a reference to another param key, resolved away before returning */
 export type ParamRef = { $ref: string };
 
 /** Value types during parsing, before param resolution */
-export type RawParamValue = string | SecretRef | ParamRef;
+export type RawParamValue = string | SecretRef | EnvRef | ParamRef;
 
 export function isSecretRef(v: unknown): v is SecretRef {
-  return typeof v === "object" && v !== null && "secret" in v && !("$ref" in v);
+  return typeof v === "object" && v !== null && "secret" in v && !("$ref" in v) && !("env" in v);
+}
+
+export function isEnvRef(v: unknown): v is EnvRef {
+  return typeof v === "object" && v !== null && "env" in v && !("$ref" in v) && !("secret" in v);
 }
 
 export function isParamRef(v: unknown): v is ParamRef {
