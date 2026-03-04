@@ -61,8 +61,9 @@ program
   .command("lint")
   .description("Run linter")
   .option("--fix", "Auto-fix issues")
+  .option("--unsafe", "Apply unsafe fixes (requires --fix)")
   .action(async (opts) => {
-    await lintCommand({ fix: opts.fix });
+    await lintCommand({ fix: opts.fix, unsafe: opts.unsafe });
   });
 
 program
