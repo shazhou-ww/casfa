@@ -104,7 +104,7 @@ export async function devCommand(options?: {
   const httpPort = portBase + 1;
   const dynamodbPort = portBase + 2;
   const s3Port = portBase + 4;
-  const frontendPort = portBase + 5;
+  const frontendPort = portBase;
 
   // DynamoDB
   if (resolved.tables.length > 0) {
