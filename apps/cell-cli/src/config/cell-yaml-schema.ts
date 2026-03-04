@@ -38,6 +38,7 @@ export interface FrontendEntry {
 
 export interface FrontendConfig {
   dir: string;
+  title?: string;
   entries: Record<string, FrontendEntry>;
 }
 

@@ -50,7 +50,7 @@ COGNITO_CLIENT_ID=
 COGNITO_HOSTED_UI_URL=
 `;
 
-const GITIGNORE_ENTRIES = [".cell/", ".env"];
+const GITIGNORE_ENTRIES = [".cell/", ".env", "frontend/index.html"];
 
 export async function initCommand(name?: string, options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
