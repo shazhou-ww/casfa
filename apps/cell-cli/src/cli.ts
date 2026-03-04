@@ -1,6 +1,10 @@
 import { Command } from "commander";
 import { devCommand } from "./commands/dev.js";
 import { buildCommand } from "./commands/build.js";
+import { deployCommand } from "./commands/deploy.js";
+import { testCommand, testUnitCommand, testE2eCommand } from "./commands/test.js";
+import { lintCommand } from "./commands/lint.js";
+import { typecheckCommand } from "./commands/typecheck.js";
 
 const program = new Command();
 
@@ -24,32 +28,47 @@ program
   });
 
 program
-  .command("test")
-  .description("Run all tests (unit + e2e)")
-  .action(() => {
-    console.log("cell test: not yet implemented");
+  .command("deploy")
+  .description("Deploy to cloud")
+  .option("--yes", "Skip confirmation")
+  .action(async (opts) => {
+    await deployCommand({ yes: opts.yes });
   });
 
 program
-  .command("deploy")
-  .description("Deploy to cloud")
-  .action(() => {
-    console.log("cell deploy: not yet implemented");
+  .command("test")
+  .description("Run all tests (unit + e2e)")
+  .action(async () => {
+    await testCommand();
+  });
+
+program
+  .command("test:unit")
+  .description("Run unit tests")
+  .action(async () => {
+    await testUnitCommand();
+  });
+
+program
+  .command("test:e2e")
+  .description("Run e2e tests")
+  .action(async () => {
+    await testE2eCommand();
   });
 
 program
   .command("lint")
   .description("Run linter")
   .option("--fix", "Auto-fix issues")
-  .action(() => {
-    console.log("cell lint: not yet implemented");
+  .action(async (opts) => {
+    await lintCommand({ fix: opts.fix });
   });
 
 program
   .command("typecheck")
   .description("Run TypeScript type checking")
-  .action(() => {
-    console.log("cell typecheck: not yet implemented");
+  .action(async () => {
+    await typecheckCommand();
   });
 
 program
