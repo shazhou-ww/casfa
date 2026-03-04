@@ -68,11 +68,11 @@ type NewDelegate = {
   expiresAt: number;
 };
 
-// ── OAuth Callback ──
+// ── OAuth Callback Complete (after backend exchanged code with Cognito) ──
 let exchangeInFlight = false;
 
-function OAuthCallback() {
-  const [status, setStatus] = useState("Exchanging code…");
+function OAuthCallbackComplete() {
+  const [status, setStatus] = useState("Completing login…");
 
   useEffect(() => {
     if (exchangeInFlight) return;
@@ -105,6 +105,147 @@ function OAuthCallback() {
       sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}
     >
       <Typography color="text.secondary">{status}</Typography>
+    </Box>
+  );
+}
+
+// ── OAuth Consent Page ──
+function ConsentPage() {
+  const [info, setInfo] = useState<{
+    defaultClientName: string;
+    userEmail?: string;
+    userName?: string;
+    permissions: string[];
+  } | null>(null);
+  const [clientName, setClientName] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const session = new URLSearchParams(window.location.search).get("session") ?? "";
+
+  useEffect(() => {
+    if (!session) {
+      setError("Invalid session.");
+      setLoading(false);
+      return;
+    }
+    fetch(`/oauth/consent-info?session=${encodeURIComponent(session)}`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error("Session expired or invalid.");
+        const data = await r.json();
+        setInfo(data);
+        setClientName(data.defaultClientName);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [session]);
+
+  const approve = useCallback(async () => {
+    setSubmitting(true);
+    try {
+      const res = await fetch("/oauth/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session, clientName: clientName.trim() }),
+      });
+      if (!res.ok) throw new Error("Approval failed.");
+      const data = await res.json();
+      window.location.href = data.redirect;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setSubmitting(false);
+    }
+  }, [session, clientName]);
+
+  const deny = useCallback(() => {
+    fetch(`/oauth/deny?session=${encodeURIComponent(session)}`, { method: "POST" });
+    window.close();
+  }, [session]);
+
+  if (loading) {
+    return (
+      <Box
+        sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error || !info) {
+    return (
+      <Box
+        sx={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          bgcolor: "background.default",
+        }}
+      >
+        <Paper elevation={1} sx={{ p: 4, maxWidth: 420, width: "100%", textAlign: "center" }}>
+          <Alert severity="error">{error || "Unknown error"}</Alert>
+        </Paper>
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      sx={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        bgcolor: "background.default",
+      }}
+    >
+      <Paper elevation={1} sx={{ p: 4, maxWidth: 480, width: "100%" }}>
+        <Typography variant="h5" fontWeight={700} gutterBottom>
+          Authorize Access
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          An application is requesting delegate access to your Image Workshop account
+          {info.userEmail ? ` (${info.userEmail})` : ""}.
+        </Typography>
+
+        <Stack spacing={2.5}>
+          <TextField
+            label="Client Name"
+            value={clientName}
+            onChange={(e) => setClientName(e.target.value)}
+            size="small"
+            fullWidth
+            helperText="Give this delegate a recognizable name for easier management"
+          />
+
+          <Box>
+            <Typography variant="body2" fontWeight={500} sx={{ mb: 0.5 }}>
+              Permissions Requested
+            </Typography>
+            <Stack direction="row" spacing={0.5}>
+              {info.permissions.map((p) => (
+                <Chip key={p} label={p} size="small" variant="outlined" />
+              ))}
+            </Stack>
+          </Box>
+
+          <Stack direction="row" spacing={1.5} sx={{ pt: 1 }}>
+            <Button
+              variant="contained"
+              onClick={approve}
+              disabled={submitting || !clientName.trim()}
+              fullWidth
+            >
+              {submitting ? "Authorizing…" : "Approve"}
+            </Button>
+            <Button variant="outlined" onClick={deny} disabled={submitting} fullWidth>
+              Deny
+            </Button>
+          </Stack>
+        </Stack>
+      </Paper>
     </Box>
   );
 }
@@ -439,8 +580,12 @@ function DelegatesPage() {
 function App() {
   const auth = useSyncExternalStore(subscribe, getAuth);
 
-  if (window.location.pathname === "/oauth/callback") {
-    return <OAuthCallback />;
+  if (window.location.pathname === "/oauth/consent") {
+    return <ConsentPage />;
+  }
+
+  if (window.location.pathname === "/oauth/callback-complete") {
+    return <OAuthCallbackComplete />;
   }
 
   if (!auth) {

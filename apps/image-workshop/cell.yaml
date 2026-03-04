@@ -11,6 +11,11 @@ backend:
         - /api/*
         - /oauth/authorize
         - /oauth/token
+        - /oauth/register
+        - /oauth/callback
+        - /oauth/consent-info
+        - /oauth/approve
+        - /oauth/deny
         - /.well-known/*
         - /mcp
 
