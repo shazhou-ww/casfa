@@ -104,6 +104,7 @@ export async function devCommand(options?: {
   const httpPort = portBase + 1;
   const dynamodbPort = portBase + 2;
   const s3Port = portBase + 4;
+  const frontendPort = portBase + 5;
 
   // DynamoDB
   if (resolved.tables.length > 0) {
@@ -206,7 +207,6 @@ export async function devCommand(options?: {
 
   // Frontend: start Vite dev server
   if (resolved.frontend) {
-    const frontendPort = httpPort + 100;
     const frontendDir = resolve(cellDir, resolved.frontend.dir);
     console.log(`Starting frontend [web] on port ${frontendPort}...`);
     const proc = Bun.spawn(
