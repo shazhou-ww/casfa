@@ -40,7 +40,8 @@ export function createAuthMiddleware(deps: AuthMiddlewareDeps) {
         } else {
           c.set("auth", { type: "user", userId: jwt.sub });
         }
-      } catch {
+      } catch (e) {
+        console.error("JWT verification failed:", e instanceof Error ? e.message : e);
         c.set("auth", null);
       }
     } else if (parts.length === 2) {

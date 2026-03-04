@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import type { Auth, DelegateGrantStore } from "../types/auth";
 import {
   createDelegateAccessToken,
@@ -14,10 +15,10 @@ type DelegatesControllerDeps = {
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 
 function requireManageDelegates(auth: Auth | null): Auth {
-  if (!auth) throw new Error("Unauthorized");
+  if (!auth) throw new HTTPException(401, { message: "Unauthorized" });
   if (auth.type === "user") return auth;
   if (auth.permissions.includes("manage_delegates")) return auth;
-  throw new Error("Forbidden: manage_delegates required");
+  throw new HTTPException(403, { message: "Forbidden: manage_delegates required" });
 }
 
 export function createDelegatesRoutes(deps: DelegatesControllerDeps) {

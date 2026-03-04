@@ -67,7 +67,13 @@ export function createOAuthRoutes(deps: OAuthControllerDeps) {
       const origin = new URL(c.req.url).origin;
       const redirectUri = `${origin}/oauth/callback`;
 
-      const cognitoTokens = await exchangeCodeForTokens(cognitoConfig, code, redirectUri);
+      let cognitoTokens;
+      try {
+        cognitoTokens = await exchangeCodeForTokens(cognitoConfig, code, redirectUri);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return c.json({ error: "token_exchange_failed", message: msg }, 400);
+      }
 
       if (scope.includes("delegate")) {
         const idToken = cognitoTokens.id_token;
@@ -117,7 +123,13 @@ export function createOAuthRoutes(deps: OAuthControllerDeps) {
         return c.json({ error: "delegate_refresh_not_supported_here" }, 400);
       }
 
-      const cognitoTokens = await refreshCognitoTokens(cognitoConfig, refreshToken);
+      let cognitoTokens;
+      try {
+        cognitoTokens = await refreshCognitoTokens(cognitoConfig, refreshToken);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return c.json({ error: "token_refresh_failed", message: msg }, 400);
+      }
       return c.json({
         access_token: cognitoTokens.access_token,
         id_token: cognitoTokens.id_token,

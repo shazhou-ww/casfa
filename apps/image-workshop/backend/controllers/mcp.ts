@@ -1,13 +1,14 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { createMcpServer } from "../index";
 import type { Auth } from "../types/auth";
 
 function requireUseMcp(auth: Auth | null) {
-  if (!auth) throw new Error("Unauthorized");
+  if (!auth) throw new HTTPException(401, { message: "Unauthorized" });
   if (auth.type === "user") return auth;
   if (auth.permissions.includes("use_mcp")) return auth;
-  throw new Error("Forbidden: use_mcp required");
+  throw new HTTPException(403, { message: "Forbidden: use_mcp required" });
 }
 
 export function createMcpRoutes() {

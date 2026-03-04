@@ -12,9 +12,11 @@
     "test:unit": "bun test src/"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.1001.0",
     "@aws-sdk/client-dynamodb": "^3.1001.0",
     "@aws-sdk/client-s3": "^3.1001.0",
     "@aws-sdk/client-secrets-manager": "^3.1001.0",
+    "@aws-sdk/credential-providers": "^3.1001.0",
     "@biomejs/biome": "^2.4.5",
     "@vitejs/plugin-react": "^5.1.4",
     "commander": "^12.1.0",

@@ -6,6 +6,7 @@ import type { BackendEntry } from "../config/cell-yaml-schema.js";
 import { isSecretRef } from "../config/cell-yaml-schema.js";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
+import { ensureCognitoDevCallbackUrl } from "../local/cognito-dev.js";
 import { isDockerRunning, startDynamoDB, startMinIO, waitForPort } from "../local/docker.js";
 import { ensureLocalTables, isDynamoDBReady } from "../local/dynamodb-local.js";
 import { ensureLocalBuckets } from "../local/minio-local.js";
@@ -158,6 +159,12 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
     console.log(`Created ${allBucketNames.length} bucket(s)`);
   }
 
+  // Cognito: ensure local callback URL is registered
+  if (config.cognito) {
+    const callbackUrl = `http://localhost:${frontendPort}/oauth/callback`;
+    await ensureCognitoDevCallbackUrl(config.cognito, callbackUrl);
+  }
+
   // Child processes
   const children: ReturnType<typeof Bun.spawn>[] = [];
 
@@ -190,16 +197,21 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
     const frontendDir = resolve(cellDir, resolved.frontend.dir);
     ensureIndexHtml(frontendDir, config);
 
+    const proxy: Record<string, { target: string }> = {};
+    if (resolved.backend) {
+      for (const entry of Object.values(resolved.backend.entries)) {
+        for (const route of entry.routes) {
+          const key = route.replace(/\/\*$/, "");
+          if (key) proxy[key] = { target: `http://localhost:${httpPort}` };
+        }
+      }
+    }
+
     const proxyConfig: UserConfig = defineConfig({
       plugins: [react()],
       server: {
         port: frontendPort,
-        proxy: {
-          "/api": { target: `http://localhost:${httpPort}`, changeOrigin: true },
-          "/oauth": { target: `http://localhost:${httpPort}`, changeOrigin: true },
-          "/mcp": { target: `http://localhost:${httpPort}`, changeOrigin: true },
-          "/.well-known": { target: `http://localhost:${httpPort}`, changeOrigin: true },
-        },
+        proxy,
       },
     });
 
