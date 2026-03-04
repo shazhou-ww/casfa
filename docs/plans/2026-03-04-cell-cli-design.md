@@ -34,10 +34,11 @@ Cell 是对 casfa 全栈服务的统一抽象。每个 Cell 是一个 bun packag
 
 | 用途 | 偏移 | 示例（PORT_BASE=7100） |
 |------|------|------------------------|
-| HTTP dev server | +1 | 7101 |
+| Backend HTTP | +1 | 7101 |
 | DynamoDB dev | +2 | 7102 |
 | S3 dev (MinIO) | +4 | 7104 |
-| HTTP test server | +11 | 7111 |
+| Frontend Vite | +5 | 7105 |
+| Backend test | +11 | 7111 |
 | DynamoDB test | +12 | 7112 |
 | S3 test (MinIO) | +14 | 7114 |
 
