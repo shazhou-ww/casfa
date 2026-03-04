@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { buildCreateTableInput } from "../dynamodb-local.js";
 import type { TableConfig } from "../../config/cell-yaml-schema.js";
+import { buildCreateTableInput } from "../dynamodb-local.js";
 
 describe("buildCreateTableInput", () => {
   test("simple table with pk and sk", () => {

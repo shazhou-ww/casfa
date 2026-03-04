@@ -1,4 +1,4 @@
-import type { SecretRef, ParamRef, RawParamValue } from "./cell-yaml-schema.js";
+import type { RawParamValue, SecretRef } from "./cell-yaml-schema.js";
 import { isParamRef, isSecretRef } from "./cell-yaml-schema.js";
 
 /**
@@ -6,7 +6,7 @@ import { isParamRef, isSecretRef } from "./cell-yaml-schema.js";
  * After resolution, only `string` and `SecretRef` values remain.
  */
 export function resolveParams(
-  params: Record<string, RawParamValue>,
+  params: Record<string, RawParamValue>
 ): Record<string, string | SecretRef> {
   const resolved = new Map<string, string | SecretRef>();
   const visiting = new Set<string>();
@@ -16,7 +16,7 @@ export function resolveParams(
 
     if (!(key in params)) {
       throw new Error(
-        `Param reference to non-existent key "${key}" (referenced from: ${chain.join(" → ")})`,
+        `Param reference to non-existent key "${key}" (referenced from: ${chain.join(" → ")})`
       );
     }
 

@@ -20,11 +20,7 @@ describe("resolveConfig", () => {
     const config = makeConfig({
       params: { DB_PASSWORD: { secret: "DB_PASSWORD" } },
     });
-    const resolved = resolveConfig(
-      config,
-      { DB_PASSWORD: "s3cret" },
-      "cloud",
-    );
+    const resolved = resolveConfig(config, { DB_PASSWORD: "s3cret" }, "cloud");
     expect(resolved.envVars.DB_PASSWORD).toBe("s3cret");
   });
 
@@ -32,9 +28,7 @@ describe("resolveConfig", () => {
     const config = makeConfig({
       params: { DB_PASSWORD: { secret: "DB_PASSWORD" } },
     });
-    expect(() => resolveConfig(config, {}, "cloud")).toThrow(
-      /[Mm]issing secret.*DB_PASSWORD/,
-    );
+    expect(() => resolveConfig(config, {}, "cloud")).toThrow(/[Mm]issing secret.*DB_PASSWORD/);
   });
 
   test("dev: missing secret warns but continues", () => {
@@ -101,11 +95,7 @@ describe("resolveConfig", () => {
   });
 
   test("custom PORT_BASE changes endpoint ports", () => {
-    const resolved = resolveConfig(
-      makeConfig(),
-      { PORT_BASE: "8000" },
-      "dev",
-    );
+    const resolved = resolveConfig(makeConfig(), { PORT_BASE: "8000" }, "dev");
     expect(resolved.envVars.DYNAMODB_ENDPOINT).toBe("http://localhost:8002");
     expect(resolved.envVars.S3_ENDPOINT).toBe("http://localhost:8004");
   });
@@ -122,12 +112,8 @@ describe("resolveConfig", () => {
   });
 
   test("frontend bucket name follows stage convention", () => {
-    expect(resolveConfig(makeConfig(), {}, "cloud").frontendBucketName).toBe(
-      "my-app-frontend",
-    );
-    expect(resolveConfig(makeConfig(), {}, "dev").frontendBucketName).toBe(
-      "my-app-dev-frontend",
-    );
+    expect(resolveConfig(makeConfig(), {}, "cloud").frontendBucketName).toBe("my-app-frontend");
+    expect(resolveConfig(makeConfig(), {}, "dev").frontendBucketName).toBe("my-app-dev-frontend");
   });
 
   test("FRONTEND_BUCKET env var is set", () => {

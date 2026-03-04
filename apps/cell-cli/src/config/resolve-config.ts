@@ -36,20 +36,14 @@ export interface ResolvedConfig {
   testing?: TestingConfig;
 }
 
-function resourceName(
-  appName: string,
-  key: string,
-  stage: Stage,
-): string {
-  return stage === "cloud"
-    ? `${appName}-${key}`
-    : `${appName}-${stage}-${key}`;
+function resourceName(appName: string, key: string, stage: Stage): string {
+  return stage === "cloud" ? `${appName}-${key}` : `${appName}-${stage}-${key}`;
 }
 
 export function resolveConfig(
   config: CellConfig,
   envMap: Record<string, string>,
-  stage: Stage,
+  stage: Stage
 ): ResolvedConfig {
   const envVars: Record<string, string> = {};
   const secretRefs: Record<string, string> = {};
@@ -64,12 +58,10 @@ export function resolveConfig(
         const envValue = envMap[value.secret];
         if (envValue === undefined) {
           if (stage === "cloud") {
-            throw new Error(
-              `Missing secret "${value.secret}" in env map for cloud stage`,
-            );
+            throw new Error(`Missing secret "${value.secret}" in env map for cloud stage`);
           }
           console.warn(
-            `Warning: secret "${value.secret}" not found in env map (stage=${stage}), skipping`,
+            `Warning: secret "${value.secret}" not found in env map (stage=${stage}), skipping`
           );
         } else {
           envVars[key] = envValue;
@@ -100,14 +92,14 @@ export function resolveConfig(
 
   // 4. Frontend bucket
   const frontendBucketName = resourceName(config.name, "frontend", stage);
-  envVars["FRONTEND_BUCKET"] = frontendBucketName;
+  envVars.FRONTEND_BUCKET = frontendBucketName;
 
   // 5. Local endpoints (dev/test only)
   if (stage !== "cloud") {
-    const portBase = parseInt(envMap["PORT_BASE"] ?? "7100", 10);
+    const portBase = parseInt(envMap.PORT_BASE ?? "7100", 10);
     const offset = stage === "dev" ? 0 : 10;
-    envVars["DYNAMODB_ENDPOINT"] = `http://localhost:${portBase + offset + 2}`;
-    envVars["S3_ENDPOINT"] = `http://localhost:${portBase + offset + 4}`;
+    envVars.DYNAMODB_ENDPOINT = `http://localhost:${portBase + offset + 2}`;
+    envVars.S3_ENDPOINT = `http://localhost:${portBase + offset + 4}`;
   }
 
   return {

@@ -111,8 +111,7 @@ export function generateCloudFront(config: ResolvedConfig): CfnFragment {
           {
             Id: "ApiGateway",
             DomainName: {
-              "Fn::Sub":
-                "${HttpApi}.execute-api.${AWS::Region}.amazonaws.com",
+              "Fn::Sub": "${HttpApi}.execute-api.${AWS::Region}.amazonaws.com",
             },
             CustomOriginConfig: {
               HTTPSPort: 443,
@@ -140,25 +139,13 @@ export function generateCloudFront(config: ResolvedConfig): CfnFragment {
             PathPattern: "/api/*",
             TargetOriginId: "ApiGateway",
             ViewerProtocolPolicy: "https-only",
-            AllowedMethods: [
-              "GET",
-              "HEAD",
-              "OPTIONS",
-              "PUT",
-              "POST",
-              "PATCH",
-              "DELETE",
-            ],
+            AllowedMethods: ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
             Compress: true,
             CachePolicyId: { Ref: "ApiCachePolicy" },
           },
         ],
         Aliases: {
-          "Fn::If": [
-            "UseCustomDomain",
-            [domainHost],
-            { Ref: "AWS::NoValue" },
-          ],
+          "Fn::If": ["UseCustomDomain", [domainHost], { Ref: "AWS::NoValue" }],
         },
         ViewerCertificate: {
           "Fn::If": [

@@ -1,21 +1,18 @@
 import { Command } from "commander";
-import { devCommand } from "./commands/dev.js";
 import { buildCommand } from "./commands/build.js";
 import { deployCommand } from "./commands/deploy.js";
-import { testCommand, testUnitCommand, testE2eCommand } from "./commands/test.js";
-import { lintCommand } from "./commands/lint.js";
-import { typecheckCommand } from "./commands/typecheck.js";
-import { secretSetCommand, secretGetCommand, secretListCommand } from "./commands/secret.js";
-import { logsCommand } from "./commands/logs.js";
-import { statusCommand } from "./commands/status.js";
+import { devCommand } from "./commands/dev.js";
 import { initCommand } from "./commands/init.js";
+import { lintCommand } from "./commands/lint.js";
+import { logsCommand } from "./commands/logs.js";
+import { secretGetCommand, secretListCommand, secretSetCommand } from "./commands/secret.js";
+import { statusCommand } from "./commands/status.js";
+import { testCommand, testE2eCommand, testUnitCommand } from "./commands/test.js";
+import { typecheckCommand } from "./commands/typecheck.js";
 
 const program = new Command();
 
-program
-  .name("cell")
-  .description("CLI for casfa Cell services")
-  .version("0.0.1");
+program.name("cell").description("CLI for casfa Cell services").version("0.0.1");
 
 program
   .command("dev")
@@ -90,9 +87,7 @@ program
     await statusCommand();
   });
 
-const secret = program
-  .command("secret")
-  .description("Manage secrets in Secrets Manager");
+const secret = program.command("secret").description("Manage secrets in Secrets Manager");
 
 secret
   .command("set <key>")

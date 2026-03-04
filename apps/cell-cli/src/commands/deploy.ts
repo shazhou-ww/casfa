@@ -1,9 +1,9 @@
-import { resolve } from "node:path";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
-import { loadEnvFiles } from "../utils/env.js";
 import { generateTemplate } from "../generators/merge.js";
+import { loadEnvFiles } from "../utils/env.js";
 import { buildCommand } from "./build.js";
 
 interface AwsCliResult {
@@ -14,7 +14,7 @@ interface AwsCliResult {
 async function awsCli(
   args: string[],
   env: Record<string, string | undefined>,
-  opts?: { cwd?: string; inheritStdio?: boolean },
+  opts?: { cwd?: string; inheritStdio?: boolean }
 ): Promise<AwsCliResult> {
   const proc = Bun.spawn(["aws", ...args], {
     cwd: opts?.cwd ?? process.cwd(),
@@ -22,37 +22,26 @@ async function awsCli(
     stdout: opts?.inheritStdio ? "inherit" : "pipe",
     stderr: "inherit",
   });
-  const stdout = opts?.inheritStdio
-    ? ""
-    : await new Response(proc.stdout).text();
+  const stdout = opts?.inheritStdio ? "" : await new Response(proc.stdout).text();
   const exitCode = await proc.exited;
   return { exitCode, stdout: stdout.trim() };
 }
 
 async function ensureS3Bucket(
   bucketName: string,
-  env: Record<string, string | undefined>,
+  env: Record<string, string | undefined>
 ): Promise<void> {
-  const { exitCode } = await awsCli(
-    ["s3api", "head-bucket", "--bucket", bucketName],
-    env,
-  );
+  const { exitCode } = await awsCli(["s3api", "head-bucket", "--bucket", bucketName], env);
   if (exitCode !== 0) {
     console.log(`Creating deploy artifacts bucket: ${bucketName}`);
-    const { exitCode: createCode } = await awsCli(
-      ["s3", "mb", `s3://${bucketName}`],
-      env,
-    );
+    const { exitCode: createCode } = await awsCli(["s3", "mb", `s3://${bucketName}`], env);
     if (createCode !== 0) {
       throw new Error(`Failed to create S3 bucket: ${bucketName}`);
     }
   }
 }
 
-async function zipDirectory(
-  sourceDir: string,
-  outputPath: string,
-): Promise<void> {
+async function zipDirectory(sourceDir: string, outputPath: string): Promise<void> {
   mkdirSync(resolve(outputPath, ".."), { recursive: true });
   const proc = Bun.spawn(["zip", "-r", "-j", outputPath, sourceDir], {
     stdout: "pipe",
@@ -72,10 +61,7 @@ async function fileHash(filePath: string): Promise<string> {
   return hasher.digest("hex").slice(0, 12);
 }
 
-export async function deployCommand(options?: {
-  cellDir?: string;
-  yes?: boolean;
-}): Promise<void> {
+export async function deployCommand(options?: { cellDir?: string; yes?: boolean }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
   const envMap = loadEnvFiles(cellDir);
@@ -84,7 +70,7 @@ export async function deployCommand(options?: {
   // Validate: MOCK_JWT_SECRET should NOT be set for cloud
   if (resolved.envVars.MOCK_JWT_SECRET) {
     console.warn(
-      "⚠ WARNING: MOCK_JWT_SECRET is set in envVars. This should NOT be used for cloud deployment!",
+      "⚠ WARNING: MOCK_JWT_SECRET is set in envVars. This should NOT be used for cloud deployment!"
     );
   }
 
@@ -133,20 +119,14 @@ export async function deployCommand(options?: {
       console.log(`  Uploading ${s3Key} to s3://${artifactBucket}/...`);
       const { exitCode } = await awsCli(
         ["s3", "cp", zipPath, `s3://${artifactBucket}/${s3Key}`],
-        awsEnv,
+        awsEnv
       );
       if (exitCode !== 0) {
         throw new Error(`Failed to upload ${s3Key} to S3`);
       }
 
-      template = template.replace(
-        /S3Bucket: PLACEHOLDER/,
-        `S3Bucket: ${artifactBucket}`,
-      );
-      template = template.replace(
-        new RegExp(`S3Key: build/${name}/code\\.zip`),
-        `S3Key: ${s3Key}`,
-      );
+      template = template.replace(/S3Bucket: PLACEHOLDER/, `S3Bucket: ${artifactBucket}`);
+      template = template.replace(new RegExp(`S3Key: build/${name}/code\\.zip`), `S3Key: ${s3Key}`);
     }
 
     const packagedPath = resolve(cfnDir, "cfn-packaged.yaml");
@@ -157,9 +137,7 @@ export async function deployCommand(options?: {
   // 4. Deploy CloudFormation stack
   console.log("\n=== Deploying CloudFormation stack ===");
   const stackName = resolved.name;
-  const templateFile = resolved.backend
-    ? resolve(cfnDir, "cfn-packaged.yaml")
-    : cfnPath;
+  const templateFile = resolved.backend ? resolve(cfnDir, "cfn-packaged.yaml") : cfnPath;
 
   const deployResult = await awsCli(
     [
@@ -175,7 +153,7 @@ export async function deployCommand(options?: {
       "--no-fail-on-empty-changeset",
     ],
     awsEnv,
-    { cwd: cellDir, inheritStdio: true },
+    { cwd: cellDir, inheritStdio: true }
   );
   if (deployResult.exitCode !== 0) {
     console.error("CloudFormation deploy failed");
@@ -195,7 +173,7 @@ export async function deployCommand(options?: {
       "--output",
       "json",
     ],
-    awsEnv,
+    awsEnv
   );
   if (descCode !== 0) {
     console.error("Failed to get stack outputs");
@@ -220,13 +198,11 @@ export async function deployCommand(options?: {
     console.log("\n=== Uploading static files ===");
     for (const mapping of resolved.static) {
       const srcDir = resolve(cellDir, mapping.src);
-      const dest = mapping.dest.startsWith("/")
-        ? mapping.dest.slice(1)
-        : mapping.dest;
+      const dest = mapping.dest.startsWith("/") ? mapping.dest.slice(1) : mapping.dest;
       console.log(`  Syncing ${mapping.src} → s3://${frontendBucket}/${dest}`);
       const { exitCode } = await awsCli(
         ["s3", "sync", srcDir, `s3://${frontendBucket}/${dest}`],
-        awsEnv,
+        awsEnv
       );
       if (exitCode !== 0) {
         console.error(`Failed to sync static files from ${mapping.src}`);
@@ -239,12 +215,10 @@ export async function deployCommand(options?: {
   if (resolved.frontend && frontendBucket) {
     console.log("\n=== Uploading frontend ===");
     const frontendBuildDir = resolve(cellDir, ".cell/build/frontend");
-    console.log(
-      `  Syncing .cell/build/frontend → s3://${frontendBucket}/`,
-    );
+    console.log(`  Syncing .cell/build/frontend → s3://${frontendBucket}/`);
     const { exitCode } = await awsCli(
       ["s3", "sync", frontendBuildDir, `s3://${frontendBucket}`, "--delete"],
-      awsEnv,
+      awsEnv
     );
     if (exitCode !== 0) {
       console.error("Failed to sync frontend to S3");
@@ -256,16 +230,9 @@ export async function deployCommand(options?: {
   if (distributionId) {
     console.log("\n=== Invalidating CloudFront ===");
     const { exitCode } = await awsCli(
-      [
-        "cloudfront",
-        "create-invalidation",
-        "--distribution-id",
-        distributionId,
-        "--paths",
-        "/*",
-      ],
+      ["cloudfront", "create-invalidation", "--distribution-id", distributionId, "--paths", "/*"],
       awsEnv,
-      { inheritStdio: true },
+      { inheritStdio: true }
     );
     if (exitCode !== 0) {
       console.error("CloudFront invalidation failed");

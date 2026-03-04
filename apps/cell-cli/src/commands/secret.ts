@@ -1,17 +1,16 @@
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import {
-  SecretsManagerClient,
-  PutSecretValueCommand,
   CreateSecretCommand,
   GetSecretValueCommand,
   ListSecretsCommand,
+  PutSecretValueCommand,
   ResourceNotFoundException,
-  ResourceExistsException,
+  SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
+import { isSecretRef } from "../config/cell-yaml-schema.js";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { loadEnvFiles } from "../utils/env.js";
-import { isSecretRef } from "../config/cell-yaml-schema.js";
 
 function getSmClient(envMap: Record<string, string>): SecretsManagerClient {
   const opts: Record<string, string> = {};
@@ -32,10 +31,7 @@ function promptLine(prompt: string): Promise<string> {
   });
 }
 
-export async function secretSetCommand(
-  key: string,
-  options?: { cellDir?: string },
-): Promise<void> {
+export async function secretSetCommand(key: string, options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
   const envMap = loadEnvFiles(cellDir);
@@ -45,14 +41,10 @@ export async function secretSetCommand(
   const secretId = `${config.name}/${key}`;
 
   try {
-    await client.send(
-      new PutSecretValueCommand({ SecretId: secretId, SecretString: value }),
-    );
+    await client.send(new PutSecretValueCommand({ SecretId: secretId, SecretString: value }));
   } catch (err) {
     if (err instanceof ResourceNotFoundException) {
-      await client.send(
-        new CreateSecretCommand({ Name: secretId, SecretString: value }),
-      );
+      await client.send(new CreateSecretCommand({ Name: secretId, SecretString: value }));
     } else {
       throw err;
     }
@@ -61,10 +53,7 @@ export async function secretSetCommand(
   console.log(`Secret "${secretId}" set successfully.`);
 }
 
-export async function secretGetCommand(
-  key: string,
-  options?: { cellDir?: string },
-): Promise<void> {
+export async function secretGetCommand(key: string, options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
   const envMap = loadEnvFiles(cellDir);
@@ -72,9 +61,7 @@ export async function secretGetCommand(
 
   const secretId = `${config.name}/${key}`;
   try {
-    const result = await client.send(
-      new GetSecretValueCommand({ SecretId: secretId }),
-    );
+    const result = await client.send(new GetSecretValueCommand({ SecretId: secretId }));
     console.log(result.SecretString ?? "");
   } catch (err) {
     if (err instanceof ResourceNotFoundException) {
@@ -85,9 +72,7 @@ export async function secretGetCommand(
   }
 }
 
-export async function secretListCommand(options?: {
-  cellDir?: string;
-}): Promise<void> {
+export async function secretListCommand(options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
   const envMap = loadEnvFiles(cellDir);
@@ -111,7 +96,7 @@ export async function secretListCommand(options?: {
       new ListSecretsCommand({
         Filters: [{ Key: "name", Values: [prefix] }],
         NextToken: nextToken,
-      }),
+      })
     );
     for (const s of result.SecretList ?? []) {
       if (s.Name) {
@@ -128,7 +113,7 @@ export async function secretListCommand(options?: {
     return;
   }
 
-  console.log("\nKey".padEnd(30) + "Status");
+  console.log(`${"\nKey".padEnd(30)}Status`);
   console.log("-".repeat(50));
   for (const key of [...allKeys].sort()) {
     const status = remoteKeys.has(key) ? "configured" : "missing";

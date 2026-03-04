@@ -1,16 +1,6 @@
 import { readFileSync } from "node:fs";
-import {
-  Document,
-  Scalar,
-  YAMLMap,
-  parseDocument,
-  type SchemaOptions,
-} from "yaml";
-import type {
-  CellConfig,
-  RawParamValue,
-  SecretRef,
-} from "./cell-yaml-schema.js";
+import { parseDocument, type SchemaOptions } from "yaml";
+import type { CellConfig, RawParamValue, SecretRef } from "./cell-yaml-schema.js";
 import { isParamRef, isSecretRef } from "./cell-yaml-schema.js";
 import { resolveParams } from "./resolve-params.js";
 
@@ -45,10 +35,7 @@ function isTerminalSecretRef(node: unknown): node is SecretRef {
  * Walk a plain JS object/array tree and replace any `{ $ref }` values
  * with their resolved counterparts from the resolved params map.
  */
-function deepResolveRefs(
-  node: unknown,
-  resolved: Record<string, string | SecretRef>,
-): unknown {
+function deepResolveRefs(node: unknown, resolved: Record<string, string | SecretRef>): unknown {
   if (node === null || node === undefined) return node;
   if (isParamRef(node)) {
     const val = resolved[node.$ref];

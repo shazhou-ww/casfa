@@ -11,8 +11,7 @@ export function generateLambda(config: ResolvedConfig): CfnFragment {
   const envVariables: Record<string, string> = {};
   for (const [key, value] of Object.entries(config.envVars)) {
     if (key in config.secretRefs) {
-      envVariables[key] =
-        `{{resolve:secretsmanager:${config.name}/${config.secretRefs[key]}}}`;
+      envVariables[key] = `{{resolve:secretsmanager:${config.name}/${config.secretRefs[key]}}}`;
     } else {
       envVariables[key] = value;
     }
@@ -68,12 +67,7 @@ export function generateLambda(config: ResolvedConfig): CfnFragment {
     }
     policyStatements.push({
       Effect: "Allow",
-      Action: [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
-        "s3:ListBucket",
-      ],
+      Action: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
       Resource: bucketResources,
     });
   }
@@ -97,9 +91,7 @@ export function generateLambda(config: ResolvedConfig): CfnFragment {
           },
         ],
       },
-      ManagedPolicyArns: [
-        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-      ],
+      ManagedPolicyArns: ["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"],
       Policies: [
         {
           PolicyName: "LambdaPolicy",

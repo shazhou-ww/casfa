@@ -1,12 +1,12 @@
 import { stringify } from "yaml";
 import type { ResolvedConfig } from "../config/resolve-config.js";
-import type { CfnFragment } from "./types.js";
-import { generateDynamoDB } from "./dynamodb.js";
-import { generateS3 } from "./s3.js";
-import { generateLambda } from "./lambda.js";
 import { generateApiGateway } from "./api-gateway.js";
 import { generateCloudFront } from "./cloudfront.js";
 import { generateDomain } from "./domain.js";
+import { generateDynamoDB } from "./dynamodb.js";
+import { generateLambda } from "./lambda.js";
+import { generateS3 } from "./s3.js";
+import type { CfnFragment } from "./types.js";
 
 export function generateTemplate(config: ResolvedConfig): string {
   const fragments: CfnFragment[] = [

@@ -1,5 +1,4 @@
 import type { ResolvedValue } from "../config/cell-yaml-schema.js";
-import { isSecretRef } from "../config/cell-yaml-schema.js";
 
 export type CfnFragment = {
   Resources: Record<string, unknown>;
@@ -14,10 +13,7 @@ export function toPascalCase(s: string): string {
     .join("");
 }
 
-export function cfnResolveValue(
-  cellName: string,
-  value: ResolvedValue,
-): string {
+export function cfnResolveValue(cellName: string, value: ResolvedValue): string {
   if (typeof value === "string") return value;
   return `{{resolve:secretsmanager:${cellName}/${value.secret}}}`;
 }

@@ -32,7 +32,7 @@ describe("resolveParams", () => {
       resolveParams({
         A: { $ref: "B" },
         B: { $ref: "A" },
-      }),
+      })
     ).toThrow(/[Cc]ircular/);
   });
 
@@ -40,7 +40,7 @@ describe("resolveParams", () => {
     expect(() =>
       resolveParams({
         A: { $ref: "NONEXISTENT" },
-      }),
+      })
     ).toThrow(/non-existent/i);
   });
 

@@ -1,11 +1,11 @@
 import {
-  DynamoDBClient,
-  CreateTableCommand,
-  ListTablesCommand,
-  type CreateTableCommandInput,
-  type KeySchemaElement,
   type AttributeDefinition,
+  CreateTableCommand,
+  type CreateTableCommandInput,
+  DynamoDBClient,
   type GlobalSecondaryIndex,
+  type KeySchemaElement,
+  ListTablesCommand,
 } from "@aws-sdk/client-dynamodb";
 import type { TableConfig } from "../config/cell-yaml-schema.js";
 import type { ResolvedTable } from "../config/resolve-config.js";
@@ -18,7 +18,7 @@ function attrType(t: string): "S" | "N" | "B" {
 
 export function buildCreateTableInput(
   tableName: string,
-  config: TableConfig,
+  config: TableConfig
 ): CreateTableCommandInput {
   const keyEntries = Object.entries(config.keys);
   const keySchema: KeySchemaElement[] = keyEntries.map(([name], i) => ({
@@ -35,12 +35,10 @@ export function buildCreateTableInput(
   if (config.gsi) {
     for (const [gsiName, gsiConfig] of Object.entries(config.gsi)) {
       const gsiKeyEntries = Object.entries(gsiConfig.keys);
-      const gsiKeySchema: KeySchemaElement[] = gsiKeyEntries.map(
-        ([name], i) => ({
-          AttributeName: name,
-          KeyType: i === 0 ? "HASH" : "RANGE",
-        }),
-      );
+      const gsiKeySchema: KeySchemaElement[] = gsiKeyEntries.map(([name], i) => ({
+        AttributeName: name,
+        KeyType: i === 0 ? "HASH" : "RANGE",
+      }));
 
       for (const [name, type] of gsiKeyEntries) {
         attrSet.set(name, attrType(type));
@@ -60,7 +58,7 @@ export function buildCreateTableInput(
     ([name, type]) => ({
       AttributeName: name,
       AttributeType: type as "S" | "N" | "B",
-    }),
+    })
   );
 
   const input: CreateTableCommandInput = {
@@ -100,10 +98,7 @@ export async function isDynamoDBReady(endpoint: string): Promise<boolean> {
   }
 }
 
-export async function ensureLocalTables(
-  endpoint: string,
-  tables: ResolvedTable[],
-): Promise<void> {
+export async function ensureLocalTables(endpoint: string, tables: ResolvedTable[]): Promise<void> {
   const client = makeClient(endpoint);
   try {
     for (const table of tables) {

@@ -58,7 +58,7 @@ describe("generateLambda", () => {
     const result = generateLambda(config);
     const fn = result.Resources.ApiFunction as any;
     expect(fn.Properties.Environment.Variables.DB_PASSWORD).toBe(
-      "{{resolve:secretsmanager:test-app/DB_PASSWORD}}",
+      "{{resolve:secretsmanager:test-app/DB_PASSWORD}}"
     );
   });
 
@@ -77,7 +77,7 @@ describe("generateLambda", () => {
     const role = result.Resources.LambdaExecutionRole as any;
     const statements = role.Properties.Policies[0].PolicyDocument.Statement;
     const dynamoStatement = statements.find(
-      (s: any) => Array.isArray(s.Action) && s.Action.includes("dynamodb:GetItem"),
+      (s: any) => Array.isArray(s.Action) && s.Action.includes("dynamodb:GetItem")
     );
     expect(dynamoStatement).toBeDefined();
   });
@@ -91,8 +91,7 @@ describe("generateLambda", () => {
     const role = result.Resources.LambdaExecutionRole as any;
     const statements = role.Properties.Policies[0].PolicyDocument.Statement;
     const s3Statement = statements.find(
-      (s: any) =>
-        Array.isArray(s.Action) && s.Action.includes("s3:GetObject"),
+      (s: any) => Array.isArray(s.Action) && s.Action.includes("s3:GetObject")
     );
     expect(s3Statement).toBeDefined();
   });
@@ -103,7 +102,7 @@ describe("generateLambda", () => {
     const role = result.Resources.LambdaExecutionRole as any;
     const statements = role.Properties.Policies[0].PolicyDocument.Statement;
     const dynamoStatement = statements.find(
-      (s: any) => Array.isArray(s.Action) && s.Action.includes("dynamodb:GetItem"),
+      (s: any) => Array.isArray(s.Action) && s.Action.includes("dynamodb:GetItem")
     );
     expect(dynamoStatement).toBeUndefined();
   });

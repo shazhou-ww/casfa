@@ -1,21 +1,16 @@
-import { resolve, dirname, relative } from "node:path";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { createServer, mergeConfig, defineConfig, type UserConfig } from "vite";
+import { dirname, relative, resolve } from "node:path";
 import react from "@vitejs/plugin-react";
+import { createServer, defineConfig, mergeConfig, type UserConfig } from "vite";
+import type { BackendEntry } from "../config/cell-yaml-schema.js";
+import { isSecretRef } from "../config/cell-yaml-schema.js";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
-import { isSecretRef } from "../config/cell-yaml-schema.js";
-import type { BackendEntry } from "../config/cell-yaml-schema.js";
+import { isDockerRunning, startDynamoDB, startMinIO, waitForPort } from "../local/docker.js";
+import { ensureLocalTables, isDynamoDBReady } from "../local/dynamodb-local.js";
+import { ensureLocalBuckets } from "../local/minio-local.js";
 import { loadEnvFiles } from "../utils/env.js";
 import { ensureIndexHtml } from "../utils/frontend.js";
-import {
-  isDockerRunning,
-  startDynamoDB,
-  startMinIO,
-  waitForPort,
-} from "../local/docker.js";
-import { isDynamoDBReady, ensureLocalTables } from "../local/dynamodb-local.js";
-import { ensureLocalBuckets } from "../local/minio-local.js";
 
 function resolveAppPath(cellDir: string, entry: BackendEntry): string {
   if (entry.app) {
@@ -27,7 +22,7 @@ function resolveAppPath(cellDir: string, entry: BackendEntry): string {
     return candidate;
   }
   throw new Error(
-    `Cannot find Hono app module. Either set "app" in cell.yaml backend entry, or create app.ts next to ${entry.handler}`,
+    `Cannot find Hono app module. Either set "app" in cell.yaml backend entry, or create app.ts next to ${entry.handler}`
   );
 }
 
@@ -35,15 +30,12 @@ function generateDevServer(
   cellDir: string,
   entryName: string,
   appPath: string,
-  port: number,
+  port: number
 ): string {
   const cellBuildDir = resolve(cellDir, ".cell");
   mkdirSync(cellBuildDir, { recursive: true });
   const devServerPath = resolve(cellBuildDir, `dev-${entryName}.ts`);
-  const relPath = relative(dirname(devServerPath), appPath).replace(
-    /\.ts$/,
-    "",
-  );
+  const relPath = relative(dirname(devServerPath), appPath).replace(/\.ts$/, "");
   const importPath = relPath.startsWith(".") ? relPath : `./${relPath}`;
   writeFileSync(
     devServerPath,
@@ -53,7 +45,7 @@ function generateDevServer(
       `console.log(\`Listening on http://localhost:\${port}\`);`,
       `Bun.serve({ port, fetch: app.fetch });`,
       "",
-    ].join("\n"),
+    ].join("\n")
   );
   return devServerPath;
 }
@@ -61,7 +53,7 @@ function generateDevServer(
 function pipeWithLabel(
   stream: ReadableStream<Uint8Array>,
   label: string,
-  target: NodeJS.WriteStream,
+  target: NodeJS.WriteStream
 ): void {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -76,18 +68,16 @@ function pipeWithLabel(
       const lines = buffer.split("\n");
       buffer = lines.pop()!;
       for (const line of lines) {
-        target.write(prefix + line + "\n");
+        target.write(`${prefix + line}\n`);
       }
     }
     if (buffer) {
-      target.write(prefix + buffer + "\n");
+      target.write(`${prefix + buffer}\n`);
     }
   })();
 }
 
-export async function devCommand(options?: {
-  cellDir?: string;
-}): Promise<void> {
+export async function devCommand(options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
   const envMap = loadEnvFiles(cellDir);
@@ -96,14 +86,12 @@ export async function devCommand(options?: {
   if (config.params) {
     for (const [key, value] of Object.entries(config.params)) {
       if (isSecretRef(value) && !(value.secret in envMap)) {
-        console.warn(
-          `⚠ Secret "${value.secret}" (param "${key}") not found in .env files`,
-        );
+        console.warn(`⚠ Secret "${value.secret}" (param "${key}") not found in .env files`);
       }
     }
   }
 
-  const portBase = parseInt(envMap["PORT_BASE"] ?? "7100", 10);
+  const portBase = parseInt(envMap.PORT_BASE ?? "7100", 10);
   const httpPort = portBase + 1;
   const dynamodbPort = portBase + 2;
   const s3Port = portBase + 4;
@@ -112,9 +100,7 @@ export async function devCommand(options?: {
   // DynamoDB
   if (resolved.tables.length > 0) {
     if (!(await isDockerRunning())) {
-      console.error(
-        "Docker is not running. Please start Docker and try again.",
-      );
+      console.error("Docker is not running. Please start Docker and try again.");
       process.exit(1);
     }
     console.log(`Starting DynamoDB on port ${dynamodbPort}...`);
@@ -150,9 +136,7 @@ export async function devCommand(options?: {
   ];
   if (resolved.buckets.length > 0) {
     if (!(await isDockerRunning())) {
-      console.error(
-        "Docker is not running. Please start Docker and try again.",
-      );
+      console.error("Docker is not running. Please start Docker and try again.");
       process.exit(1);
     }
     const dataDir = resolve(cellDir, ".local-storage/s3");
@@ -195,16 +179,8 @@ export async function devCommand(options?: {
         stderr: "pipe",
       });
       children.push(proc);
-      pipeWithLabel(
-        proc.stdout as ReadableStream<Uint8Array>,
-        name,
-        process.stdout,
-      );
-      pipeWithLabel(
-        proc.stderr as ReadableStream<Uint8Array>,
-        name,
-        process.stderr,
-      );
+      pipeWithLabel(proc.stdout as ReadableStream<Uint8Array>, name, process.stdout);
+      pipeWithLabel(proc.stderr as ReadableStream<Uint8Array>, name, process.stderr);
     }
   }
 
@@ -219,7 +195,11 @@ export async function devCommand(options?: {
       server: {
         port: frontendPort,
         proxy: {
-          "/api": { target: `http://localhost:${httpPort}`, changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api/, "") },
+          "/api": {
+            target: `http://localhost:${httpPort}`,
+            changeOrigin: true,
+            rewrite: (path: string) => path.replace(/^\/api/, ""),
+          },
           "/oauth": { target: `http://localhost:${httpPort}`, changeOrigin: true },
         },
       },
