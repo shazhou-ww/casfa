@@ -2,9 +2,10 @@
  * Image Workshop MCP over HTTP (Streamable HTTP transport).
  * Used by Lambda; stateless mode requires a new transport (and server) per request.
  */
-import { Hono, type Context } from "hono";
-import { createMcpServer } from "./index";
+
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { type Context, Hono } from "hono";
+import { createMcpServer } from "./index";
 
 const app = new Hono();
 

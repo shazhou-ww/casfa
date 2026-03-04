@@ -10,7 +10,7 @@
       "url": "http://localhost:7100/api/mcp"
     },
     "image-workshop": {
-      "url": "http://localhost:7201"
+      "url": "http://localhost:7200/api/mcp"
     }
   }
 }

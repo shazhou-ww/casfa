@@ -8,14 +8,39 @@ import { createBflClient } from "./bfl";
 import { createCasfaBranchClient } from "./casfa-branch";
 
 export const fluxImageInputSchema = z.object({
-  casfaBaseUrl: z.string().url().describe("Casfa server base URL (e.g. https://api.example.com or http://localhost:7100)."),
-  branchAccessToken: z.string().describe("Casfa branch access token (Bearer) for the target branch."),
-  filename: z.string().describe("Filename to save the generated image (e.g. output.png or images/hero.jpeg)."),
+  casfaBaseUrl: z
+    .string()
+    .url()
+    .describe("Casfa server base URL (e.g. https://api.example.com or http://localhost:7100)."),
+  branchAccessToken: z
+    .string()
+    .describe("Casfa branch access token (Bearer) for the target branch."),
+  filename: z
+    .string()
+    .describe("Filename to save the generated image (e.g. output.png or images/hero.jpeg)."),
   prompt: z.string().describe("Text prompt for FLUX image generation."),
-  width: z.number().int().min(64).max(2048).optional().describe("Output width in pixels (multiple of 16). Default 1024."),
-  height: z.number().int().min(64).max(2048).optional().describe("Output height in pixels (multiple of 16). Default 1024."),
+  width: z
+    .number()
+    .int()
+    .min(64)
+    .max(2048)
+    .optional()
+    .describe("Output width in pixels (multiple of 16). Default 1024."),
+  height: z
+    .number()
+    .int()
+    .min(64)
+    .max(2048)
+    .optional()
+    .describe("Output height in pixels (multiple of 16). Default 1024."),
   seed: z.number().int().optional().describe("Seed for reproducible results."),
-  safety_tolerance: z.number().int().min(0).max(5).optional().describe("Moderation level 0 (strict) to 5 (permissive). Default 2."),
+  safety_tolerance: z
+    .number()
+    .int()
+    .min(0)
+    .max(5)
+    .optional()
+    .describe("Moderation level 0 (strict) to 5 (permissive). Default 2."),
   output_format: z.enum(["jpeg", "png"]).optional().describe("Output format. Default jpeg."),
 });
 
@@ -25,7 +50,9 @@ function contentTypeForFormat(format: "jpeg" | "png"): string {
   return format === "png" ? "image/png" : "image/jpeg";
 }
 
-export async function handleFluxImage(args: FluxImageArgs): Promise<{ path: string; key: string; completed: string }> {
+export async function handleFluxImage(
+  args: FluxImageArgs
+): Promise<{ path: string; key: string; completed: string }> {
   const bfl = createBflClient();
   const casfa = createCasfaBranchClient({ baseUrl: args.casfaBaseUrl });
 
@@ -94,7 +121,9 @@ export function createMcpServer(): McpServer {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return {
-          content: [{ type: "text" as const, text: JSON.stringify({ success: false, error: message }) }],
+          content: [
+            { type: "text" as const, text: JSON.stringify({ success: false, error: message }) },
+          ],
           isError: true,
         };
       }
