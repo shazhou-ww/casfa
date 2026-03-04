@@ -142,11 +142,20 @@ testing:
 
 | 指令 | 语义 | 示例 |
 |------|------|------|
-| `!Secret` | 标记 param 为敏感值。本地从 `.env` 读取，线上从 Secrets Manager（key = `{name}/{param-key}`）读取 | `COGNITO_CLIENT_SECRET: !Secret` |
+| `!Secret` | 标记 param 为敏感值。无参数时 secret name = param key | `COGNITO_CLIENT_SECRET: !Secret` |
 | `!Secret <name>` | 同上，但指定 Secrets Manager 中的 key 名 | `MY_KEY: !Secret custom-name` |
 | `!Param <KEY>` | 引用 params 中另一个 key 的值。支持链式引用（A → B → C），不允许循环 | `region: !Param COGNITO_REGION` |
 
-CLI 加载 cell.yaml 后做一次拓扑排序解析所有 `!Param` 引用。
+所有指令在 YAML load 时就被完全解析，load 后的数据结构中只有两种值类型：
+
+- `string` — 普通值
+- `{ secret: string }` — 需要运行时从 `.env`（本地）或 Secrets Manager（线上，key = `{name}/{secret}`）获取的敏感值
+
+解析流程：
+1. YAML parse：`!Secret` → `{ secret: arg || null }`，`!Param` → `{ $ref: key }`
+2. 遍历 params，将 `{ secret: null }` 填入对应的 param key → `{ secret: "COGNITO_CLIENT_SECRET" }`
+3. 拓扑排序解析所有 `{ $ref }`，替换为实际值（`string` 或 `{ secret }` 对象透传）
+4. 返回纯数据结构，无残留指令
 
 ### 自动生成的环境变量
 
