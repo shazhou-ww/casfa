@@ -720,36 +720,117 @@ git commit -m "feat(cell-cli): cell init command for new cell scaffolding"
 
 ---
 
-## Task 21: Migrate server-next to Cell
+## Task 21: Migrate image-workshop to Cell (First Validation)
+
+先用最小的服务验证 Cell 工具链，再考虑迁移 server-next。
 
 **Files:**
-- Create: `apps/server-next/cell.yaml`
-- Modify: `apps/server-next/package.json` — simplify scripts to delegate to `cell`
+- Create: `apps/image-workshop/cell.yaml`
+- Create: `apps/image-workshop/frontend/` — 伪前端（最小 React 页面，显示服务状态 + Cognito 登录）
+- Modify: `apps/image-workshop/package.json` — simplify scripts to delegate to `cell`
 
-**Step 1: Create cell.yaml for server-next**
+**Step 1: Create cell.yaml for image-workshop**
 
-Write the real `cell.yaml` based on the existing `serverless.yml` configuration, using actual param values.
+```yaml
+name: image-workshop
 
-**Step 2: Verify `cell dev` works**
+backend:
+  runtime: nodejs20.x
+  entries:
+    mcp:
+      handler: src/lambda.ts
+      timeout: 90
+      memory: 1024
+      routes: ["*"]
 
-Run `cell dev` in `apps/server-next`, verify it starts correctly and matches the behavior of the current `bun run dev`.
+frontend:
+  dir: frontend
+  entries:
+    main:
+      src: src/main.tsx
 
-**Step 3: Verify `cell deploy` generates correct template**
+static: []
 
-Run `cell build` + compare generated `.cell/cfn.yaml` against existing `serverless.yml` resources. Verify all resources are equivalent.
+tables: {}
 
-**Step 4: Simplify server-next package.json scripts**
+buckets: {}
 
-Replace individual scripts with `cell` commands:
-- `"dev": "cell dev"`
-- `"test": "cell test"`
-- `"deploy": "cell deploy"`
-- `"lint": "cell lint"`
-- `"typecheck": "cell typecheck"`
+params:
+  COGNITO_REGION: us-east-1
+  COGNITO_USER_POOL_ID: <same as server-next>
+  COGNITO_CLIENT_ID: <same as server-next>
+  COGNITO_HOSTED_UI_URL: <same as server-next>
+  COGNITO_CLIENT_SECRET: !Secret
+  BFL_API_KEY: !Secret
 
-**Step 5: Commit**
+cognito:
+  region: !Param COGNITO_REGION
+  userPoolId: !Param COGNITO_USER_POOL_ID
+  clientId: !Param COGNITO_CLIENT_ID
+  hostedUiUrl: !Param COGNITO_HOSTED_UI_URL
+  clientSecret: !Param COGNITO_CLIENT_SECRET
+
+domain:
+  zone: shazhou.me
+  host: image-workshop.casfa.shazhou.me
+  certificate: !Param ACM_CERTIFICATE_ARN
+
+testing:
+  unit: "**/__tests__/*.test.ts"
+  e2e: "tests/*.test.ts"
+```
+
+**Step 2: Create stub frontend**
+
+Create a minimal React app in `apps/image-workshop/frontend/`:
+- `src/main.tsx` — renders a simple page: service name, status, Cognito login button
+- Uses the same Cognito config as server-next (shared User Pool)
+- Minimal: just enough to validate the full Cell stack (CloudFront → S3 frontend + API Gateway backend)
+
+**Step 3: Verify `cell dev` works**
+
+Run `cell dev` in `apps/image-workshop`. Verify:
+- Backend starts and responds to MCP requests on PORT_BASE+1
+- Frontend dev server starts with HMR
+- No DynamoDB/MinIO containers needed (tables/buckets are empty)
+
+**Step 4: Verify `cell build` + `cell deploy`**
+
+1. `cell build` — backend bundles to `.cell/build/mcp/`, frontend to `.cell/build/frontend/`
+2. Review generated `.cell/cfn.yaml` — should have Lambda + API Gateway + CloudFront + S3 frontend + Route 53, no DynamoDB, no blob S3
+3. `cell deploy` — deploy to AWS, verify CloudFront serves frontend and routes `/api/*` to Lambda
+
+**Step 5: Simplify image-workshop package.json scripts**
+
+```json
+{
+  "scripts": {
+    "start": "bun run src/stdio.ts",
+    "dev": "cell dev",
+    "build": "cell build",
+    "deploy": "cell deploy",
+    "typecheck": "cell typecheck",
+    "lint": "cell lint"
+  }
+}
+```
+
+**Step 6: Commit**
 
 ```bash
-git commit -m "feat(server-next): migrate to Cell CLI" \
-  -m "Replace serverless.yml + custom scripts with cell.yaml + cell commands"
+git commit -m "feat(image-workshop): migrate to Cell CLI" \
+  -m "Replace serverless.yml with cell.yaml, add stub frontend with Cognito login"
 ```
+
+---
+
+## Task 22: Migrate server-next to Cell (Future)
+
+After image-workshop is validated, migrate server-next. This is a larger effort due to:
+- 2 DynamoDB tables with GSIs
+- S3 blob bucket
+- Full React frontend
+- Complex CloudFront config (SPA fallback, OAuth callback routing)
+- Existing e2e test suite
+
+Deferred to a separate planning session after Task 21 is validated in production.
