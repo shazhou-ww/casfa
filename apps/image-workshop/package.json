@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "start": "bun run src/stdio.ts",
-    "typecheck": "tsc --noEmit",
-    "offline": "bun run scripts/print-mcp-url.ts && serverless offline --stage dev",
-    "deploy": "serverless deploy"
+    "dev": "bun ../cell-cli/src/cli.ts dev",
+    "build": "bun ../cell-cli/src/cli.ts build",
+    "deploy": "bun ../cell-cli/src/cli.ts deploy",
+    "typecheck": "bun ../cell-cli/src/cli.ts typecheck",
+    "lint": "bun ../cell-cli/src/cli.ts lint"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
@@ -16,8 +18,6 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "serverless": "^4.0.0",
-    "serverless-offline": "^14.0.0",
     "typescript": "^5.8.3"
   }
 }
