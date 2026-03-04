@@ -50,7 +50,7 @@ COGNITO_CLIENT_ID=
 COGNITO_HOSTED_UI_URL=
 `;
 
-const GITIGNORE_ENTRIES = [".cell/", ".env", ".vite-dev.config.ts"];
+const GITIGNORE_ENTRIES = [".cell/", ".env", ".vite-*.config.ts"];
 
 export async function initCommand(
   name?: string,

@@ -4,7 +4,7 @@ backend:
   runtime: nodejs20.x
   entries:
     mcp:
-      handler: src/lambda.ts
+      handler: backend/lambda.ts
       timeout: 90
       memory: 1024
       routes: ["*"]
@@ -13,13 +13,7 @@ frontend:
   dir: frontend
   entries:
     main:
-      src: src/main.tsx
-
-static: []
-
-tables: {}
-
-buckets: {}
+      src: main.tsx
 
 params:
   COGNITO_REGION: us-east-1
@@ -39,7 +33,3 @@ domain:
   zone: shazhou.me
   host: image-workshop.casfa.shazhou.me
   certificate: !Param ACM_CERTIFICATE_ARN
-
-testing:
-  unit: "**/__tests__/*.test.ts"
-  e2e: "tests/*.test.ts"

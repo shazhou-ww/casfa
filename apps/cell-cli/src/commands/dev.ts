@@ -5,6 +5,7 @@ import { resolveConfig } from "../config/resolve-config.js";
 import { isSecretRef } from "../config/cell-yaml-schema.js";
 import type { BackendEntry } from "../config/cell-yaml-schema.js";
 import { loadEnvFiles } from "../utils/env.js";
+import { ensureIndexHtml } from "../utils/frontend.js";
 import {
   isDockerRunning,
   startDynamoDB,
@@ -208,24 +209,37 @@ export async function devCommand(options?: {
   // Frontend: start Vite dev server with API proxy
   if (resolved.frontend) {
     const frontendDir = resolve(cellDir, resolved.frontend.dir);
+    ensureIndexHtml(frontendDir, config);
 
+    const hasUserConfig = existsSync(resolve(frontendDir, "vite.config.ts"));
     const devViteConfig = resolve(frontendDir, ".vite-dev.config.ts");
-    writeFileSync(
-      devViteConfig,
-      [
+    const lines: string[] = [];
+    if (hasUserConfig) {
+      lines.push(
         `import baseConfig from "./vite.config";`,
-        `import { defineConfig, mergeConfig } from "vite";`,
+        `import { mergeConfig, defineConfig } from "vite";`,
+        `import react from "@vitejs/plugin-react";`,
         `export default mergeConfig(baseConfig, defineConfig({`,
-        `  server: {`,
-        `    proxy: {`,
-        `      "/api": { target: "http://localhost:${httpPort}", changeOrigin: true, rewrite: (path) => path.replace(/^\\/api/, "") },`,
-        `      "/oauth": { target: "http://localhost:${httpPort}", changeOrigin: true },`,
-        `    },`,
-        `  },`,
-        `}));`,
-        "",
-      ].join("\n"),
+      );
+    } else {
+      lines.push(
+        `import { defineConfig } from "vite";`,
+        `import react from "@vitejs/plugin-react";`,
+        `export default defineConfig({`,
+        `  plugins: [react()],`,
+      );
+    }
+    lines.push(
+      `  server: {`,
+      `    proxy: {`,
+      `      "/api": { target: "http://localhost:${httpPort}", changeOrigin: true, rewrite: (path) => path.replace(/^\\/api/, "") },`,
+      `      "/oauth": { target: "http://localhost:${httpPort}", changeOrigin: true },`,
+      `    },`,
+      `  },`,
+      hasUserConfig ? `}));` : `});`,
+      "",
     );
+    writeFileSync(devViteConfig, lines.join("\n"));
 
     console.log(`Starting frontend [web] on port ${frontendPort}...`);
     const proc = Bun.spawn(
