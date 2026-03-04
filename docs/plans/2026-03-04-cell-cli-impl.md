@@ -117,22 +117,23 @@ git commit -m "feat(cell-cli): scaffold project with commander entry point"
 
 **Step 1: Write types for parsed cell.yaml**
 
-Create `apps/cell-cli/src/config/cell-yaml-schema.ts`. Define types that represent the raw parsed cell.yaml structure. `!Secret` parses to `{ $secret: true, name?: string }`. `!Param` parses to `{ $ref: string }`.
+Create `apps/cell-cli/src/config/cell-yaml-schema.ts`. Define types that represent the parsed cell.yaml structure after all directives are resolved. After loading, only two value types remain: `string` (plain value) and `{ secret: string }` (sensitive value needing runtime resolution).
 
 Key types:
 - `CellConfig` — top-level with `name`, `backend`, `frontend`, `static`, `tables`, `buckets`, `params`, `cognito`, `domain`, `testing`
-- `ParamValue` — `string | SecretMarker | ParamRef`
-- `SecretMarker` — `{ $secret: true; name?: string }`
-- `ParamRef` — `{ $ref: string }`
+- `ResolvedValue` — `string | SecretRef`
+- `SecretRef` — `{ secret: string }` (the string is the secret name / SM key)
 
 **Step 2: Write failing tests**
 
 Create `apps/cell-cli/src/config/__tests__/load-cell-yaml.test.ts`. Test cases:
 1. Parses minimal cell.yaml (just `name` + `backend`)
-2. `!Secret` with no arg → `{ $secret: true }`
-3. `!Secret custom-name` → `{ $secret: true, name: "custom-name" }`
-4. `!Param SOME_KEY` → `{ $ref: "SOME_KEY" }`
-5. Error on unknown custom tag
+2. `!Secret` with no arg → `{ secret: "<param-key>" }` (key filled in from parent map key)
+3. `!Secret custom-name` → `{ secret: "custom-name" }`
+4. `!Param SOME_KEY` where SOME_KEY = "hello" → resolves to `"hello"`
+5. `!Param SOME_KEY` where SOME_KEY is `!Secret` → resolves to `{ secret: "SOME_KEY" }`
+6. Error on unknown custom tag
+7. Error on circular `!Param` references
 
 **Step 3: Run tests to verify they fail**
 
@@ -171,12 +172,12 @@ git commit -m "feat(cell-cli): cell.yaml parser with !Param and !Secret custom t
 
 Test cases:
 1. Plain string params resolve to themselves
-2. `!Param A` where A is a plain string → resolves to A's value
-3. Chain: B = `!Param A`, C = `!Param B` → C resolves to A's value
+2. `{ $ref: "A" }` where A is a plain string → resolves to A's value
+3. Chain: B = `{ $ref: "A" }`, C = `{ $ref: "B" }` → C resolves to A's value
 4. Circular reference → throws error
 5. Reference to non-existent param → throws error
-6. `!Secret` params remain as `SecretMarker` (not resolved to a value)
-7. `!Param` referencing a `!Secret` → resolves to `SecretMarker`
+6. `{ secret: "X" }` params pass through unchanged
+7. `{ $ref: "X" }` referencing a `{ secret }` → resolves to `{ secret: "X" }`
 
 **Step 2: Run tests to verify they fail**
 
@@ -185,7 +186,7 @@ Expected: FAIL
 
 **Step 3: Implement resolve-params.ts**
 
-`resolveParams(params: Record<string, ParamValue>): Record<string, string | SecretMarker>` — topological sort, detect cycles, resolve chains. Secrets remain as markers.
+`resolveParams(params: Record<string, string | SecretRef | ParamRef>): Record<string, string | SecretRef>` — topological sort, detect cycles, resolve chains. `{ secret }` values pass through. After resolution, no `{ $ref }` remains.
 
 **Step 4: Run tests to verify they pass**
 
