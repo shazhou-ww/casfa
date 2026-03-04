@@ -69,10 +69,15 @@ type NewDelegate = {
 };
 
 // ── OAuth Callback ──
+let exchangeInFlight = false;
+
 function OAuthCallback() {
   const [status, setStatus] = useState("Exchanging code…");
 
   useEffect(() => {
+    if (exchangeInFlight) return;
+    exchangeInFlight = true;
+
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     if (!code) {

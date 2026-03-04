@@ -7,7 +7,12 @@ backend:
       handler: backend/lambda.ts
       timeout: 90
       memory: 1024
-      routes: ["*"]
+      routes:
+        - /api/*
+        - /oauth/authorize
+        - /oauth/token
+        - /.well-known/*
+        - /mcp
 
 frontend:
   dir: frontend

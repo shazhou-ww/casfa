@@ -30,6 +30,11 @@ export async function isContainerRunning(name: string): Promise<boolean> {
   return exitCode === 0 && stdout === "true";
 }
 
+export async function containerExists(name: string): Promise<boolean> {
+  const { exitCode } = await exec(["docker", "inspect", name]);
+  return exitCode === 0;
+}
+
 export async function stopContainer(name: string): Promise<void> {
   await exec(["docker", "rm", "-f", name]);
 }
@@ -50,6 +55,9 @@ export function buildDynamoDBArgs(opts: DynamoDBOpts): string[] {
     "-p",
     `${opts.port}:8000`,
     "amazon/dynamodb-local",
+    "-jar",
+    "DynamoDBLocal.jar",
+    "-sharedDb",
   ];
   if (!opts.persistent) {
     args.push("-inMemory");
@@ -59,6 +67,10 @@ export function buildDynamoDBArgs(opts: DynamoDBOpts): string[] {
 
 export async function startDynamoDB(opts: DynamoDBOpts): Promise<void> {
   if (await isContainerRunning(opts.containerName)) return;
+  if (await containerExists(opts.containerName)) {
+    await exec(["docker", "start", opts.containerName]);
+    return;
+  }
   const args = buildDynamoDBArgs(opts);
   const { exitCode, stderr } = await exec(args);
   if (exitCode !== 0) {
@@ -95,6 +107,10 @@ export function buildMinIOArgs(opts: MinIOOpts): string[] {
 
 export async function startMinIO(opts: MinIOOpts): Promise<void> {
   if (await isContainerRunning(opts.containerName)) return;
+  if (await containerExists(opts.containerName)) {
+    await exec(["docker", "start", opts.containerName]);
+    return;
+  }
   const args = buildMinIOArgs(opts);
   const { exitCode, stderr } = await exec(args);
   if (exitCode !== 0) {
