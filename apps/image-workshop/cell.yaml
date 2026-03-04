@@ -23,6 +23,23 @@ params:
   ACM_CERTIFICATE_ARN: ""
   BFL_API_KEY: !Secret
 
+tables:
+  grants:
+    keys:
+      pk: S
+      sk: S
+    gsi:
+      user-hash-index:
+        keys:
+          gsi1pk: S
+          gsi1sk: S
+        projection: ALL
+      user-refresh-index:
+        keys:
+          gsi2pk: S
+          gsi2sk: S
+        projection: ALL
+
 cognito:
   region: !Param COGNITO_REGION
   userPoolId: !Param COGNITO_USER_POOL_ID

@@ -195,12 +195,10 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
       server: {
         port: frontendPort,
         proxy: {
-          "/api": {
-            target: `http://localhost:${httpPort}`,
-            changeOrigin: true,
-            rewrite: (path: string) => path.replace(/^\/api/, ""),
-          },
+          "/api": { target: `http://localhost:${httpPort}`, changeOrigin: true },
           "/oauth": { target: `http://localhost:${httpPort}`, changeOrigin: true },
+          "/mcp": { target: `http://localhost:${httpPort}`, changeOrigin: true },
+          "/.well-known": { target: `http://localhost:${httpPort}`, changeOrigin: true },
         },
       },
     });
