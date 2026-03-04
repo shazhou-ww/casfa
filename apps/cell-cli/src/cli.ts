@@ -1,4 +1,6 @@
 import { Command } from "commander";
+import { devCommand } from "./commands/dev.js";
+import { buildCommand } from "./commands/build.js";
 
 const program = new Command();
 
@@ -10,15 +12,15 @@ program
 program
   .command("dev")
   .description("Start local development environment")
-  .action(() => {
-    console.log("cell dev: not yet implemented");
+  .action(async () => {
+    await devCommand();
   });
 
 program
   .command("build")
   .description("Build frontend and backend artifacts")
-  .action(() => {
-    console.log("cell build: not yet implemented");
+  .action(async () => {
+    await buildCommand();
   });
 
 program
