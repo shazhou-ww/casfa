@@ -3,6 +3,7 @@ import type {
   CellConfig,
   DomainConfig,
   FrontendConfig,
+  NetworkConfig,
   StaticMapping,
   TableConfig,
   TestingConfig,
@@ -33,6 +34,7 @@ export interface ResolvedConfig {
   frontend?: FrontendConfig;
   static?: StaticMapping[];
   domain?: DomainConfig;
+  network?: NetworkConfig;
   testing?: TestingConfig;
 }
 
@@ -102,6 +104,11 @@ export function resolveConfig(
     envVars.S3_ENDPOINT = `http://localhost:${portBase + offset + 4}`;
   }
 
+  // 6. APP_ORIGIN from domain config (cloud only)
+  if (stage === "cloud" && config.domain?.host) {
+    envVars.APP_ORIGIN = `https://${config.domain.host}`;
+  }
+
   return {
     name: config.name,
     envVars,
@@ -113,6 +120,7 @@ export function resolveConfig(
     frontend: config.frontend,
     static: config.static,
     domain: config.domain,
+    network: config.network,
     testing: config.testing,
   };
 }

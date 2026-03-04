@@ -5,11 +5,13 @@ import { generateCloudFront } from "./cloudfront.js";
 import { generateDomain } from "./domain.js";
 import { generateDynamoDB } from "./dynamodb.js";
 import { generateLambda } from "./lambda.js";
+import { generateNetwork } from "./network.js";
 import { generateS3 } from "./s3.js";
 import type { CfnFragment } from "./types.js";
 
 export function generateTemplate(config: ResolvedConfig): string {
   const fragments: CfnFragment[] = [
+    generateNetwork(config),
     generateDynamoDB(config),
     generateS3(config),
     generateLambda(config),

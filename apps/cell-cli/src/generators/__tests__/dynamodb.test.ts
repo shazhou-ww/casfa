@@ -93,7 +93,7 @@ describe("generateDynamoDB", () => {
     expect(result.Resources.OrdersTable).toBeDefined();
   });
 
-  test("DeletionPolicy is Retain", () => {
+  test("no DeletionPolicy by default", () => {
     const config = makeConfig({
       tables: [
         {
@@ -104,7 +104,7 @@ describe("generateDynamoDB", () => {
       ],
     });
     const result = generateDynamoDB(config);
-    expect((result.Resources.DataTable as any).DeletionPolicy).toBe("Retain");
+    expect((result.Resources.DataTable as any).DeletionPolicy).toBeUndefined();
   });
 
   test("output ARNs generated", () => {

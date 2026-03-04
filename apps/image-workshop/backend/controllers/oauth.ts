@@ -89,7 +89,7 @@ export function createOAuthRoutes(deps: OAuthControllerDeps) {
   const { cognitoConfig, grantStore } = deps;
 
   routes.get("/.well-known/oauth-authorization-server", (c) => {
-    const origin = new URL(c.req.url).origin;
+    const origin = process.env.APP_ORIGIN || new URL(c.req.url).origin;
     return c.json({
       issuer: origin,
       authorization_endpoint: `${origin}/oauth/authorize`,
@@ -134,7 +134,7 @@ export function createOAuthRoutes(deps: OAuthControllerDeps) {
     const registered = registeredClients.get(clientId);
     const clientName = registered?.clientName ?? "MCP Client";
 
-    const origin = new URL(c.req.url).origin;
+    const origin = process.env.APP_ORIGIN || new URL(c.req.url).origin;
     const serverCallbackUri = `${origin}/oauth/callback`;
 
     const wrappedState = btoa(
@@ -184,7 +184,7 @@ export function createOAuthRoutes(deps: OAuthControllerDeps) {
       /* state not wrapped, treat as frontend flow */
     }
 
-    const origin = new URL(c.req.url).origin;
+    const origin = process.env.APP_ORIGIN || new URL(c.req.url).origin;
     const serverCallbackUri = `${origin}/oauth/callback`;
 
     let cognitoTokens;

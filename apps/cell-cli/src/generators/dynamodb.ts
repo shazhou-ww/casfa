@@ -50,7 +50,6 @@ export function generateDynamoDB(config: ResolvedConfig): CfnFragment {
 
     resources[logicalId] = {
       Type: "AWS::DynamoDB::Table",
-      DeletionPolicy: "Retain",
       Properties: properties,
     };
 

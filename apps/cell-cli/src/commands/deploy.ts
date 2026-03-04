@@ -61,6 +61,67 @@ async function fileHash(filePath: string): Promise<string> {
   return hasher.digest("hex").slice(0, 12);
 }
 
+async function getLatestEventTimestamp(
+  stackName: string,
+  awsEnv: Record<string, string | undefined>
+): Promise<string> {
+  try {
+    const { exitCode, stdout } = await awsCli(
+      [
+        "cloudformation",
+        "describe-stack-events",
+        "--stack-name",
+        stackName,
+        "--max-items",
+        "1",
+        "--query",
+        "StackEvents[0].Timestamp",
+        "--output",
+        "text",
+      ],
+      awsEnv
+    );
+    if (exitCode === 0 && stdout) return stdout.trim();
+  } catch {}
+  return new Date().toISOString();
+}
+
+async function fetchNewEvents(
+  stackName: string,
+  awsEnv: Record<string, string | undefined>,
+  seenEvents: Set<string>,
+  since: string
+): Promise<void> {
+  try {
+    const { exitCode, stdout } = await awsCli(
+      [
+        "cloudformation",
+        "describe-stack-events",
+        "--stack-name",
+        stackName,
+        "--query",
+        "StackEvents[*].[EventId,Timestamp,LogicalResourceId,ResourceStatus,ResourceStatusReason]",
+        "--output",
+        "json",
+      ],
+      awsEnv
+    );
+    if (exitCode !== 0 || !stdout) return;
+    const events = (JSON.parse(stdout) as (string | null)[][]).reverse();
+    for (const [id, timestamp, logicalId, status, reason] of events) {
+      if (!id || seenEvents.has(id)) continue;
+      seenEvents.add(id);
+      if (!timestamp || timestamp <= since) continue;
+      if (status?.includes("IN_PROGRESS")) continue;
+      const isBad = status?.includes("FAILED") || status?.includes("ROLLBACK");
+      const icon = isBad ? "\x1b[31m✗\x1b[0m" : "\x1b[32m✓\x1b[0m";
+      let line = `  ${icon} ${logicalId} — ${status}`;
+      if (reason) line += `  (${reason})`;
+      console.log(line);
+    }
+  } catch {}
+}
+
 export async function deployCommand(options?: { cellDir?: string; yes?: boolean }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
@@ -86,7 +147,37 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
   console.log("\n=== Building ===");
   await buildCommand({ cellDir });
 
-  // 2. Generate CloudFormation template
+  // 2. Resolve hosted zone ID for auto-certificate
+  if (resolved.domain && !resolved.domain.certificate) {
+    const { exitCode: hzCode, stdout: hzOut } = await awsCli(
+      [
+        "route53",
+        "list-hosted-zones-by-name",
+        "--dns-name",
+        resolved.domain.zone,
+        "--max-items",
+        "1",
+        "--query",
+        "HostedZones[0].[Id,Name]",
+        "--output",
+        "json",
+      ],
+      awsEnv
+    );
+    if (hzCode !== 0) {
+      throw new Error(`Failed to look up Route53 hosted zone for "${resolved.domain.zone}"`);
+    }
+    const [zoneId, zoneName] = JSON.parse(hzOut || "[]") as string[];
+    if (!zoneName || !zoneName.startsWith(resolved.domain.zone)) {
+      throw new Error(
+        `Route53 hosted zone "${resolved.domain.zone}" not found. Create it or provide a certificate ARN.`
+      );
+    }
+    resolved.domain.hostedZoneId = zoneId.replace("/hostedzone/", "");
+    console.log(`  Route53 zone: ${resolved.domain.zone} → ${resolved.domain.hostedZoneId}`);
+  }
+
+  // 3. Generate CloudFormation template
   console.log("\n=== Generating CloudFormation template ===");
   const cfnDir = resolve(cellDir, ".cell");
   mkdirSync(cfnDir, { recursive: true });
@@ -95,7 +186,7 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
   writeFileSync(cfnPath, cfnTemplate);
   console.log(`  → .cell/cfn.yaml`);
 
-  // 3. Package Lambda code and upload to S3
+  // 4. Package Lambda code and upload to S3
   const artifactBucket = `${resolved.name}-deploy-artifacts`;
   await ensureS3Bucket(artifactBucket, awsEnv);
 
@@ -134,13 +225,49 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
     console.log(`  → .cell/cfn-packaged.yaml`);
   }
 
-  // 4. Deploy CloudFormation stack
-  console.log("\n=== Deploying CloudFormation stack ===");
+  // 4. Ensure Secrets Manager secrets
+  if (Object.keys(resolved.secretRefs).length > 0) {
+    console.log("\n=== Syncing secrets ===");
+    for (const [, secretName] of Object.entries(resolved.secretRefs)) {
+      const smName = `${resolved.name}/${secretName}`;
+      const value = envMap[secretName];
+      if (!value) {
+        throw new Error(
+          `Secret "${secretName}" is defined as !Secret in cell.yaml but not found in .env`
+        );
+      }
+      const { exitCode: descCode } = await awsCli(
+        ["secretsmanager", "describe-secret", "--secret-id", smName],
+        awsEnv
+      );
+      if (descCode !== 0) {
+        const { exitCode: createCode } = await awsCli(
+          ["secretsmanager", "create-secret", "--name", smName, "--secret-string", value],
+          awsEnv
+        );
+        if (createCode !== 0) throw new Error(`Failed to create secret: ${smName}`);
+        console.log(`  Created ${smName}`);
+      } else {
+        await awsCli(
+          ["secretsmanager", "put-secret-value", "--secret-id", smName, "--secret-string", value],
+          awsEnv
+        );
+        console.log(`  Updated ${smName}`);
+      }
+    }
+  }
+
+  // 6. Deploy CloudFormation stack
   const stackName = resolved.name;
+  console.log("\n=== Deploying CloudFormation stack ===");
   const templateFile = resolved.backend ? resolve(cfnDir, "cfn-packaged.yaml") : cfnPath;
 
-  const deployResult = await awsCli(
+  const seenEvents = new Set<string>();
+  const sinceTimestamp = await getLatestEventTimestamp(stackName, awsEnv);
+
+  const deployProc = Bun.spawn(
     [
+      "aws",
       "cloudformation",
       "deploy",
       "--template-file",
@@ -152,15 +279,37 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
       "CAPABILITY_AUTO_EXPAND",
       "--no-fail-on-empty-changeset",
     ],
-    awsEnv,
-    { cwd: cellDir, inheritStdio: true }
+    {
+      cwd: cellDir,
+      env: { ...process.env, ...awsEnv },
+      stdout: "pipe",
+      stderr: "pipe",
+    }
   );
-  if (deployResult.exitCode !== 0) {
+
+  let deployDone = false;
+  deployProc.exited.then(() => {
+    deployDone = true;
+  });
+
+  while (!deployDone) {
+    await Bun.sleep(3000);
+    await fetchNewEvents(stackName, awsEnv, seenEvents, sinceTimestamp);
+  }
+  await fetchNewEvents(stackName, awsEnv, seenEvents, sinceTimestamp);
+
+  const deployExitCode = await deployProc.exited;
+  if (deployExitCode !== 0) {
+    const stderr = await new Response(deployProc.stderr).text();
+    const useful = stderr
+      .split("\n")
+      .filter((l) => !l.includes("Waiting for") && l.trim());
+    if (useful.length) console.error(useful.join("\n"));
     console.error("CloudFormation deploy failed");
     process.exit(1);
   }
 
-  // 5. Get stack outputs
+  // 7. Get stack outputs
   console.log("\n=== Getting stack outputs ===");
   const { exitCode: descCode, stdout: descOut } = await awsCli(
     [
@@ -193,7 +342,79 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
   const frontendBucket = outputs.FrontendBucketName;
   const distributionId = outputs.FrontendDistributionId;
 
-  // 6. Upload static files
+  // 8. Sync Cognito callback URLs
+  if (config.cognito && resolved.domain) {
+    const userPoolId =
+      typeof config.cognito.userPoolId === "string" ? config.cognito.userPoolId : "";
+    const clientId =
+      typeof config.cognito.clientId === "string" ? config.cognito.clientId : "";
+    const cognitoRegion =
+      typeof config.cognito.region === "string" ? config.cognito.region : undefined;
+
+    if (userPoolId && clientId) {
+      console.log("\n=== Syncing Cognito callback URLs ===");
+      const domainCallback = `https://${resolved.domain.host}/oauth/callback`;
+      const cognitoEnv = { ...awsEnv, ...(cognitoRegion ? { AWS_DEFAULT_REGION: cognitoRegion } : {}) };
+
+      const { exitCode: descCode, stdout: clientJson } = await awsCli(
+        [
+          "cognito-idp",
+          "describe-user-pool-client",
+          "--user-pool-id",
+          userPoolId,
+          "--client-id",
+          clientId,
+          "--query",
+          "UserPoolClient",
+          "--output",
+          "json",
+        ],
+        cognitoEnv
+      );
+
+      if (descCode === 0 && clientJson) {
+        const client = JSON.parse(clientJson) as Record<string, unknown>;
+        const callbacks = (client.CallbackURLs as string[]) ?? [];
+        const logouts = (client.LogoutURLs as string[]) ?? [];
+        const domainLogout = `https://${resolved.domain.host}`;
+
+        let changed = false;
+        if (!callbacks.includes(domainCallback)) {
+          callbacks.push(domainCallback);
+          changed = true;
+        }
+        if (!logouts.includes(domainLogout)) {
+          logouts.push(domainLogout);
+          changed = true;
+        }
+
+        if (changed) {
+          delete client.ClientSecret;
+          delete client.LastModifiedDate;
+          delete client.CreationDate;
+          client.CallbackURLs = callbacks;
+          client.LogoutURLs = logouts;
+
+          const tmpFile = resolve(cellDir, ".cell/cognito-client-update.json");
+          writeFileSync(tmpFile, JSON.stringify(client));
+          const { exitCode: updateCode } = await awsCli(
+            ["cognito-idp", "update-user-pool-client", "--cli-input-json", `file://${tmpFile}`],
+            cognitoEnv
+          );
+          if (updateCode !== 0) {
+            console.error("  Failed to update Cognito callback URLs");
+          } else {
+            console.log(`  Added callback: ${domainCallback}`);
+            console.log(`  Added logout:   ${domainLogout}`);
+          }
+        } else {
+          console.log("  Callback URLs already configured");
+        }
+      }
+    }
+  }
+
+  // 10. Upload static files
   if (resolved.static && resolved.static.length > 0 && frontendBucket) {
     console.log("\n=== Uploading static files ===");
     for (const mapping of resolved.static) {
@@ -211,7 +432,7 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
     }
   }
 
-  // 7. Upload frontend build
+  // 11. Upload frontend build
   if (resolved.frontend && frontendBucket) {
     console.log("\n=== Uploading frontend ===");
     const frontendBuildDir = resolve(cellDir, ".cell/build/frontend");
@@ -226,7 +447,7 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
     }
   }
 
-  // 8. Invalidate CloudFront
+  // 12. Invalidate CloudFront
   if (distributionId) {
     console.log("\n=== Invalidating CloudFront ===");
     const { exitCode } = await awsCli(
@@ -240,7 +461,7 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
     }
   }
 
-  // 9. Print URLs
+  // 13. Print URLs
   console.log("\n=== Deploy complete! ===");
   if (resolved.domain) {
     console.log(`  Domain: https://${resolved.domain.host}`);

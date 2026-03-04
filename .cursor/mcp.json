@@ -11,6 +11,9 @@
     },
     "image-workshop": {
       "url": "http://localhost:7200/mcp"
+    },
+    "image-workshop-cloud": {
+      "url": "https://image-workshop.casfa.shazhou.me/mcp"
     }
   }
 }

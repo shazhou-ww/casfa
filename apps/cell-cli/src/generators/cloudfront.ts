@@ -4,40 +4,30 @@ import { cfnResolveValue } from "./types.js";
 
 const CACHING_DISABLED_POLICY = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad";
 const CACHING_OPTIMIZED_POLICY = "658327ea-f89d-4fab-a63d-7e88639e58f6";
+const ALL_VIEWER_EXCEPT_HOST = "b689b0a8-53d0-40ab-baf2-68738e2966ac";
 
-const SPA_FALLBACK_CODE = [
-  "const AWS = require('aws-sdk');",
-  "function parse(d) {",
-  "  if (!d || typeof d !== 'string') return null;",
-  "  const p = d.toLowerCase().split('.');",
-  "  if (p.length >= 4 && p[1] === 's3') return { bucket: p[0], region: p[2] || 'us-east-1' };",
-  "  return null;",
-  "}",
-  "exports.handler = async (event) => {",
-  "  const r = event.Records && event.Records[0] && event.Records[0].cf;",
-  "  if (!r) return event;",
-  "  const req = r.request;",
-  "  const res = r.response;",
-  "  const status = parseInt(res.status, 10);",
-  "  if (status !== 403 && status !== 404) return event;",
-  "  if (req.uri.startsWith('/api')) return event;",
-  "  const o = parse(req.origin && req.origin.s3 && req.origin.s3.domainName);",
-  "  if (!o) return event;",
-  "  const s3 = new AWS.S3({ region: o.region });",
-  "  try {",
-  "    const out = await s3.getObject({ Bucket: o.bucket, Key: 'index.html' }).promise();",
-  "    const body = out.Body.toString('utf-8');",
-  "    const b64 = Buffer.from(body, 'utf-8').toString('base64');",
-  "    res.status = '200';",
-  "    res.statusDescription = 'OK';",
-  "    res.body = b64;",
-  "    res.bodyEncoding = 'base64';",
-  "    res.headers['content-type'] = [{ key: 'Content-Type', value: 'text/html; charset=utf-8' }];",
-  "    res.headers['content-length'] = [{ key: 'Content-Length', value: String(Buffer.byteLength(body, 'utf-8')) }];",
-  "  } catch (e) {}",
-  "  return event;",
-  "};",
-].join("\n");
+const ALL_METHODS = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"];
+
+function buildApiCacheBehaviors(config: ResolvedConfig): unknown[] {
+  if (!config.backend) return [];
+
+  const allRoutes = new Set<string>();
+  for (const entry of Object.values(config.backend.entries)) {
+    for (const route of entry.routes) {
+      allRoutes.add(route);
+    }
+  }
+
+  return [...allRoutes].map((route) => ({
+    PathPattern: route,
+    TargetOriginId: "ApiGateway",
+    ViewerProtocolPolicy: "https-only",
+    AllowedMethods: [...ALL_METHODS],
+    Compress: true,
+    CachePolicyId: CACHING_DISABLED_POLICY,
+    OriginRequestPolicyId: ALL_VIEWER_EXCEPT_HOST,
+  }));
+}
 
 export function generateCloudFront(config: ResolvedConfig): CfnFragment {
   const resources: Record<string, unknown> = {};
@@ -45,12 +35,33 @@ export function generateCloudFront(config: ResolvedConfig): CfnFragment {
   const conditions: Record<string, unknown> = {};
 
   const domainHost = config.domain?.host ?? "";
-  const certificateArn = config.domain
-    ? cfnResolveValue(config.name, config.domain.certificate)
-    : "";
+  const hasExplicitCert = config.domain?.certificate != null;
+  const autoCert = !hasExplicitCert && !!domainHost && !!config.domain?.hostedZoneId;
+
+  let certificateRef: unknown;
+  if (autoCert) {
+    resources.AcmCertificate = {
+      Type: "AWS::CertificateManager::Certificate",
+      Properties: {
+        DomainName: domainHost,
+        ValidationMethod: "DNS",
+        DomainValidationOptions: [
+          {
+            DomainName: domainHost,
+            HostedZoneId: config.domain!.hostedZoneId,
+          },
+        ],
+      },
+    };
+    certificateRef = { Ref: "AcmCertificate" };
+  } else if (hasExplicitCert) {
+    certificateRef = cfnResolveValue(config.name, config.domain!.certificate!);
+  }
+
+  const useCustomDomain = !!domainHost && (autoCert || hasExplicitCert);
 
   conditions.UseCustomDomain = {
-    "Fn::Not": [{ "Fn::Equals": [domainHost, ""] }],
+    "Fn::Not": [{ "Fn::Equals": [useCustomDomain ? domainHost : "", ""] }],
   };
 
   // OAC
@@ -66,26 +77,24 @@ export function generateCloudFront(config: ResolvedConfig): CfnFragment {
     },
   };
 
-  // API Cache Policy (for /api/*)
-  resources.ApiCachePolicy = {
-    Type: "AWS::CloudFront::CachePolicy",
+  // SPA URL rewrite: non-file paths → /index.html (viewer-request)
+  resources.SpaRewriteFunction = {
+    Type: "AWS::CloudFront::Function",
     Properties: {
-      CachePolicyConfig: {
-        Name: `${config.name}-api-cache`,
-        Comment:
-          "Forward Authorization header to API Gateway; cache key includes Authorization so per-user",
-        DefaultTTL: 1,
-        MaxTTL: 1,
-        MinTTL: 0,
-        ParametersInCacheKeyAndForwardedToOrigin: {
-          EnableAcceptEncodingGzip: true,
-          HeadersConfig: {
-            HeaderBehavior: "whitelist",
-            Headers: ["Authorization"],
-          },
-          CookiesConfig: { CookieBehavior: "none" },
-          QueryStringsConfig: { QueryStringBehavior: "all" },
-        },
+      Name: `${config.name}-spa-rewrite`,
+      AutoPublish: true,
+      FunctionCode: [
+        "function handler(event) {",
+        "  var uri = event.request.uri;",
+        "  if (uri !== '/' && uri.lastIndexOf('.') <= uri.lastIndexOf('/')) {",
+        "    event.request.uri = '/index.html';",
+        "  }",
+        "  return event.request;",
+        "}",
+      ].join("\n"),
+      FunctionConfig: {
+        Comment: "SPA fallback: rewrite non-file paths to /index.html",
+        Runtime: "cloudfront-js-2.0",
       },
     },
   };
@@ -125,25 +134,14 @@ export function generateCloudFront(config: ResolvedConfig): CfnFragment {
           AllowedMethods: ["GET", "HEAD", "OPTIONS"],
           Compress: true,
           CachePolicyId: CACHING_OPTIMIZED_POLICY,
+          FunctionAssociations: [
+            {
+              EventType: "viewer-request",
+              FunctionARN: { "Fn::GetAtt": ["SpaRewriteFunction", "FunctionARN"] },
+            },
+          ],
         },
-        CacheBehaviors: [
-          {
-            PathPattern: "/oauth/callback",
-            TargetOriginId: "ApiGateway",
-            ViewerProtocolPolicy: "https-only",
-            AllowedMethods: ["GET", "HEAD", "OPTIONS"],
-            Compress: true,
-            CachePolicyId: CACHING_DISABLED_POLICY,
-          },
-          {
-            PathPattern: "/api/*",
-            TargetOriginId: "ApiGateway",
-            ViewerProtocolPolicy: "https-only",
-            AllowedMethods: ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
-            Compress: true,
-            CachePolicyId: { Ref: "ApiCachePolicy" },
-          },
-        ],
+        CacheBehaviors: buildApiCacheBehaviors(config),
         Aliases: {
           "Fn::If": ["UseCustomDomain", [domainHost], { Ref: "AWS::NoValue" }],
         },
@@ -151,7 +149,7 @@ export function generateCloudFront(config: ResolvedConfig): CfnFragment {
           "Fn::If": [
             "UseCustomDomain",
             {
-              AcmCertificateArn: certificateArn,
+              AcmCertificateArn: certificateRef,
               SslSupportMethod: "sni-only",
               MinimumProtocolVersion: "TLSv1.2_2021",
             },
@@ -159,66 +157,6 @@ export function generateCloudFront(config: ResolvedConfig): CfnFragment {
           ],
         },
       },
-    },
-  };
-
-  // SPA Fallback Lambda@Edge (not attached to distribution — caused 503)
-  resources.SpaFallbackEdgeRole = {
-    Type: "AWS::IAM::Role",
-    Properties: {
-      AssumeRolePolicyDocument: {
-        Version: "2012-10-17",
-        Statement: [
-          {
-            Effect: "Allow",
-            Principal: { Service: "lambda.amazonaws.com" },
-            Action: "sts:AssumeRole",
-          },
-          {
-            Effect: "Allow",
-            Principal: { Service: "edgelambda.amazonaws.com" },
-            Action: "sts:AssumeRole",
-          },
-        ],
-      },
-    },
-  };
-
-  resources.SpaFallbackEdgeRolePolicy = {
-    Type: "AWS::IAM::Policy",
-    Properties: {
-      PolicyName: "SpaFallbackEdgeS3",
-      Roles: [{ Ref: "SpaFallbackEdgeRole" }],
-      PolicyDocument: {
-        Version: "2012-10-17",
-        Statement: [
-          {
-            Effect: "Allow",
-            Action: "s3:GetObject",
-            Resource: { "Fn::Sub": "${FrontendBucket.Arn}/index.html" },
-          },
-        ],
-      },
-    },
-  };
-
-  resources.SpaFallbackEdgeFunction = {
-    Type: "AWS::Lambda::Function",
-    Properties: {
-      Runtime: "nodejs18.x",
-      Handler: "index.handler",
-      Code: { ZipFile: SPA_FALLBACK_CODE },
-      Role: { "Fn::GetAtt": ["SpaFallbackEdgeRole", "Arn"] },
-      MemorySize: 128,
-      Timeout: 5,
-    },
-  };
-
-  resources.SpaFallbackEdgeVersion = {
-    Type: "AWS::Lambda::Version",
-    DependsOn: "SpaFallbackEdgeFunction",
-    Properties: {
-      FunctionName: { Ref: "SpaFallbackEdgeFunction" },
     },
   };
 
