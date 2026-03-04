@@ -20,3 +20,11 @@ export {
   decodeDelegateTokenPayload,
   verifyCodeChallenge,
 } from "./token.ts";
+
+export { createDynamoGrantStore } from "./dynamo-grant-store.ts";
+
+export {
+  createOAuthServer,
+  type OAuthServer,
+  type OAuthServerConfig,
+} from "./oauth-server.ts";
