@@ -37,8 +37,14 @@ import {
 } from "@mui/material";
 import { StrictMode, useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
-import { apiFetch } from "./lib/api";
-import { getAuth, logout, setTokens, subscribe } from "./lib/auth";
+import { createApiFetch, createAuthClient } from "@casfa/cell-auth-client";
+
+const authClient = createAuthClient({ storagePrefix: "iw" });
+const apiFetch = createApiFetch({
+  authClient,
+  baseUrl: "",
+  onUnauthorized: () => authClient.logout(),
+});
 
 const theme = createTheme({
   palette: {
@@ -93,7 +99,7 @@ function OAuthCallbackComplete() {
       .then(async (r) => {
         if (!r.ok) throw new Error(`Token exchange failed: ${r.status}`);
         const data = await r.json();
-        setTokens(data.id_token ?? data.access_token, data.refresh_token);
+        authClient.setTokens(data.id_token ?? data.access_token, data.refresh_token ?? null);
         window.history.replaceState({}, "", "/");
         window.location.reload();
       })
@@ -461,7 +467,7 @@ function DelegatesPage() {
   const fetchDelegates = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch("/api/delegates");
+      const res = await apiFetch("/api/delegates", null);
       if (res.ok) setDelegates(await res.json());
     } catch {
       /* ignore */
@@ -578,7 +584,10 @@ function DelegatesPage() {
 
 // ── App ──
 function App() {
-  const auth = useSyncExternalStore(subscribe, getAuth);
+  const auth = useSyncExternalStore(
+    (onStoreChange) => authClient.subscribe(() => onStoreChange()),
+    () => authClient.getAuth(),
+  );
 
   if (window.location.pathname === "/oauth/consent") {
     return <ConsentPage />;
@@ -607,7 +616,7 @@ function App() {
           <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>
             {auth.email ?? auth.userId}
           </Typography>
-          <Button size="small" startIcon={<LogoutIcon />} onClick={logout}>
+          <Button size="small" startIcon={<LogoutIcon />} onClick={() => authClient.logout()}>
             Logout
           </Button>
         </Toolbar>

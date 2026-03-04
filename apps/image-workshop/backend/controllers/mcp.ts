@@ -2,7 +2,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { createMcpServer } from "../index";
-import type { Auth } from "../types/auth";
+import type { Auth } from "@casfa/cell-oauth";
 
 function requireUseMcp(auth: Auth | null) {
   if (!auth) throw new HTTPException(401, { message: "Unauthorized" });
