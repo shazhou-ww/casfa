@@ -1,4 +1,4 @@
 .cell/
 .env
 .local-storage/
-.vite-dev.config.ts
+.vite-*.config.ts
