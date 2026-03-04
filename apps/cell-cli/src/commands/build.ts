@@ -1,6 +1,8 @@
 import { resolve, relative, dirname } from "node:path";
-import { mkdirSync, existsSync, cpSync, writeFileSync, unlinkSync } from "node:fs";
+import { mkdirSync, existsSync, cpSync } from "node:fs";
 import { build } from "esbuild";
+import { build as viteBuild, mergeConfig, defineConfig, type UserConfig } from "vite";
+import react from "@vitejs/plugin-react";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { ensureIndexHtml } from "../utils/frontend.js";
 
@@ -39,43 +41,27 @@ export async function buildCommand(options?: {
   if (config.frontend) {
     const frontendDir = resolve(cellDir, config.frontend.dir);
     ensureIndexHtml(frontendDir, config);
-    const hasUserConfig = existsSync(resolve(frontendDir, "vite.config.ts"));
 
-    let generatedConfig: string | undefined;
-    const viteArgs = ["bunx", "vite", "build"];
+    const baseConfig: UserConfig = defineConfig({
+      plugins: [react()],
+    });
 
-    if (!hasUserConfig) {
-      generatedConfig = resolve(frontendDir, ".vite-build.config.ts");
-      writeFileSync(
-        generatedConfig,
-        [
-          `import { defineConfig } from "vite";`,
-          `import react from "@vitejs/plugin-react";`,
-          `export default defineConfig({`,
-          `  plugins: [react()],`,
-          `});`,
-          "",
-        ].join("\n"),
-      );
-      viteArgs.push("--config", generatedConfig);
+    let finalConfig: UserConfig;
+    const userConfigPath = resolve(frontendDir, "vite.config.ts");
+    if (existsSync(userConfigPath)) {
+      const userMod = await import(userConfigPath);
+      const userConfig = userMod.default ?? userMod;
+      finalConfig = mergeConfig(userConfig, baseConfig);
+    } else {
+      finalConfig = baseConfig;
     }
 
     console.log("Building frontend...");
-    const proc = Bun.spawn(viteArgs, {
-      cwd: frontendDir,
-      stdout: "inherit",
-      stderr: "inherit",
+    await viteBuild({
+      ...finalConfig,
+      root: frontendDir,
+      configFile: false,
     });
-    const exitCode = await proc.exited;
-
-    if (generatedConfig) {
-      try { unlinkSync(generatedConfig); } catch {}
-    }
-
-    if (exitCode !== 0) {
-      console.error("Frontend build failed");
-      process.exit(1);
-    }
 
     const viteDist = resolve(frontendDir, "dist");
     const frontendBuildDir = resolve(buildDir, "frontend");
