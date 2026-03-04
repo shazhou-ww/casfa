@@ -1,3 +1,4 @@
 .cell/
 .env
 .local-storage/
+.vite-dev.config.ts
