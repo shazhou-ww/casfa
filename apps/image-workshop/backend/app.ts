@@ -1,44 +1,43 @@
-/**
- * Image Workshop MCP over HTTP (Streamable HTTP transport).
- * Used by Lambda; stateless mode requires a new transport (and server) per request.
- */
+import { Hono } from "hono";
+import { createDelegatesRoutes } from "./controllers/delegates";
+import { createMcpRoutes } from "./controllers/mcp";
+import { createOAuthRoutes } from "./controllers/oauth";
+import { createGrantStore } from "./db/grant-store";
+import { createAuthMiddleware } from "./middleware/auth";
+import type { CognitoConfig } from "./utils/cognito";
+import { createCognitoJwtVerifier, createMockJwtVerifier } from "./utils/jwt";
 
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { type Context, Hono } from "hono";
-import { createMcpServer } from "./index";
+const cognitoConfig: CognitoConfig = {
+  region: process.env.COGNITO_REGION ?? "us-east-1",
+  userPoolId: process.env.COGNITO_USER_POOL_ID ?? "",
+  clientId: process.env.COGNITO_CLIENT_ID ?? "",
+  hostedUiUrl: process.env.COGNITO_HOSTED_UI_URL ?? "",
+};
+
+const grantStore = createGrantStore({
+  tableName: process.env.DYNAMODB_TABLE_GRANTS ?? "image-workshop-grants",
+  clientConfig: process.env.DYNAMODB_ENDPOINT
+    ? { endpoint: process.env.DYNAMODB_ENDPOINT, region: "us-east-1" }
+    : undefined,
+});
+
+const jwtVerifier = process.env.MOCK_JWT_SECRET
+  ? createMockJwtVerifier(process.env.MOCK_JWT_SECRET)
+  : createCognitoJwtVerifier(cognitoConfig);
 
 const app = new Hono();
 
-app.all("*", async (c: Context) => {
-  const req = c.req.raw;
-  if (req.method === "GET") {
-    return new Response(
-      JSON.stringify({
-        error: "METHOD_NOT_ALLOWED",
-        message: "SSE not supported. Use POST for JSON-RPC only.",
-      }),
-      {
-        status: 405,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
-  }
+const oauthRoutes = createOAuthRoutes({ cognitoConfig, grantStore });
+app.route("/", oauthRoutes);
 
-  const transport = new WebStandardStreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-    enableJsonResponse: true,
-  });
-  const mcpServer = createMcpServer();
-  await mcpServer.connect(transport);
+const authMiddleware = createAuthMiddleware({ jwtVerifier, grantStore });
+app.use("*", authMiddleware);
 
-  const res = await transport.handleRequest(req);
-  await mcpServer.close();
-  return new Response(res.body, {
-    status: res.status,
-    statusText: res.statusText,
-    headers: res.headers,
-  });
-});
+const delegateRoutes = createDelegatesRoutes({ grantStore });
+app.route("/", delegateRoutes);
+
+const mcpRoutes = createMcpRoutes();
+app.route("/", mcpRoutes);
 
 export type App = typeof app;
 export { app };

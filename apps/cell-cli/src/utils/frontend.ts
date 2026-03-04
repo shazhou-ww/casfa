@@ -31,6 +31,6 @@ export function ensureIndexHtml(frontendDir: string, config: CellConfig): void {
     <script type="module" src="/${entrySrc}"></script>
   </body>
 </html>
-`,
+`
   );
 }
