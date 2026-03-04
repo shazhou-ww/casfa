@@ -5,6 +5,10 @@ import { deployCommand } from "./commands/deploy.js";
 import { testCommand, testUnitCommand, testE2eCommand } from "./commands/test.js";
 import { lintCommand } from "./commands/lint.js";
 import { typecheckCommand } from "./commands/typecheck.js";
+import { secretSetCommand, secretGetCommand, secretListCommand } from "./commands/secret.js";
+import { logsCommand } from "./commands/logs.js";
+import { statusCommand } from "./commands/status.js";
+import { initCommand } from "./commands/init.js";
 
 const program = new Command();
 
@@ -74,15 +78,16 @@ program
 program
   .command("logs")
   .description("View CloudWatch logs")
-  .action(() => {
-    console.log("cell logs: not yet implemented");
+  .option("--follow", "Follow log output")
+  .action(async (opts) => {
+    await logsCommand({ follow: opts.follow });
   });
 
 program
   .command("status")
   .description("View CloudFormation stack status")
-  .action(() => {
-    console.log("cell status: not yet implemented");
+  .action(async () => {
+    await statusCommand();
   });
 
 const secret = program
@@ -92,29 +97,30 @@ const secret = program
 secret
   .command("set <key>")
   .description("Set a secret value")
-  .action((key: string) => {
-    console.log(`cell secret set ${key}: not yet implemented`);
+  .action(async (key: string) => {
+    await secretSetCommand(key);
   });
 
 secret
   .command("get <key>")
   .description("Get a secret value")
-  .action((key: string) => {
-    console.log(`cell secret get ${key}: not yet implemented`);
+  .action(async (key: string) => {
+    await secretGetCommand(key);
   });
 
 secret
   .command("list")
   .description("List all configured secrets")
-  .action(() => {
-    console.log("cell secret list: not yet implemented");
+  .action(async () => {
+    await secretListCommand();
   });
 
 program
   .command("init")
   .description("Initialize a new Cell (generate cell.yaml skeleton)")
-  .action(() => {
-    console.log("cell init: not yet implemented");
+  .argument("[name]", "Cell name")
+  .action(async (name?: string) => {
+    await initCommand(name);
   });
 
 program.parse();
