@@ -1,11 +1,15 @@
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import {
+  type CognitoConfig,
+  createCognitoJwtVerifier,
+  createMockJwtVerifier,
+} from "@casfa/cell-cognito";
+import { createDynamoGrantStore, createOAuthServer } from "@casfa/cell-oauth";
 import { Hono } from "hono";
 import { createDelegatesRoutes } from "./controllers/delegates";
 import { createMcpRoutes } from "./controllers/mcp";
 import { createOAuthRoutes } from "./controllers/oauth";
-import { createGrantStore } from "./db/grant-store";
-import { createAuthMiddleware } from "./middleware/auth";
-import type { CognitoConfig } from "./utils/cognito";
-import { createCognitoJwtVerifier, createMockJwtVerifier } from "./utils/jwt";
 
 const cognitoConfig: CognitoConfig = {
   region: process.env.COGNITO_REGION ?? "us-east-1",
@@ -14,26 +18,43 @@ const cognitoConfig: CognitoConfig = {
   hostedUiUrl: process.env.COGNITO_HOSTED_UI_URL ?? "",
 };
 
-const grantStore = createGrantStore({
-  tableName: process.env.DYNAMODB_TABLE_GRANTS ?? "image-workshop-grants",
-  clientConfig: process.env.DYNAMODB_ENDPOINT
+const dynamoClient = new DynamoDBClient(
+  process.env.DYNAMODB_ENDPOINT
     ? { endpoint: process.env.DYNAMODB_ENDPOINT, region: "us-east-1" }
-    : undefined,
+    : {},
+);
+const docClient = DynamoDBDocumentClient.from(dynamoClient);
+
+const grantStore = createDynamoGrantStore({
+  tableName: process.env.DYNAMODB_TABLE_GRANTS ?? "image-workshop-grants",
+  client: docClient,
 });
 
 const jwtVerifier = process.env.E2E_MOCK_JWT_SECRET
   ? createMockJwtVerifier(process.env.E2E_MOCK_JWT_SECRET)
   : createCognitoJwtVerifier(cognitoConfig);
 
+const oauthServer = createOAuthServer({
+  issuerUrl: process.env.APP_ORIGIN ?? "",
+  cognitoConfig,
+  jwtVerifier,
+  grantStore,
+  permissions: ["use_mcp", "manage_delegates"],
+});
+
 const app = new Hono();
 
-const oauthRoutes = createOAuthRoutes({ cognitoConfig, grantStore });
+const oauthRoutes = createOAuthRoutes({ oauthServer });
 app.route("/", oauthRoutes);
 
-const authMiddleware = createAuthMiddleware({ jwtVerifier, grantStore });
-app.use("*", authMiddleware);
+app.use("*", async (c, next) => {
+  const header = c.req.header("authorization");
+  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
+  c.set("auth", token ? await oauthServer.resolveAuth(token) : null);
+  await next();
+});
 
-const delegateRoutes = createDelegatesRoutes({ grantStore });
+const delegateRoutes = createDelegatesRoutes({ oauthServer });
 app.route("/", delegateRoutes);
 
 const mcpRoutes = createMcpRoutes();
