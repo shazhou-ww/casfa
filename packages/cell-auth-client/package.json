@@ -1,0 +1,35 @@
+{
+  "name": "@casfa/cell-auth-client",
+  "version": "0.1.0",
+  "description": "Frontend auth utilities for cell apps: token storage, apiFetch, login/logout",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "bun ../../scripts/build-pkg.ts",
+    "test": "bun run test:unit",
+    "test:unit": "bun test src/",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "check": "tsc --noEmit && biome check .",
+    "prepublishOnly": "bun run build"
+  },
+  "buildConfig": {
+    "bunFlags": ["--target=browser"]
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.3.0"
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": { "access": "public" },
+  "license": "MIT"
+}

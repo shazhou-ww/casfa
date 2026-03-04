@@ -48,7 +48,8 @@
       "@casfa/oauth-consumer": ["./packages/oauth-consumer/src/index.ts"],
       "@casfa/oauth-provider": ["./packages/oauth-provider/src/index.ts"],
       "@casfa/cell-cognito": ["./packages/cell-cognito/src/index.ts"],
-      "@casfa/cell-oauth": ["./packages/cell-oauth/src/index.ts"]
+      "@casfa/cell-oauth": ["./packages/cell-oauth/src/index.ts"],
+      "@casfa/cell-auth-client": ["./packages/cell-auth-client/src/index.ts"]
     },
 
     // Best practices
