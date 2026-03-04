@@ -2,7 +2,6 @@ import { StrictMode, useCallback, useEffect, useState, useSyncExternalStore } fr
 import { createRoot } from "react-dom/client";
 import { apiFetch } from "./lib/api";
 import { getAuth, logout, setTokens, subscribe } from "./lib/auth";
-import { createMockJwt, isDevMode } from "./lib/mock-jwt";
 
 // ── Types ──
 type Delegate = {
@@ -84,19 +83,6 @@ function OAuthCallback() {
 
 // ── Login Page ──
 function LoginPage() {
-  const [loggingIn, setLoggingIn] = useState(false);
-
-  const devLogin = useCallback(async () => {
-    setLoggingIn(true);
-    try {
-      const token = await createMockJwt("dev-user-001", "dev@local.test");
-      setTokens(token);
-    } catch (e) {
-      console.error("Dev login failed:", e);
-    }
-    setLoggingIn(false);
-  }, []);
-
   return (
     <div
       style={{
@@ -127,22 +113,6 @@ function LoginPage() {
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {isDevMode() && (
-            <button
-              type="button"
-              onClick={devLogin}
-              disabled={loggingIn}
-              style={{
-                ...btnBase,
-                background: "#f3f4f6",
-                color: colors.text,
-                border: `1px solid ${colors.border}`,
-              }}
-            >
-              {loggingIn ? "Logging in…" : "Dev Login (Mock)"}
-            </button>
-          )}
-
           <a
             href="/oauth/authorize?identity_provider=Google"
             style={{

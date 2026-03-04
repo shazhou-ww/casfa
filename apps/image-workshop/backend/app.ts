@@ -21,8 +21,8 @@ const grantStore = createGrantStore({
     : undefined,
 });
 
-const jwtVerifier = process.env.MOCK_JWT_SECRET
-  ? createMockJwtVerifier(process.env.MOCK_JWT_SECRET)
+const jwtVerifier = process.env.E2E_MOCK_JWT_SECRET
+  ? createMockJwtVerifier(process.env.E2E_MOCK_JWT_SECRET)
   : createCognitoJwtVerifier(cognitoConfig);
 
 const app = new Hono();
