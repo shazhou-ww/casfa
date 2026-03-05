@@ -1,8 +1,13 @@
 import type { AuthClient, AuthSubscriber, ClientAuth } from "./types.ts";
 
-export function createAuthClient(params: { storagePrefix: string }): AuthClient {
+export function createAuthClient(params: {
+  storagePrefix: string;
+  /** If set, logout() will POST to this URL with credentials to clear SSO cookie. */
+  logoutEndpoint?: string;
+}): AuthClient {
   const tokenKey = `${params.storagePrefix}_token`;
   const refreshKey = `${params.storagePrefix}_refresh`;
+  const logoutEndpoint = params.logoutEndpoint;
 
   let currentAuth: ClientAuth | null = null;
   const listeners = new Set<AuthSubscriber>();
@@ -57,10 +62,19 @@ export function createAuthClient(params: { storagePrefix: string }): AuthClient 
     },
 
     logout() {
-      localStorage.removeItem(tokenKey);
-      localStorage.removeItem(refreshKey);
-      currentAuth = null;
-      notify();
+      if (logoutEndpoint) {
+        fetch(logoutEndpoint, { method: "POST", credentials: "include" }).catch(() => {}).finally(() => {
+          localStorage.removeItem(tokenKey);
+          localStorage.removeItem(refreshKey);
+          currentAuth = null;
+          notify();
+        });
+      } else {
+        localStorage.removeItem(tokenKey);
+        localStorage.removeItem(refreshKey);
+        currentAuth = null;
+        notify();
+      }
     },
 
     subscribe(fn) {

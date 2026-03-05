@@ -15,7 +15,7 @@ export function createApiFetch(params: {
       headers.set("Content-Type", "application/json");
     }
 
-    const res = await fetch(`${baseUrl}${path}`, { ...init, headers });
+    const res = await fetch(`${baseUrl}${path}`, { ...init, headers, credentials: "include" });
     if (res.status === 401) {
       onUnauthorized();
     }
