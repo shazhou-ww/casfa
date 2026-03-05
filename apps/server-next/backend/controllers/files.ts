@@ -2,19 +2,20 @@
  * File list and stat (metadata) handlers.
  * Path from route param: /api/realm/:realmId/files/*path → path = "" or "foo/bar".
  */
+
+import { streamFromBytes } from "@casfa/cas";
+import { encodeFileNode, hashToKey } from "@casfa/core";
 import type { Context } from "hono";
-import type { Env } from "../types.ts";
 import type { RootResolverDeps } from "../services/root-resolver.ts";
 import {
-  getCurrentRoot,
-  resolvePath,
-  getNodeDecoded,
-  getEffectiveDelegateId,
   ensureEmptyRoot,
+  getCurrentRoot,
+  getEffectiveDelegateId,
+  getNodeDecoded,
+  resolvePath,
 } from "../services/root-resolver.ts";
 import { addOrReplaceAtPath } from "../services/tree-mutations.ts";
-import { encodeFileNode, hashToKey } from "@casfa/core";
-import { streamFromBytes } from "@casfa/cas";
+import type { Env } from "../types.ts";
 
 function hasFileRead(auth: NonNullable<Env["Variables"]["auth"]>): boolean {
   if (auth.type === "user") return true;
@@ -77,7 +78,8 @@ async function getRootForWrite(
   }
   let rootKey = await getCurrentRoot(auth, deps);
   rootKey = await ensureRootForUserOrDelegate(auth, rootKey, deps);
-  if (rootKey === null) return { status: 404, message: "Realm not initialized. Open your profile or realm first." };
+  if (rootKey === null)
+    return { status: 404, message: "Realm not initialized. Open your profile or realm first." };
   return { rootKey };
 }
 
@@ -94,7 +96,13 @@ export function createFilesController(deps: FilesControllerDeps) {
         rootKey = await ensureRootForUserOrDelegate(auth, rootKey, deps);
         if (rootKey === null) {
           if (auth.type === "worker") return c.json({ entries: [] }, 200);
-          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
+          return c.json(
+            {
+              error: "NOT_FOUND",
+              message: "Realm not initialized. Open your profile or realm first.",
+            },
+            404
+          );
         }
         const nodeKey = await resolvePath(deps.cas, rootKey, pathStr);
         if (nodeKey === null) {
@@ -152,8 +160,15 @@ export function createFilesController(deps: FilesControllerDeps) {
         rootKey = await ensureRootForUserOrDelegate(auth, rootKey, deps);
         if (rootKey === null) {
           if (auth.type === "worker" && pathStr === "") return c.json({ kind: "directory" }, 200);
-          if (auth.type === "worker") return c.json({ error: "NOT_FOUND", message: "Path not found" }, 404);
-          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
+          if (auth.type === "worker")
+            return c.json({ error: "NOT_FOUND", message: "Path not found" }, 404);
+          return c.json(
+            {
+              error: "NOT_FOUND",
+              message: "Realm not initialized. Open your profile or realm first.",
+            },
+            404
+          );
         }
         const nodeKey = await resolvePath(deps.cas, rootKey, pathStr);
         if (nodeKey === null) {
@@ -205,8 +220,15 @@ export function createFilesController(deps: FilesControllerDeps) {
         rootKey = await ensureRootForUserOrDelegate(auth, rootKey, deps);
         if (rootKey === null) {
           if (auth.type === "worker" && pathStr === "") return c.json({ entries: [] }, 200);
-          if (auth.type === "worker") return c.json({ error: "NOT_FOUND", message: "Path not found" }, 404);
-          return c.json({ error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." }, 404);
+          if (auth.type === "worker")
+            return c.json({ error: "NOT_FOUND", message: "Path not found" }, 404);
+          return c.json(
+            {
+              error: "NOT_FOUND",
+              message: "Realm not initialized. Open your profile or realm first.",
+            },
+            404
+          );
         }
         const nodeKey = await resolvePath(deps.cas, rootKey, pathStr);
         if (nodeKey === null) {
@@ -285,8 +307,7 @@ export function createFilesController(deps: FilesControllerDeps) {
         const rootKey = rootResult.rootKey;
         const data = new Uint8Array(raw);
         const contentType =
-          c.req.header("Content-Type")?.split(";")[0]?.trim() ||
-          "application/octet-stream";
+          c.req.header("Content-Type")?.split(";")[0]?.trim() || "application/octet-stream";
         const encoded = await encodeFileNode(
           { data, fileSize: data.length, contentType },
           deps.key
@@ -295,7 +316,9 @@ export function createFilesController(deps: FilesControllerDeps) {
         await deps.cas.putNode(fileNodeKey, streamFromBytes(encoded.bytes));
         const realmId = getRealmId(auth);
         deps.recordNewKey?.(realmId, fileNodeKey);
-        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
+        const onNodePut = deps.recordNewKey
+          ? (k: string) => deps.recordNewKey!(realmId, k)
+          : undefined;
         const newRootKey = await addOrReplaceAtPath(
           deps.cas,
           deps.key,

@@ -7,7 +7,7 @@ import { createE2EContext } from "./setup.ts";
 
 describe("MCP", () => {
   const ctx = createE2EContext();
-  const realmId = "e2e-" + crypto.randomUUID();
+  const realmId = `e2e-${crypto.randomUUID()}`;
 
   beforeAll(async () => {
     await ctx.ready();

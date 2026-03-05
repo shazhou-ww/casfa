@@ -1,7 +1,7 @@
-import { describe, expect, it, beforeEach } from "bun:test";
-import type { DelegateGrant, DelegateGrantStore } from "./types.ts";
+import { beforeEach, describe, expect, it } from "bun:test";
 import type { CognitoConfig, JwtVerifier } from "@casfa/cell-cognito";
 import { createOAuthServer } from "./oauth-server.ts";
+import type { DelegateGrant, DelegateGrantStore } from "./types.ts";
 
 function createMemoryGrantStore(): DelegateGrantStore {
   const grants = new Map<string, DelegateGrant>();
@@ -13,13 +13,21 @@ function createMemoryGrantStore(): DelegateGrantStore {
       return grants.get(delegateId) ?? null;
     },
     async getByAccessTokenHash(userId, hash) {
-      return [...grants.values()].find((g) => g.userId === userId && g.accessTokenHash === hash) ?? null;
+      return (
+        [...grants.values()].find((g) => g.userId === userId && g.accessTokenHash === hash) ?? null
+      );
     },
     async getByRefreshTokenHash(userId, hash) {
-      return [...grants.values()].find((g) => g.userId === userId && g.refreshTokenHash === hash) ?? null;
+      return (
+        [...grants.values()].find((g) => g.userId === userId && g.refreshTokenHash === hash) ?? null
+      );
     },
-    async insert(grant) { grants.set(grant.delegateId, grant); },
-    async remove(delegateId) { grants.delete(delegateId); },
+    async insert(grant) {
+      grants.set(grant.delegateId, grant);
+    },
+    async remove(delegateId) {
+      grants.delete(delegateId);
+    },
     async updateTokens(delegateId, update) {
       const g = grants.get(delegateId);
       if (!g) throw new Error("not found");
@@ -51,7 +59,9 @@ const mockJwtVerifier: JwtVerifier = async (token: string) => {
 describe("createOAuthServer", () => {
   let grantStore: DelegateGrantStore;
 
-  beforeEach(() => { grantStore = createMemoryGrantStore(); });
+  beforeEach(() => {
+    grantStore = createMemoryGrantStore();
+  });
 
   function createServer() {
     return createOAuthServer({

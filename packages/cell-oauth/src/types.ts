@@ -34,7 +34,7 @@ export type DelegateGrantStore = {
   remove(delegateId: string): Promise<void>;
   updateTokens(
     delegateId: string,
-    update: { accessTokenHash: string; refreshTokenHash: string | null },
+    update: { accessTokenHash: string; refreshTokenHash: string | null }
   ): Promise<void>;
 };
 

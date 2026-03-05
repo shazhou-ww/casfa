@@ -1,13 +1,16 @@
 import { create } from "zustand";
+import { apiFetch, authClient } from "../lib/auth";
 import type { CreateDelegateResponse, DelegateListItem } from "../types/delegate";
-import { authClient, apiFetch } from "../lib/auth";
 
 type DelegatesStore = {
   delegates: DelegateListItem[];
   isLoading: boolean;
   error: string | null;
   fetchDelegates: () => Promise<void>;
-  createDelegate: (params: { name?: string; ttlSeconds?: number }) => Promise<CreateDelegateResponse>;
+  createDelegate: (params: {
+    name?: string;
+    ttlSeconds?: number;
+  }) => Promise<CreateDelegateResponse>;
   revokeDelegate: (delegateId: string) => Promise<void>;
 };
 

@@ -1,10 +1,11 @@
-import { cpSync, existsSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { build } from "esbuild";
 import { defineConfig, mergeConfig, type UserConfig, build as viteBuild } from "vite";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { ensureIndexHtml } from "../utils/frontend.js";
+import { getWorkspaceAlias } from "../utils/vite-config.js";
 
 export async function buildCommand(options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
@@ -40,12 +41,19 @@ export async function buildCommand(options?: { cellDir?: string }): Promise<void
     const frontendDir = resolve(cellDir, config.frontend.dir);
     ensureIndexHtml(frontendDir, config);
 
-    const baseConfig: UserConfig = defineConfig({
-      plugins: [react()],
-    });
+    const userConfigPath = resolve(frontendDir, "vite.config.ts");
+    const baseConfig: UserConfig = existsSync(userConfigPath)
+      ? {}
+      : defineConfig({
+          plugins: [react()],
+          resolve: (() => {
+            const alias = getWorkspaceAlias(frontendDir, cellDir);
+            return Object.keys(alias).length > 0 ? { alias } : undefined;
+          })(),
+          build: { outDir: "dist", emptyOutDir: true },
+        });
 
     let finalConfig: UserConfig;
-    const userConfigPath = resolve(frontendDir, "vite.config.ts");
     if (existsSync(userConfigPath)) {
       const userMod = await import(userConfigPath);
       const userConfig = userMod.default ?? userMod;
@@ -60,6 +68,24 @@ export async function buildCommand(options?: { cellDir?: string }): Promise<void
       root: frontendDir,
       configFile: false,
     });
+
+    if (config.cognito && config.domain?.host) {
+      const issuer = `https://${config.domain.host}`;
+      const wellKnown = resolve(frontendDir, "dist", ".well-known", "oauth-authorization-server");
+      mkdirSync(dirname(wellKnown), { recursive: true });
+      writeFileSync(
+        wellKnown,
+        JSON.stringify({
+          issuer,
+          authorization_endpoint: `${issuer}/oauth/authorize`,
+          token_endpoint: `${issuer}/oauth/token`,
+          registration_endpoint: `${issuer}/oauth/register`,
+          response_types_supported: ["code"],
+          grant_types_supported: ["authorization_code", "refresh_token"],
+        }),
+        "utf8"
+      );
+    }
 
     const viteDist = resolve(frontendDir, "dist");
     const frontendBuildDir = resolve(buildDir, "frontend");

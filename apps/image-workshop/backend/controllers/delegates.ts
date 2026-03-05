@@ -27,7 +27,7 @@ export function createDelegatesRoutes(deps: DelegatesControllerDeps) {
         permissions: g.permissions,
         createdAt: g.createdAt,
         expiresAt: g.expiresAt,
-      })),
+      }))
     );
   });
 

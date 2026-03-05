@@ -3,12 +3,12 @@
  * Branch token = base64url(branchId); auth middleware accepts it.
  */
 import type { Context } from "hono";
-import type { Env } from "../types.ts";
+import type { ServerConfig } from "../config.ts";
+import { completeBranch } from "../services/branch-complete.ts";
 import type { RootResolverDeps } from "../services/root-resolver.ts";
 import { ensureEmptyRoot, resolvePath } from "../services/root-resolver.ts";
-import { completeBranch } from "../services/branch-complete.ts";
 import type { Branch } from "../types/branch.ts";
-import type { ServerConfig } from "../config.ts";
+import type { Env } from "../types.ts";
 
 function base64urlEncode(s: string): string {
   const bytes = new TextEncoder().encode(s);
@@ -28,7 +28,7 @@ export type BranchesControllerDeps = RootResolverDeps & {
 };
 
 async function parseBody<T>(c: Context<Env>): Promise<T> {
-  return c.req.json<T>().catch(() => ({} as T));
+  return c.req.json<T>().catch(() => ({}) as T);
 }
 
 export function createBranchesController(deps: BranchesControllerDeps) {
@@ -42,13 +42,22 @@ export function createBranchesController(deps: BranchesControllerDeps) {
         return c.json({ error: "FORBIDDEN", message: "Auth required" }, 403);
       }
       try {
-        const body = await parseBody<{ mountPath: string; ttl?: number; parentBranchId?: string }>(c);
-        const mountPath = typeof body.mountPath === "string" ? body.mountPath.trim().replace(/^\/+|\/+$/g, "") : "";
+        const body = await parseBody<{ mountPath: string; ttl?: number; parentBranchId?: string }>(
+          c
+        );
+        const mountPath =
+          typeof body.mountPath === "string" ? body.mountPath.trim().replace(/^\/+|\/+$/g, "") : "";
         if (!mountPath) {
           return c.json({ error: "BAD_REQUEST", message: "mountPath required" }, 400);
         }
-        const ttlMs = typeof body.ttl === "number" && body.ttl > 0 ? Math.min(body.ttl, maxTtlMs) : defaultTtlMs;
-        const parentBranchId = typeof body.parentBranchId === "string" ? body.parentBranchId.trim() || undefined : undefined;
+        const ttlMs =
+          typeof body.ttl === "number" && body.ttl > 0
+            ? Math.min(body.ttl, maxTtlMs)
+            : defaultTtlMs;
+        const parentBranchId =
+          typeof body.parentBranchId === "string"
+            ? body.parentBranchId.trim() || undefined
+            : undefined;
 
         const realmId = auth.type === "user" ? auth.userId : auth.realmId;
 
@@ -63,14 +72,20 @@ export function createBranchesController(deps: BranchesControllerDeps) {
           const rootRecord = await deps.branchStore.getRealmRootRecord(realmId);
           if (!rootRecord) {
             return c.json(
-              { error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." },
+              {
+                error: "NOT_FOUND",
+                message: "Realm not initialized. Open your profile or realm first.",
+              },
               404
             );
           }
           const rootKey = await deps.branchStore.getRealmRoot(realmId);
           if (rootKey === null) {
             return c.json(
-              { error: "NOT_FOUND", message: "Realm not initialized. Open your profile or realm first." },
+              {
+                error: "NOT_FOUND",
+                message: "Realm not initialized. Open your profile or realm first.",
+              },
               404
             );
           }
@@ -182,27 +197,33 @@ export function createBranchesController(deps: BranchesControllerDeps) {
       if (auth.type === "worker") {
         const branch = await deps.branchStore.getBranch(auth.branchId);
         if (!branch) return c.json({ error: "NOT_FOUND", message: "Branch not found" }, 404);
-        return c.json({
-          branches: [
-            {
-              branchId: branch.branchId,
-              mountPath: branch.mountPath,
-              parentId: branch.parentId,
-              expiresAt: branch.expiresAt,
-            },
-          ],
-        }, 200);
+        return c.json(
+          {
+            branches: [
+              {
+                branchId: branch.branchId,
+                mountPath: branch.mountPath,
+                parentId: branch.parentId,
+                expiresAt: branch.expiresAt,
+              },
+            ],
+          },
+          200
+        );
       }
       const realmId = auth.type === "user" ? auth.userId : auth.realmId;
       const branches = await deps.branchStore.listBranches(realmId);
-      return c.json({
-        branches: branches.map((b: Branch) => ({
-          branchId: b.branchId,
-          mountPath: b.mountPath,
-          parentId: b.parentId,
-          expiresAt: b.expiresAt,
-        })),
-      }, 200);
+      return c.json(
+        {
+          branches: branches.map((b: Branch) => ({
+            branchId: b.branchId,
+            mountPath: b.mountPath,
+            parentId: b.parentId,
+            expiresAt: b.expiresAt,
+          })),
+        },
+        200
+      );
     },
 
     async revoke(c: Context<Env>) {

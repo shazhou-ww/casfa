@@ -21,7 +21,7 @@ const cognitoConfig: CognitoConfig = {
 const dynamoClient = new DynamoDBClient(
   process.env.DYNAMODB_ENDPOINT
     ? { endpoint: process.env.DYNAMODB_ENDPOINT, region: "us-east-1" }
-    : {},
+    : {}
 );
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
 

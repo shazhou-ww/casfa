@@ -6,11 +6,18 @@ import type { BackendEntry } from "../config/cell-yaml-schema.js";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import { ensureCognitoDevCallbackUrl } from "../local/cognito-dev.js";
-import { isDockerRunning, startDynamoDB, startMinIO, waitForPort } from "../local/docker.js";
+import {
+  isDockerRunning,
+  startDynamoDB,
+  startMinIO,
+  stopContainer,
+  waitForPort,
+} from "../local/docker.js";
 import { ensureLocalTables, isDynamoDBReady } from "../local/dynamodb-local.js";
 import { ensureLocalBuckets } from "../local/minio-local.js";
 import { loadEnvFiles } from "../utils/env.js";
 import { ensureIndexHtml } from "../utils/frontend.js";
+import { buildDevProxy, getWorkspaceAlias } from "../utils/vite-config.js";
 
 function resolveAppPath(cellDir: string, entry: BackendEntry): string {
   if (entry.app) {
@@ -132,28 +139,60 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
       process.exit(1);
     }
     const dataDir = resolve(cellDir, ".local-storage/s3");
+    const minioContainerName = `${resolved.name}-minio-dev`;
     console.log(`Starting MinIO on port ${s3Port}...`);
     await startMinIO({
       port: s3Port,
-      containerName: `${resolved.name}-minio-dev`,
+      containerName: minioContainerName,
       dataDir,
     });
 
     if (!(await waitForPort(s3Port))) {
-      console.error("MinIO failed to start");
-      process.exit(1);
+      console.log(
+        "MinIO port not ready; removing container and retrying (port may have changed)..."
+      );
+      await stopContainer(minioContainerName);
+      await startMinIO({
+        port: s3Port,
+        containerName: minioContainerName,
+        dataDir,
+      });
+      if (!(await waitForPort(s3Port))) {
+        console.error("MinIO failed to start");
+        process.exit(1);
+      }
     }
     console.log("MinIO ready");
 
     const s3Endpoint = `http://localhost:${s3Port}`;
-    await ensureLocalBuckets(s3Endpoint, allBucketNames);
+    const s3PollIntervalMs = 1500;
+    const s3PollTimeoutMs = 60_000;
+    const s3StartedAt = Date.now();
+    for (;;) {
+      try {
+        await ensureLocalBuckets(s3Endpoint, allBucketNames);
+        break;
+      } catch (e: any) {
+        if (
+          (e.code === "ECONNRESET" || e.name === "TimeoutError") &&
+          Date.now() - s3StartedAt < s3PollTimeoutMs
+        ) {
+          await Bun.sleep(s3PollIntervalMs);
+          continue;
+        }
+        throw e;
+      }
+    }
     console.log(`Created ${allBucketNames.length} bucket(s)`);
   }
 
-  // Cognito: ensure local callback URL is registered
-  if (config.cognito) {
-    const callbackUrl = `http://localhost:${frontendPort}/oauth/callback`;
-    await ensureCognitoDevCallbackUrl(config.cognito, callbackUrl);
+  // Cognito: ensure backend callback URL is registered (Cognito redirects to backend, then we redirect to frontend)
+  if (config.cognito && resolved.backend) {
+    const backendCallback = `http://localhost:${httpPort}/oauth/callback`;
+    await ensureCognitoDevCallbackUrl(config.cognito, backendCallback, {
+      resolvedEnvVars: resolved.envVars,
+      profile: envMap.AWS_PROFILE,
+    });
   }
 
   // Child processes
@@ -168,6 +207,10 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
         ...process.env,
         ...resolved.envVars,
         PORT: String(httpPort),
+        API_BASE_URL: `http://localhost:${httpPort}`,
+        ...(resolved.frontend && {
+          APP_ORIGIN: `http://localhost:${frontendPort}`,
+        }),
       };
       console.log(`Starting backend [${name}] on port ${httpPort}...`);
       const proc = Bun.spawn(["bun", "run", devServerPath], {
@@ -188,18 +231,12 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
     const frontendDir = resolve(cellDir, resolved.frontend.dir);
     ensureIndexHtml(frontendDir, config);
 
-    const proxy: Record<string, { target: string }> = {};
-    if (resolved.backend) {
-      for (const entry of Object.values(resolved.backend.entries)) {
-        for (const route of entry.routes) {
-          const key = route.replace(/\/\*$/, "");
-          if (key) proxy[key] = { target: `http://localhost:${httpPort}` };
-        }
-      }
-    }
+    const proxy = buildDevProxy(
+      resolved.backend ? Object.values(resolved.backend.entries) : undefined,
+      `http://localhost:${httpPort}`
+    );
 
     const proxyConfig: UserConfig = defineConfig({
-      plugins: [react()],
       server: {
         port: frontendPort,
         proxy,
@@ -213,7 +250,14 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
       const userConfig = userMod.default ?? userMod;
       finalConfig = mergeConfig(userConfig, proxyConfig);
     } else {
-      finalConfig = proxyConfig;
+      const alias = getWorkspaceAlias(frontendDir, cellDir);
+      const baseFromCell: UserConfig = defineConfig({
+        plugins: [react()],
+        resolve: Object.keys(alias).length > 0 ? { alias } : undefined,
+        server: { port: frontendPort, proxy },
+        build: { outDir: "dist", emptyOutDir: true },
+      });
+      finalConfig = baseFromCell;
     }
 
     console.log(`Starting frontend [web] on port ${frontendPort}...`);

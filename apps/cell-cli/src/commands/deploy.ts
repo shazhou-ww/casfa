@@ -301,9 +301,7 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
   const deployExitCode = await deployProc.exited;
   if (deployExitCode !== 0) {
     const stderr = await new Response(deployProc.stderr).text();
-    const useful = stderr
-      .split("\n")
-      .filter((l) => !l.includes("Waiting for") && l.trim());
+    const useful = stderr.split("\n").filter((l) => !l.includes("Waiting for") && l.trim());
     if (useful.length) console.error(useful.join("\n"));
     console.error("CloudFormation deploy failed");
     process.exit(1);
@@ -346,15 +344,17 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
   if (config.cognito && resolved.domain) {
     const userPoolId =
       typeof config.cognito.userPoolId === "string" ? config.cognito.userPoolId : "";
-    const clientId =
-      typeof config.cognito.clientId === "string" ? config.cognito.clientId : "";
+    const clientId = typeof config.cognito.clientId === "string" ? config.cognito.clientId : "";
     const cognitoRegion =
       typeof config.cognito.region === "string" ? config.cognito.region : undefined;
 
     if (userPoolId && clientId) {
       console.log("\n=== Syncing Cognito callback URLs ===");
       const domainCallback = `https://${resolved.domain.host}/oauth/callback`;
-      const cognitoEnv = { ...awsEnv, ...(cognitoRegion ? { AWS_DEFAULT_REGION: cognitoRegion } : {}) };
+      const cognitoEnv = {
+        ...awsEnv,
+        ...(cognitoRegion ? { AWS_DEFAULT_REGION: cognitoRegion } : {}),
+      };
 
       const { exitCode: descCode, stdout: clientJson } = await awsCli(
         [

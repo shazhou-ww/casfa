@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { parseDocument, type SchemaOptions } from "yaml";
-import type { CellConfig, EnvRef, RawParamValue, ResolvedValue, SecretRef } from "./cell-yaml-schema.js";
+import type {
+  CellConfig,
+  EnvRef,
+  RawParamValue,
+  ResolvedValue,
+  SecretRef,
+} from "./cell-yaml-schema.js";
 import { isEnvRef, isParamRef, isSecretRef } from "./cell-yaml-schema.js";
 import { resolveParams } from "./resolve-params.js";
 

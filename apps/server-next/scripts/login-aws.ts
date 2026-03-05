@@ -2,10 +2,10 @@
  * Run `aws sso login` using AWS_PROFILE from .env (current directory and parents up to repo root).
  * Usage: bun run login:aws
  */
-import { existsSync } from "node:fs";
-import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+
 import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 const CWD = process.cwd();
 
@@ -55,8 +55,7 @@ function loadAwsProfile(): string | undefined {
     const envPath = join(dir, ".env");
     if (existsSync(envPath)) {
       const env = parseEnvFile(envPath);
-      if (env.AWS_PROFILE != null && env.AWS_PROFILE.trim() !== "")
-        return env.AWS_PROFILE.trim();
+      if (env.AWS_PROFILE != null && env.AWS_PROFILE.trim() !== "") return env.AWS_PROFILE.trim();
     }
   }
   return undefined;
@@ -64,7 +63,9 @@ function loadAwsProfile(): string | undefined {
 
 const profile = loadAwsProfile();
 if (!profile) {
-  console.error("AWS_PROFILE not set in .env. Add AWS_PROFILE=your-profile in .env (in this directory or a parent up to repo root).");
+  console.error(
+    "AWS_PROFILE not set in .env. Add AWS_PROFILE=your-profile in .env (in this directory or a parent up to repo root)."
+  );
   process.exit(1);
 }
 

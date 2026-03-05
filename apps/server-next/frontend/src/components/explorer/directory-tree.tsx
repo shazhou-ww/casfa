@@ -25,16 +25,16 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  createFolder,
-  fetchList,
-  fetchFileStat,
-  fetchFileBlob,
-  createFileBlobUrl,
-  revokeFileBlobUrl,
-  isImageContentType,
-  deletePath,
-  movePath,
   copyPath,
+  createFileBlobUrl,
+  createFolder,
+  deletePath,
+  fetchFileBlob,
+  fetchFileStat,
+  fetchList,
+  isImageContentType,
+  movePath,
+  revokeFileBlobUrl,
   uploadFile,
 } from "../../lib/fs-api";
 import type { FsEntry } from "../../types/api";
@@ -46,17 +46,17 @@ type DirectoryTreeProps = {
 
 function formatPath(path: string): string[] {
   if (!path || path === "/") return [];
-  return path.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
+  return path
+    .replace(/^\/+|\/+$/g, "")
+    .split("/")
+    .filter(Boolean);
 }
 
 async function fetchListForTree(path: string): Promise<FsEntry[]> {
   return fetchList(path);
 }
 
-export function DirectoryTree({
-  currentPath,
-  onPathChange,
-}: DirectoryTreeProps) {
+export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps) {
   const [entries, setEntries] = useState<FsEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export function DirectoryTree({
   const [newFolderName, setNewFolderName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   const [createLoading, setCreateLoading] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [_refreshKey, setRefreshKey] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState("");
@@ -80,7 +80,10 @@ export function DirectoryTree({
     entry: FsEntry | null;
     targetPath: string;
   }>({ open: false, mode: "move", entry: null, targetPath: "" });
-  const [snackbar, setSnackbar] = useState<{ message: string; severity: "success" | "error" } | null>(null);
+  const [snackbar, setSnackbar] = useState<{
+    message: string;
+    severity: "success" | "error";
+  } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [moveCopyLoading, setMoveCopyLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -112,7 +115,7 @@ export function DirectoryTree({
   useEffect(() => {
     const cancel = loadEntries();
     return () => cancel?.();
-  }, [loadEntries, refreshKey]);
+  }, [loadEntries]);
 
   const handleBreadcrumb = useCallback(
     (index: number) => {
@@ -120,7 +123,7 @@ export function DirectoryTree({
         onPathChange("/");
         return;
       }
-      const p = "/" + pathParts.slice(0, index + 1).join("/");
+      const p = `/${pathParts.slice(0, index + 1).join("/")}`;
       onPathChange(p);
     },
     [pathParts, onPathChange]
@@ -179,7 +182,7 @@ export function DirectoryTree({
       onPathChange("/");
       return;
     }
-    const parent = "/" + pathParts.slice(0, -1).join("/");
+    const parent = `/${pathParts.slice(0, -1).join("/")}`;
     onPathChange(parent);
   }, [pathParts, onPathChange]);
 
@@ -204,7 +207,7 @@ export function DirectoryTree({
       return;
     }
     if (/[\\/:*?"<>|]/.test(name)) {
-      setCreateError("文件夹名称不能包含 \\ / : * ? \" < > |");
+      setCreateError('文件夹名称不能包含 \\ / : * ? " < > |');
       return;
     }
     setCreateLoading(true);
@@ -300,14 +303,19 @@ export function DirectoryTree({
             ok++;
           } catch (err) {
             setSnackbar({
-              message: (err instanceof Error ? err.message : "上传失败") + (fileArray.length > 1 ? ` (${file.name})` : ""),
+              message:
+                (err instanceof Error ? err.message : "上传失败") +
+                (fileArray.length > 1 ? ` (${file.name})` : ""),
               severity: "error",
             });
           }
         }
         if (ok > 0) {
           setRefreshKey((k) => k + 1);
-          setSnackbar({ message: ok === 1 ? "已上传" : `已上传 ${ok} 个文件`, severity: "success" });
+          setSnackbar({
+            message: ok === 1 ? "已上传" : `已上传 ${ok} 个文件`,
+            severity: "success",
+          });
         }
       } finally {
         setUploading(false);
@@ -383,7 +391,7 @@ export function DirectoryTree({
         ) : (
           pathParts.map((part, i) => (
             <Typography
-              key={i}
+              key={pathParts.slice(0, i + 1).join("/")}
               component="span"
               variant="body2"
               sx={{
@@ -393,7 +401,8 @@ export function DirectoryTree({
               }}
               onClick={() => handleBreadcrumb(i)}
             >
-              {i > 0 ? " / " : ""}{part}
+              {i > 0 ? " / " : ""}
+              {part}
             </Typography>
           ))
         )}
@@ -533,16 +542,35 @@ export function DirectoryTree({
         </MenuItem>
       </Menu>
 
-      <Dialog open={deleteDialogOpen} onClose={() => !deleteLoading && (setDeleteDialogOpen(false), setDeleteEntry(null))}>
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => {
+          if (!deleteLoading) {
+            setDeleteDialogOpen(false);
+            setDeleteEntry(null);
+          }
+        }}
+      >
         <DialogTitle>确认删除</DialogTitle>
         <DialogContent>
           <Typography>确定要删除 {deleteEntry?.name} 吗？</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setDeleteDialogOpen(false); setDeleteEntry(null); }} disabled={deleteLoading}>
+          <Button
+            onClick={() => {
+              setDeleteDialogOpen(false);
+              setDeleteEntry(null);
+            }}
+            disabled={deleteLoading}
+          >
             取消
           </Button>
-          <Button onClick={handleDeleteConfirm} variant="contained" color="error" disabled={deleteLoading}>
+          <Button
+            onClick={handleDeleteConfirm}
+            variant="contained"
+            color="error"
+            disabled={deleteLoading}
+          >
             {deleteLoading ? "删除中…" : "确认"}
           </Button>
         </DialogActions>
@@ -563,9 +591,7 @@ export function DirectoryTree({
             fullWidth
             variant="outlined"
             value={moveCopyDialog.targetPath}
-            onChange={(e) =>
-              setMoveCopyDialog((d) => ({ ...d, targetPath: e.target.value }))
-            }
+            onChange={(e) => setMoveCopyDialog((d) => ({ ...d, targetPath: e.target.value }))}
           />
         </DialogContent>
         <DialogActions>
@@ -575,11 +601,7 @@ export function DirectoryTree({
           >
             取消
           </Button>
-          <Button
-            onClick={handleMoveCopyConfirm}
-            variant="contained"
-            disabled={moveCopyLoading}
-          >
+          <Button onClick={handleMoveCopyConfirm} variant="contained" disabled={moveCopyLoading}>
             {moveCopyLoading ? "处理中…" : "确认"}
           </Button>
         </DialogActions>
@@ -613,70 +635,70 @@ export function DirectoryTree({
             </Typography>
           </Box>
         )}
-      <Box sx={{ flex: 1, overflow: "auto", height: "100%" }}>
-        {loading && (
-          <Box display="flex" justifyContent="center" py={4}>
-            <Typography variant="body2" color="text.secondary">
-              Loading…
-            </Typography>
-          </Box>
-        )}
-        {fileActionError && (
-          <Box py={1} px={2}>
-            <Typography variant="body2" color="error">
-              {fileActionError}
-            </Typography>
-          </Box>
-        )}
-        {error && (
-          <Box py={2} px={2}>
-            <Typography variant="body2" color="error">
-              {error}
-            </Typography>
-          </Box>
-        )}
-        {!loading && !error && entries.length === 0 && (
-          <Box py={4} px={2} textAlign="center">
-            <Typography variant="body2" color="text.secondary">
-              Empty folder
-            </Typography>
-          </Box>
-        )}
-        {!loading && !error && entries.length > 0 && (
-          <List dense disablePadding>
-            {entries.map((entry) => (
-              <ListItemButton
-                key={entry.path}
-                onClick={() => handleEntryClick(entry)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setContextMenuAnchor({ x: e.clientX, y: e.clientY });
-                  setContextMenuEntry(entry);
-                }}
-                disabled={fileActionLoading}
-              >
-                <ListItemIcon sx={{ minWidth: 36 }}>
-                  {entry.isDirectory ? (
-                    <FolderIcon color="action" />
-                  ) : (
-                    <InsertDriveFileIcon color="action" />
-                  )}
-                </ListItemIcon>
-                <ListItemText
-                  primary={entry.name}
-                  primaryTypographyProps={{ variant: "body2" }}
-                  secondary={
-                    !entry.isDirectory && entry.size != null
-                      ? `${(entry.size / 1024).toFixed(1)} KB`
-                      : undefined
-                  }
-                  secondaryTypographyProps={{ variant: "caption" }}
-                />
-              </ListItemButton>
-            ))}
-          </List>
-        )}
-      </Box>
+        <Box sx={{ flex: 1, overflow: "auto", height: "100%" }}>
+          {loading && (
+            <Box display="flex" justifyContent="center" py={4}>
+              <Typography variant="body2" color="text.secondary">
+                Loading…
+              </Typography>
+            </Box>
+          )}
+          {fileActionError && (
+            <Box py={1} px={2}>
+              <Typography variant="body2" color="error">
+                {fileActionError}
+              </Typography>
+            </Box>
+          )}
+          {error && (
+            <Box py={2} px={2}>
+              <Typography variant="body2" color="error">
+                {error}
+              </Typography>
+            </Box>
+          )}
+          {!loading && !error && entries.length === 0 && (
+            <Box py={4} px={2} textAlign="center">
+              <Typography variant="body2" color="text.secondary">
+                Empty folder
+              </Typography>
+            </Box>
+          )}
+          {!loading && !error && entries.length > 0 && (
+            <List dense disablePadding>
+              {entries.map((entry) => (
+                <ListItemButton
+                  key={entry.path}
+                  onClick={() => handleEntryClick(entry)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenuAnchor({ x: e.clientX, y: e.clientY });
+                    setContextMenuEntry(entry);
+                  }}
+                  disabled={fileActionLoading}
+                >
+                  <ListItemIcon sx={{ minWidth: 36 }}>
+                    {entry.isDirectory ? (
+                      <FolderIcon color="action" />
+                    ) : (
+                      <InsertDriveFileIcon color="action" />
+                    )}
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={entry.name}
+                    primaryTypographyProps={{ variant: "body2" }}
+                    secondary={
+                      !entry.isDirectory && entry.size != null
+                        ? `${(entry.size / 1024).toFixed(1)} KB`
+                        : undefined
+                    }
+                    secondaryTypographyProps={{ variant: "caption" }}
+                  />
+                </ListItemButton>
+              ))}
+            </List>
+          )}
+        </Box>
       </Box>
 
       <Snackbar

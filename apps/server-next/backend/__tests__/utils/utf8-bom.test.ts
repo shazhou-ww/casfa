@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { UTF8_BOM, prependUtf8BomIfText } from "../../utils/utf8-bom.ts";
+import { prependUtf8BomIfText, UTF8_BOM } from "../../utils/utf8-bom.ts";
 
 describe("utf8-bom", () => {
   it("UTF8_BOM has length 3 and correct bytes", () => {

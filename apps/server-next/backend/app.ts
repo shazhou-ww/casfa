@@ -1,26 +1,27 @@
+import type { CasFacade } from "@casfa/cas";
+import type { OAuthServer } from "@casfa/cell-oauth";
+import type { KeyProvider } from "@casfa/core";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { Env, ErrorBody, AuthContext } from "./types.ts";
 import type { ServerConfig } from "./config.ts";
-import type { CasFacade } from "@casfa/cas";
-import type { DerivedDataStore } from "./db/derived-data.ts";
-import type { BranchStore } from "./db/branch-store.ts";
-import type { RealmUsageStore } from "./db/realm-usage-store.ts";
-import { createRealmInfoService } from "./services/realm-info.ts";
-import { createAuthMiddleware } from "./middleware/auth.ts";
-import { createRealmMiddleware } from "./middleware/realm.ts";
-import { createFilesController } from "./controllers/files.ts";
-import { createFsController } from "./controllers/fs.ts";
+import { isMockAuthEnabled } from "./config.ts";
 import { createBranchesController } from "./controllers/branches.ts";
 import { createDelegatesRoutes } from "./controllers/delegates.ts";
-import { createRealmController } from "./controllers/realm.ts";
-import { createMcpHandler } from "./mcp/handler.ts";
-import { createMeController } from "./controllers/me.ts";
 import { createDevMockTokenController } from "./controllers/dev-mock-token.ts";
+import { createFilesController } from "./controllers/files.ts";
+import { createFsController } from "./controllers/fs.ts";
+import { createMeController } from "./controllers/me.ts";
 import { createOAuthRoutes } from "./controllers/oauth.ts";
-import type { KeyProvider } from "@casfa/core";
+import { createRealmController } from "./controllers/realm.ts";
+import type { BranchStore } from "./db/branch-store.ts";
+import type { DerivedDataStore } from "./db/derived-data.ts";
+import type { RealmUsageStore } from "./db/realm-usage-store.ts";
 import type { UserSettingsStore } from "./db/user-settings.ts";
-import type { OAuthServer } from "@casfa/cell-oauth";
+import { createMcpHandler } from "./mcp/handler.ts";
+import { createAuthMiddleware } from "./middleware/auth.ts";
+import { createRealmMiddleware } from "./middleware/realm.ts";
+import { createRealmInfoService } from "./services/realm-info.ts";
+import type { AuthContext, Env, ErrorBody } from "./types.ts";
 
 export type AppDeps = {
   config: ServerConfig;
@@ -45,7 +46,10 @@ export function createApp(deps: AppDeps) {
     })
   );
 
-  const oauthRoutes = createOAuthRoutes({ oauthServer: deps.oauthServer });
+  const oauthRoutes = createOAuthRoutes({
+    oauthServer: deps.oauthServer,
+    appOrigin: deps.config.appOrigin,
+  });
   app.route("/", oauthRoutes);
 
   /** Decode branch token (base64url of branchId) to branchId */
@@ -99,13 +103,20 @@ export function createApp(deps: AppDeps) {
 
   app.get("/api/health", (c) => c.json({ ok: true }, 200));
   app.get("/api/info", (c) =>
-    c.json({
-      storageType: "s3",
-      authType: deps.config.auth.mockJwtSecret ? "mock" : (deps.config.auth.cognitoUserPoolId ? "cognito" : "mock"),
-    }, 200)
+    c.json(
+      {
+        storageType: "s3",
+        authType: isMockAuthEnabled(deps.config)
+          ? "mock"
+          : deps.config.auth.cognitoUserPoolId
+            ? "cognito"
+            : "mock",
+      },
+      200
+    )
   );
 
-  if (deps.config.auth.mockJwtSecret) {
+  if (isMockAuthEnabled(deps.config)) {
     const devMockToken = createDevMockTokenController({
       config: deps.config,
       branchStore: deps.branchStore,
@@ -132,7 +143,8 @@ export function createApp(deps: AppDeps) {
     branchStore: deps.branchStore,
     cas: deps.cas,
     key: deps.key,
-    recordNewKey: (realmId: string, nodeKey: string) => realmInfoService.recordNewKey(realmId, nodeKey),
+    recordNewKey: (realmId: string, nodeKey: string) =>
+      realmInfoService.recordNewKey(realmId, nodeKey),
   };
   const files = createFilesController(rootResolverDeps);
   const fs = createFsController(rootResolverDeps);
@@ -170,7 +182,10 @@ export function createApp(deps: AppDeps) {
   app.post("/api/realm/:realmId/gc", (c) => realm.gc(c));
 
   // MCP: GET /mcp — we do not support long-lived streaming (Lambda would timeout). Return 405 so clients use POST (JSON-RPC) only and stop polling.
-  const mcpGetHandler = (c: { req: { header: (n: string) => string | undefined }; json: (body: unknown, status?: number) => Response }) => {
+  const mcpGetHandler = (c: {
+    req: { header: (n: string) => string | undefined };
+    json: (body: unknown, status?: number) => Response;
+  }) => {
     const accept = c.req.header("Accept") ?? "";
     const isStreamRequest = accept.includes("text/event-stream");
     return c.json(
@@ -190,20 +205,30 @@ export function createApp(deps: AppDeps) {
   app.get("/mcp/", authMiddleware, mcpGetHandler);
   // POST to exact path or any subpath (Cursor may POST to e.g. /mcp/sse or /mcp/messages)
   app.post("/mcp", authMiddleware, createMcpHandler({ ...rootResolverDeps, config: deps.config }));
-  app.post("/mcp/*", authMiddleware, createMcpHandler({ ...rootResolverDeps, config: deps.config }));
+  app.post(
+    "/mcp/*",
+    authMiddleware,
+    createMcpHandler({ ...rootResolverDeps, config: deps.config })
+  );
   // Any other method/path under /mcp (e.g. GET /mcp/oauth) → JSON so no empty-body 404
   app.all("/mcp/*", (c) =>
     c.json(
       {
         error: "NOT_FOUND",
-        message: "Only POST /mcp (JSON-RPC) and GET /mcp (SSE with Bearer) are supported. No OAuth discovery.",
+        message:
+          "Only POST /mcp (JSON-RPC) and GET /mcp (SSE with Bearer) are supported. No OAuth discovery.",
       } satisfies ErrorBody,
       404
     )
   );
 
   app.onError((err, c) => {
-    console.error("[api] 500", c.req.method, c.req.path, err instanceof Error ? err.message : String(err));
+    console.error(
+      "[api] 500",
+      c.req.method,
+      c.req.path,
+      err instanceof Error ? err.message : String(err)
+    );
     if (err instanceof Error && err.stack) console.error(err.stack);
     const body: ErrorBody = {
       error: "INTERNAL_ERROR",

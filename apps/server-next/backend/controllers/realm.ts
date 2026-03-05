@@ -2,8 +2,8 @@
  * Realm info, usage, and gc.
  */
 import type { Context } from "hono";
-import type { Env } from "../types.ts";
 import type { RealmInfoService } from "../services/realm-info.ts";
+import type { Env } from "../types.ts";
 
 function hasRealmAccess(auth: NonNullable<Env["Variables"]["auth"]>): boolean {
   if (auth.type === "user") return true;
@@ -68,17 +68,13 @@ export function createRealmController(deps: RealmControllerDeps) {
       if (auth.type === "user") {
         await deps.realmInfoService.ensureRealmForUser(realmId);
       }
-      try {
-        const body = (await c.req.json<{ cutOffTime?: number }>().catch(() => ({}))) as {
-          cutOffTime?: number;
-        };
-        const cutOffTime =
-          typeof body.cutOffTime === "number" ? body.cutOffTime : Date.now() - 900_000;
-        await deps.realmInfoService.gc(realmId, cutOffTime);
-        return c.json({ gc: true, cutOffTime }, 200);
-      } catch (err) {
-        throw err;
-      }
+      const body = (await c.req.json<{ cutOffTime?: number }>().catch(() => ({}))) as {
+        cutOffTime?: number;
+      };
+      const cutOffTime =
+        typeof body.cutOffTime === "number" ? body.cutOffTime : Date.now() - 900_000;
+      await deps.realmInfoService.gc(realmId, cutOffTime);
+      return c.json({ gc: true, cutOffTime }, 200);
     },
   };
 }

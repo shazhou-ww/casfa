@@ -1,3 +1,4 @@
+import { createApiFetch, createAuthClient } from "@casfa/cell-auth-client";
 import AddIcon from "@mui/icons-material/Add";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DoneIcon from "@mui/icons-material/Done";
@@ -37,7 +38,6 @@ import {
 } from "@mui/material";
 import { StrictMode, useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
-import { createApiFetch, createAuthClient } from "@casfa/cell-auth-client";
 
 const authClient = createAuthClient({ storagePrefix: "iw" });
 const apiFetch = createApiFetch({
@@ -586,7 +586,7 @@ function DelegatesPage() {
 function App() {
   const auth = useSyncExternalStore(
     (onStoreChange) => authClient.subscribe(() => onStoreChange()),
-    () => authClient.getAuth(),
+    () => authClient.getAuth()
   );
 
   if (window.location.pathname === "/oauth/consent") {

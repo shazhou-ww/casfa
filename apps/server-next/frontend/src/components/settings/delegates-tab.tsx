@@ -55,12 +55,7 @@ type DelegatesTabProps = {
 };
 
 export function DelegatesTab({ onCreateClick, onRevokeClick }: DelegatesTabProps) {
-  const {
-    delegates,
-    isLoading,
-    error,
-    fetchDelegates,
-  } = useDelegatesStore();
+  const { delegates, isLoading, error, fetchDelegates } = useDelegatesStore();
 
   useEffect(() => {
     fetchDelegates();
@@ -158,12 +153,7 @@ export function DelegatesTab({ onCreateClick, onRevokeClick }: DelegatesTabProps
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Chip
-                        label={cfg.label}
-                        color={cfg.color}
-                        size="small"
-                        variant="outlined"
-                      />
+                      <Chip label={cfg.label} color={cfg.color} size="small" variant="outlined" />
                     </TableCell>
                     <TableCell align="right">
                       {!isRevoked && (

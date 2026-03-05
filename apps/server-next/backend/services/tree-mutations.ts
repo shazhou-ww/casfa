@@ -6,8 +6,7 @@ import type { CasFacade } from "@casfa/cas";
 import { streamFromBytes } from "@casfa/cas";
 import type { KeyProvider } from "@casfa/core";
 import { encodeDictNode, hashToKey, keyToHash } from "@casfa/core";
-import { getNodeDecoded } from "./root-resolver.ts";
-import { normalizePath, resolvePath } from "./root-resolver.ts";
+import { getNodeDecoded, normalizePath, resolvePath } from "./root-resolver.ts";
 
 function resolveSegment(
   node: { kind: string; children?: Uint8Array[]; childNames?: string[] },
@@ -95,7 +94,9 @@ export async function addOrReplaceInDict(
   const children = node.children ?? [];
   const nameIdx = names.indexOf(name);
   const newNames =
-    nameIdx >= 0 ? names.slice() : [...names, name].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+    nameIdx >= 0
+      ? names.slice()
+      : [...names, name].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
   let newChildren: Uint8Array[];
   if (nameIdx >= 0) {
     newChildren = children.slice();
@@ -129,8 +130,7 @@ export async function addOrReplaceAtPath(
   if (segments.length === 0) throw new Error("Path must not be empty");
   const parentPath = segments.slice(0, -1).join("/");
   const fileName = segments[segments.length - 1]!;
-  const parentKey =
-    parentPath === "" ? rootKey : await resolvePath(cas, rootKey, parentPath);
+  const parentKey = parentPath === "" ? rootKey : await resolvePath(cas, rootKey, parentPath);
   if (parentKey === null) throw new Error("Parent path not found");
   const newParentKey = await addOrReplaceInDict(
     cas,
@@ -163,8 +163,7 @@ export async function removeEntryAtPath(
   if (segments.length === 0) throw new Error("Path must not be empty");
   const parentPath = segments.slice(0, -1).join("/");
   const fileName = segments[segments.length - 1]!;
-  const parentKey =
-    parentPath === "" ? rootKey : await resolvePath(cas, rootKey, parentPath);
+  const parentKey = parentPath === "" ? rootKey : await resolvePath(cas, rootKey, parentPath);
   if (parentKey === null) throw new Error("Parent path not found");
   const node = await getNodeDecoded(cas, parentKey);
   if (!node || node.kind !== "dict") throw new Error("Parent is not a dict");
@@ -203,10 +202,7 @@ export async function ensurePathThenAddOrReplace(
 ): Promise<string> {
   const segments = normalizePath(pathStr);
   if (segments.length === 0) throw new Error("Path must not be empty");
-  const emptyEncoded = await encodeDictNode(
-    { children: [], childNames: [] },
-    keyProvider
-  );
+  const emptyEncoded = await encodeDictNode({ children: [], childNames: [] }, keyProvider);
   const emptyDictKey = hashToKey(emptyEncoded.hash);
   const exists = await cas.hasNode(emptyDictKey);
   if (!exists) {
@@ -218,24 +214,10 @@ export async function ensurePathThenAddOrReplace(
     const pathPrefix = segments.slice(0, i + 1).join("/");
     const resolved = await resolvePath(cas, root, pathPrefix);
     if (resolved === null) {
-      root = await addOrReplaceAtPath(
-        cas,
-        keyProvider,
-        root,
-        pathPrefix,
-        emptyDictKey,
-        onNodePut
-      );
+      root = await addOrReplaceAtPath(cas, keyProvider, root, pathPrefix, emptyDictKey, onNodePut);
     }
   }
-  return addOrReplaceAtPath(
-    cas,
-    keyProvider,
-    root,
-    pathStr,
-    newChildKey,
-    onNodePut
-  );
+  return addOrReplaceAtPath(cas, keyProvider, root, pathStr, newChildKey, onNodePut);
 }
 
 /** Remove entry at path if it exists; no-op otherwise. Returns new root key (or rootKey unchanged). */
@@ -250,8 +232,7 @@ export async function tryRemoveEntryAtPath(
   if (segments.length === 0) return rootKey;
   const parentPath = segments.slice(0, -1).join("/");
   const fileName = segments[segments.length - 1]!;
-  const parentKey =
-    parentPath === "" ? rootKey : await resolvePath(cas, rootKey, parentPath);
+  const parentKey = parentPath === "" ? rootKey : await resolvePath(cas, rootKey, parentPath);
   if (parentKey === null) return rootKey;
   const node = await getNodeDecoded(cas, parentKey);
   if (!node || node.kind !== "dict") return rootKey;

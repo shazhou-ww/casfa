@@ -88,7 +88,11 @@ async function main(): Promise<void> {
   const isRunning = await waitForDynamoDB(endpoint);
 
   if (!isRunning) {
-    console.error("DynamoDB Local is not running. Start it with: docker compose up -d " + container + ", then run bun run dev:setup");
+    console.error(
+      "DynamoDB Local is not running. Start it with: docker compose up -d " +
+        container +
+        ", then run bun run dev:setup"
+    );
     process.exit(1);
   }
   await runSetup(stage);

@@ -11,7 +11,7 @@ type CognitoTokenResponse = {
 export async function exchangeCodeForTokens(
   config: CognitoConfig,
   code: string,
-  redirectUri: string,
+  redirectUri: string
 ): Promise<CognitoTokenSet> {
   const body = new URLSearchParams({
     grant_type: "authorization_code",
@@ -45,7 +45,7 @@ export async function exchangeCodeForTokens(
 
 export async function refreshCognitoTokens(
   config: CognitoConfig,
-  refreshToken: string,
+  refreshToken: string
 ): Promise<CognitoRefreshedTokenSet> {
   const body = new URLSearchParams({
     grant_type: "refresh_token",
@@ -79,7 +79,7 @@ export function buildCognitoAuthorizeUrl(
     state: string;
     scope: string | null;
     identityProvider: string | null;
-  },
+  }
 ): string {
   const query = new URLSearchParams({
     client_id: config.clientId,

@@ -102,9 +102,7 @@ export function generateLambda(config: ResolvedConfig): CfnFragment {
       },
       ManagedPolicyArns: [
         "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-        ...(useVpc
-          ? ["arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"]
-          : []),
+        ...(useVpc ? ["arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"] : []),
       ],
       Policies: [
         {

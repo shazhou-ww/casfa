@@ -57,7 +57,7 @@ export function createDelegateAccessToken(userId: string, delegateId: string): s
 }
 
 export function decodeDelegateTokenPayload(
-  token: string,
+  token: string
 ): { sub: string; dlg: string; iat: number } | null {
   const parts = token.split(".");
   if (parts.length !== 2) return null;
@@ -78,11 +78,11 @@ export function decodeDelegateTokenPayload(
 export async function verifyCodeChallenge(
   verifier: string,
   challenge: string,
-  method: string,
+  method: string
 ): Promise<boolean> {
   if (method === "S256") {
     const hash = new Uint8Array(
-      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)),
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))
     );
     const encoded = btoa(String.fromCharCode(...hash))
       .replace(/\+/g, "-")

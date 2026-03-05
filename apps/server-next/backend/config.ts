@@ -4,8 +4,10 @@
  */
 export const ENV_NAMES = {
   PORT: "PORT",
-  /** Public base URL of this Casfa API (e.g. http://localhost:7100). Returned by branch_create so clients can pass it to image-workshop as casfaBaseUrl. */
+  /** Backend base URL for Cognito redirect_uri (e.g. http://localhost:7101 in dev). */
   API_BASE_URL: "API_BASE_URL",
+  /** Frontend origin for OAuth post-callback redirect (e.g. http://localhost:7100 in dev). */
+  APP_ORIGIN: "APP_ORIGIN",
   MOCK_JWT_SECRET: "MOCK_JWT_SECRET",
   MAX_BRANCH_TTL_MS: "MAX_BRANCH_TTL_MS",
   COGNITO_REGION: "COGNITO_REGION",
@@ -25,8 +27,10 @@ export const ENV_NAMES = {
 
 export type ServerConfig = {
   port: number;
-  /** Public base URL of this API (no trailing slash). Returned in branch_create for use as casfaBaseUrl in image-workshop. */
+  /** Backend base URL (for Cognito redirect_uri). No trailing slash. */
   apiBaseUrl?: string;
+  /** Frontend origin for OAuth redirect after callback (e.g. http://localhost:7100). No trailing slash. */
+  appOrigin?: string;
   auth: {
     mockJwtSecret?: string;
     maxBranchTtlMs?: number;
@@ -51,6 +55,11 @@ export type ServerConfig = {
 
 const DEFAULT_PORT = 8802;
 
+/** Mock auth is only enabled when NODE_ENV=test (e.g. e2e). Dev/prod must use Cognito. */
+export function isMockAuthEnabled(config: ServerConfig): boolean {
+  return Boolean(config.auth.mockJwtSecret && process.env.NODE_ENV === "test");
+}
+
 export function loadConfig(): ServerConfig {
   const port = Number(process.env.PORT) || DEFAULT_PORT;
   const stage = process.env.SLS_STAGE ?? process.env.STAGE ?? "dev";
@@ -66,17 +75,16 @@ export function loadConfig(): ServerConfig {
     cognitoClientSecret: process.env.COGNITO_CLIENT_SECRET,
   };
   const apiBaseUrl = process.env.API_BASE_URL?.replace(/\/$/, "") || undefined;
+  const appOrigin = process.env.APP_ORIGIN?.replace(/\/$/, "") || undefined;
   return {
     port,
     apiBaseUrl,
+    appOrigin,
     auth,
     dynamodbEndpoint: process.env.DYNAMODB_ENDPOINT,
-    dynamodbTableRealms:
-      process.env.DYNAMODB_TABLE_REALMS ?? `casfa-next-${stage}-realms`,
-    dynamodbTableGrants:
-      process.env.DYNAMODB_TABLE_GRANTS ?? `casfa-next-${stage}-grants`,
-    s3Bucket:
-      process.env.S3_BUCKET_BLOB ?? process.env.S3_BUCKET ?? `casfa-next-${stage}-blob`,
+    dynamodbTableRealms: process.env.DYNAMODB_TABLE_REALMS ?? `casfa-next-${stage}-realms`,
+    dynamodbTableGrants: process.env.DYNAMODB_TABLE_GRANTS ?? `casfa-next-${stage}-grants`,
+    s3Bucket: process.env.S3_BUCKET_BLOB ?? process.env.S3_BUCKET ?? `casfa-next-${stage}-blob`,
     frontendBucket: process.env.FRONTEND_BUCKET ?? undefined,
     s3Endpoint: process.env.S3_ENDPOINT,
     logLevel: process.env.LOG_LEVEL,

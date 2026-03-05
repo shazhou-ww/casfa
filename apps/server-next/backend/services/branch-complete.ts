@@ -2,15 +2,16 @@
  * Shared branch-complete logic: merge branch into parent and remove branch.
  * Used by branches controller and MCP branch_complete tool.
  */
-import type { BranchStore } from "../db/branch-store.ts";
+
 import type { CasFacade } from "@casfa/cas";
 import type { KeyProvider } from "@casfa/core";
+import type { BranchStore } from "../db/branch-store.ts";
+import { resolvePath } from "./root-resolver.ts";
 import {
+  ensurePathThenAddOrReplace,
   replaceSubtreeAtPath,
   tryRemoveEntryAtPath,
-  ensurePathThenAddOrReplace,
 } from "./tree-mutations.ts";
-import { resolvePath } from "./root-resolver.ts";
 
 export type BranchCompleteDeps = {
   branchStore: BranchStore;
@@ -51,11 +52,7 @@ export async function completeBranch(
       branch.mountPath
     );
   } else {
-    const pathExists = await resolvePath(
-      deps.cas,
-      parentRootKey,
-      branch.mountPath
-    );
+    const pathExists = await resolvePath(deps.cas, parentRootKey, branch.mountPath);
     if (pathExists === null) {
       newParentRootKey = await ensurePathThenAddOrReplace(
         deps.cas,

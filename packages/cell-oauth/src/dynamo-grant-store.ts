@@ -54,7 +54,7 @@ export function createDynamoGrantStore(params: {
           IndexName: "user-hash-index",
           KeyConditionExpression: "gsi1pk = :pk",
           ExpressionAttributeValues: { ":pk": `USER#${userId}` },
-        }),
+        })
       );
       return (result.Items ?? []).map(fromItem);
     },
@@ -64,7 +64,7 @@ export function createDynamoGrantStore(params: {
         new GetCommand({
           TableName: tableName,
           Key: { pk: `GRANT#${delegateId}`, sk: "METADATA" },
-        }),
+        })
       );
       return result.Item ? fromItem(result.Item) : null;
     },
@@ -79,7 +79,7 @@ export function createDynamoGrantStore(params: {
             ":pk": `USER#${userId}`,
             ":sk": `HASH#${hash}`,
           },
-        }),
+        })
       );
       const items = result.Items ?? [];
       return items.length > 0 ? fromItem(items[0] as Record<string, unknown>) : null;
@@ -95,7 +95,7 @@ export function createDynamoGrantStore(params: {
             ":pk": `USER#${userId}`,
             ":sk": `REFRESH#${hash}`,
           },
-        }),
+        })
       );
       const items = result.Items ?? [];
       return items.length > 0 ? fromItem(items[0] as Record<string, unknown>) : null;
@@ -110,7 +110,7 @@ export function createDynamoGrantStore(params: {
         new DeleteCommand({
           TableName: tableName,
           Key: { pk: `GRANT#${delegateId}`, sk: "METADATA" },
-        }),
+        })
       );
     },
 
@@ -119,7 +119,7 @@ export function createDynamoGrantStore(params: {
         new GetCommand({
           TableName: tableName,
           Key: { pk: `GRANT#${delegateId}`, sk: "METADATA" },
-        }),
+        })
       );
       if (!existing.Item) throw new Error("Grant not found");
       const grant = fromItem(existing.Item as Record<string, unknown>);

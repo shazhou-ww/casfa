@@ -3,19 +3,17 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { CasFacade } from "@casfa/cas";
-import { createCasFacade } from "@casfa/cas";
-import { createCasStorageFromBuffer } from "@casfa/cas";
-import { encodeDictNode, hashToKey } from "@casfa/core";
+import { createCasFacade, createCasStorageFromBuffer } from "@casfa/cas";
 import type { KeyProvider } from "@casfa/core";
-import { computeSizeFlagByte } from "@casfa/core";
+import { computeSizeFlagByte, encodeDictNode, hashToKey } from "@casfa/core";
 import { createMemoryStorage } from "@casfa/storage-memory";
 import { createMemoryBranchStore } from "../../db/branch-store.ts";
 import {
-  normalizePath,
-  resolvePath,
-  getCurrentRoot,
   ensureEmptyRoot,
+  getCurrentRoot,
+  normalizePath,
   type RootResolverDeps,
+  resolvePath,
 } from "../../services/root-resolver.ts";
 import type { UserAuth, WorkerAuth } from "../../types.ts";
 

@@ -1,4 +1,4 @@
-import type { EnvRef, RawParamValue, ResolvedValue, SecretRef } from "./cell-yaml-schema.js";
+import type { RawParamValue, ResolvedValue } from "./cell-yaml-schema.js";
 import { isEnvRef, isParamRef, isSecretRef } from "./cell-yaml-schema.js";
 
 /**

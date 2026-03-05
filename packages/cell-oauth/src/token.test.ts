@@ -63,7 +63,7 @@ describe("verifyCodeChallenge", () => {
   it("verifies S256 challenge", async () => {
     const verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
     const hash = new Uint8Array(
-      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)),
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))
     );
     const challenge = btoa(String.fromCharCode(...hash))
       .replace(/\+/g, "-")

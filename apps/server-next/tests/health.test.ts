@@ -49,7 +49,7 @@ describe("Health and smoke", () => {
   it("OPTIONS returns CORS headers", async () => {
     const response = await fetch(`${ctx.baseUrl}/api/health`, {
       method: "OPTIONS",
-      headers: { "Origin": "http://localhost:3000", "Access-Control-Request-Method": "GET" },
+      headers: { Origin: "http://localhost:3000", "Access-Control-Request-Method": "GET" },
     });
     expect(response.status).toBe(204);
     const allowOrigin = response.headers.get("Access-Control-Allow-Origin");

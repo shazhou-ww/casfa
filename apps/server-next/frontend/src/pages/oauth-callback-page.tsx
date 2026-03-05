@@ -6,12 +6,14 @@ import { getAndClearCodeVerifier } from "../lib/pkce";
 
 /**
  * OAuth callback: exchange code for tokens via POST /oauth/token, store in authClient, then redirect.
+ * Served at both /oauth/callback and /oauth/callback-complete (Cognito Hosted UI uses callback-complete).
  */
-export function OAuthCallbackPage() {
+export function OAuthCallbackPage(): JSX.Element {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const exchangeStarted = useRef(false);
+  const redirectUri = `${window.location.origin}${window.location.pathname}`;
 
   useEffect(() => {
     if (exchangeStarted.current) return;
@@ -22,7 +24,6 @@ export function OAuthCallbackPage() {
     }
     exchangeStarted.current = true;
     const codeVerifier = getAndClearCodeVerifier();
-    const redirectUri = `${window.location.origin}/oauth/callback`;
 
     const body = new URLSearchParams({
       grant_type: "authorization_code",
@@ -61,7 +62,7 @@ export function OAuthCallbackPage() {
           if (state.startsWith("casfa_return_")) {
             try {
               const stored = sessionStorage.getItem("casfa_oauth_return_url");
-              if (stored && stored.startsWith("/") && !stored.startsWith("//")) {
+              if (stored?.startsWith("/") && !stored.startsWith("//")) {
                 target = stored;
                 sessionStorage.removeItem("casfa_oauth_return_url");
               }
@@ -75,7 +76,7 @@ export function OAuthCallbackPage() {
         navigate(target, { replace: true });
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Sign-in failed"));
-  }, [searchParams, navigate]);
+  }, [searchParams, navigate, redirectUri]);
 
   if (error) {
     return (

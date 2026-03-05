@@ -3,11 +3,13 @@ import { Hono } from "hono";
 
 type OAuthControllerDeps = {
   oauthServer: OAuthServer;
+  /** When set, OAuth post-callback redirect goes to this origin (frontend) instead of issuerUrl (backend). */
+  appOrigin?: string;
 };
 
 export function createOAuthRoutes(deps: OAuthControllerDeps) {
   const routes = new Hono();
-  const { oauthServer } = deps;
+  const { oauthServer, appOrigin } = deps;
 
   routes.get("/.well-known/oauth-authorization-server", (c) => {
     return c.json(oauthServer.getMetadata());
@@ -25,7 +27,7 @@ export function createOAuthRoutes(deps: OAuthControllerDeps) {
         client_name: client.clientName,
         redirect_uris: client.redirectUris,
       },
-      201,
+      201
     );
   });
 
@@ -52,7 +54,12 @@ export function createOAuthRoutes(deps: OAuthControllerDeps) {
         code,
         state: c.req.query("state") ?? "",
       });
-      return c.redirect(result.redirectUrl);
+      let redirectUrl = result.redirectUrl;
+      if (appOrigin) {
+        const u = new URL(redirectUrl);
+        redirectUrl = `${appOrigin}${u.pathname}${u.search}`;
+      }
+      return c.redirect(redirectUrl);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       return c.text(`Token exchange failed: ${msg}`, 400);

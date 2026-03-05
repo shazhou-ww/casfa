@@ -2,12 +2,13 @@
  * Resolve "current root" from auth and path string to node key.
  * User/Delegate: realm root (BranchStore); Worker: branch root.
  */
-import type { AuthContext } from "../types.ts";
+
 import type { CasFacade } from "@casfa/cas";
 import { bytesFromStream, streamFromBytes } from "@casfa/cas";
 import type { CasNode, KeyProvider } from "@casfa/core";
 import { decodeNode, encodeDictNode, hashToKey } from "@casfa/core";
 import type { BranchStore } from "../db/branch-store.ts";
+import type { AuthContext } from "../types.ts";
 
 export type RootResolverDeps = {
   branchStore: BranchStore;
@@ -18,10 +19,7 @@ export type RootResolverDeps = {
 };
 
 /** Create empty dict root in CAS and return its key. */
-export async function ensureEmptyRoot(
-  cas: CasFacade,
-  key: KeyProvider
-): Promise<string> {
+export async function ensureEmptyRoot(cas: CasFacade, key: KeyProvider): Promise<string> {
   const encoded = await encodeDictNode({ children: [], childNames: [] }, key);
   const nodeKey = hashToKey(encoded.hash);
   const exists = await cas.hasNode(nodeKey);

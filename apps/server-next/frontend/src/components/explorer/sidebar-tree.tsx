@@ -7,7 +7,10 @@ import { useExplorerStore } from "../../stores/explorer-store";
 
 function formatPath(path: string): string[] {
   if (!path || path === "/") return [];
-  return path.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
+  return path
+    .replace(/^\/+|\/+$/g, "")
+    .split("/")
+    .filter(Boolean);
 }
 
 const INDENT_PER_LEVEL = 2; // theme spacing units
@@ -25,7 +28,7 @@ export function SidebarTree() {
 
   const handlePathPart = useCallback(
     (index: number) => {
-      const p = "/" + pathParts.slice(0, index + 1).join("/");
+      const p = `/${pathParts.slice(0, index + 1).join("/")}`;
       setPath(p);
     },
     [pathParts, setPath]
@@ -50,7 +53,7 @@ export function SidebarTree() {
         </ListItemButton>
         {pathParts.map((part, i) => (
           <ListItemButton
-            key={i}
+            key={pathParts.slice(0, i + 1).join("/")}
             dense
             selected={i === pathParts.length - 1}
             onClick={() => handlePathPart(i)}
@@ -63,10 +66,7 @@ export function SidebarTree() {
             <ListItemIcon sx={{ minWidth: 28 }}>
               <FolderIcon sx={{ fontSize: 18 }} color="action" />
             </ListItemIcon>
-            <ListItemText
-              primary={part}
-              primaryTypographyProps={{ variant: "body2" }}
-            />
+            <ListItemText primary={part} primaryTypographyProps={{ variant: "body2" }} />
           </ListItemButton>
         ))}
       </Box>

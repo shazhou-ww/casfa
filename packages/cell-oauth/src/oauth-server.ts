@@ -1,5 +1,13 @@
 import type { CognitoConfig, JwtVerifier } from "@casfa/cell-cognito";
 import { exchangeCodeForTokens, refreshCognitoTokens } from "@casfa/cell-cognito";
+import {
+  createDelegateAccessToken,
+  decodeDelegateTokenPayload,
+  generateDelegateId,
+  generateRandomToken,
+  sha256Hex,
+  verifyCodeChallenge,
+} from "./token.ts";
 import type {
   Auth,
   CallbackResult,
@@ -11,14 +19,6 @@ import type {
   RegisteredClient,
   TokenResponse,
 } from "./types.ts";
-import {
-  createDelegateAccessToken,
-  decodeDelegateTokenPayload,
-  generateDelegateId,
-  generateRandomToken,
-  sha256Hex,
-  verifyCodeChallenge,
-} from "./token.ts";
 
 const DEFAULT_ACCESS_TTL_MS = 24 * 60 * 60 * 1000;
 const AUTH_CODE_TTL_MS = 5 * 60 * 1000;
@@ -100,7 +100,7 @@ export type OAuthServer = {
 };
 
 export function createOAuthServer(config: OAuthServerConfig): OAuthServer {
-  const { issuerUrl, cognitoConfig, jwtVerifier, grantStore, permissions } = config;
+  const { issuerUrl, cognitoConfig, jwtVerifier, grantStore } = config;
 
   const pendingCodes = new Map<string, PendingAuthCode>();
   const pendingConsents = new Map<string, PendingConsent>();
@@ -162,7 +162,7 @@ export function createOAuthServer(config: OAuthServerConfig): OAuthServer {
           cc: params.codeChallenge ?? "",
           ccm: params.codeChallengeMethod ?? "",
           cn: clientName,
-        }),
+        })
       );
 
       const query = new URLSearchParams({
@@ -203,7 +203,7 @@ export function createOAuthServer(config: OAuthServerConfig): OAuthServer {
       const cognitoTokens = await exchangeCodeForTokens(
         cognitoConfig,
         params.code,
-        serverCallbackUri,
+        serverCallbackUri
       );
 
       const idTokenParts = cognitoTokens.idToken.split(".");
@@ -335,7 +335,7 @@ export function createOAuthServer(config: OAuthServerConfig): OAuthServer {
           const valid = await verifyCodeChallenge(
             params.codeVerifier,
             pending.codeChallenge,
-            pending.codeChallengeMethod,
+            pending.codeChallengeMethod
           );
           if (!valid) throw new Error("invalid_grant: code_verifier mismatch");
         }

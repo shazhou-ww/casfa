@@ -31,7 +31,10 @@ export function StorageTab() {
   const [error, setError] = useState<string | null>(null);
   const [gcLoading, setGcLoading] = useState(false);
   const [gcDialogOpen, setGcDialogOpen] = useState(false);
-  const [snackbar, setSnackbar] = useState<{ message: string; severity: "success" | "error" } | null>(null);
+  const [snackbar, setSnackbar] = useState<{
+    message: string;
+    severity: "success" | "error";
+  } | null>(null);
 
   const fetchUsage = useCallback(async () => {
     if (!realmId) return;
@@ -88,9 +91,7 @@ export function StorageTab() {
   }, [realmId, fetchUsage]);
 
   if (!realmId) {
-    return (
-      <Typography color="text.secondary">请先登录</Typography>
-    );
+    return <Typography color="text.secondary">请先登录</Typography>;
   }
 
   return (
@@ -128,9 +129,7 @@ export function StorageTab() {
       <Dialog open={gcDialogOpen} onClose={() => !gcLoading && setGcDialogOpen(false)}>
         <DialogTitle>运行 GC</DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            将清理未被引用的节点，可能耗时。确定继续？
-          </DialogContentText>
+          <DialogContentText>将清理未被引用的节点，可能耗时。确定继续？</DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setGcDialogOpen(false)} disabled={gcLoading}>

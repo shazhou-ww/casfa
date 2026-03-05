@@ -3,13 +3,16 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { CasFacade } from "@casfa/cas";
-import { createCasFacade } from "@casfa/cas";
-import { createCasStorageFromBuffer, streamFromBytes } from "@casfa/cas";
-import { encodeDictNode, hashToKey } from "@casfa/core";
+import { createCasFacade, createCasStorageFromBuffer, streamFromBytes } from "@casfa/cas";
 import type { KeyProvider } from "@casfa/core";
-import { computeSizeFlagByte } from "@casfa/core";
-import { tryRemoveEntryAtPath, removeEntryAtPath, ensurePathThenAddOrReplace, addOrReplaceAtPath } from "../../services/tree-mutations.ts";
+import { computeSizeFlagByte, encodeDictNode, hashToKey } from "@casfa/core";
 import { resolvePath } from "../../services/root-resolver.ts";
+import {
+  addOrReplaceAtPath,
+  ensurePathThenAddOrReplace,
+  removeEntryAtPath,
+  tryRemoveEntryAtPath,
+} from "../../services/tree-mutations.ts";
 
 function createKeyProvider(): KeyProvider {
   return {

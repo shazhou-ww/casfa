@@ -23,13 +23,20 @@
     "prepublishOnly": "bun run build"
   },
   "buildConfig": {
-    "bunFlags": ["--target=browser"]
+    "bunFlags": [
+      "--target=browser"
+    ]
   },
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^5.3.0"
   },
-  "files": ["dist", "README.md"],
-  "publishConfig": { "access": "public" },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT"
 }
