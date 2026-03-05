@@ -68,9 +68,7 @@ export function generateNetwork(config: ResolvedConfig): CfnFragment {
     Properties: {
       GroupDescription: `Security group for ${name} Lambda functions`,
       VpcId: { Ref: "LambdaVpc" },
-      SecurityGroupEgress: [
-        { IpProtocol: "-1", CidrIp: "0.0.0.0/0" },
-      ],
+      SecurityGroupEgress: [{ IpProtocol: "-1", CidrIp: "0.0.0.0/0" }],
     },
   };
 

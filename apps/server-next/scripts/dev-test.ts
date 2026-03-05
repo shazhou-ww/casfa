@@ -7,8 +7,8 @@ import { spawn, spawnSync } from "node:child_process";
 import { createConnection } from "node:net";
 import { resolve } from "node:path";
 import { isDynamoDBReady } from "./create-local-tables.ts";
-import { clearS3Bucket, ensureS3Bucket } from "./ensure-s3-bucket.ts";
 import { runSetup } from "./dev-setup.ts";
+import { clearS3Bucket, ensureS3Bucket } from "./ensure-s3-bucket.ts";
 
 const HTTP_PORT = 7111;
 const LAMBDA_PORT = 7113;

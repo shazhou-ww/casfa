@@ -5,11 +5,18 @@ backend:
   entries:
     api:
       handler: backend/lambda.ts
+      app: backend/dev-app.ts
       timeout: 30
       memory: 1024
       routes:
         - /api/*
-        - /oauth/*
+        - /oauth/authorize
+        - /oauth/token
+        - /oauth/register
+        - /oauth/callback
+        - /oauth/consent-info
+        - /oauth/approve
+        - /oauth/deny
         - /.well-known/*
         - /mcp
 

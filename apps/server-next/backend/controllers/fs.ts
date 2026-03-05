@@ -2,21 +2,19 @@
  * FS operations: mkdir, rm, mv, cp.
  * Body and routes per API design §4.4: POST .../fs/mkdir (body: path), etc.
  */
+
+import { streamFromBytes } from "@casfa/cas";
+import { encodeDictNode, hashToKey } from "@casfa/core";
 import type { Context } from "hono";
-import type { Env } from "../types.ts";
 import type { RootResolverDeps } from "../services/root-resolver.ts";
 import {
-  getCurrentRoot,
-  resolvePath,
-  getEffectiveDelegateId,
   ensureEmptyRoot,
+  getCurrentRoot,
+  getEffectiveDelegateId,
+  resolvePath,
 } from "../services/root-resolver.ts";
-import {
-  addOrReplaceAtPath,
-  removeEntryAtPath,
-} from "../services/tree-mutations.ts";
-import { encodeDictNode, hashToKey } from "@casfa/core";
-import { streamFromBytes } from "@casfa/cas";
+import { addOrReplaceAtPath, removeEntryAtPath } from "../services/tree-mutations.ts";
+import type { Env } from "../types.ts";
 
 function hasFileWrite(auth: NonNullable<Env["Variables"]["auth"]>): boolean {
   if (auth.type === "user") return true;
@@ -31,7 +29,7 @@ function getRealmId(auth: NonNullable<Env["Variables"]["auth"]>): string {
 export type FsControllerDeps = RootResolverDeps;
 
 async function parseBodyJson<T>(c: Context<Env>): Promise<T> {
-  return c.req.json<T>().catch(() => ({} as T));
+  return c.req.json<T>().catch(() => ({}) as T);
 }
 
 /** Resolve root for write; for worker with NUL root, create empty root first. */
@@ -56,7 +54,8 @@ async function getRootForWrite(
     await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
   }
   const rootKey = await getCurrentRoot(auth, deps);
-  if (rootKey === null) return { status: 404, message: "Realm not initialized. Open your profile or realm first." };
+  if (rootKey === null)
+    return { status: 404, message: "Realm not initialized. Open your profile or realm first." };
   return { rootKey };
 }
 
@@ -69,7 +68,8 @@ export function createFsController(deps: FsControllerDeps) {
       }
       try {
         const body = await parseBodyJson<{ path: string }>(c);
-        const pathStr = typeof body.path === "string" ? body.path.trim().replace(/^\/+|\/+$/g, "") : "";
+        const pathStr =
+          typeof body.path === "string" ? body.path.trim().replace(/^\/+|\/+$/g, "") : "";
         if (!pathStr) {
           return c.json({ error: "BAD_REQUEST", message: "path required" }, 400);
         }
@@ -79,7 +79,9 @@ export function createFsController(deps: FsControllerDeps) {
         }
         const rootKey = rootResult.rootKey;
         const realmId = getRealmId(auth);
-        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
+        const onNodePut = deps.recordNewKey
+          ? (k: string) => deps.recordNewKey!(realmId, k)
+          : undefined;
         const emptyDict = await encodeDictNode({ children: [], childNames: [] }, deps.key);
         const emptyDictKey = hashToKey(emptyDict.hash);
         await deps.cas.putNode(emptyDictKey, streamFromBytes(emptyDict.bytes));
@@ -125,7 +127,9 @@ export function createFsController(deps: FsControllerDeps) {
         }
         let rootKey = rootResult.rootKey;
         const realmId = getRealmId(auth);
-        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
+        const onNodePut = deps.recordNewKey
+          ? (k: string) => deps.recordNewKey!(realmId, k)
+          : undefined;
         for (const p of paths) {
           const pathStr = p.trim().replace(/^\/+|\/+$/g, "");
           if (!pathStr) continue;
@@ -154,7 +158,8 @@ export function createFsController(deps: FsControllerDeps) {
       }
       try {
         const body = await parseBodyJson<{ from: string; to: string }>(c);
-        const fromStr = typeof body.from === "string" ? body.from.trim().replace(/^\/+|\/+$/g, "") : "";
+        const fromStr =
+          typeof body.from === "string" ? body.from.trim().replace(/^\/+|\/+$/g, "") : "";
         const toStr = typeof body.to === "string" ? body.to.trim().replace(/^\/+|\/+$/g, "") : "";
         if (!fromStr || !toStr) {
           return c.json({ error: "BAD_REQUEST", message: "from and to required" }, 400);
@@ -169,7 +174,9 @@ export function createFsController(deps: FsControllerDeps) {
           return c.json({ error: "NOT_FOUND", message: "from path not found" }, 404);
         }
         const realmId = getRealmId(auth);
-        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
+        const onNodePut = deps.recordNewKey
+          ? (k: string) => deps.recordNewKey!(realmId, k)
+          : undefined;
         rootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, fromStr, onNodePut);
         rootKey = await addOrReplaceAtPath(deps.cas, deps.key, rootKey, toStr, nodeKey, onNodePut);
         const delegateId = await getEffectiveDelegateId(auth, deps);
@@ -195,7 +202,8 @@ export function createFsController(deps: FsControllerDeps) {
       }
       try {
         const body = await parseBodyJson<{ from: string; to: string }>(c);
-        const fromStr = typeof body.from === "string" ? body.from.trim().replace(/^\/+|\/+$/g, "") : "";
+        const fromStr =
+          typeof body.from === "string" ? body.from.trim().replace(/^\/+|\/+$/g, "") : "";
         const toStr = typeof body.to === "string" ? body.to.trim().replace(/^\/+|\/+$/g, "") : "";
         if (!fromStr || !toStr) {
           return c.json({ error: "BAD_REQUEST", message: "from and to required" }, 400);
@@ -210,8 +218,17 @@ export function createFsController(deps: FsControllerDeps) {
           return c.json({ error: "NOT_FOUND", message: "from path not found" }, 404);
         }
         const realmId = getRealmId(auth);
-        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
-        const newRootKey = await addOrReplaceAtPath(deps.cas, deps.key, rootKey, toStr, nodeKey, onNodePut);
+        const onNodePut = deps.recordNewKey
+          ? (k: string) => deps.recordNewKey!(realmId, k)
+          : undefined;
+        const newRootKey = await addOrReplaceAtPath(
+          deps.cas,
+          deps.key,
+          rootKey,
+          toStr,
+          nodeKey,
+          onNodePut
+        );
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
         return c.json({ from: fromStr, to: toStr }, 201);

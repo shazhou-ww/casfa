@@ -24,7 +24,7 @@ async function hasMatchingFiles(cwd: string, pattern: string): Promise<boolean> 
 async function runBunTest(
   cwd: string,
   pattern: string,
-  env?: Record<string, string | undefined>,
+  env?: Record<string, string | undefined>
 ): Promise<number> {
   if (!(await hasMatchingFiles(cwd, pattern))) {
     console.log("  No test files found, skipping");

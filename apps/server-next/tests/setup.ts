@@ -4,22 +4,23 @@
  * When BASE_URL is not set: in-process server with memory stores, cell-oauth with memory grant store.
  * Paths: /mcp, /api/delegates, /oauth/* (OAuth flow).
  */
+process.env.NODE_ENV = "test";
 process.env.DYNAMODB_ENDPOINT ??= "http://localhost:7102";
 process.env.S3_ENDPOINT ??= "http://localhost:7104";
 process.env.S3_BUCKET ??= "casfa-next-local-test-blob";
 process.env.STAGE ??= "local-test";
 
-import * as jose from "jose";
+import { createMockJwtVerifier } from "@casfa/cell-cognito";
 import type { DelegateGrant, DelegateGrantStore } from "@casfa/cell-oauth";
 import { createOAuthServer } from "@casfa/cell-oauth";
-import { createMockJwtVerifier } from "@casfa/cell-cognito";
-import { loadConfig } from "../backend/config.ts";
+import * as jose from "jose";
 import { createApp } from "../backend/app.ts";
-import { createCasFacade } from "../backend/services/cas.ts";
+import { loadConfig } from "../backend/config.ts";
+import { createMemoryBranchStore } from "../backend/db/branch-store.ts";
 import { createMemoryDerivedDataStore } from "../backend/db/derived-data.ts";
 import { createMemoryRealmUsageStore } from "../backend/db/realm-usage-store.ts";
 import { createMemoryUserSettingsStore } from "../backend/db/user-settings.ts";
-import { createMemoryBranchStore } from "../backend/db/branch-store.ts";
+import { createCasFacade } from "../backend/services/cas.ts";
 
 function createMemoryGrantStore(): DelegateGrantStore {
   const grants = new Map<string, DelegateGrant>();
@@ -31,10 +32,14 @@ function createMemoryGrantStore(): DelegateGrantStore {
       return grants.get(delegateId) ?? null;
     },
     async getByAccessTokenHash(userId, hash) {
-      return [...grants.values()].find((g) => g.userId === userId && g.accessTokenHash === hash) ?? null;
+      return (
+        [...grants.values()].find((g) => g.userId === userId && g.accessTokenHash === hash) ?? null
+      );
     },
     async getByRefreshTokenHash(userId, hash) {
-      return [...grants.values()].find((g) => g.userId === userId && g.refreshTokenHash === hash) ?? null;
+      return (
+        [...grants.values()].find((g) => g.userId === userId && g.refreshTokenHash === hash) ?? null
+      );
     },
     async insert(grant) {
       grants.set(grant.delegateId, grant);
@@ -59,12 +64,7 @@ export type TestServer = {
 
 export type TestHelpers = {
   createUserToken(realmId: string): Promise<string>;
-  authRequest(
-    token: string,
-    method: string,
-    path: string,
-    body?: unknown
-  ): Promise<Response>;
+  authRequest(token: string, method: string, path: string, body?: unknown): Promise<Response>;
   assignDelegate(
     userToken: string,
     realmId: string,
@@ -125,9 +125,7 @@ function createHelpers(url: string): TestHelpers {
       expiresAt?: number;
     };
     if (!res.ok) {
-      throw new Error(
-        `assignDelegate failed: ${res.status} ${JSON.stringify(data)}`
-      );
+      throw new Error(`assignDelegate failed: ${res.status} ${JSON.stringify(data)}`);
     }
     if (!data.accessToken || !data.delegateId) {
       throw new Error(`assignDelegate missing accessToken/delegateId: ${JSON.stringify(data)}`);
@@ -144,21 +142,14 @@ function createHelpers(url: string): TestHelpers {
     realmId: string,
     body: { mountPath: string; ttl?: number; parentBranchId?: string }
   ): Promise<{ branchId: string; accessToken: string; expiresAt?: number }> => {
-    const res = await authRequest(
-      userToken,
-      "POST",
-      `/api/realm/${realmId}/branches`,
-      body
-    );
+    const res = await authRequest(userToken, "POST", `/api/realm/${realmId}/branches`, body);
     const data = (await res.json()) as {
       branchId?: string;
       accessToken?: string;
       expiresAt?: number;
     };
     if (!res.ok) {
-      throw new Error(
-        `createBranch failed: ${res.status} ${JSON.stringify(data)}`
-      );
+      throw new Error(`createBranch failed: ${res.status} ${JSON.stringify(data)}`);
     }
     if (!data.branchId || !data.accessToken) {
       throw new Error(`createBranch missing branchId/accessToken: ${JSON.stringify(data)}`);
@@ -170,11 +161,7 @@ function createHelpers(url: string): TestHelpers {
     };
   };
 
-  const mcpRequest = async (
-    token: string,
-    method: string,
-    params?: unknown
-  ): Promise<Response> => {
+  const mcpRequest = async (token: string, method: string, params?: unknown): Promise<Response> => {
     return fetch(`${url}/mcp`, {
       method: "POST",
       headers: {

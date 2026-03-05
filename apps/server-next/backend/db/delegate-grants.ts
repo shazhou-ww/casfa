@@ -78,10 +78,7 @@ export function createMemoryDelegateGrantStore(): DelegateGrantStore {
       byId.set(delegateId, updated);
       byRealmAndHash.set(realmHashKey(updated.realmId, updated.accessTokenHash), updated);
       if (updated.refreshTokenHash) {
-        byRealmAndRefreshHash.set(
-          realmHashKey(updated.realmId, updated.refreshTokenHash),
-          updated
-        );
+        byRealmAndRefreshHash.set(realmHashKey(updated.realmId, updated.refreshTokenHash), updated);
       }
     },
   };

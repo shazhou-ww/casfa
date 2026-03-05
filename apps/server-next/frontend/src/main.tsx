@@ -1,9 +1,4 @@
-import {
-  CssBaseline,
-  createTheme,
-  type Shadows,
-  ThemeProvider,
-} from "@mui/material";
+import { CssBaseline, createTheme, type Shadows, ThemeProvider } from "@mui/material";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
@@ -14,11 +9,26 @@ const shadows: Shadows = [
   "none", // 1
   "none", // 2
   "0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06)", // 3
-  "none", "none", "none", "none", // 4-7
+  "none",
+  "none",
+  "none",
+  "none", // 4-7
   "0 4px 16px rgba(0,0,0,0.12), 0 2px 4px rgba(0,0,0,0.08)", // 8
-  "none", "none", "none", "none", "none", "none", "none", // 9-15
+  "none",
+  "none",
+  "none",
+  "none",
+  "none",
+  "none",
+  "none", // 9-15
   "0 8px 32px rgba(0,0,0,0.14), 0 4px 8px rgba(0,0,0,0.10)", // 16
-  "none", "none", "none", "none", "none", "none", "none", // 17-23
+  "none",
+  "none",
+  "none",
+  "none",
+  "none",
+  "none",
+  "none", // 17-23
   "0 12px 48px rgba(0,0,0,0.18), 0 6px 12px rgba(0,0,0,0.12)", // 24
 ];
 
@@ -53,8 +63,7 @@ const theme = createTheme({
   shadows,
   shape: { borderRadius: 8 },
   typography: {
-    fontFamily:
-      'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     fontSize: 14,
     h4: { fontWeight: 700, letterSpacing: "-0.02em", fontSize: "1.5rem" },
     h5: { fontWeight: 600, letterSpacing: "-0.01em", fontSize: "1.25rem" },

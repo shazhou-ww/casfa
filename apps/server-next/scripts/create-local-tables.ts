@@ -57,11 +57,8 @@ export async function isDynamoDBReady(endpoint: string): Promise<boolean> {
   }
 }
 
-async function createTable(
-  client: DynamoDBClient,
-  input: CreateTableCommandInput
-): Promise<void> {
-  const name = input.TableName!;
+async function createTable(client: DynamoDBClient, input: CreateTableCommandInput): Promise<void> {
+  const _name = input.TableName!;
   try {
     await client.send(new CreateTableCommand(input));
   } catch (err: unknown) {
@@ -78,10 +75,7 @@ async function createTable(
   }
 }
 
-export async function ensureTables(
-  endpoint: string,
-  stage: string
-): Promise<void> {
+export async function ensureTables(endpoint: string, stage: string): Promise<void> {
   const client = createClient(endpoint);
   const delegatesTable = `casfa-next-${stage}-delegates`;
   const grantsTable = `casfa-next-${stage}-grants`;

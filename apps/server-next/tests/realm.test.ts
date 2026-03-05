@@ -7,7 +7,7 @@ import { createE2EContext } from "./setup.ts";
 
 describe("Realm", () => {
   const ctx = createE2EContext();
-  const realmId = "e2e-" + crypto.randomUUID();
+  const realmId = `e2e-${crypto.randomUUID()}`;
 
   beforeAll(async () => {
     await ctx.ready();
@@ -19,11 +19,7 @@ describe("Realm", () => {
 
   it("GET realm info returns realmId and counts", async () => {
     const token = await ctx.helpers.createUserToken(realmId);
-    const res = await ctx.helpers.authRequest(
-      token,
-      "GET",
-      `/api/realm/${realmId}`
-    );
+    const res = await ctx.helpers.authRequest(token, "GET", `/api/realm/${realmId}`);
     expect(res.status).toBe(200);
     const data = (await res.json()) as {
       realmId?: string;
@@ -40,11 +36,7 @@ describe("Realm", () => {
 
   it("GET realm usage returns nodeCount and totalBytes", async () => {
     const token = await ctx.helpers.createUserToken(realmId);
-    const res = await ctx.helpers.authRequest(
-      token,
-      "GET",
-      `/api/realm/${realmId}/usage`
-    );
+    const res = await ctx.helpers.authRequest(token, "GET", `/api/realm/${realmId}/usage`);
     expect(res.status).toBe(200);
     const data = (await res.json()) as { nodeCount?: number; totalBytes?: number };
     expect(typeof data.nodeCount).toBe("number");
@@ -54,12 +46,9 @@ describe("Realm", () => {
   it("POST realm gc returns gc true and cutOffTime", async () => {
     const token = await ctx.helpers.createUserToken(realmId);
     const cutOffTime = Date.now() - 3600_000;
-    const res = await ctx.helpers.authRequest(
-      token,
-      "POST",
-      `/api/realm/${realmId}/gc`,
-      { cutOffTime }
-    );
+    const res = await ctx.helpers.authRequest(token, "POST", `/api/realm/${realmId}/gc`, {
+      cutOffTime,
+    });
     expect(res.status).toBe(200);
     const data = (await res.json()) as { gc?: boolean; cutOffTime?: number };
     expect(data.gc).toBe(true);

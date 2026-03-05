@@ -1,5 +1,4 @@
 import {
-  Box,
   Button,
   Dialog,
   DialogActions,
@@ -10,8 +9,8 @@ import {
   Typography,
 } from "@mui/material";
 import { useState } from "react";
-import type { CreateDelegateResponse } from "../../../types/delegate";
 import { useDelegatesStore } from "../../../stores/delegates-store";
+import type { CreateDelegateResponse } from "../../../types/delegate";
 
 const TTL_OPTIONS = [
   { label: "1 hour", value: 3600 },
@@ -26,11 +25,7 @@ type CreateDelegateDialogProps = {
   onCreated: (response: CreateDelegateResponse) => void;
 };
 
-export function CreateDelegateDialog({
-  open,
-  onClose,
-  onCreated,
-}: CreateDelegateDialogProps) {
+export function CreateDelegateDialog({ open, onClose, onCreated }: CreateDelegateDialogProps) {
   const [name, setName] = useState("");
   const [tokenTtl, setTokenTtl] = useState(86400);
   const [submitting, setSubmitting] = useState(false);

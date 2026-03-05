@@ -3,18 +3,11 @@ import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import LogoutIcon from "@mui/icons-material/Logout";
 import SettingsIcon from "@mui/icons-material/Settings";
 import StorageIcon from "@mui/icons-material/Storage";
-import {
-  Box,
-  Button,
-  Menu,
-  MenuItem,
-  Snackbar,
-  Typography,
-} from "@mui/material";
+import { Box, Button, Menu, MenuItem, Snackbar, Typography } from "@mui/material";
 import { useCallback, useState } from "react";
-import { Link, useNavigate, Outlet } from "react-router-dom";
-import { SidebarTree } from "./explorer/sidebar-tree";
+import { Link, Outlet, useNavigate } from "react-router-dom";
 import { authClient, useAuth } from "../lib/auth";
+import { SidebarTree } from "./explorer/sidebar-tree";
 
 const SIDEBAR_WIDTH = 260;
 

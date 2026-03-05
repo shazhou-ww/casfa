@@ -4,20 +4,17 @@
  */
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
-import type { Env } from "../../types.ts";
-import { createAuthMiddleware } from "../../middleware/auth.ts";
 import { createMeController } from "../../controllers/me.ts";
-import { createMemoryDelegateGrantStore } from "../../db/delegate-grants.ts";
 import { createMemoryUserSettingsStore } from "../../db/user-settings.ts";
+import { createAuthMiddleware } from "../../middleware/auth.ts";
+import type { Env } from "../../types.ts";
 
 describe("GET /api/me", () => {
   it("returns 401 when Authorization header is missing", async () => {
     const userSettingsStore = createMemoryUserSettingsStore();
     const auth = createAuthMiddleware();
     const me = createMeController({ userSettingsStore });
-    const app = new Hono<Env>()
-      .use("/api/me", auth)
-      .get("/api/me", (c) => me.get(c));
+    const app = new Hono<Env>().use("/api/me", auth).get("/api/me", (c) => me.get(c));
     const res = await app.request("http://localhost/api/me");
     expect(res.status).toBe(401);
   });
@@ -37,7 +34,12 @@ describe("GET /api/me", () => {
       headers: { Authorization: "Bearer any" },
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { userId: string; email?: string; name?: string; picture?: string };
+    const body = (await res.json()) as {
+      userId: string;
+      email?: string;
+      name?: string;
+      picture?: string;
+    };
     expect(body.userId).toBe("user-123");
   });
 

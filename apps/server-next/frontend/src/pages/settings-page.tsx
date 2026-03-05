@@ -1,15 +1,24 @@
 import KeyIcon from "@mui/icons-material/Key";
 import StorageIcon from "@mui/icons-material/Storage";
-import { Alert, Box, List, ListItemButton, ListItemIcon, ListItemText, Snackbar, Typography } from "@mui/material";
+import {
+  Alert,
+  Box,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Snackbar,
+  Typography,
+} from "@mui/material";
 import { useCallback, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { CreateDelegateDialog } from "../components/settings/delegates/create-delegate-dialog";
-import { DelegatesTab } from "../components/settings/delegates-tab";
 import { RevokeDelegateDialog } from "../components/settings/delegates/revoke-dialog";
-import { StorageTab } from "../components/settings/storage-tab";
 import { TokenDisplay } from "../components/settings/delegates/token-display";
-import type { CreateDelegateResponse, DelegateListItem } from "../types/delegate";
+import { DelegatesTab } from "../components/settings/delegates-tab";
+import { StorageTab } from "../components/settings/storage-tab";
 import { useDelegatesStore } from "../stores/delegates-store";
+import type { CreateDelegateResponse, DelegateListItem } from "../types/delegate";
 
 const DELEGATES_TAB = "delegates";
 const STORAGE_TAB = "storage";
@@ -28,7 +37,11 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const pathPart = location.pathname.replace(/^\/settings\/?/, "") || DELEGATES_TAB;
   const tabValue =
-    pathPart === "storage" ? STORAGE_TAB : pathPart === "delegates" || pathPart === "" ? DELEGATES_TAB : DELEGATES_TAB;
+    pathPart === "storage"
+      ? STORAGE_TAB
+      : pathPart === "delegates" || pathPart === ""
+        ? DELEGATES_TAB
+        : DELEGATES_TAB;
 
   const [createOpen, setCreateOpen] = useState(false);
   const [tokenData, setTokenData] = useState<TokenData | null>(null);
@@ -36,7 +49,10 @@ export function SettingsPage() {
     delegateId: string;
     name?: string;
   } | null>(null);
-  const [snackbar, setSnackbar] = useState<{ message: string; severity: "success" | "info" } | null>(null);
+  const [snackbar, setSnackbar] = useState<{
+    message: string;
+    severity: "success" | "info";
+  } | null>(null);
 
   const fetchDelegates = useDelegatesStore((s) => s.fetchDelegates);
 
@@ -127,10 +143,7 @@ export function SettingsPage() {
         <Box sx={{ flex: 1, p: 3, pt: 2, overflow: "auto" }}>
           {tabValue === STORAGE_TAB && <StorageTab />}
           {tabValue === DELEGATES_TAB && (
-            <DelegatesTab
-              onCreateClick={handleCreateClick}
-              onRevokeClick={handleRevokeClick}
-            />
+            <DelegatesTab onCreateClick={handleCreateClick} onRevokeClick={handleRevokeClick} />
           )}
         </Box>
       </Box>
@@ -141,13 +154,7 @@ export function SettingsPage() {
         onCreated={handleCreated}
       />
 
-      {tokenData && (
-        <TokenDisplay
-          open={!!tokenData}
-          onClose={handleCloseToken}
-          data={tokenData}
-        />
-      )}
+      {tokenData && <TokenDisplay open={!!tokenData} onClose={handleCloseToken} data={tokenData} />}
 
       {revokeTarget && (
         <RevokeDelegateDialog

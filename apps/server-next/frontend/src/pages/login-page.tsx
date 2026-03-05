@@ -1,6 +1,6 @@
 import GoogleIcon from "@mui/icons-material/Google";
-import MicrosoftIcon from "@mui/icons-material/Window";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import MicrosoftIcon from "@mui/icons-material/Window";
 import {
   Alert,
   Box,
@@ -47,7 +47,7 @@ export function LoginPage() {
       if (at === "cognito") {
         setConfig({
           authorizeUrl: `/oauth/authorize?redirect_uri=${encodeURIComponent(
-            `${window.location.origin}/oauth/callback`
+            `${window.location.origin}/oauth/callback-complete`
           )}&response_type=code&scope=openid+email+profile`,
         });
       }
@@ -68,12 +68,12 @@ export function LoginPage() {
   const buildAuthorizeUrl = (identityProvider: string) => {
     if (!config) return "#";
     const params = new URLSearchParams({
-      redirect_uri: `${window.location.origin}/oauth/callback`,
+      redirect_uri: `${window.location.origin}/oauth/callback-complete`,
       response_type: "code",
       scope: "openid email profile",
       identity_provider: identityProvider,
     });
-    if (returnUrl && returnUrl.startsWith("/")) {
+    if (returnUrl?.startsWith("/")) {
       if (returnUrl.length > 200) {
         const stateToken = COGNITO_STATE_PREFIX + Math.random().toString(36).slice(2, 14);
         try {
@@ -147,7 +147,12 @@ export function LoginPage() {
               severity="error"
               sx={{ mb: 2 }}
               action={
-                <Button color="inherit" size="small" startIcon={<RefreshIcon />} onClick={loadConfig}>
+                <Button
+                  color="inherit"
+                  size="small"
+                  startIcon={<RefreshIcon />}
+                  onClick={loadConfig}
+                >
                   重试
                 </Button>
               }

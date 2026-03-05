@@ -3,16 +3,13 @@
  * Realm root branch is stored on the realm entity: pk=REALM#realmId, sk=REALM, rootBranchId.
  * Branch rows: PK=BRANCH#branchId, SK=METADATA|ROOT; GSI1: gsi1pk=REALM#realmId, gsi1sk=PARENT#parentId.
  */
+import { DynamoDBClient, type DynamoDBClientConfig } from "@aws-sdk/client-dynamodb";
 import {
-  DynamoDBClient,
-  type DynamoDBClientConfig,
-} from "@aws-sdk/client-dynamodb";
-import {
+  DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
   QueryCommand,
-  DeleteCommand,
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type { Branch } from "../types/branch.ts";
@@ -61,8 +58,8 @@ function itemToBranch(item: Record<string, unknown>): Branch {
   const lifetime = item.lifetime as "limited" | "unlimited" | undefined;
   const expiresAt =
     lifetime === "limited"
-      ? (item.expiresAt as number) ?? 0
-      : (item.accessExpiresAt as number) ?? 0;
+      ? ((item.expiresAt as number) ?? 0)
+      : ((item.accessExpiresAt as number) ?? 0);
   return {
     branchId: (item.branchId ?? item.delegateId) as string,
     realmId: item.realmId as string,
@@ -85,9 +82,7 @@ function branchToItem(branch: Branch): Record<string, unknown> {
   };
 }
 
-export function createDynamoBranchStore(
-  config: DynamoBranchStoreConfig
-): BranchStore {
+export function createDynamoBranchStore(config: DynamoBranchStoreConfig): BranchStore {
   const client = new DynamoDBClient(config.clientConfig ?? {});
   const doc = DynamoDBDocumentClient.from(client);
   const tableName = config.tableName;
@@ -340,14 +335,10 @@ export function createDynamoBranchStore(
         const d = item as Record<string, unknown>;
         if (d.parentId === null || d.parentId === undefined) continue;
         const exp =
-          d.lifetime === "limited"
-            ? (d.expiresAt as number)
-            : (d.accessExpiresAt as number);
+          d.lifetime === "limited" ? (d.expiresAt as number) : (d.accessExpiresAt as number);
         if (exp < expiredBefore) {
           const branchId =
-            (d.branchId as string) ??
-            (d.delegateId as string) ??
-            pkToBranchId(d.pk as string);
+            (d.branchId as string) ?? (d.delegateId as string) ?? pkToBranchId(d.pk as string);
           await this.removeBranch(branchId);
           count++;
         }

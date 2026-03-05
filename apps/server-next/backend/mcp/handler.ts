@@ -2,22 +2,23 @@
  * MCP (Model Context Protocol) handler for server-next.
  * POST /api/mcp with Bearer auth; uses same root-resolver, files, branches logic as REST.
  */
+
+import { streamFromBytes } from "@casfa/cas";
+import { encodeDictNode, encodeFileNode, hashToKey } from "@casfa/core";
 import type { Context } from "hono";
-import type { Env } from "../types.ts";
+import type { ServerConfig } from "../config.ts";
+import { completeBranch } from "../services/branch-complete.ts";
 import type { RootResolverDeps } from "../services/root-resolver.ts";
 import {
-  getCurrentRoot,
-  resolvePath,
-  getNodeDecoded,
-  getEffectiveDelegateId,
   ensureEmptyRoot,
+  getCurrentRoot,
+  getEffectiveDelegateId,
+  getNodeDecoded,
+  resolvePath,
 } from "../services/root-resolver.ts";
 import { addOrReplaceAtPath, removeEntryAtPath } from "../services/tree-mutations.ts";
-import { completeBranch } from "../services/branch-complete.ts";
+import type { Env } from "../types.ts";
 import { prependUtf8BomIfText } from "../utils/utf8-bom.ts";
-import { encodeDictNode, encodeFileNode, hashToKey } from "@casfa/core";
-import { streamFromBytes } from "@casfa/cas";
-import type { ServerConfig } from "../config.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,12 +47,7 @@ function mcpSuccess(id: string | number, result: unknown): McpResponse {
   return { jsonrpc: "2.0", id, result };
 }
 
-function mcpError(
-  id: string | number,
-  code: number,
-  message: string,
-  data?: unknown
-): McpResponse {
+function mcpError(id: string | number, code: number, message: string, data?: unknown): McpResponse {
   return { jsonrpc: "2.0", id, error: { code, message, data } };
 }
 
@@ -100,7 +96,8 @@ async function getRootForMcpWrite(
     await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
   }
   const rootKey = await getCurrentRoot(auth, deps);
-  if (rootKey === null) return { error: "Realm not initialized. Open your profile or realm first." };
+  if (rootKey === null)
+    return { error: "Realm not initialized. Open your profile or realm first." };
   return { rootKey };
 }
 
@@ -127,7 +124,10 @@ const MCP_TOOLS = [
       properties: {
         mountPath: { type: "string" as const, description: "Mount path for the branch" },
         ttl: { type: "number" as const, description: "Optional TTL in seconds" },
-        parentBranchId: { type: "string" as const, description: "Optional parent branch (Worker only)" },
+        parentBranchId: {
+          type: "string" as const,
+          description: "Optional parent branch (Worker only)",
+        },
       },
       required: ["mountPath"] as string[],
     },
@@ -144,11 +144,15 @@ const MCP_TOOLS = [
   },
   {
     name: "fs_mkdir",
-    description: "Create a directory at the given path. Parent path must exist. Required for creating a path before branch_create (e.g. create 'images' then create branch with mountPath 'images').",
+    description:
+      "Create a directory at the given path. Parent path must exist. Required for creating a path before branch_create (e.g. create 'images' then create branch with mountPath 'images').",
     inputSchema: {
       type: "object" as const,
       properties: {
-        path: { type: "string" as const, description: "Directory path to create (e.g. 'images' or 'output/generated')" },
+        path: {
+          type: "string" as const,
+          description: "Directory path to create (e.g. 'images' or 'output/generated')",
+        },
       },
       required: ["path"] as string[],
     },
@@ -267,7 +271,7 @@ async function handleToolsCall(
   auth: NonNullable<Env["Variables"]["auth"]>,
   deps: RootResolverDeps & { config: ServerConfig }
 ): Promise<McpResponse> {
-  const pathStr = typeof args.path === "string" ? args.path.replace(/^\/+|\/+$/g, "") : "";
+  const _pathStr = typeof args.path === "string" ? args.path.replace(/^\/+|\/+$/g, "") : "";
 
   try {
     if (name === "branches_list") {
@@ -314,13 +318,20 @@ async function handleToolsCall(
     }
 
     if (name === "branch_create") {
-      const mountPath = typeof args.mountPath === "string" ? args.mountPath.trim().replace(/^\/+|\/+$/g, "") : "";
+      const mountPath =
+        typeof args.mountPath === "string" ? args.mountPath.trim().replace(/^\/+|\/+$/g, "") : "";
       if (!mountPath) {
         return mcpError(id, MCP_INVALID_PARAMS, "mountPath required");
       }
       const ttlSec = typeof args.ttl === "number" && args.ttl > 0 ? args.ttl : undefined;
-      const ttlMs = ttlSec != null ? Math.min(ttlSec * 1000, deps.config.auth.maxBranchTtlMs ?? 3600_000) : 3600_000;
-      const parentBranchId = typeof args.parentBranchId === "string" ? args.parentBranchId.trim() || undefined : undefined;
+      const ttlMs =
+        ttlSec != null
+          ? Math.min(ttlSec * 1000, deps.config.auth.maxBranchTtlMs ?? 3600_000)
+          : 3600_000;
+      const parentBranchId =
+        typeof args.parentBranchId === "string"
+          ? args.parentBranchId.trim() || undefined
+          : undefined;
       const realmId = getRealmId(auth);
 
       if (!parentBranchId) {
@@ -333,7 +344,11 @@ async function handleToolsCall(
         }
         const rootKey = await deps.branchStore.getRealmRoot(realmId);
         if (rootKey === null) {
-          return mcpError(id, MCP_INVALID_PARAMS, "Realm not initialized. Open profile or realm first.");
+          return mcpError(
+            id,
+            MCP_INVALID_PARAMS,
+            "Realm not initialized. Open profile or realm first."
+          );
         }
         const rootRecord = await deps.branchStore.getRealmRootRecord(realmId);
         if (!rootRecord) return mcpError(id, MCP_INVALID_PARAMS, "Realm root not found");
@@ -414,7 +429,9 @@ async function handleToolsCall(
       }
       try {
         const result = await completeBranch(auth.branchId, deps);
-        return mcpSuccess(id, { content: [{ type: "text" as const, text: JSON.stringify(result) }] });
+        return mcpSuccess(id, {
+          content: [{ type: "text" as const, text: JSON.stringify(result) }],
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return mcpError(id, MCP_INVALID_PARAMS, message);
@@ -425,7 +442,12 @@ async function handleToolsCall(
       if (!hasFileWrite(auth)) {
         return mcpError(id, MCP_INVALID_PARAMS, "file_write required");
       }
-      const pathStr = typeof args.path === "string" ? String(args.path).trim().replace(/^\/+|\/+$/g, "") : "";
+      const pathStr =
+        typeof args.path === "string"
+          ? String(args.path)
+              .trim()
+              .replace(/^\/+|\/+$/g, "")
+          : "";
       if (!pathStr) {
         return mcpError(id, MCP_INVALID_PARAMS, "path required");
       }
@@ -436,7 +458,9 @@ async function handleToolsCall(
       const rootKey = rootResult.rootKey;
       try {
         const realmId = getRealmId(auth);
-        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
+        const onNodePut = deps.recordNewKey
+          ? (k: string) => deps.recordNewKey!(realmId, k)
+          : undefined;
         const emptyDict = await encodeDictNode({ children: [], childNames: [] }, deps.key);
         const emptyDictKey = hashToKey(emptyDict.hash);
         await deps.cas.putNode(emptyDictKey, streamFromBytes(emptyDict.bytes));
@@ -471,7 +495,12 @@ async function handleToolsCall(
       if (!hasFileWrite(auth)) {
         return mcpError(id, MCP_INVALID_PARAMS, "file_write required");
       }
-      const pathStr = typeof args.path === "string" ? String(args.path).trim().replace(/^\/+|\/+$/g, "") : "";
+      const pathStr =
+        typeof args.path === "string"
+          ? String(args.path)
+              .trim()
+              .replace(/^\/+|\/+$/g, "")
+          : "";
       if (!pathStr) {
         return mcpError(id, MCP_INVALID_PARAMS, "path required");
       }
@@ -482,7 +511,9 @@ async function handleToolsCall(
       const rootKey = rootResult.rootKey;
       try {
         const realmId = getRealmId(auth);
-        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
+        const onNodePut = deps.recordNewKey
+          ? (k: string) => deps.recordNewKey!(realmId, k)
+          : undefined;
         const newRootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, pathStr, onNodePut);
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
@@ -511,8 +542,18 @@ async function handleToolsCall(
         return mcpError(id, MCP_INVALID_PARAMS, rootResult.error);
       }
       const rootKey = rootResult.rootKey;
-      const fromStr = typeof args.from === "string" ? String(args.from).trim().replace(/^\/+|\/+$/g, "") : "";
-      const toStr = typeof args.to === "string" ? String(args.to).trim().replace(/^\/+|\/+$/g, "") : "";
+      const fromStr =
+        typeof args.from === "string"
+          ? String(args.from)
+              .trim()
+              .replace(/^\/+|\/+$/g, "")
+          : "";
+      const toStr =
+        typeof args.to === "string"
+          ? String(args.to)
+              .trim()
+              .replace(/^\/+|\/+$/g, "")
+          : "";
       if (!fromStr || !toStr) {
         return mcpError(id, MCP_INVALID_PARAMS, "from and to required");
       }
@@ -522,9 +563,18 @@ async function handleToolsCall(
           return mcpError(id, MCP_INVALID_PARAMS, "from path not found");
         }
         const realmId = getRealmId(auth);
-        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
+        const onNodePut = deps.recordNewKey
+          ? (k: string) => deps.recordNewKey!(realmId, k)
+          : undefined;
         let newRootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, fromStr, onNodePut);
-        newRootKey = await addOrReplaceAtPath(deps.cas, deps.key, newRootKey, toStr, nodeKey, onNodePut);
+        newRootKey = await addOrReplaceAtPath(
+          deps.cas,
+          deps.key,
+          newRootKey,
+          toStr,
+          nodeKey,
+          onNodePut
+        );
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
         return mcpSuccess(id, {
@@ -552,8 +602,18 @@ async function handleToolsCall(
         return mcpError(id, MCP_INVALID_PARAMS, rootResult.error);
       }
       const rootKey = rootResult.rootKey;
-      const fromStr = typeof args.from === "string" ? String(args.from).trim().replace(/^\/+|\/+$/g, "") : "";
-      const toStr = typeof args.to === "string" ? String(args.to).trim().replace(/^\/+|\/+$/g, "") : "";
+      const fromStr =
+        typeof args.from === "string"
+          ? String(args.from)
+              .trim()
+              .replace(/^\/+|\/+$/g, "")
+          : "";
+      const toStr =
+        typeof args.to === "string"
+          ? String(args.to)
+              .trim()
+              .replace(/^\/+|\/+$/g, "")
+          : "";
       if (!fromStr || !toStr) {
         return mcpError(id, MCP_INVALID_PARAMS, "from and to required");
       }
@@ -563,8 +623,17 @@ async function handleToolsCall(
           return mcpError(id, MCP_INVALID_PARAMS, "from path not found");
         }
         const realmId = getRealmId(auth);
-        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
-        const newRootKey = await addOrReplaceAtPath(deps.cas, deps.key, rootKey, toStr, nodeKey, onNodePut);
+        const onNodePut = deps.recordNewKey
+          ? (k: string) => deps.recordNewKey!(realmId, k)
+          : undefined;
+        const newRootKey = await addOrReplaceAtPath(
+          deps.cas,
+          deps.key,
+          rootKey,
+          toStr,
+          nodeKey,
+          onNodePut
+        );
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
         return mcpSuccess(id, {
@@ -587,7 +656,12 @@ async function handleToolsCall(
       if (!hasFileWrite(auth)) {
         return mcpError(id, MCP_INVALID_PARAMS, "file_write required");
       }
-      const pathStr = typeof args.path === "string" ? String(args.path).trim().replace(/^\/+|\/+$/g, "") : "";
+      const pathStr =
+        typeof args.path === "string"
+          ? String(args.path)
+              .trim()
+              .replace(/^\/+|\/+$/g, "")
+          : "";
       if (!pathStr) {
         return mcpError(id, MCP_INVALID_PARAMS, "path required");
       }
@@ -616,7 +690,9 @@ async function handleToolsCall(
         const fileNodeKey = hashToKey(encoded.hash);
         await deps.cas.putNode(fileNodeKey, streamFromBytes(encoded.bytes));
         deps.recordNewKey?.(realmId, fileNodeKey);
-        const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
+        const onNodePut = deps.recordNewKey
+          ? (k: string) => deps.recordNewKey!(realmId, k)
+          : undefined;
         const newRootKey = await addOrReplaceAtPath(
           deps.cas,
           deps.key,
@@ -653,16 +729,25 @@ async function handleToolsCall(
       const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
       await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
     }
-    const pathStr = typeof args.path === "string" ? String(args.path).trim().replace(/^\/+|\/+$/g, "") : "";
-    let rootKey = await getCurrentRoot(auth, deps);
+    const pathStr =
+      typeof args.path === "string"
+        ? String(args.path)
+            .trim()
+            .replace(/^\/+|\/+$/g, "")
+        : "";
+    const rootKey = await getCurrentRoot(auth, deps);
     if (rootKey === null) {
       if (auth.type === "worker") {
         if (pathStr !== "") return mcpError(id, MCP_INVALID_PARAMS, "Path not found");
         if (name === "fs_ls") {
-          return mcpSuccess(id, { content: [{ type: "text" as const, text: JSON.stringify({ entries: [] }) }] });
+          return mcpSuccess(id, {
+            content: [{ type: "text" as const, text: JSON.stringify({ entries: [] }) }],
+          });
         }
         if (name === "fs_stat") {
-          return mcpSuccess(id, { content: [{ type: "text" as const, text: JSON.stringify({ kind: "directory" }) }] });
+          return mcpSuccess(id, {
+            content: [{ type: "text" as const, text: JSON.stringify({ kind: "directory" }) }],
+          });
         }
         return mcpError(id, MCP_INVALID_PARAMS, "Path not found");
       }
@@ -727,7 +812,10 @@ async function handleToolsCall(
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify({ content: text, contentType: node.fileInfo?.contentType ?? "application/octet-stream" }),
+            text: JSON.stringify({
+              content: text,
+              contentType: node.fileInfo?.contentType ?? "application/octet-stream",
+            }),
           },
         ],
       });
@@ -740,7 +828,7 @@ async function handleToolsCall(
   }
 }
 
-async function sha256Hex(text: string): Promise<string> {
+async function _sha256Hex(text: string): Promise<string> {
   const bytes = new TextEncoder().encode(text);
   const hash = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(hash))
@@ -776,10 +864,7 @@ export function createMcpHandler(deps: McpHandlerDeps) {
     }
 
     if (request.jsonrpc !== "2.0" || !request.method) {
-      return c.json(
-        mcpError(request.id ?? 0, MCP_INVALID_REQUEST, "Invalid request"),
-        400
-      );
+      return c.json(mcpError(request.id ?? 0, MCP_INVALID_REQUEST, "Invalid request"), 400);
     }
 
     let response: McpResponse;
@@ -792,7 +877,9 @@ export function createMcpHandler(deps: McpHandlerDeps) {
         response = handleToolsList(request.id);
         break;
       case "tools/call": {
-        const params = request.params as { name?: string; arguments?: Record<string, unknown> } | undefined;
+        const params = request.params as
+          | { name?: string; arguments?: Record<string, unknown> }
+          | undefined;
         const name = params?.name;
         const args = params?.arguments ?? {};
         if (typeof name !== "string" || !name) {
@@ -803,7 +890,11 @@ export function createMcpHandler(deps: McpHandlerDeps) {
         break;
       }
       default:
-        response = mcpError(request.id, MCP_METHOD_NOT_FOUND, `Method not found: ${request.method}`);
+        response = mcpError(
+          request.id,
+          MCP_METHOD_NOT_FOUND,
+          `Method not found: ${request.method}`
+        );
     }
 
     return c.json(response, 200);

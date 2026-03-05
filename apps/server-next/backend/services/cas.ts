@@ -1,19 +1,17 @@
 /**
  * CAS facade: S3 in Lambda/server (ServerConfig); optional fs/memory for tests.
- * For local dev use S3_ENDPOINT (e.g. http://localhost:7104) with serverless-s3-local.
+ * For local dev use S3_ENDPOINT; cell-cli starts MinIO with minioadmin/minioadmin.
  */
-import {
-  createCasFacade as createCasFacadeImpl,
-  createCasStorageFromBuffer,
-} from "@casfa/cas";
+
+import { S3Client } from "@aws-sdk/client-s3";
+import type { CasFacade } from "@casfa/cas";
+import { createCasFacade as createCasFacadeImpl, createCasStorageFromBuffer } from "@casfa/cas";
 import type { KeyProvider } from "@casfa/core";
 import { computeSizeFlagByte } from "@casfa/core";
-import { createS3Storage } from "@casfa/storage-s3";
 import { createFsStorage } from "@casfa/storage-fs";
 import { createMemoryStorage } from "@casfa/storage-memory";
-import type { CasFacade } from "@casfa/cas";
+import { createS3Storage } from "@casfa/storage-s3";
 import type { ServerConfig } from "../config.ts";
-import { S3Client } from "@aws-sdk/client-s3";
 
 /** Config that may include optional storage (fs/memory) for tests; ServerConfig has only S3. */
 export type CasFacadeConfig = ServerConfig & {
@@ -36,7 +34,9 @@ export type CasFacadeResult = {
   key: KeyProvider;
 };
 
-function createStorageFromConfig(config: CasFacadeConfig): ReturnType<typeof createCasStorageFromBuffer> {
+function createStorageFromConfig(
+  config: CasFacadeConfig
+): ReturnType<typeof createCasStorageFromBuffer> {
   if (config.storage?.type === "fs") {
     const storageProvider = createFsStorage({ basePath: config.storage?.fsPath ?? "./data" });
     return createCasStorageFromBuffer({
@@ -60,8 +60,8 @@ function createStorageFromConfig(config: CasFacadeConfig): ReturnType<typeof cre
           endpoint: config.s3Endpoint,
           forcePathStyle: true,
           credentials: {
-            accessKeyId: "S3RVER",
-            secretAccessKey: "S3RVER00",
+            accessKeyId: "minioadmin",
+            secretAccessKey: "minioadmin",
           },
         })
       : undefined;

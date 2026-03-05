@@ -36,7 +36,7 @@ export function RevokeDelegateDialog({
     }
   };
 
-  const label = delegate.name || delegate.delegateId.slice(0, 16) + "…";
+  const label = delegate.name || `${delegate.delegateId.slice(0, 16)}…`;
 
   return (
     <Dialog open={open} onClose={onClose}>

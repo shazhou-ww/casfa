@@ -1,19 +1,18 @@
-export type {
-  CognitoConfig,
-  CognitoTokenSet,
-  CognitoRefreshedTokenSet,
-  VerifiedUser,
-  JwtVerifier,
-} from "./types.ts";
+export {
+  buildCognitoAuthorizeUrl,
+  exchangeCodeForTokens,
+  refreshCognitoTokens,
+} from "./cognito-client.ts";
 
 export {
   createCognitoJwtVerifier,
-  createMockJwtVerifier,
   createMockJwt,
+  createMockJwtVerifier,
 } from "./jwt-verifier.ts";
-
-export {
-  exchangeCodeForTokens,
-  refreshCognitoTokens,
-  buildCognitoAuthorizeUrl,
-} from "./cognito-client.ts";
+export type {
+  CognitoConfig,
+  CognitoRefreshedTokenSet,
+  CognitoTokenSet,
+  JwtVerifier,
+  VerifiedUser,
+} from "./types.ts";

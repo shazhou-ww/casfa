@@ -10,9 +10,9 @@ import {
 } from "@casfa/cell-cognito";
 import { createDynamoGrantStore, createOAuthServer } from "@casfa/cell-oauth";
 import { createApp } from "./app.ts";
-import { loadConfig } from "./config.ts";
-import { createDynamoBranchStore } from "./db/dynamo-branch-store.ts";
+import { isMockAuthEnabled, loadConfig } from "./config.ts";
 import { createMemoryDerivedDataStore } from "./db/derived-data.ts";
+import { createDynamoBranchStore } from "./db/dynamo-branch-store.ts";
 import { createMemoryRealmUsageStore } from "./db/realm-usage-store.ts";
 import { createMemoryUserSettingsStore } from "./db/user-settings.ts";
 import { createCasFacade } from "./services/cas.ts";
@@ -27,9 +27,7 @@ const cognitoConfig: CognitoConfig = {
 };
 
 const dynamoClient = new DynamoDBClient(
-  config.dynamodbEndpoint
-    ? { endpoint: config.dynamodbEndpoint, region: "us-east-1" }
-    : {},
+  config.dynamodbEndpoint ? { endpoint: config.dynamodbEndpoint, region: "us-east-1" } : {}
 );
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
 
@@ -38,8 +36,8 @@ const grantStore = createDynamoGrantStore({
   client: docClient,
 });
 
-const jwtVerifier = config.auth.mockJwtSecret
-  ? createMockJwtVerifier(config.auth.mockJwtSecret)
+const jwtVerifier = isMockAuthEnabled(config)
+  ? createMockJwtVerifier(config.auth.mockJwtSecret!)
   : createCognitoJwtVerifier({
       region: cognitoConfig.region,
       userPoolId: cognitoConfig.userPoolId,

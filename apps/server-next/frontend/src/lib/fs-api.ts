@@ -1,5 +1,5 @@
 import type { FsEntry } from "../types/api";
-import { authClient, apiFetch } from "./auth";
+import { apiFetch, authClient } from "./auth";
 
 function normalizedPathSegments(path: string): string {
   const p = !path || path === "/" ? "" : path.replace(/^\/+/, "").replace(/\/+$/, "");
@@ -37,7 +37,11 @@ export async function fetchFileStat(path: string): Promise<FileStat> {
     }
     throw new Error(message);
   }
-  const data = (await res.json()) as { kind: "file" | "directory"; size?: number; contentType?: string };
+  const data = (await res.json()) as {
+    kind: "file" | "directory";
+    size?: number;
+    contentType?: string;
+  };
   return {
     kind: data.kind,
     ...(data.size !== undefined && { size: data.size }),
@@ -112,7 +116,9 @@ export async function fetchList(path: string): Promise<FsEntry[]> {
 
   const res = await apiFetch(url);
   if (!res.ok) throw new Error("Failed to list directory");
-  const data = (await res.json()) as { entries?: Array<{ name: string; kind: string; size?: number }> };
+  const data = (await res.json()) as {
+    entries?: Array<{ name: string; kind: string; size?: number }>;
+  };
   const entries = data.entries ?? [];
 
   const basePath = normalizedPath ? `/${normalizedPath}` : "";
@@ -133,9 +139,8 @@ export async function createFolder(parentPath: string, name: string): Promise<vo
   if (!realmId) {
     throw new Error("Not authenticated: realmId (user) not loaded");
   }
-  const normalizedParent = !parentPath || parentPath === "/"
-    ? ""
-    : parentPath.replace(/^\/+/, "").replace(/\/+$/, "");
+  const normalizedParent =
+    !parentPath || parentPath === "/" ? "" : parentPath.replace(/^\/+/, "").replace(/\/+$/, "");
   const pathStr = normalizedParent ? `${normalizedParent}/${name.trim()}` : name.trim();
   if (!pathStr) {
     throw new Error("Folder name is required");

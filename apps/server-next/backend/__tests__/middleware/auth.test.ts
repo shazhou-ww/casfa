@@ -4,8 +4,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
-import type { Env } from "../../types.ts";
 import { createAuthMiddleware } from "../../middleware/auth.ts";
+import type { Env } from "../../types.ts";
 
 describe("auth middleware", () => {
   it("returns 401 when auth is not set", async () => {

@@ -10,6 +10,13 @@ function resolveString(v: ResolvedValue): string {
   return typeof v === "string" ? v : "";
 }
 
+export type EnsureCognitoDevCallbackUrlOptions = {
+  /** Resolved param values from resolveConfig (cognito ids from .env via !Env/!Secret). */
+  resolvedEnvVars?: Record<string, string>;
+  /** AWS profile for SSO (e.g. from .env AWS_PROFILE; loadEnvFiles does not set process.env). */
+  profile?: string;
+};
+
 /**
  * Ensure the local dev callback URL is registered in the Cognito App Client.
  * Adds it if missing, leaves existing URLs untouched.
@@ -17,17 +24,20 @@ function resolveString(v: ResolvedValue): string {
 export async function ensureCognitoDevCallbackUrl(
   cognitoConfig: CognitoConfig,
   localCallbackUrl: string,
+  options?: EnsureCognitoDevCallbackUrlOptions
 ): Promise<void> {
-  const region = resolveString(cognitoConfig.region);
-  const userPoolId = resolveString(cognitoConfig.userPoolId);
-  const clientId = resolveString(cognitoConfig.clientId);
+  const resolvedEnvVars = options?.resolvedEnvVars;
+  const region = resolvedEnvVars?.COGNITO_REGION ?? resolveString(cognitoConfig.region);
+  const userPoolId =
+    resolvedEnvVars?.COGNITO_USER_POOL_ID ?? resolveString(cognitoConfig.userPoolId);
+  const clientId = resolvedEnvVars?.COGNITO_CLIENT_ID ?? resolveString(cognitoConfig.clientId);
 
   if (!region || !userPoolId || !clientId) {
     console.warn("Cognito config incomplete, skipping callback URL check");
     return;
   }
 
-  const profile = process.env.AWS_PROFILE || "default";
+  const profile = options?.profile ?? process.env.AWS_PROFILE ?? "default";
   const client = new CognitoIdentityProviderClient({
     region,
     credentials: fromSSO({ profile }),
@@ -36,7 +46,7 @@ export async function ensureCognitoDevCallbackUrl(
   let UserPoolClient;
   try {
     const res = await client.send(
-      new DescribeUserPoolClientCommand({ UserPoolId: userPoolId, ClientId: clientId }),
+      new DescribeUserPoolClientCommand({ UserPoolId: userPoolId, ClientId: clientId })
     );
     UserPoolClient = res.UserPoolClient;
   } catch (e: unknown) {
@@ -79,7 +89,7 @@ export async function ensureCognitoDevCallbackUrl(
       IdTokenValidity: UserPoolClient.IdTokenValidity,
       AccessTokenValidity: UserPoolClient.AccessTokenValidity,
       RefreshTokenValidity: UserPoolClient.RefreshTokenValidity,
-    }),
+    })
   );
 
   console.log(`Added ${localCallbackUrl} to Cognito callback URLs`);

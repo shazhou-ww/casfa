@@ -25,7 +25,7 @@ export function createOAuthRoutes(deps: OAuthControllerDeps) {
         client_name: client.clientName,
         redirect_uris: client.redirectUris,
       },
-      201,
+      201
     );
   });
 

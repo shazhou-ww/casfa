@@ -6,13 +6,13 @@
   "scripts": {
     "clean": "rimraf .esbuild .local-storage",
     "clean:db": "rimraf .dynamodb",
-    "dev": "cell dev",
+    "dev": "bun ../cell-cli/src/cli.ts dev",
     "dev:bun": "bun run backend/index.ts",
-    "deploy": "cell deploy",
+    "deploy": "bun ../cell-cli/src/cli.ts deploy",
     "typecheck": "tsc --noEmit",
-    "test": "cell test",
+    "test": "bun ../cell-cli/src/cli.ts test",
     "test:unit": "bun test backend/",
-    "test:e2e": "cell test:e2e"
+    "test:e2e": "bun ../cell-cli/src/cli.ts test:e2e"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.700.0",

@@ -1,5 +1,4 @@
 import { Command } from "commander";
-import { MissingParamsError } from "./config/resolve-config.js";
 import { buildCommand } from "./commands/build.js";
 import { deployCommand } from "./commands/deploy.js";
 import { devCommand } from "./commands/dev.js";
@@ -10,6 +9,7 @@ import { secretGetCommand, secretListCommand, secretSetCommand } from "./command
 import { statusCommand } from "./commands/status.js";
 import { testCommand, testE2eCommand, testUnitCommand } from "./commands/test.js";
 import { typecheckCommand } from "./commands/typecheck.js";
+import { MissingParamsError } from "./config/resolve-config.js";
 
 /** Run async command; on MissingParamsError print message and exit 1 without stack trace */
 async function run(fn: () => Promise<void>): Promise<void> {

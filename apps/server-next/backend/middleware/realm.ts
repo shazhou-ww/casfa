@@ -18,10 +18,7 @@ export function createRealmMiddleware() {
     }
     const effectiveRealmId = getEffectiveRealmId(auth);
     if (realmIdParam !== effectiveRealmId) {
-      return c.json(
-        { error: "FORBIDDEN", message: "realmId does not match auth" },
-        403
-      );
+      return c.json({ error: "FORBIDDEN", message: "realmId does not match auth" }, 403);
     }
     return next();
   };

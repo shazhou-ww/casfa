@@ -11,7 +11,9 @@ type DelegatesControllerDeps = {
   oauthServer: OAuthServer;
 };
 
-function requireManageDelegates(auth: Env["Variables"]["auth"]): NonNullable<Env["Variables"]["auth"]> {
+function requireManageDelegates(
+  auth: Env["Variables"]["auth"]
+): NonNullable<Env["Variables"]["auth"]> {
   if (!auth) throw new HTTPException(401, { message: "Unauthorized" });
   if (auth.type === "user") return auth;
   if (auth.type === "delegate" && auth.permissions.includes("manage_delegates")) return auth;
@@ -36,7 +38,7 @@ export function createDelegatesRoutes(deps: DelegatesControllerDeps) {
         permissions: g.permissions,
         createdAt: g.createdAt,
         expiresAt: g.expiresAt,
-      })),
+      }))
     );
   });
 

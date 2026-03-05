@@ -42,7 +42,7 @@ export function createMockJwtVerifier(secret: string): JwtVerifier {
 
 export async function createMockJwt(
   secret: string,
-  payload: Record<string, unknown>,
+  payload: Record<string, unknown>
 ): Promise<string> {
   const key = new TextEncoder().encode(secret);
   return new jose.SignJWT(payload as jose.JWTPayload)

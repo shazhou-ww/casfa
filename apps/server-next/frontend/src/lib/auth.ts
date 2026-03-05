@@ -26,10 +26,7 @@ const cellApiFetch = createApiFetch({
  * calls onUnauthorized (logout) on 401. Use this for all /api/* requests that require auth.
  * Accepts path (string) or full URL; when URL is passed, path is taken relative to same origin.
  */
-export async function apiFetch(
-  input: RequestInfo | URL,
-  init?: RequestInit
-): Promise<Response> {
+export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   let path: string;
   if (typeof input === "string") {
     path = input;

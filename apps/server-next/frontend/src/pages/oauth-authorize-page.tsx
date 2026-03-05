@@ -25,7 +25,9 @@ export function OAuthAuthorizePage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await apiFetch(`/api/oauth/mcp/client-info?client_id=${encodeURIComponent(client_id)}`);
+        const res = await apiFetch(
+          `/api/oauth/mcp/client-info?client_id=${encodeURIComponent(client_id)}`
+        );
         if (!res.ok || cancelled) return;
         const data = (await res.json()) as { client_name?: string | null };
         const name = data.client_name?.trim() || client_id;
@@ -37,7 +39,9 @@ export function OAuthAuthorizePage() {
         if (!cancelled) setSuggestedName(client_id);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [client_id]);
 
   // Not logged in: redirect to login with returnUrl so we come back here after
@@ -119,12 +123,17 @@ export function OAuthAuthorizePage() {
             Authorize application
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Allow <strong>{suggestedName || client_id || "this client"}</strong> to access your Casfa realm (files and branches)?
+            Allow <strong>{suggestedName || client_id || "this client"}</strong> to access your
+            Casfa realm (files and branches)?
           </Typography>
           <TextField
             fullWidth
             label="Display name"
-            helperText={client_id ? `Caller suggested: ${suggestedName || client_id}. You can change this.` : undefined}
+            helperText={
+              client_id
+                ? `Caller suggested: ${suggestedName || client_id}. You can change this.`
+                : undefined
+            }
             value={clientName}
             onChange={(e) => setClientName(e.target.value)}
             disabled={submitting || !!redirectUrl}
@@ -138,7 +147,11 @@ export function OAuthAuthorizePage() {
           {redirectUrl && (
             <Typography variant="body2" sx={{ mb: 2 }}>
               Redirecting… If nothing happens,{" "}
-              <Typography component="a" href={redirectUrl} sx={{ color: "primary.main", cursor: "pointer", textDecoration: "underline" }}>
+              <Typography
+                component="a"
+                href={redirectUrl}
+                sx={{ color: "primary.main", cursor: "pointer", textDecoration: "underline" }}
+              >
                 click here to return to the application
               </Typography>
             </Typography>
@@ -147,7 +160,11 @@ export function OAuthAuthorizePage() {
             <Button variant="outlined" onClick={handleDeny} disabled={submitting || !!redirectUrl}>
               Deny
             </Button>
-            <Button variant="contained" onClick={handleAllow} disabled={submitting || !!redirectUrl}>
+            <Button
+              variant="contained"
+              onClick={handleAllow}
+              disabled={submitting || !!redirectUrl}
+            >
               {submitting ? "…" : "Allow"}
             </Button>
           </Box>

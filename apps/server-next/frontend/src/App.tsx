@@ -13,6 +13,7 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/oauth/authorize" element={<OAuthAuthorizePage />} />
       <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
+      <Route path="/oauth/callback-complete" element={<OAuthCallbackPage />} />
 
       <Route element={<AuthGuard />}>
         <Route element={<Layout />}>

@@ -7,7 +7,7 @@
 export function pathToRoute(path: string): string {
   const p = (path || "/").replace(/\/+/g, "/").replace(/\/$/, "") || "/";
   if (p === "/") return "/files";
-  return "/files" + p;
+  return `/files${p}`;
 }
 
 export function routeToPath(pathname: string): string {
@@ -15,7 +15,7 @@ export function routeToPath(pathname: string): string {
     return "/";
   }
   if (pathname.startsWith("/files/")) {
-    return "/" + pathname.slice("/files/".length);
+    return `/${pathname.slice("/files/".length)}`;
   }
   return "/";
 }
