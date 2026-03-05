@@ -11,28 +11,25 @@ type DelegatesStore = {
   revokeDelegate: (delegateId: string) => Promise<void>;
 };
 
-function getRealmId(): string {
-  const realmId = authClient.getAuth()?.userId;
-  if (!realmId) throw new Error("Not authenticated: realmId (user) not loaded");
-  return realmId;
+function requireAuth(): void {
+  const userId = authClient.getAuth()?.userId;
+  if (!userId) throw new Error("Not authenticated: user not loaded");
 }
 
-/** Map backend list item to DelegateListItem. Backend has no name (use clientId) and no isRevoked (revoked are omitted). */
+/** Map backend list item to DelegateListItem. Backend returns clientName; revoked are omitted. */
 function mapDelegateItem(d: {
   delegateId: string;
-  clientId?: string;
+  clientName?: string;
   permissions?: string[];
   createdAt: number;
   expiresAt?: number | null;
-  refreshable?: boolean;
 }): DelegateListItem {
   return {
     delegateId: d.delegateId,
-    name: typeof d.clientId === "string" && d.clientId.trim() ? d.clientId.trim() : undefined,
+    name: typeof d.clientName === "string" && d.clientName.trim() ? d.clientName.trim() : undefined,
     createdAt: d.createdAt,
     expiresAt: d.expiresAt ?? undefined,
     isRevoked: false,
-    refreshable: d.refreshable ?? false,
   };
 }
 
@@ -44,23 +41,20 @@ export const useDelegatesStore = create<DelegatesStore>((set, get) => ({
   fetchDelegates: async () => {
     set({ isLoading: true, error: null });
     try {
-      const realmId = getRealmId();
-      const res = await apiFetch(`/api/realm/${realmId}/delegates`);
+      requireAuth();
+      const res = await apiFetch("/api/delegates");
       if (!res.ok) {
         const data = (await res.json()) as { message?: string; error?: string };
         throw new Error(data.message ?? data.error ?? "Failed to fetch delegates");
       }
-      const data = (await res.json()) as {
-        delegates?: Array<{
-          delegateId: string;
-          clientId?: string;
-          permissions?: string[];
-          createdAt: number;
-          expiresAt?: number | null;
-          refreshable?: boolean;
-        }>;
-      };
-      const list = (data.delegates ?? []).map(mapDelegateItem);
+      const data = (await res.json()) as Array<{
+        delegateId: string;
+        clientName?: string;
+        permissions?: string[];
+        createdAt: number;
+        expiresAt?: number | null;
+      }>;
+      const list = (Array.isArray(data) ? data : []).map(mapDelegateItem);
       set({ delegates: list });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : "Failed to fetch delegates" });
@@ -70,14 +64,11 @@ export const useDelegatesStore = create<DelegatesStore>((set, get) => ({
   },
 
   createDelegate: async (params) => {
-    const realmId = getRealmId();
-    const ttlMs = typeof params.ttlSeconds === "number" && params.ttlSeconds > 0
-      ? params.ttlSeconds * 1000
-      : 86400 * 1000;
-    const body: { ttl: number; client_id?: string } = { ttl: ttlMs };
-    if (params.name?.trim()) body.client_id = params.name.trim();
-
-    const res = await apiFetch(`/api/realm/${realmId}/delegates/assign`, {
+    requireAuth();
+    const body: { clientName: string; permissions?: string[] } = {
+      clientName: params.name?.trim() || "Delegate",
+    };
+    const res = await apiFetch("/api/delegates", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -88,14 +79,16 @@ export const useDelegatesStore = create<DelegatesStore>((set, get) => ({
     }
     const raw = (await res.json()) as {
       delegateId: string;
+      clientName: string;
       accessToken: string;
-      clientId: string;
+      refreshToken?: string;
+      permissions?: string[];
       expiresAt?: number | null;
     };
     const now = Date.now();
     const delegate: DelegateListItem = {
       delegateId: raw.delegateId,
-      name: raw.clientId?.trim() || undefined,
+      name: raw.clientName?.trim() || undefined,
       createdAt: now,
       expiresAt: raw.expiresAt ?? undefined,
       isRevoked: false,
@@ -103,14 +96,15 @@ export const useDelegatesStore = create<DelegatesStore>((set, get) => ({
     const response: CreateDelegateResponse = {
       delegate,
       accessToken: raw.accessToken,
-      accessTokenExpiresAt: raw.expiresAt ?? now + ttlMs,
+      refreshToken: raw.refreshToken,
+      accessTokenExpiresAt: raw.expiresAt ?? now + 86400 * 1000,
     };
     return response;
   },
 
   revokeDelegate: async (delegateId: string) => {
-    const realmId = getRealmId();
-    const res = await apiFetch(`/api/realm/${realmId}/delegates/${encodeURIComponent(delegateId)}/revoke`, {
+    requireAuth();
+    const res = await apiFetch(`/api/delegates/${encodeURIComponent(delegateId)}/revoke`, {
       method: "POST",
     });
     if (!res.ok) {

@@ -23,14 +23,14 @@ function readBody(req: Connect.IncomingMessage): Promise<Buffer> {
   });
 }
 
-/** OAuth discovery: registration_endpoint points to backend so client can send client_name (RFC 7591). */
+/** OAuth discovery: used for build-time static file; dev uses proxy to backend /.well-known/oauth-authorization-server. */
 function getMcpOAuthDiscovery(host: string): Record<string, unknown> {
   const issuer = `http://${host}`;
   return {
     issuer,
     authorization_endpoint: `${issuer}/oauth/authorize`,
-    token_endpoint: `${issuer}/api/oauth/mcp/token`,
-    registration_endpoint: `${issuer}/api/oauth/mcp/register`,
+    token_endpoint: `${issuer}/oauth/token`,
+    registration_endpoint: `${issuer}/oauth/register`,
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
   };
@@ -44,17 +44,37 @@ function proxyApiWithRetry(): Connect.NextHandleFunction {
     const pathname = req.url?.split("?")[0] ?? "";
     const method = req.method ?? "GET";
     const host = req.headers.host ?? "localhost:7100";
-    // Serve .well-known discovery (authorization is at /oauth/authorize, token at /api/oauth/mcp/token).
-    if (pathname.startsWith("/.well-known/oauth-authorization-server")) {
-      const discovery = getMcpOAuthDiscovery(host);
-      logMcp("GET .well-known/oauth-authorization-server → 200 (local)", {
-        Host: host,
-        registration_endpoint: (discovery as { registration_endpoint?: string }).registration_endpoint,
-      });
-      res.statusCode = 200;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify(discovery));
-      return;
+    // Proxy /.well-known/* and /mcp to backend (discovery and MCP live on backend).
+    if (pathname.startsWith("/.well-known") || pathname.startsWith("/mcp")) {
+      const url = new URL(req.url ?? "", `http://${req.headers.host}`);
+      const path = `${url.pathname}${url.search}`;
+      const hasBody = method !== "GET" && method !== "HEAD";
+      const body = hasBody ? await readBody(req) : null;
+      const tryOne = (): Promise<http.IncomingMessage> =>
+        new Promise((resolve, reject) => {
+          const options: http.RequestOptions = {
+            hostname: API_HOST,
+            port: API_PORT,
+            path,
+            method,
+            headers: { ...req.headers, host: `${API_HOST}:${API_PORT}` },
+          };
+          const proxyReq = http.request(options, (proxyRes) => resolve(proxyRes));
+          proxyReq.on("error", reject);
+          if (body) proxyReq.write(body);
+          proxyReq.end();
+        });
+      try {
+        const proxyRes = await tryOne();
+        res.writeHead(proxyRes.statusCode ?? 500, proxyRes.headers);
+        proxyRes.pipe(res);
+        return;
+      } catch (e) {
+        res.statusCode = 502;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "Bad Gateway", message: String((e as Error)?.message ?? e) }));
+        return;
+      }
     }
     // Proxy GET /oauth/authorize and POST /oauth/token to backend; /oauth/callback stays SPA so app can read ?code= & ?state=
     if (pathname === "/oauth/authorize" && method === "GET") {
