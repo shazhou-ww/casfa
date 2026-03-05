@@ -1,0 +1,61 @@
+name: casfa-next
+
+backend:
+  runtime: nodejs20.x
+  entries:
+    api:
+      handler: backend/lambda.ts
+      timeout: 30
+      memory: 1024
+      routes:
+        - /api/*
+        - /oauth/*
+        - /.well-known/*
+        - /mcp
+
+frontend:
+  dir: frontend
+  entries:
+    main:
+      src: src/main.tsx
+
+tables:
+  realms:
+    keys: { pk: S, sk: S }
+    gsi:
+      realm-index:
+        keys: { gsi1pk: S, gsi1sk: S }
+        projection: ALL
+  grants:
+    keys: { pk: S, sk: S }
+    gsi:
+      user-hash-index:
+        keys: { gsi1pk: S, gsi1sk: S }
+        projection: ALL
+      user-refresh-index:
+        keys: { gsi2pk: S, gsi2sk: S }
+        projection: ALL
+
+buckets:
+  blob: {}
+
+params:
+  COGNITO_REGION: !Env
+  COGNITO_USER_POOL_ID: !Env
+  COGNITO_CLIENT_ID: !Env
+  COGNITO_HOSTED_UI_URL: !Env
+  COGNITO_CLIENT_SECRET: !Secret
+  MOCK_JWT_SECRET: !Secret
+  API_BASE_URL: !Env
+  MAX_BRANCH_TTL_MS: !Env
+  LOG_LEVEL: !Env
+
+cognito:
+  region: !Param COGNITO_REGION
+  userPoolId: !Param COGNITO_USER_POOL_ID
+  clientId: !Param COGNITO_CLIENT_ID
+  hostedUiUrl: !Param COGNITO_HOSTED_UI_URL
+
+domain:
+  zone: shazhou.me
+  host: beta.casfa.shazhou.me
