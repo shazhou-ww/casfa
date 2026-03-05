@@ -14,17 +14,9 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { authClient } from "../lib/auth";
+import { useAuth } from "../lib/auth";
 import { useAuthStore } from "../stores/auth-store";
-import {
-  generateCodeVerifier,
-  saveCodeVerifier,
-  computeCodeChallenge,
-} from "../lib/pkce";
-
-type OAuthConfig = {
-  domain: string;
-  clientId: string;
-};
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -32,12 +24,9 @@ export function LoginPage() {
   const returnUrl = searchParams.get("returnUrl") ?? "/";
   const initialize = useAuthStore((s) => s.initialize);
   const initialized = useAuthStore((s) => s.initialized);
-  const isLoggedIn = useAuthStore((s) => s.isLoggedIn);
-  const setUser = useAuthStore((s) => s.setUser);
-  const setAuthTypeInStore = useAuthStore((s) => s.setAuthType);
-  const setToken = useAuthStore((s) => s.setToken);
-  const [config, setConfig] = useState<OAuthConfig | null>(null);
-  const [authType, setAuthType] = useState<"mock" | "cognito" | null>(null);
+  const authType = useAuthStore((s) => s.authType);
+  const auth = useAuth();
+  const [config, setConfig] = useState<{ authorizeUrl: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -46,10 +35,10 @@ export function LoginPage() {
   }, [initialize]);
 
   useEffect(() => {
-    if (initialized && isLoggedIn) {
+    if (initialized && auth) {
       navigate(returnUrl || "/", { replace: true });
     }
-  }, [initialized, isLoggedIn, navigate, returnUrl]);
+  }, [initialized, auth, navigate, returnUrl]);
 
   const loadConfig = useCallback(async () => {
     setError(null);
@@ -62,16 +51,12 @@ export function LoginPage() {
       }
       const info = (await infoRes.json()) as { authType?: string };
       const at = info.authType === "cognito" ? "cognito" : info.authType === "mock" ? "mock" : null;
-      setAuthType(at);
-
       if (at === "cognito") {
-        const res = await fetch("/api/oauth/config");
-        if (res.ok) {
-          const data = await res.json();
-          setConfig({ domain: data.domain, clientId: data.clientId });
-        } else {
-          setError("OAuth 未配置或无法加载配置");
-        }
+        const origin = window.location.origin;
+        const redirectUri = `${origin}/oauth/callback`;
+        setConfig({
+          authorizeUrl: `/oauth/authorize?redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid+email+profile`,
+        });
       }
     } catch {
       setError("无法连接服务");
@@ -84,48 +69,17 @@ export function LoginPage() {
     loadConfig();
   }, [loadConfig]);
 
-const redirectUri = `${window.location.origin}/oauth/callback`;
-
-/** When returnUrl is long (e.g. MCP authorize URL), we store it here and pass a short state to Cognito to avoid truncation/mangling that causes "State does not match". */
-const COGNITO_STATE_PREFIX = "casfa_return_";
-const RETURN_URL_KEY = "casfa_oauth_return_url";
-
-  const buildAuthUrl = (identityProvider: string, codeChallenge?: string, returnUrl?: string) => {
+  const buildAuthorizeUrl = (identityProvider: string) => {
     if (!config) return "#";
+    const state = returnUrl && returnUrl.startsWith("/") ? returnUrl : "";
     const params = new URLSearchParams({
-      client_id: config.clientId,
+      redirect_uri: `${window.location.origin}/oauth/callback`,
       response_type: "code",
       scope: "openid email profile",
-      redirect_uri: redirectUri,
       identity_provider: identityProvider,
     });
-    if (codeChallenge) {
-      params.set("code_challenge", codeChallenge);
-      params.set("code_challenge_method", "S256");
-    }
-    // Preserve returnUrl: use short state + sessionStorage to avoid Cognito truncating long URLs (causes "State does not match" on second step)
-    if (returnUrl && returnUrl.startsWith("/")) {
-      if (returnUrl.length > 200) {
-        const stateToken = COGNITO_STATE_PREFIX + Math.random().toString(36).slice(2, 14);
-        try {
-          sessionStorage.setItem(RETURN_URL_KEY, returnUrl);
-          params.set("state", stateToken);
-        } catch {
-          params.set("state", returnUrl);
-        }
-      } else {
-        params.set("state", returnUrl);
-      }
-    }
-    return `https://${config.domain}/oauth2/authorize?${params.toString()}`;
-  };
-
-  const handleOAuthClick = async (identityProvider: string) => {
-    if (!config) return;
-    const verifier = generateCodeVerifier();
-    saveCodeVerifier(verifier);
-    const codeChallenge = await computeCodeChallenge(verifier);
-    window.location.href = buildAuthUrl(identityProvider, codeChallenge, returnUrl);
+    if (state) params.set("state", state);
+    return `/oauth/authorize?${params.toString()}`;
   };
 
   const handleSignInMock = async () => {
@@ -141,26 +95,14 @@ const RETURN_URL_KEY = "casfa_oauth_return_url";
         setError("No token in response");
         return;
       }
-      setAuthTypeInStore("mock");
-      setToken(token);
-      const meRes = await fetch("/api/me", { headers: { Authorization: `Bearer ${token}` } });
-      if (!meRes.ok) {
-        setError("Failed to get user");
-        return;
-      }
-      const me = (await meRes.json()) as { userId?: string; name?: string; email?: string };
-      setUser({
-        userId: me.userId ?? "unknown",
-        name: me.name,
-        email: me.email,
-      });
+      authClient.setTokens(token, null);
       navigate(returnUrl, { replace: true });
     } catch {
       setError("Sign in failed");
     }
   };
 
-  if (initialized && isLoggedIn) {
+  if (initialized && auth) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
         <CircularProgress />
@@ -215,7 +157,7 @@ const RETURN_URL_KEY = "casfa_oauth_return_url";
             </Stack>
           )}
 
-          {authType === "cognito" && config ? (
+          {authType === "cognito" && config && (
             <Stack spacing={2}>
               <Divider>
                 <Typography variant="body2" color="text.secondary">
@@ -228,7 +170,7 @@ const RETURN_URL_KEY = "casfa_oauth_return_url";
                 size="large"
                 fullWidth
                 startIcon={<GoogleIcon />}
-                onClick={() => handleOAuthClick("Google")}
+                href={buildAuthorizeUrl("Google")}
                 sx={{ textTransform: "none", py: 1.5 }}
               >
                 Continue with Google
@@ -239,17 +181,18 @@ const RETURN_URL_KEY = "casfa_oauth_return_url";
                 size="large"
                 fullWidth
                 startIcon={<MicrosoftIcon />}
-                onClick={() => handleOAuthClick("Microsoft")}
+                href={buildAuthorizeUrl("Microsoft")}
                 sx={{ textTransform: "none", py: 1.5 }}
               >
                 Continue with Microsoft
               </Button>
             </Stack>
-          ) : authType === "cognito" && !error ? (
+          )}
+          {authType === "cognito" && !config && !error && (
             <Alert severity="warning">
               OAuth is not configured on this server. Please set Cognito environment variables.
             </Alert>
-          ) : null}
+          )}
         </CardContent>
       </Card>
     </Box>

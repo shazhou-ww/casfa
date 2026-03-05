@@ -14,12 +14,12 @@ import {
 import { useCallback, useState } from "react";
 import { Link, useNavigate, Outlet } from "react-router-dom";
 import { SidebarTree } from "./explorer/sidebar-tree";
-import { useAuthStore } from "../stores/auth-store";
+import { authClient, useAuth } from "../lib/auth";
 
 const SIDEBAR_WIDTH = 260;
 
 export function Layout() {
-  const { user, logout } = useAuthStore();
+  const auth = useAuth();
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [copied, setCopied] = useState(false);
@@ -31,11 +31,11 @@ export function Layout() {
   const handleCloseMenu = useCallback(() => setAnchorEl(null), []);
 
   const handleCopyUserId = useCallback(() => {
-    if (user?.userId) {
-      navigator.clipboard.writeText(user.userId);
+    if (auth?.userId) {
+      navigator.clipboard.writeText(auth.userId);
       setCopied(true);
     }
-  }, [user?.userId]);
+  }, [auth?.userId]);
 
   const handleSettings = useCallback(() => {
     handleCloseMenu();
@@ -44,9 +44,11 @@ export function Layout() {
 
   const handleLogout = useCallback(() => {
     handleCloseMenu();
-    logout();
+    authClient.logout();
     navigate("/login", { replace: true });
-  }, [logout, navigate, handleCloseMenu]);
+  }, [navigate, handleCloseMenu]);
+
+  const displayName = auth ? auth.email || auth.userId : "";
 
   return (
     <Box sx={{ display: "flex", height: "100vh", overflow: "hidden" }}>
@@ -90,7 +92,7 @@ export function Layout() {
 
         {/* Fixed bottom: Profile */}
         <Box sx={{ flexShrink: 0, p: 1, borderTop: 1, borderColor: "divider" }}>
-          {user && (
+          {auth && (
             <>
               <Button
                 fullWidth
@@ -103,7 +105,7 @@ export function Layout() {
                   fontSize: "0.8125rem",
                 }}
               >
-                {user.name || user.email || user.userId}
+                {displayName}
               </Button>
               <Menu
                 anchorEl={anchorEl}
@@ -112,9 +114,9 @@ export function Layout() {
                 anchorOrigin={{ vertical: "top", horizontal: "right" }}
                 transformOrigin={{ vertical: "bottom", horizontal: "right" }}
               >
-                {user.email && (
+                {auth.email && (
                   <MenuItem dense disabled>
-                    <Typography variant="body2">{user.email}</Typography>
+                    <Typography variant="body2">{auth.email}</Typography>
                   </MenuItem>
                 )}
                 <MenuItem dense onClick={handleCopyUserId}>
@@ -123,7 +125,7 @@ export function Layout() {
                     component="code"
                     sx={{ fontSize: "0.8em", mr: 1, fontFamily: "monospace" }}
                   >
-                    {user.userId}
+                    {auth.userId}
                   </Typography>
                   <ContentCopyIcon sx={{ fontSize: 14, opacity: 0.6 }} />
                 </MenuItem>

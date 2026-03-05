@@ -12,8 +12,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
-import { apiFetch } from "../../lib/auth";
-import { useAuthStore } from "../../stores/auth-store";
+import { apiFetch, useAuth } from "../../lib/auth";
 
 type Usage = { nodeCount?: number; totalBytes?: number } | null;
 
@@ -24,8 +23,8 @@ function formatBytes(bytes: number): string {
 }
 
 export function StorageTab() {
-  const user = useAuthStore((s) => s.user);
-  const realmId = user?.userId ?? null;
+  const auth = useAuth();
+  const realmId = auth?.userId ?? null;
 
   const [usage, setUsage] = useState<Usage>(null);
   const [loading, setLoading] = useState(false);

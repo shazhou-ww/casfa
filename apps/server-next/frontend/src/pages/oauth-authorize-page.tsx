@@ -1,13 +1,13 @@
 import { Box, Button, Card, CardContent, TextField, Typography } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { apiFetch, useAuth } from "../lib/auth";
 import { useAuthStore } from "../stores/auth-store";
-import { apiFetch } from "../lib/auth";
 
 export function OAuthAuthorizePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const isLoggedIn = useAuthStore((s) => s.isLoggedIn);
+  const auth = useAuth();
   const initialized = useAuthStore((s) => s.initialized);
   const initialize = useAuthStore((s) => s.initialize);
   const [error, setError] = useState<string | null>(null);
@@ -50,11 +50,11 @@ export function OAuthAuthorizePage() {
   // Not logged in: redirect to login with returnUrl so we come back here after
   useEffect(() => {
     if (!initialized) return;
-    if (!isLoggedIn) {
+    if (!auth) {
       const returnUrl = `/oauth/authorize?${searchParams.toString()}`;
       navigate(`/login?returnUrl=${encodeURIComponent(returnUrl)}`, { replace: true });
     }
-  }, [initialized, isLoggedIn, navigate, searchParams]);
+  }, [initialized, auth, navigate, searchParams]);
 
   const handleAllow = useCallback(async () => {
     if (!client_id || !redirect_uri || !state || !code_challenge) {
@@ -105,7 +105,7 @@ export function OAuthAuthorizePage() {
     }
   }, [redirect_uri, state, navigate]);
 
-  if (!initialized || !isLoggedIn) {
+  if (!initialized || !auth) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
         <Typography color="text.secondary">Redirecting to login…</Typography>
