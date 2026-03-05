@@ -49,6 +49,7 @@ export function createApp(deps: AppDeps) {
 
   const oauthRoutes = createOAuthRoutes({
     oauthServer: deps.oauthServer,
+    cookieConfig: deps.config.auth,
   });
   app.route("/", oauthRoutes);
 
