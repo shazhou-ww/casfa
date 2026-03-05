@@ -1,5 +1,10 @@
 export { createDynamoGrantStore } from "./dynamo-grant-store.ts";
 export {
+  buildAuthCookieHeader,
+  buildClearAuthCookieHeader,
+  getTokenFromRequest,
+} from "./cookie.ts";
+export {
   createOAuthServer,
   type OAuthServer,
   type OAuthServerConfig,
