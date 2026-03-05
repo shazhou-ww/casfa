@@ -1,4 +1,5 @@
 import type { CasFacade } from "@casfa/cas";
+import { getTokenFromRequest } from "@casfa/cell-oauth";
 import type { OAuthServer } from "@casfa/cell-oauth";
 import type { KeyProvider } from "@casfa/core";
 import { Hono } from "hono";
@@ -63,8 +64,9 @@ export function createApp(deps: AppDeps) {
   }
 
   app.use("*", async (c, next) => {
-    const header = c.req.header("Authorization") ?? c.req.header("authorization");
-    const token = header?.startsWith("Bearer ") ? header.slice(7).trim() : null;
+    const token = getTokenFromRequest(c.req.raw, {
+      cookieName: deps.config.auth.cookieName ?? undefined,
+    });
     if (!token) {
       await next();
       return;
