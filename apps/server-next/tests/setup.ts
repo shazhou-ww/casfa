@@ -9,6 +9,15 @@ process.env.S3_BUCKET ??= "casfa-next-local-test-blob";
 process.env.STAGE ??= "local-test";
 
 import * as jose from "jose";
+import {
+  type CognitoConfig,
+  createMockJwtVerifier,
+} from "@casfa/cell-cognito";
+import {
+  type DelegateGrantStore as CellOAuthGrantStore,
+  type DelegateGrant as CellOAuthGrant,
+  createOAuthServer,
+} from "@casfa/cell-oauth";
 import { loadConfig } from "../backend/config.ts";
 import { createApp } from "../backend/app.ts";
 import { createCasFacade } from "../backend/services/cas.ts";
@@ -49,11 +58,67 @@ export type TestHelpers = {
 async function createUserToken(realmId: string): Promise<string> {
   const secret = "test-secret-e2e";
   const key = new Uint8Array(new TextEncoder().encode(secret));
-  return await new jose.SignJWT({})
+  return await new jose.SignJWT({
+    email: "test@example.com",
+    name: "Test User",
+  })
     .setSubject(realmId)
     .setExpirationTime("1h")
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .sign(key);
+}
+
+/** In-memory grant store for cell-oauth (userId, clientName) used by in-process E2E. */
+function createMemoryCellOAuthGrantStore(): CellOAuthGrantStore {
+  const byId = new Map<string, CellOAuthGrant>();
+  const byUserHash = new Map<string, CellOAuthGrant>();
+  const byUserRefresh = new Map<string, CellOAuthGrant>();
+  const key = (u: string, h: string) => `${u}:${h}`;
+  return {
+    async list(userId) {
+      return Array.from(byId.values()).filter((g) => g.userId === userId);
+    },
+    async get(delegateId) {
+      return byId.get(delegateId) ?? null;
+    },
+    async getByAccessTokenHash(userId, hash) {
+      return byUserHash.get(key(userId, hash)) ?? null;
+    },
+    async getByRefreshTokenHash(userId, hash) {
+      return byUserRefresh.get(key(userId, hash)) ?? null;
+    },
+    async insert(grant) {
+      byId.set(grant.delegateId, grant);
+      byUserHash.set(key(grant.userId, grant.accessTokenHash), grant);
+      if (grant.refreshTokenHash) {
+        byUserRefresh.set(key(grant.userId, grant.refreshTokenHash), grant);
+      }
+    },
+    async remove(delegateId) {
+      const g = byId.get(delegateId);
+      if (g) {
+        byId.delete(delegateId);
+        byUserHash.delete(key(g.userId, g.accessTokenHash));
+        if (g.refreshTokenHash) byUserRefresh.delete(key(g.userId, g.refreshTokenHash));
+      }
+    },
+    async updateTokens(delegateId, update) {
+      const g = byId.get(delegateId);
+      if (!g) return;
+      byUserHash.delete(key(g.userId, g.accessTokenHash));
+      if (g.refreshTokenHash) byUserRefresh.delete(key(g.userId, g.refreshTokenHash));
+      const updated: CellOAuthGrant = {
+        ...g,
+        accessTokenHash: update.accessTokenHash,
+        refreshTokenHash: update.refreshTokenHash ?? g.refreshTokenHash,
+      };
+      byId.set(delegateId, updated);
+      byUserHash.set(key(updated.userId, updated.accessTokenHash), updated);
+      if (updated.refreshTokenHash) {
+        byUserRefresh.set(key(updated.userId, updated.refreshTokenHash), updated);
+      }
+    },
+  };
 }
 
 function createHelpers(url: string): TestHelpers {
@@ -202,6 +267,22 @@ export function startTestServer(options?: { port?: number }): TestServer {
   const derivedDataStore = createMemoryDerivedDataStore();
   const realmUsageStore = createMemoryRealmUsageStore();
   const userSettingsStore = createMemoryUserSettingsStore();
+
+  const cognitoConfig: CognitoConfig = {
+    region: "us-east-1",
+    userPoolId: "",
+    clientId: "",
+    hostedUiUrl: "",
+  };
+  const cellOAuthGrantStore: CellOAuthGrantStore = createMemoryCellOAuthGrantStore();
+  const oauthServer = createOAuthServer({
+    issuerUrl: "http://localhost",
+    cognitoConfig,
+    jwtVerifier: createMockJwtVerifier("test-secret-e2e"),
+    grantStore: cellOAuthGrantStore,
+    permissions: ["use_mcp", "manage_delegates", "file_read", "file_write", "branch_manage", "delegate_manage"],
+  });
+
   const app = createApp({
     config: testConfig,
     cas,
@@ -211,6 +292,7 @@ export function startTestServer(options?: { port?: number }): TestServer {
     derivedDataStore,
     realmUsageStore,
     userSettingsStore,
+    oauthServer,
   });
 
   const port = options?.port ?? 0;

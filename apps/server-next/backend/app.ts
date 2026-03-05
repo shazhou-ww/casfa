@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { Env, ErrorBody } from "./types.ts";
+import type { Env, ErrorBody, AuthContext } from "./types.ts";
 import type { ServerConfig } from "./config.ts";
 import type { CasFacade } from "@casfa/cas";
 import type { DelegateGrantStore } from "./db/delegate-grants.ts";
@@ -18,6 +18,7 @@ import { createRealmController } from "./controllers/realm.ts";
 import { createMcpHandler } from "./mcp/handler.ts";
 import { createMeController } from "./controllers/me.ts";
 import { createDevMockTokenController } from "./controllers/dev-mock-token.ts";
+import { createOAuthRoutes } from "./controllers/oauth.ts";
 import { ensureEmptyRoot } from "./services/root-resolver.ts";
 import {
   createMcpAuthCode,
@@ -31,7 +32,7 @@ import {
 import type { KeyProvider } from "@casfa/core";
 
 import type { UserSettingsStore } from "./db/user-settings.ts";
-
+import type { OAuthServer } from "@casfa/cell-oauth";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 export type AppDeps = {
@@ -43,6 +44,7 @@ export type AppDeps = {
   derivedDataStore: DerivedDataStore;
   realmUsageStore: RealmUsageStore;
   userSettingsStore: UserSettingsStore;
+  oauthServer: OAuthServer;
 };
 
 export function createApp(deps: AppDeps) {
@@ -56,6 +58,58 @@ export function createApp(deps: AppDeps) {
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     })
   );
+
+  const oauthRoutes = createOAuthRoutes({ oauthServer: deps.oauthServer });
+  app.route("/", oauthRoutes);
+
+  /** Decode branch token (base64url of branchId) to branchId */
+  function decodeBranchToken(token: string): string | null {
+    try {
+      const padded = token.replace(/-/g, "+").replace(/_/g, "/");
+      const bin = atob(padded);
+      return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+    } catch {
+      return null;
+    }
+  }
+
+  app.use("*", async (c, next) => {
+    const header = c.req.header("Authorization") ?? c.req.header("authorization");
+    const token = header?.startsWith("Bearer ") ? header.slice(7).trim() : null;
+    if (!token) {
+      await next();
+      return;
+    }
+    const auth = await deps.oauthServer.resolveAuth(token);
+    if (auth) {
+      if (auth.type === "user") {
+        c.set("auth", { type: "user", userId: auth.userId } satisfies Env["Variables"]["auth"]);
+      } else {
+        c.set("auth", {
+          type: "delegate",
+          realmId: auth.userId,
+          delegateId: auth.delegateId,
+          clientId: auth.delegateId,
+          permissions: auth.permissions,
+        } as AuthContext);
+      }
+      await next();
+      return;
+    }
+    const branchId = decodeBranchToken(token);
+    if (branchId) {
+      const branch = await deps.branchStore.getBranch(branchId);
+      if (branch && Date.now() <= branch.expiresAt) {
+        c.set("auth", {
+          type: "worker",
+          realmId: branch.realmId,
+          branchId: branch.branchId,
+          access: "readwrite",
+        } satisfies Env["Variables"]["auth"]);
+      }
+    }
+    await next();
+  });
 
   app.get("/api/health", (c) => c.json({ ok: true }, 200));
   app.get("/api/info", (c) =>

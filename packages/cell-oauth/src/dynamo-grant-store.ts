@@ -82,7 +82,7 @@ export function createDynamoGrantStore(params: {
         }),
       );
       const items = result.Items ?? [];
-      return items.length > 0 ? fromItem(items[0]) : null;
+      return items.length > 0 ? fromItem(items[0] as Record<string, unknown>) : null;
     },
 
     async getByRefreshTokenHash(userId, hash) {
@@ -98,7 +98,7 @@ export function createDynamoGrantStore(params: {
         }),
       );
       const items = result.Items ?? [];
-      return items.length > 0 ? fromItem(items[0]) : null;
+      return items.length > 0 ? fromItem(items[0] as Record<string, unknown>) : null;
     },
 
     async insert(grant) {
@@ -122,7 +122,7 @@ export function createDynamoGrantStore(params: {
         }),
       );
       if (!existing.Item) throw new Error("Grant not found");
-      const grant = fromItem(existing.Item);
+      const grant = fromItem(existing.Item as Record<string, unknown>);
       grant.accessTokenHash = update.accessTokenHash;
       grant.refreshTokenHash = update.refreshTokenHash;
       await client.send(new PutCommand({ TableName: tableName, Item: toItem(grant) }));
