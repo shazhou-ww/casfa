@@ -2,14 +2,11 @@ import { Box, Button, Card, CardContent, TextField, Typography } from "@mui/mate
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch, useAuth } from "../lib/auth";
-import { useAuthStore } from "../stores/auth-store";
 
 export function OAuthAuthorizePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const auth = useAuth();
-  const initialized = useAuthStore((s) => s.initialized);
-  const initialize = useAuthStore((s) => s.initialize);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
@@ -21,10 +18,6 @@ export function OAuthAuthorizePage() {
   const state = searchParams.get("state") ?? "";
   const code_challenge = searchParams.get("code_challenge") ?? "";
   const code_challenge_method = searchParams.get("code_challenge_method") ?? "S256";
-
-  useEffect(() => {
-    initialize();
-  }, [initialize]);
 
   // Fetch client_name from registration (RFC 7591) so we show the name the client provided
   useEffect(() => {
@@ -49,12 +42,11 @@ export function OAuthAuthorizePage() {
 
   // Not logged in: redirect to login with returnUrl so we come back here after
   useEffect(() => {
-    if (!initialized) return;
     if (!auth) {
       const returnUrl = `/oauth/authorize?${searchParams.toString()}`;
       navigate(`/login?returnUrl=${encodeURIComponent(returnUrl)}`, { replace: true });
     }
-  }, [initialized, auth, navigate, searchParams]);
+  }, [auth, navigate, searchParams]);
 
   const handleAllow = useCallback(async () => {
     if (!client_id || !redirect_uri || !state || !code_challenge) {
@@ -105,7 +97,7 @@ export function OAuthAuthorizePage() {
     }
   }, [redirect_uri, state, navigate]);
 
-  if (!initialized || !auth) {
+  if (!auth) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
         <Typography color="text.secondary">Redirecting to login…</Typography>

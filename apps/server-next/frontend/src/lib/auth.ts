@@ -15,7 +15,10 @@ export function useAuth() {
 const cellApiFetch = createApiFetch({
   authClient,
   baseUrl: "",
-  onUnauthorized: () => authClient.logout(),
+  onUnauthorized: () => {
+    authClient.logout();
+    window.location.replace("/login");
+  },
 });
 
 /**
