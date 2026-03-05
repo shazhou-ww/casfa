@@ -12,6 +12,29 @@ import { isEnvRef, isSecretRef } from "./cell-yaml-schema.js";
 
 export type Stage = "dev" | "test" | "cloud";
 
+/** Thrown when required params are missing from env; catch in CLI to exit with a clean message */
+export class MissingParamsError extends Error {
+  readonly missingLines: string[];
+  readonly cellName: string;
+  readonly stage: Stage;
+
+  constructor(cellName: string, stage: Stage, missingLines: string[]) {
+    const message = [
+      "",
+      `Missing required params for "${cellName}" (stage=${stage}):`,
+      ...missingLines,
+      "",
+      "Add them to your .env files, then retry.",
+      "",
+    ].join("\n");
+    super(message);
+    this.name = "MissingParamsError";
+    this.missingLines = missingLines;
+    this.cellName = cellName;
+    this.stage = stage;
+  }
+}
+
 export interface ResolvedTable {
   key: string;
   tableName: string;
@@ -50,7 +73,8 @@ export function resolveConfig(
   const envVars: Record<string, string> = {};
   const secretRefs: Record<string, string> = {};
 
-  // 1. Params → env vars
+  // 1. Params → env vars (all params are required)
+  const missingParams: string[] = [];
   if (config.params) {
     for (const [key, value] of Object.entries(config.params)) {
       if (typeof value === "string") {
@@ -59,29 +83,22 @@ export function resolveConfig(
         secretRefs[key] = value.secret;
         const envValue = envMap[value.secret];
         if (envValue === undefined) {
-          if (stage === "cloud") {
-            throw new Error(`Missing secret "${value.secret}" in env map for cloud stage`);
-          }
-          console.warn(
-            `Warning: secret "${value.secret}" not found in env map (stage=${stage}), skipping`
-          );
+          missingParams.push(`  ${key}: !Secret "${value.secret}" not found in env`);
         } else {
           envVars[key] = envValue;
         }
       } else if (isEnvRef(value)) {
         const envValue = envMap[value.env];
         if (envValue === undefined) {
-          if (stage === "cloud") {
-            throw new Error(`Missing env var "${value.env}" in env map for cloud stage`);
-          }
-          console.warn(
-            `Warning: env var "${value.env}" not found in env map (stage=${stage}), skipping`
-          );
+          missingParams.push(`  ${key}: !Env "${value.env}" not found in env`);
         } else {
           envVars[key] = envValue;
         }
       }
     }
+  }
+  if (missingParams.length > 0) {
+    throw new MissingParamsError(config.name, stage, missingParams);
   }
 
   // 2. Tables → resolved names + auto env vars
