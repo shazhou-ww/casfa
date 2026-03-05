@@ -1,7 +1,7 @@
 /**
  * DynamoDB-backed BranchStore for realm root + branch state.
  * Realm root branch is stored on the realm entity: pk=REALM#realmId, sk=REALM, rootBranchId.
- * Branch rows: PK=DLG#branchId, SK=METADATA|ROOT; GSI1: gsi1pk=REALM#realmId, gsi1sk=PARENT#parentId.
+ * Branch rows: PK=BRANCH#branchId, SK=METADATA|ROOT; GSI1: gsi1pk=REALM#realmId, gsi1sk=PARENT#parentId.
  */
 import {
   DynamoDBClient,
@@ -18,7 +18,7 @@ import {
 import type { Branch } from "../types/branch.ts";
 import type { BranchStore } from "./branch-store.ts";
 
-const PK_PREFIX = "DLG#";
+const PK_PREFIX = "BRANCH#";
 const REALM_PK_PREFIX = "REALM#";
 const SK_METADATA = "METADATA";
 const SK_ROOT = "ROOT";
@@ -35,6 +35,13 @@ export type DynamoBranchStoreConfig = {
 
 function toPk(branchId: string): string {
   return `${PK_PREFIX}${branchId}`;
+}
+
+/** Extract branchId from pk; supports legacy DLG# and new BRANCH# prefix. */
+function pkToBranchId(pk: string): string {
+  if (pk.startsWith("BRANCH#")) return pk.slice(7);
+  if (pk.startsWith("DLG#")) return pk.slice(4);
+  return pk;
 }
 
 function toGsi1Pk(realmId: string): string {
@@ -57,7 +64,7 @@ function itemToBranch(item: Record<string, unknown>): Branch {
       ? (item.expiresAt as number) ?? 0
       : (item.accessExpiresAt as number) ?? 0;
   return {
-    branchId: (item.delegateId ?? item.branchId) as string,
+    branchId: (item.branchId ?? item.delegateId) as string,
     realmId: item.realmId as string,
     parentId: item.parentId as string | null,
     mountPath: (item.mountPath as string) ?? "",
@@ -65,10 +72,10 @@ function itemToBranch(item: Record<string, unknown>): Branch {
   };
 }
 
-/** Write Branch as Dynamo item (legacy shape for backward compat). */
+/** Write Branch as Dynamo item. */
 function branchToItem(branch: Branch): Record<string, unknown> {
   return {
-    delegateId: branch.branchId,
+    branchId: branch.branchId,
     realmId: branch.realmId,
     parentId: branch.parentId,
     mountPath: branch.mountPath,
@@ -134,7 +141,7 @@ export function createDynamoBranchStore(
       const legItem = legacy.Items?.[0] as Record<string, unknown> | undefined;
       if (!legItem) return null;
       const pk = legItem.pk as string;
-      const branchId = pk.startsWith(PK_PREFIX) ? pk.slice(PK_PREFIX.length) : pk;
+      const branchId = pkToBranchId(pk);
       await doc.send(
         new PutCommand({
           TableName: tableName,
@@ -185,7 +192,7 @@ export function createDynamoBranchStore(
       const legItem = legacy.Items?.[0] as Record<string, unknown> | undefined;
       if (legItem?.pk) {
         const pk = legItem.pk as string;
-        const branchId = pk.startsWith(PK_PREFIX) ? pk.slice(PK_PREFIX.length) : pk;
+        const branchId = pkToBranchId(pk);
         const currentRoot = await this.getBranchRoot(branchId);
         if (currentRoot !== null) {
           try {
@@ -337,7 +344,10 @@ export function createDynamoBranchStore(
             ? (d.expiresAt as number)
             : (d.accessExpiresAt as number);
         if (exp < expiredBefore) {
-          const branchId = (d.delegateId as string) ?? (d.pk as string).slice(PK_PREFIX.length);
+          const branchId =
+            (d.branchId as string) ??
+            (d.delegateId as string) ??
+            pkToBranchId(d.pk as string);
           await this.removeBranch(branchId);
           count++;
         }
