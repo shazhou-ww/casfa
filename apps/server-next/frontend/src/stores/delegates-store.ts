@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import type { CreateDelegateResponse, DelegateListItem } from "../types/delegate";
-import { useAuthStore } from "./auth-store";
-import { apiFetch } from "../lib/auth";
+import { authClient, apiFetch } from "../lib/auth";
 
 type DelegatesStore = {
   delegates: DelegateListItem[];
@@ -13,7 +12,7 @@ type DelegatesStore = {
 };
 
 function getRealmId(): string {
-  const realmId = useAuthStore.getState().user?.userId;
+  const realmId = authClient.getAuth()?.userId;
   if (!realmId) throw new Error("Not authenticated: realmId (user) not loaded");
   return realmId;
 }

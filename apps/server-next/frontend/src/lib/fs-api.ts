@@ -1,6 +1,5 @@
 import type { FsEntry } from "../types/api";
-import { useAuthStore } from "../stores/auth-store";
-import { apiFetch } from "./auth";
+import { authClient, apiFetch } from "./auth";
 
 function normalizedPathSegments(path: string): string {
   const p = !path || path === "/" ? "" : path.replace(/^\/+/, "").replace(/\/+$/, "");
@@ -8,7 +7,7 @@ function normalizedPathSegments(path: string): string {
 }
 
 function filesBaseUrl(): string {
-  const realmId = useAuthStore.getState().user?.userId;
+  const realmId = authClient.getAuth()?.userId;
   if (!realmId) throw new Error("Not authenticated: realmId (user) not loaded");
   return `/api/realm/${realmId}/files`;
 }
@@ -101,7 +100,7 @@ export function isImageContentType(contentType: string | undefined): boolean {
 }
 
 export async function fetchList(path: string): Promise<FsEntry[]> {
-  const realmId = useAuthStore.getState().user?.userId;
+  const realmId = authClient.getAuth()?.userId;
   if (!realmId) {
     throw new Error("Not authenticated: realmId (user) not loaded");
   }
@@ -130,7 +129,7 @@ export async function fetchList(path: string): Promise<FsEntry[]> {
  * For "current dir + name": pass normalized current path + name, e.g. "" and "MyFolder" or "foo/bar" and "MyFolder".
  */
 export async function createFolder(parentPath: string, name: string): Promise<void> {
-  const realmId = useAuthStore.getState().user?.userId;
+  const realmId = authClient.getAuth()?.userId;
   if (!realmId) {
     throw new Error("Not authenticated: realmId (user) not loaded");
   }
@@ -164,7 +163,7 @@ const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
  * Uses PUT /api/realm/:realmId/files/:path. Max 4MB per file.
  */
 export async function uploadFile(path: string, file: File): Promise<void> {
-  const realmId = useAuthStore.getState().user?.userId;
+  const realmId = authClient.getAuth()?.userId;
   if (!realmId) throw new Error("Not authenticated");
   const normalized = normalizePath(path);
   if (!normalized) throw new Error("Path must include file name");
@@ -187,7 +186,7 @@ export async function uploadFile(path: string, file: File): Promise<void> {
  * Delete a file or directory at the given path.
  */
 export async function deletePath(path: string): Promise<void> {
-  const realmId = useAuthStore.getState().user?.userId;
+  const realmId = authClient.getAuth()?.userId;
   if (!realmId) {
     throw new Error("Not authenticated: realmId (user) not loaded");
   }
@@ -210,7 +209,7 @@ export async function deletePath(path: string): Promise<void> {
  * Move a file or directory from one path to another.
  */
 export async function movePath(from: string, to: string): Promise<void> {
-  const realmId = useAuthStore.getState().user?.userId;
+  const realmId = authClient.getAuth()?.userId;
   if (!realmId) {
     throw new Error("Not authenticated: realmId (user) not loaded");
   }
@@ -234,7 +233,7 @@ export async function movePath(from: string, to: string): Promise<void> {
  * Copy a file or directory from one path to another.
  */
 export async function copyPath(from: string, to: string): Promise<void> {
-  const realmId = useAuthStore.getState().user?.userId;
+  const realmId = authClient.getAuth()?.userId;
   if (!realmId) {
     throw new Error("Not authenticated: realmId (user) not loaded");
   }

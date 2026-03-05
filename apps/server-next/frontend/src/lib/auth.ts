@@ -1,46 +1,43 @@
-import { useAuthStore } from "../stores/auth-store";
+import { createApiFetch, createAuthClient } from "@casfa/cell-auth-client";
+import { useSyncExternalStore } from "react";
 
-const UNAUTHORIZED_MESSAGE = "请重新登录";
+export const authClient = createAuthClient({ storagePrefix: "casfa-next" });
+
+/** Hook: current auth from cell-auth-client (re-renders on login/logout). */
+export function useAuth() {
+  return useSyncExternalStore(
+    (onStoreChange) => authClient.subscribe(() => onStoreChange()),
+    () => authClient.getAuth(),
+    () => authClient.getAuth()
+  );
+}
+
+const cellApiFetch = createApiFetch({
+  authClient,
+  baseUrl: "",
+  onUnauthorized: () => authClient.logout(),
+});
 
 /**
- * Central fetch that attaches Authorization: Bearer <token> when the auth store
- * has a token (e.g. from mock-token when authType is mock). Use this for all
- * /api/* requests that require auth.
- * On 401: if authType is mock, tries to refresh token once and retries; otherwise
- * logs out and throws. Callers can catch to show "请重新登录".
+ * Central fetch that attaches Authorization: Bearer from cell-auth-client and
+ * calls onUnauthorized (logout) on 401. Use this for all /api/* requests that require auth.
+ * Accepts path (string) or full URL; when URL is passed, path is taken relative to same origin.
  */
 export async function apiFetch(
   input: RequestInfo | URL,
   init?: RequestInit
 ): Promise<Response> {
-  const store = useAuthStore.getState();
-  const token = store.getToken();
-  const authType = store.authType;
-  const headers = new Headers(init?.headers);
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+  let path: string;
+  if (typeof input === "string") {
+    path = input;
+  } else if (input instanceof URL) {
+    path = input.pathname + input.search;
+  } else {
+    path = (input as Request).url;
   }
-
-  let res = await fetch(input, { ...init, headers });
-
-  if (res.status === 401 && authType === "mock") {
-    const tokenRes = await fetch("/api/dev/mock-token");
-    if (tokenRes.ok) {
-      const data = (await tokenRes.json()) as { token?: string };
-      const newToken = data.token ?? null;
-      if (newToken) {
-        store.setToken(newToken);
-        const retryHeaders = new Headers(init?.headers);
-        retryHeaders.set("Authorization", `Bearer ${newToken}`);
-        res = await fetch(input, { ...init, headers: retryHeaders });
-      }
-    }
-  }
-
-  if (res.status === 401) {
-    useAuthStore.getState().logout();
-    throw new Error(UNAUTHORIZED_MESSAGE);
-  }
-
-  return res;
+  const pathOnly =
+    path.startsWith("http://") || path.startsWith("https://")
+      ? new URL(path).pathname + new URL(path).search
+      : path;
+  return cellApiFetch(pathOnly, init ?? null);
 }
