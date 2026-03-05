@@ -21,6 +21,10 @@ export const ENV_NAMES = {
   S3_ENDPOINT: "S3_ENDPOINT",
   FRONTEND_BUCKET: "FRONTEND_BUCKET",
   LOG_LEVEL: "LOG_LEVEL",
+  AUTH_COOKIE_NAME: "AUTH_COOKIE_NAME",
+  AUTH_COOKIE_DOMAIN: "AUTH_COOKIE_DOMAIN",
+  AUTH_COOKIE_PATH: "AUTH_COOKIE_PATH",
+  AUTH_COOKIE_MAX_AGE_SECONDS: "AUTH_COOKIE_MAX_AGE_SECONDS",
 } as const;
 
 export type ServerConfig = {
@@ -35,6 +39,12 @@ export type ServerConfig = {
     cognitoClientId?: string;
     cognitoHostedUiUrl?: string;
     cognitoClientSecret?: string;
+    /** SSO: HttpOnly cookie for access token (same parent domain). Omit to disable. */
+    cookieName?: string;
+    cookieDomain?: string;
+    cookiePath?: string;
+    cookieMaxAgeSeconds?: number;
+    cookieSecure?: boolean;
   };
   /** DynamoDB: endpoint for local (e.g. http://localhost:7102); omit for AWS */
   dynamodbEndpoint?: string;
@@ -59,6 +69,8 @@ export function isMockAuthEnabled(config: ServerConfig): boolean {
 export function loadConfig(): ServerConfig {
   const port = Number(process.env.PORT) || DEFAULT_PORT;
   const stage = process.env.SLS_STAGE ?? process.env.STAGE ?? "dev";
+  const baseUrl = (process.env.CELL_BASE_URL || "").replace(/\/$/, "");
+  const cookieName = process.env.AUTH_COOKIE_NAME || undefined;
   const auth: ServerConfig["auth"] = {
     mockJwtSecret: process.env.MOCK_JWT_SECRET || undefined,
     maxBranchTtlMs: process.env.MAX_BRANCH_TTL_MS
@@ -69,8 +81,17 @@ export function loadConfig(): ServerConfig {
     cognitoClientId: process.env.COGNITO_CLIENT_ID,
     cognitoHostedUiUrl: process.env.COGNITO_HOSTED_UI_URL,
     cognitoClientSecret: process.env.COGNITO_CLIENT_SECRET,
+    cookieName,
+    cookieDomain: process.env.AUTH_COOKIE_DOMAIN || undefined,
+    cookiePath: process.env.AUTH_COOKIE_PATH || (cookieName ? "/" : undefined),
+    cookieMaxAgeSeconds: process.env.AUTH_COOKIE_MAX_AGE_SECONDS
+      ? Number(process.env.AUTH_COOKIE_MAX_AGE_SECONDS)
+      : undefined,
+    cookieSecure:
+      process.env.AUTH_COOKIE_SECURE !== undefined
+        ? process.env.AUTH_COOKIE_SECURE === "true"
+        : baseUrl.startsWith("https://"),
   };
-  const baseUrl = (process.env.CELL_BASE_URL || "").replace(/\/$/, "");
   return {
     port,
     baseUrl,
