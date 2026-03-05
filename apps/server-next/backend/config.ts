@@ -14,9 +14,10 @@ export const ENV_NAMES = {
   COGNITO_HOSTED_UI_URL: "COGNITO_HOSTED_UI_URL",
   COGNITO_CLIENT_SECRET: "COGNITO_CLIENT_SECRET",
   DYNAMODB_ENDPOINT: "DYNAMODB_ENDPOINT",
-  DYNAMODB_TABLE_DELEGATES: "DYNAMODB_TABLE_DELEGATES",
+  DYNAMODB_TABLE_REALMS: "DYNAMODB_TABLE_REALMS",
   DYNAMODB_TABLE_GRANTS: "DYNAMODB_TABLE_GRANTS",
   S3_BUCKET: "S3_BUCKET",
+  S3_BUCKET_BLOB: "S3_BUCKET_BLOB",
   S3_ENDPOINT: "S3_ENDPOINT",
   FRONTEND_BUCKET: "FRONTEND_BUCKET",
   LOG_LEVEL: "LOG_LEVEL",
@@ -37,7 +38,7 @@ export type ServerConfig = {
   };
   /** DynamoDB: endpoint for local (e.g. http://localhost:7102); omit for AWS */
   dynamodbEndpoint?: string;
-  dynamodbTableDelegates: string;
+  dynamodbTableRealms: string;
   dynamodbTableGrants: string;
   /** S3 bucket for CAS blob */
   s3Bucket: string;
@@ -70,11 +71,12 @@ export function loadConfig(): ServerConfig {
     apiBaseUrl,
     auth,
     dynamodbEndpoint: process.env.DYNAMODB_ENDPOINT,
-    dynamodbTableDelegates:
-      process.env.DYNAMODB_TABLE_DELEGATES ?? `casfa-next-${stage}-delegates`,
+    dynamodbTableRealms:
+      process.env.DYNAMODB_TABLE_REALMS ?? `casfa-next-${stage}-realms`,
     dynamodbTableGrants:
       process.env.DYNAMODB_TABLE_GRANTS ?? `casfa-next-${stage}-grants`,
-    s3Bucket: process.env.S3_BUCKET ?? `casfa-next-${stage}-blob`,
+    s3Bucket:
+      process.env.S3_BUCKET_BLOB ?? process.env.S3_BUCKET ?? `casfa-next-${stage}-blob`,
     frontendBucket: process.env.FRONTEND_BUCKET ?? undefined,
     s3Endpoint: process.env.S3_ENDPOINT,
     logLevel: process.env.LOG_LEVEL,

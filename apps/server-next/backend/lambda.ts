@@ -19,7 +19,7 @@ import { createCasFacade } from "./services/cas.ts";
 const config = loadConfig();
 const { cas, key } = createCasFacade(config);
 const branchStore = createDynamoBranchStore({
-  tableName: config.dynamodbTableDelegates,
+  tableName: config.dynamodbTableRealms,
   clientConfig: config.dynamodbEndpoint
     ? { endpoint: config.dynamodbEndpoint, region: "us-east-1" }
     : undefined,
