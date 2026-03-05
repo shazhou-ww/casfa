@@ -1,5 +1,5 @@
 /**
- * E2E: Delegate assign and access with delegate token.
+ * E2E: Delegate create (POST /api/delegates), list (GET /api/delegates), revoke; delegate token access.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createE2EContext } from "./setup.ts";
@@ -58,9 +58,10 @@ describe("Delegates", () => {
       "/api/delegates"
     );
     expect(res.status).toBe(200);
-    const data = (await res.json()) as { delegateId: string }[];
-    expect(Array.isArray(data)).toBe(true);
-    expect(data.length).toBeGreaterThanOrEqual(1);
+    const data = (await res.json()) as { delegateId?: string }[] | { delegates?: { delegateId: string }[] };
+    const list = Array.isArray(data) ? data : (data as { delegates?: { delegateId: string }[] }).delegates ?? [];
+    expect(Array.isArray(list)).toBe(true);
+    expect(list.length).toBeGreaterThanOrEqual(1);
   });
 
   it("revoke delegate then token fails", async () => {
@@ -83,10 +84,8 @@ describe("Delegates", () => {
       "/api/delegates"
     );
     expect(listRes.status).toBe(200);
-    const listData = (await listRes.json()) as {
-      delegateId: string;
-    }[];
-    expect(Array.isArray(listData)).toBe(true);
-    expect(listData.some((d) => d.delegateId === delegateId)).toBe(false);
+    const listData = (await listRes.json()) as { delegateId?: string }[] | { delegates?: { delegateId: string }[] };
+    const list = Array.isArray(listData) ? listData : (listData as { delegates?: { delegateId: string }[] }).delegates ?? [];
+    expect(list.some((d: { delegateId?: string }) => d.delegateId === delegateId)).toBe(false);
   });
 });

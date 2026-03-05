@@ -1,5 +1,6 @@
 /**
  * E2E: Realm info, usage, gc.
+ * Paths: /api/realm/:realmId, /api/realm/:realmId/usage, /api/realm/:realmId/gc.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createE2EContext } from "./setup.ts";

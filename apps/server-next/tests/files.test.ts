@@ -50,7 +50,6 @@ describe("Files (User)", () => {
 
   it("upload file then stat and get content", async () => {
     const token = await ctx.helpers.createUserToken(realmId);
-    // Ensure root exists (list or mkdir already ran; same realm)
     const listRes = await ctx.helpers.authRequest(
       token,
       "GET",

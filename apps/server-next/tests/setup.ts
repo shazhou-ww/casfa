@@ -1,7 +1,8 @@
 /**
  * E2E test setup.
- * When BASE_URL is set: hit remote server (e.g. cell dev at that URL); mock auth uses decode-only verifier.
- * When BASE_URL is not set: in-process server with memory stores (no DynamoDB/S3), mock auth decode-only so user and delegate tokens work.
+ * When BASE_URL is set: hit remote server (e.g. cell dev); mock auth uses decode-only verifier.
+ * When BASE_URL is not set: in-process server with memory stores, cell-oauth with memory grant store.
+ * Paths: /mcp, /api/delegates, /oauth/* (OAuth flow).
  */
 process.env.DYNAMODB_ENDPOINT ??= "http://localhost:7102";
 process.env.S3_ENDPOINT ??= "http://localhost:7104";
@@ -9,15 +10,9 @@ process.env.S3_BUCKET ??= "casfa-next-local-test-blob";
 process.env.STAGE ??= "local-test";
 
 import * as jose from "jose";
-import {
-  type CognitoConfig,
-  createMockJwtVerifier,
-} from "@casfa/cell-cognito";
-import {
-  type DelegateGrantStore as CellOAuthGrantStore,
-  type DelegateGrant as CellOAuthGrant,
-  createOAuthServer,
-} from "@casfa/cell-oauth";
+import type { DelegateGrant, DelegateGrantStore } from "@casfa/cell-oauth";
+import { createOAuthServer } from "@casfa/cell-oauth";
+import { createMockJwtVerifier } from "@casfa/cell-cognito";
 import { loadConfig } from "../backend/config.ts";
 import { createApp } from "../backend/app.ts";
 import { createCasFacade } from "../backend/services/cas.ts";
@@ -25,6 +20,36 @@ import { createMemoryDerivedDataStore } from "../backend/db/derived-data.ts";
 import { createMemoryRealmUsageStore } from "../backend/db/realm-usage-store.ts";
 import { createMemoryUserSettingsStore } from "../backend/db/user-settings.ts";
 import { createMemoryBranchStore } from "../backend/db/branch-store.ts";
+
+function createMemoryGrantStore(): DelegateGrantStore {
+  const grants = new Map<string, DelegateGrant>();
+  return {
+    async list(userId) {
+      return [...grants.values()].filter((g) => g.userId === userId);
+    },
+    async get(delegateId) {
+      return grants.get(delegateId) ?? null;
+    },
+    async getByAccessTokenHash(userId, hash) {
+      return [...grants.values()].find((g) => g.userId === userId && g.accessTokenHash === hash) ?? null;
+    },
+    async getByRefreshTokenHash(userId, hash) {
+      return [...grants.values()].find((g) => g.userId === userId && g.refreshTokenHash === hash) ?? null;
+    },
+    async insert(grant) {
+      grants.set(grant.delegateId, grant);
+    },
+    async remove(delegateId) {
+      grants.delete(delegateId);
+    },
+    async updateTokens(delegateId, update) {
+      const g = grants.get(delegateId);
+      if (!g) throw new Error("not found");
+      g.accessTokenHash = update.accessTokenHash;
+      g.refreshTokenHash = update.refreshTokenHash;
+    },
+  };
+}
 
 export type TestServer = {
   url: string;
@@ -43,7 +68,7 @@ export type TestHelpers = {
   assignDelegate(
     userToken: string,
     realmId: string,
-    options?: { client_id?: string; ttl?: number }
+    options?: { client_id?: string; clientName?: string; ttl?: number }
   ): Promise<{ accessToken: string; delegateId: string; expiresAt?: number }>;
   createBranch(
     userToken: string,
@@ -53,71 +78,15 @@ export type TestHelpers = {
   mcpRequest(token: string, method: string, params?: unknown): Promise<Response>;
 };
 
-/** E2E JWT: signed with same secret as startTestServer's testConfig (and dev-test when BASE_URL is set). */
+/** E2E JWT: signed with same secret as startTestServer's testConfig; must include sub, email, name for createMockJwtVerifier. */
 async function createUserToken(realmId: string): Promise<string> {
   const secret = "test-secret-e2e";
   const key = new Uint8Array(new TextEncoder().encode(secret));
-  return await new jose.SignJWT({
-    email: "test@example.com",
-    name: "Test User",
-  })
+  return await new jose.SignJWT({ email: "e2e@test.local", name: "E2E User" })
     .setSubject(realmId)
     .setExpirationTime("1h")
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .sign(key);
-}
-
-/** In-memory grant store for cell-oauth (userId, clientName) used by in-process E2E. */
-function createMemoryCellOAuthGrantStore(): CellOAuthGrantStore {
-  const byId = new Map<string, CellOAuthGrant>();
-  const byUserHash = new Map<string, CellOAuthGrant>();
-  const byUserRefresh = new Map<string, CellOAuthGrant>();
-  const key = (u: string, h: string) => `${u}:${h}`;
-  return {
-    async list(userId) {
-      return Array.from(byId.values()).filter((g) => g.userId === userId);
-    },
-    async get(delegateId) {
-      return byId.get(delegateId) ?? null;
-    },
-    async getByAccessTokenHash(userId, hash) {
-      return byUserHash.get(key(userId, hash)) ?? null;
-    },
-    async getByRefreshTokenHash(userId, hash) {
-      return byUserRefresh.get(key(userId, hash)) ?? null;
-    },
-    async insert(grant) {
-      byId.set(grant.delegateId, grant);
-      byUserHash.set(key(grant.userId, grant.accessTokenHash), grant);
-      if (grant.refreshTokenHash) {
-        byUserRefresh.set(key(grant.userId, grant.refreshTokenHash), grant);
-      }
-    },
-    async remove(delegateId) {
-      const g = byId.get(delegateId);
-      if (g) {
-        byId.delete(delegateId);
-        byUserHash.delete(key(g.userId, g.accessTokenHash));
-        if (g.refreshTokenHash) byUserRefresh.delete(key(g.userId, g.refreshTokenHash));
-      }
-    },
-    async updateTokens(delegateId, update) {
-      const g = byId.get(delegateId);
-      if (!g) return;
-      byUserHash.delete(key(g.userId, g.accessTokenHash));
-      if (g.refreshTokenHash) byUserRefresh.delete(key(g.userId, g.refreshTokenHash));
-      const updated: CellOAuthGrant = {
-        ...g,
-        accessTokenHash: update.accessTokenHash,
-        refreshTokenHash: update.refreshTokenHash ?? g.refreshTokenHash,
-      };
-      byId.set(delegateId, updated);
-      byUserHash.set(key(updated.userId, updated.accessTokenHash), updated);
-      if (updated.refreshTokenHash) {
-        byUserRefresh.set(key(updated.userId, updated.refreshTokenHash), updated);
-      }
-    },
-  };
 }
 
 function createHelpers(url: string): TestHelpers {
@@ -142,20 +111,14 @@ function createHelpers(url: string): TestHelpers {
 
   const assignDelegate = async (
     userToken: string,
-    realmId: string,
-    options?: { client_id?: string; ttl?: number }
+    _realmId: string,
+    options?: { client_id?: string; clientName?: string; ttl?: number }
   ): Promise<{ accessToken: string; delegateId: string; expiresAt?: number }> => {
-    const body: Record<string, unknown> = {
-      clientName: options?.client_id ?? "e2e-client",
-      permissions: ["use_mcp", "file_read", "file_write"],
+    const body: { clientName?: string; permissions?: string[] } = {
+      clientName: options?.clientName ?? options?.client_id ?? "e2e",
+      permissions: ["use_mcp", "file_read", "file_write", "branch_manage", "manage_delegates"],
     };
-    if (options?.ttl != null) body.ttl = options.ttl;
-    const res = await authRequest(
-      userToken,
-      "POST",
-      "/api/delegates",
-      body
-    );
+    const res = await authRequest(userToken, "POST", "/api/delegates", body);
     const data = (await res.json()) as {
       accessToken?: string;
       delegateId?: string;
@@ -248,13 +211,12 @@ function createRemoteTestServer(baseUrl: string): TestServer {
 
 export function startTestServer(options?: { port?: number }): TestServer {
   const config = loadConfig();
-  // E2E in-process: force mock auth but use decode-only verifier (no mockJwtSecret) so that
-  // 1) our signed user token is accepted (payload valid), 2) server-issued delegate token (header.payload.sig) is accepted.
+  const secret = "test-secret-e2e";
   const testConfig: typeof config = {
     ...config,
     auth: {
       ...config.auth,
-      mockJwtSecret: undefined,
+      mockJwtSecret: secret,
       cognitoRegion: undefined,
       cognitoUserPoolId: undefined,
       cognitoClientId: undefined,
@@ -262,27 +224,33 @@ export function startTestServer(options?: { port?: number }): TestServer {
       cognitoClientSecret: undefined,
     },
   };
+  const jwtVerifier = createMockJwtVerifier(secret);
+  const grantStore = createMemoryGrantStore();
+  const oauthServer = createOAuthServer({
+    issuerUrl: "http://test",
+    cognitoConfig: {
+      region: "us-east-1",
+      userPoolId: "",
+      clientId: "",
+      hostedUiUrl: "",
+    },
+    jwtVerifier,
+    grantStore,
+    permissions: [
+      "use_mcp",
+      "manage_delegates",
+      "file_read",
+      "file_write",
+      "branch_manage",
+      "delegate_manage",
+    ],
+  });
+
   const { cas, key } = createCasFacade(testConfig);
   const branchStore = createMemoryBranchStore();
   const derivedDataStore = createMemoryDerivedDataStore();
   const realmUsageStore = createMemoryRealmUsageStore();
   const userSettingsStore = createMemoryUserSettingsStore();
-
-  const cognitoConfig: CognitoConfig = {
-    region: "us-east-1",
-    userPoolId: "",
-    clientId: "",
-    hostedUiUrl: "",
-  };
-  const cellOAuthGrantStore: CellOAuthGrantStore = createMemoryCellOAuthGrantStore();
-  const oauthServer = createOAuthServer({
-    issuerUrl: "http://localhost",
-    cognitoConfig,
-    jwtVerifier: createMockJwtVerifier("test-secret-e2e"),
-    grantStore: cellOAuthGrantStore,
-    permissions: ["use_mcp", "manage_delegates", "file_read", "file_write", "branch_manage", "delegate_manage"],
-  });
-
   const app = createApp({
     config: testConfig,
     cas,

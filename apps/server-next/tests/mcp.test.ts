@@ -1,5 +1,6 @@
 /**
  * E2E: MCP initialize, tools/list, tools/call.
+ * Uses POST /mcp for JSON-RPC.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createE2EContext } from "./setup.ts";
