@@ -7,7 +7,7 @@ import { bytesFromStream } from "@casfa/cas";
 import type { KeyProvider } from "@casfa/core";
 import { hashToKey } from "@casfa/core";
 import type { BranchStore } from "../db/branch-store.ts";
-import type { DelegateGrantStore } from "../db/delegate-grants.ts";
+import type { OAuthServer } from "@casfa/cell-oauth";
 import type { RealmUsageStore } from "../db/realm-usage-store.ts";
 import { ensureEmptyRoot, getNodeDecoded } from "./root-resolver.ts";
 
@@ -23,7 +23,7 @@ export type RealmInfoServiceDeps = {
   cas: CasFacade;
   key: KeyProvider;
   branchStore: BranchStore;
-  delegateGrantStore: DelegateGrantStore;
+  oauthServer: OAuthServer;
   realmUsageStore: RealmUsageStore;
 };
 
@@ -62,7 +62,7 @@ export function createRealmInfoService(deps: RealmInfoServiceDeps): RealmInfoSer
     async info(realmId: string) {
       let data = await deps.realmUsageStore.get(realmId);
       const branches = await deps.branchStore.listBranches(realmId);
-      const grants = await deps.delegateGrantStore.list(realmId);
+      const grants = await deps.oauthServer.listDelegates(realmId);
 
       // When we have no stored data (e.g. realm existed before this feature), do one-time bootstrap:
       // compute reachable from roots and save as retained so usage is non-zero without running GC.
