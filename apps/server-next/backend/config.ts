@@ -61,9 +61,9 @@ export type ServerConfig = {
 
 const DEFAULT_PORT = 8802;
 
-/** Mock auth is only enabled when NODE_ENV=test (e.g. e2e). Dev/prod must use Cognito. */
+/** Mock auth only when CELL_STAGE=test (e2e). Dev/prod always use Cognito. */
 export function isMockAuthEnabled(config: ServerConfig): boolean {
-  return Boolean(config.auth.mockJwtSecret && process.env.NODE_ENV === "test");
+  return Boolean(config.auth.mockJwtSecret && process.env.CELL_STAGE === "test");
 }
 
 export function loadConfig(): ServerConfig {

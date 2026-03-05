@@ -15,7 +15,10 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "@casfa/cell-auth-client": ["../../../packages/cell-auth-client/src/index.ts"]
+    }
   },
   "include": ["."]
 }

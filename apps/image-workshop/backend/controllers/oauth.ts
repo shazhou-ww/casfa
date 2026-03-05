@@ -1,13 +1,26 @@
+import {
+  buildAuthCookieHeader,
+  buildClearAuthCookieHeader,
+} from "@casfa/cell-oauth";
 import type { OAuthServer } from "@casfa/cell-oauth";
 import { Hono } from "hono";
 
+export type OAuthCookieConfig = {
+  cookieName?: string;
+  cookieDomain?: string;
+  cookiePath?: string;
+  cookieMaxAgeSeconds?: number;
+  cookieSecure?: boolean;
+};
+
 type OAuthControllerDeps = {
   oauthServer: OAuthServer;
+  cookieConfig?: OAuthCookieConfig;
 };
 
 export function createOAuthRoutes(deps: OAuthControllerDeps) {
   const routes = new Hono();
-  const { oauthServer } = deps;
+  const { oauthServer, cookieConfig } = deps;
 
   routes.get("/.well-known/oauth-authorization-server", (c) => {
     return c.json(oauthServer.getMetadata());
@@ -85,6 +98,17 @@ export function createOAuthRoutes(deps: OAuthControllerDeps) {
     return c.json({ ok: true });
   });
 
+  routes.post("/oauth/logout", (c) => {
+    if (!cookieConfig?.cookieName) return c.json({ ok: true }, 200);
+    const clearHeader = buildClearAuthCookieHeader({
+      cookieName: cookieConfig.cookieName,
+      cookiePath: cookieConfig.cookiePath ?? "/",
+      cookieDomain: cookieConfig.cookieDomain,
+    });
+    c.header("Set-Cookie", clearHeader);
+    return c.json({ ok: true }, 200);
+  });
+
   routes.post("/oauth/token", async (c) => {
     const body = await c.req.parseBody();
     try {
@@ -95,6 +119,16 @@ export function createOAuthRoutes(deps: OAuthControllerDeps) {
         refreshToken: (body.refresh_token as string) ?? null,
         clientId: (body.client_id as string) ?? null,
       });
+      if (cookieConfig?.cookieName) {
+        const headerValue = buildAuthCookieHeader(result.access_token, {
+          cookieName: cookieConfig.cookieName,
+          cookieDomain: cookieConfig.cookieDomain,
+          cookiePath: cookieConfig.cookiePath ?? "/",
+          cookieMaxAgeSeconds: cookieConfig.cookieMaxAgeSeconds,
+          secure: cookieConfig.cookieSecure,
+        });
+        c.header("Set-Cookie", headerValue);
+      }
       return c.json(result);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "unknown error";

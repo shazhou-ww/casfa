@@ -1,8 +1,21 @@
 {
-  "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
     "noEmit": true,
-    "types": ["bun"]
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@casfa/cas": ["../../packages/cas/src/index.ts"],
+      "@casfa/core": ["../../packages/core/src/index.ts"],
+      "@casfa/cell-cognito": ["../../packages/cell-cognito/src/index.ts"],
+      "@casfa/cell-oauth": ["../../packages/cell-oauth/src/index.ts"],
+      "@casfa/storage-fs": ["../../packages/storage-fs/src/index.ts"],
+      "@casfa/storage-memory": ["../../packages/storage-memory/src/index.ts"],
+      "@casfa/storage-s3": ["../../packages/storage-s3/src/index.ts"]
+    }
   },
-  "include": ["backend/**/*"]
+  "include": ["backend/**/*.ts", "shared/**/*.ts"]
 }

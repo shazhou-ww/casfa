@@ -147,7 +147,9 @@ export async function testE2eCommand(options?: { cellDir?: string }): Promise<vo
         const env = {
           ...process.env,
           ...resolved.envVars,
+          ...envMap,
           PORT: String(httpPort),
+          CELL_STAGE: "test",
         };
         console.log(`Starting backend [${name}] on port ${httpPort}...`);
         const proc = Bun.spawn(["bun", "run", handlerPath], {
