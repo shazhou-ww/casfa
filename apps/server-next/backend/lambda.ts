@@ -6,6 +6,14 @@
  * Normalizes path: serverless-offline may pass rawPath with stage prefix (e.g. /dev/api/...).
  * We strip a leading /{stage}/ so that Hono routes like /api/realm/:id/files match.
  */
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import {
+  type CognitoConfig,
+  createCognitoJwtVerifier,
+  createMockJwtVerifier,
+} from "@casfa/cell-cognito";
+import { createDynamoGrantStore, createOAuthServer } from "@casfa/cell-oauth";
 import { handle } from "hono/aws-lambda";
 import { createApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
@@ -17,7 +25,48 @@ import { createMemoryUserSettingsStore } from "./db/user-settings.ts";
 import { createCasFacade } from "./services/cas.ts";
 
 const config = loadConfig();
-const { cas, key } = createCasFacade(config);
+
+const cognitoConfig: CognitoConfig = {
+  region: config.auth.cognitoRegion ?? "us-east-1",
+  userPoolId: config.auth.cognitoUserPoolId ?? "",
+  clientId: config.auth.cognitoClientId ?? "",
+  hostedUiUrl: config.auth.cognitoHostedUiUrl ?? "",
+};
+
+const dynamoClient = new DynamoDBClient(
+  config.dynamodbEndpoint
+    ? { endpoint: config.dynamodbEndpoint, region: "us-east-1" }
+    : {},
+);
+const docClient = DynamoDBDocumentClient.from(dynamoClient);
+
+const grantStore = createDynamoGrantStore({
+  tableName: config.dynamodbTableGrants,
+  client: docClient,
+});
+
+const jwtVerifier = config.auth.mockJwtSecret
+  ? createMockJwtVerifier(config.auth.mockJwtSecret)
+  : createCognitoJwtVerifier({
+      region: cognitoConfig.region,
+      userPoolId: cognitoConfig.userPoolId,
+    });
+
+const oauthServer = createOAuthServer({
+  issuerUrl: config.apiBaseUrl ?? process.env.APP_ORIGIN ?? "",
+  cognitoConfig,
+  jwtVerifier,
+  grantStore,
+  permissions: [
+    "use_mcp",
+    "manage_delegates",
+    "file_read",
+    "file_write",
+    "branch_manage",
+    "delegate_manage",
+  ],
+});
+
 const branchStore = createDynamoBranchStore({
   tableName: config.dynamodbTableRealms,
   clientConfig: config.dynamodbEndpoint
@@ -34,6 +83,8 @@ const derivedDataStore = createMemoryDerivedDataStore();
 const realmUsageStore = createMemoryRealmUsageStore();
 const userSettingsStore = createMemoryUserSettingsStore();
 
+const { cas, key } = createCasFacade(config);
+
 const app = createApp({
   config,
   cas,
@@ -43,6 +94,7 @@ const app = createApp({
   derivedDataStore,
   realmUsageStore,
   userSettingsStore,
+  oauthServer,
 });
 
 const honoHandler = handle(app);
