@@ -4,23 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "clean": "rimraf .serverless .esbuild .local-storage",
+    "clean": "rimraf .esbuild .local-storage",
     "clean:db": "rimraf .dynamodb",
-    "dev": "concurrently -n api,web -c blue,green \"bun run scripts/dev.ts\" \"bun run --cwd frontend dev\"",
-    "dev:cognito": "concurrently -n api,web -c blue,green \"bun run scripts/dev-cognito.ts\" \"bun run --cwd frontend dev\"",
-    "login:aws": "bun run scripts/login-aws.ts",
-    "dev:setup": "bun run scripts/dev-setup.ts",
-    "dev:test": "bun run scripts/dev-test.ts",
+    "dev": "cell dev",
     "dev:bun": "bun run backend/index.ts",
-    "deploy": "bun run scripts/deploy.ts",
-    "cell:dev": "cell dev",
-    "cell:build": "cell build",
-    "cell:test": "cell test",
-    "cell:deploy": "cell deploy",
+    "deploy": "cell deploy",
     "typecheck": "tsc --noEmit",
-    "test": "bun run test:unit && bun run test:e2e",
+    "test": "cell test",
     "test:unit": "bun test backend/",
-    "test:e2e": "bun run scripts/e2e-offline.ts"
+    "test:e2e": "cell test:e2e"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.700.0",
@@ -40,14 +32,8 @@
   "devDependencies": {
     "@casfa/cell-cli": "workspace:*",
     "@types/bun": "latest",
-    "concurrently": "^9.2.1",
     "esbuild": "^0.24.0",
     "rimraf": "^6.0.1",
-    "serverless": "^4.0.0",
-    "serverless-esbuild": "^1.57.0",
-    "serverless-offline": "^14.0.0",
-    "serverless-parameters": "^0.1.0",
-    "serverless-s3-local": "^0.7.0",
     "typescript": "^5.8.3"
   }
 }
