@@ -17,7 +17,6 @@ import { createDynamoGrantStore, createOAuthServer } from "@casfa/cell-oauth";
 import { handle } from "hono/aws-lambda";
 import { createApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
-import { createDynamoDelegateGrantStore } from "./db/dynamo-delegate-grant-store.ts";
 import { createDynamoBranchStore } from "./db/dynamo-branch-store.ts";
 import { createMemoryDerivedDataStore } from "./db/derived-data.ts";
 import { createMemoryRealmUsageStore } from "./db/realm-usage-store.ts";
@@ -73,12 +72,6 @@ const branchStore = createDynamoBranchStore({
     ? { endpoint: config.dynamodbEndpoint, region: "us-east-1" }
     : undefined,
 });
-const delegateGrantStore = createDynamoDelegateGrantStore({
-  tableName: config.dynamodbTableGrants,
-  clientConfig: config.dynamodbEndpoint
-    ? { endpoint: config.dynamodbEndpoint, region: "us-east-1" }
-    : undefined,
-});
 const derivedDataStore = createMemoryDerivedDataStore();
 const realmUsageStore = createMemoryRealmUsageStore();
 const userSettingsStore = createMemoryUserSettingsStore();
@@ -90,7 +83,6 @@ const app = createApp({
   cas,
   key,
   branchStore,
-  delegateGrantStore,
   derivedDataStore,
   realmUsageStore,
   userSettingsStore,
