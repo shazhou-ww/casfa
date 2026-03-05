@@ -1,9 +1,11 @@
+import { createInterface } from "node:readline";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import { generateTemplate } from "../generators/merge.js";
 import { loadEnvFiles } from "../utils/env.js";
+import { PreDeployCheckError, runPreDeployChecksFromDeploy } from "./deploy-checks.js";
 import { buildCommand } from "./build.js";
 
 interface AwsCliResult {
@@ -14,13 +16,13 @@ interface AwsCliResult {
 async function awsCli(
   args: string[],
   env: Record<string, string | undefined>,
-  opts?: { cwd?: string; inheritStdio?: boolean }
+  opts?: { cwd?: string; inheritStdio?: boolean; pipeStderr?: boolean }
 ): Promise<AwsCliResult> {
   const proc = Bun.spawn(["aws", ...args], {
     cwd: opts?.cwd ?? process.cwd(),
     env: { ...process.env, ...env },
     stdout: opts?.inheritStdio ? "inherit" : "pipe",
-    stderr: "inherit",
+    stderr: opts?.pipeStderr ? "pipe" : "inherit",
   });
   const stdout = opts?.inheritStdio ? "" : await new Response(proc.stdout).text();
   const exitCode = await proc.exited;
@@ -61,36 +63,101 @@ async function fileHash(filePath: string): Promise<string> {
   return hasher.digest("hex").slice(0, 12);
 }
 
+async function stackExists(
+  stackName: string,
+  awsEnv: Record<string, string | undefined>
+): Promise<boolean> {
+  const { exitCode } = await awsCli(
+    ["cloudformation", "describe-stacks", "--stack-name", stackName, "--max-items", "1"],
+    awsEnv,
+    { pipeStderr: true }
+  );
+  return exitCode === 0;
+}
+
 async function getLatestEventTimestamp(
   stackName: string,
   awsEnv: Record<string, string | undefined>
 ): Promise<string> {
-  try {
-    const { exitCode, stdout } = await awsCli(
-      [
-        "cloudformation",
-        "describe-stack-events",
-        "--stack-name",
-        stackName,
-        "--max-items",
-        "1",
-        "--query",
-        "StackEvents[0].Timestamp",
-        "--output",
-        "text",
-      ],
-      awsEnv
-    );
-    if (exitCode === 0 && stdout) return stdout.trim();
-  } catch {}
+  const { exitCode, stdout } = await awsCli(
+    [
+      "cloudformation",
+      "describe-stack-events",
+      "--stack-name",
+      stackName,
+      "--max-items",
+      "1",
+      "--query",
+      "StackEvents[0].Timestamp",
+      "--output",
+      "text",
+    ],
+    awsEnv
+  );
+  if (exitCode === 0 && stdout) return stdout.trim();
   return new Date().toISOString();
+}
+
+const SLOW_RESOURCE_HINTS: Record<string, string> = {
+  FrontendCloudFront: "typically 15-25 min for new distributions",
+};
+
+function formatElapsed(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rs = s % 60;
+  return rs > 0 ? `${m}m ${rs}s` : `${m}m`;
+}
+
+function stripAnsi(str: string): string {
+  return str.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+let _waitingLineShown = false;
+
+function clearWaitingLine(): void {
+  if (_waitingLineShown) {
+    process.stdout.write("\r\x1b[K");
+    _waitingLineShown = false;
+  }
+}
+
+function showWaitingLine(inProgress: Map<string, number>): void {
+  if (inProgress.size === 0) return;
+  let oldest = "";
+  let oldestStart = Infinity;
+  for (const [id, start] of inProgress) {
+    if (start < oldestStart) {
+      oldestStart = start;
+      oldest = id;
+    }
+  }
+  if (!oldest) return;
+  const elapsed = Math.max(0, Date.now() - oldestStart);
+  const timeStr = formatElapsed(elapsed);
+  const hint = SLOW_RESOURCE_HINTS[oldest];
+  const extra =
+    inProgress.size > 1 ? ` (+${inProgress.size - 1} more)` : "";
+  const label = `  \u23f3 ${oldest}${extra}`;
+  const suffix = hint
+    ? `${timeStr}  \x1b[2m(${hint})\x1b[0m`
+    : timeStr;
+  const suffixLen = hint
+    ? timeStr.length + 2 + `(${hint})`.length
+    : timeStr.length;
+  const COL = 72;
+  const gap = Math.max(2, COL - label.length - suffixLen);
+  process.stdout.write(`\r\x1b[K${label}${" ".repeat(gap)}${suffix}`);
+  _waitingLineShown = true;
 }
 
 async function fetchNewEvents(
   stackName: string,
   awsEnv: Record<string, string | undefined>,
   seenEvents: Set<string>,
-  since: string
+  since: string,
+  inProgress: Map<string, number>
 ): Promise<void> {
   try {
     const { exitCode, stdout } = await awsCli(
@@ -104,7 +171,8 @@ async function fetchNewEvents(
         "--output",
         "json",
       ],
-      awsEnv
+      awsEnv,
+      { pipeStderr: true }
     );
     if (exitCode !== 0 || !stdout) return;
     const events = (JSON.parse(stdout) as (string | null)[][]).reverse();
@@ -112,12 +180,40 @@ async function fetchNewEvents(
       if (!id || seenEvents.has(id)) continue;
       seenEvents.add(id);
       if (!timestamp || timestamp <= since) continue;
-      if (status?.includes("IN_PROGRESS")) continue;
-      const isBad = status?.includes("FAILED") || status?.includes("ROLLBACK");
-      const icon = isBad ? "\x1b[31m✗\x1b[0m" : "\x1b[32m✓\x1b[0m";
-      let line = `  ${icon} ${logicalId} — ${status}`;
-      if (reason) line += `  (${reason})`;
-      console.log(line);
+
+      if (status?.includes("IN_PROGRESS")) {
+        if (logicalId && !inProgress.has(logicalId)) {
+          inProgress.set(logicalId, new Date(timestamp).getTime());
+        }
+        continue;
+      }
+
+      const startTime = logicalId ? inProgress.get(logicalId) : undefined;
+      if (logicalId) inProgress.delete(logicalId);
+
+      const isBad =
+        status?.includes("FAILED") || status?.includes("ROLLBACK");
+      const icon = isBad
+        ? "\x1b[31m\u2717\x1b[0m"
+        : "\x1b[32m\u2713\x1b[0m";
+      let prefix = `  ${icon} ${logicalId} \u2014 ${status}`;
+      if (reason) prefix += `  (${reason})`;
+
+      clearWaitingLine();
+
+      if (startTime) {
+        const elapsed =
+          new Date(timestamp).getTime() - startTime;
+        const timeStr = formatElapsed(elapsed);
+        const visLen = stripAnsi(prefix).length;
+        const COL = 72;
+        const gap = Math.max(2, COL - visLen - timeStr.length);
+        console.log(
+          `${prefix}${" ".repeat(gap)}\x1b[2m${timeStr}\x1b[0m`
+        );
+      } else {
+        console.log(prefix);
+      }
     }
   } catch {}
 }
@@ -238,7 +334,8 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
       }
       const { exitCode: descCode } = await awsCli(
         ["secretsmanager", "describe-secret", "--secret-id", smName],
-        awsEnv
+        awsEnv,
+        { pipeStderr: true }
       );
       if (descCode !== 0) {
         const { exitCode: createCode } = await awsCli(
@@ -257,13 +354,68 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
     }
   }
 
-  // 6. Deploy CloudFormation stack
+  // 6. Pre-deploy checks (e.g. CloudFront CNAME conflict, stack in ROLLBACK state)
   const stackName = resolved.name;
+  let stackAlreadyExists = await stackExists(stackName, awsEnv);
+  console.log("\n=== Pre-deploy checks ===");
+  const runChecks = (stackExistsFlag: boolean) =>
+    runPreDeployChecksFromDeploy(
+      resolved,
+      (args, env, opts) => awsCli(args, env, opts),
+      awsEnv,
+      stackExistsFlag,
+      cellDir
+    );
+  for (;;) {
+    stackAlreadyExists = await stackExists(stackName, awsEnv);
+    try {
+      await runChecks(stackAlreadyExists);
+      break;
+    } catch (e) {
+      if (e instanceof PreDeployCheckError && e.resolution) {
+        console.error("\n  ✗ Pre-deploy check failed\n");
+        console.error("  " + e.message.replace(/\n/g, "\n  "));
+        console.log("\n  Resolution: " + e.resolution.description);
+        const rl = createInterface({ input: process.stdin, output: process.stderr });
+        const answer = await new Promise<string>((res) =>
+          rl.question("\n  Apply this resolution? [y/N] ", res)
+        );
+        rl.close();
+        if (/^y(es)?$/i.test(answer.trim())) {
+          try {
+            await e.resolution.apply();
+            console.log("  Resolution applied. Re-running pre-deploy checks...\n");
+          } catch (applyErr) {
+            const applyMsg = applyErr instanceof Error ? applyErr.message : String(applyErr);
+            console.error("\n  Failed to apply resolution: " + applyMsg + "\n");
+            process.exit(1);
+          }
+        } else {
+          console.error("\n  Exiting without deploying.\n");
+          process.exit(1);
+        }
+      } else {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("\n  ✗ Pre-deploy check failed\n");
+        console.error("  " + msg.replace(/\n/g, "\n  "));
+        console.error("\n  Exiting without deploying.\n");
+        process.exit(1);
+      }
+    }
+  }
+  console.log("  All checks passed.");
+
+  // 7. Deploy CloudFormation stack
   console.log("\n=== Deploying CloudFormation stack ===");
+  if (!stackAlreadyExists) {
+    console.log("  Stack does not exist yet, creating new stack.");
+  }
   const templateFile = resolved.backend ? resolve(cfnDir, "cfn-packaged.yaml") : cfnPath;
 
   const seenEvents = new Set<string>();
-  const sinceTimestamp = await getLatestEventTimestamp(stackName, awsEnv);
+  const sinceTimestamp = stackAlreadyExists
+    ? await getLatestEventTimestamp(stackName, awsEnv)
+    : new Date().toISOString();
 
   const deployProc = Bun.spawn(
     [
@@ -287,27 +439,84 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
     }
   );
 
+  const inProgress = new Map<string, number>();
   let deployDone = false;
   deployProc.exited.then(() => {
     deployDone = true;
   });
 
+  let lastPollAt = 0;
   while (!deployDone) {
-    await Bun.sleep(3000);
-    await fetchNewEvents(stackName, awsEnv, seenEvents, sinceTimestamp);
+    const now = Date.now();
+    if (now - lastPollAt >= 3000) {
+      await fetchNewEvents(
+        stackName,
+        awsEnv,
+        seenEvents,
+        sinceTimestamp,
+        inProgress
+      );
+      lastPollAt = Date.now();
+    }
+    showWaitingLine(inProgress);
+    await Bun.sleep(1000);
   }
-  await fetchNewEvents(stackName, awsEnv, seenEvents, sinceTimestamp);
+  clearWaitingLine();
+  await fetchNewEvents(
+    stackName,
+    awsEnv,
+    seenEvents,
+    sinceTimestamp,
+    inProgress
+  );
 
   const deployExitCode = await deployProc.exited;
   if (deployExitCode !== 0) {
     const stderr = await new Response(deployProc.stderr).text();
     const useful = stderr.split("\n").filter((l) => !l.includes("Waiting for") && l.trim());
     if (useful.length) console.error(useful.join("\n"));
-    console.error("CloudFormation deploy failed");
+    // Try to get detailed failure reason (e.g. ResourceExistenceCheck / EarlyValidation)
+    const { exitCode: evCode, stdout: evOut } = await awsCli(
+      [
+        "cloudformation",
+        "describe-stack-events",
+        "--stack-name",
+        stackName,
+        "--max-items",
+        "15",
+        "--query",
+        "StackEvents[*].{Reason:ResourceStatusReason,Resource:LogicalResourceId}",
+        "--output",
+        "json",
+      ],
+      awsEnv,
+      { pipeStderr: true }
+    );
+    if (evCode === 0 && evOut) {
+      try {
+        const events = JSON.parse(evOut) as Array<{ Reason?: string; Resource?: string }>;
+        const withReason = events.filter(
+          (e) =>
+            e.Reason &&
+            (e.Reason.includes("EarlyValidation") ||
+              e.Reason.includes("ResourceExistence") ||
+              e.Reason.includes("FAILED"))
+        );
+        if (withReason.length > 0) {
+          console.error("\n  Detail from stack events:");
+          for (const e of withReason.slice(0, 3)) {
+            console.error("    " + (e.Reason ?? "").replace(/\n/g, "\n    "));
+          }
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+    console.error("\nCloudFormation deploy failed");
     process.exit(1);
   }
 
-  // 7. Get stack outputs
+  // 8. Get stack outputs
   console.log("\n=== Getting stack outputs ===");
   const { exitCode: descCode, stdout: descOut } = await awsCli(
     [
@@ -340,7 +549,7 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
   const frontendBucket = outputs.FrontendBucketName;
   const distributionId = outputs.FrontendDistributionId;
 
-  // 8. Sync Cognito callback URLs
+  // 9. Sync Cognito callback URLs
   if (config.cognito && resolved.domain) {
     const userPoolId =
       typeof config.cognito.userPoolId === "string" ? config.cognito.userPoolId : "";
@@ -450,14 +659,32 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
   // 12. Invalidate CloudFront
   if (distributionId) {
     console.log("\n=== Invalidating CloudFront ===");
-    const { exitCode } = await awsCli(
-      ["cloudfront", "create-invalidation", "--distribution-id", distributionId, "--paths", "/*"],
-      awsEnv,
-      { inheritStdio: true }
+    const { exitCode, stdout: invOut } = await awsCli(
+      [
+        "cloudfront",
+        "create-invalidation",
+        "--distribution-id",
+        distributionId,
+        "--paths",
+        "/*",
+        "--output",
+        "json",
+      ],
+      awsEnv
     );
     if (exitCode !== 0) {
       console.error("CloudFront invalidation failed");
       process.exit(1);
+    }
+    try {
+      const inv = JSON.parse(invOut || "{}") as {
+        Invalidation?: { Id?: string; Status?: string };
+      };
+      const id = inv.Invalidation?.Id ?? "unknown";
+      const status = inv.Invalidation?.Status ?? "unknown";
+      console.log(`  Invalidation ${id} created (${status})`);
+    } catch {
+      console.log("  Invalidation created");
     }
   }
 

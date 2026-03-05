@@ -64,7 +64,7 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
   const [newFolderName, setNewFolderName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   const [createLoading, setCreateLoading] = useState(false);
-  const [_refreshKey, setRefreshKey] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState("");
@@ -115,7 +115,7 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
   useEffect(() => {
     const cancel = loadEntries();
     return () => cancel?.();
-  }, [loadEntries]);
+  }, [loadEntries, refreshKey]);
 
   const handleBreadcrumb = useCallback(
     (index: number) => {

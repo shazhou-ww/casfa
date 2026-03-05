@@ -15,14 +15,14 @@ function makeConfig(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
 }
 
 describe("generateS3", () => {
-  test("blob bucket with Retain policy", () => {
+  test("blob bucket without DeletionPolicy (rollback/delete removes it)", () => {
     const config = makeConfig({
       buckets: [{ key: "blob", bucketName: "test-app-blob" }],
     });
     const result = generateS3(config);
     const bucket = result.Resources.BlobBucket as any;
     expect(bucket.Type).toBe("AWS::S3::Bucket");
-    expect(bucket.DeletionPolicy).toBe("Retain");
+    expect(bucket.DeletionPolicy).toBeUndefined();
     expect(bucket.Properties.BucketName).toBe("test-app-blob");
   });
 

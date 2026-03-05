@@ -6,11 +6,11 @@ export function generateS3(config: ResolvedConfig): CfnFragment {
   const resources: Record<string, unknown> = {};
   const outputs: Record<string, unknown> = {};
 
+  // No DeletionPolicy: Retain so rollback/stack-delete removes resources (no orphan buckets).
   for (const bucket of config.buckets) {
     const logicalId = `${toPascalCase(bucket.key)}Bucket`;
     resources[logicalId] = {
       Type: "AWS::S3::Bucket",
-      DeletionPolicy: "Retain",
       Properties: {
         BucketName: bucket.bucketName,
       },

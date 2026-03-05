@@ -186,10 +186,10 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
     console.log(`Created ${allBucketNames.length} bucket(s)`);
   }
 
-  // Cognito: ensure backend callback URL is registered (Cognito redirects to backend, then we redirect to frontend)
+  // Cognito: ensure dev callback URL is registered (Cognito redirects through Vite proxy → backend)
   if (config.cognito && resolved.backend) {
-    const backendCallback = `http://localhost:${httpPort}/oauth/callback`;
-    await ensureCognitoDevCallbackUrl(config.cognito, backendCallback, {
+    const devCallback = `http://localhost:${frontendPort}/oauth/callback`;
+    await ensureCognitoDevCallbackUrl(config.cognito, devCallback, {
       resolvedEnvVars: resolved.envVars,
       profile: envMap.AWS_PROFILE,
     });
@@ -207,10 +207,8 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
         ...process.env,
         ...resolved.envVars,
         PORT: String(httpPort),
-        API_BASE_URL: `http://localhost:${httpPort}`,
-        ...(resolved.frontend && {
-          APP_ORIGIN: `http://localhost:${frontendPort}`,
-        }),
+        CELL_BASE_URL: `http://localhost:${frontendPort}`,
+        CELL_STAGE: "dev",
       };
       console.log(`Starting backend [${name}] on port ${httpPort}...`);
       const proc = Bun.spawn(["bun", "run", devServerPath], {

@@ -172,7 +172,8 @@ export async function testE2eCommand(options?: { cellDir?: string }): Promise<vo
     const testExitCode = await runBunTest(cellDir, pattern, {
       ...resolved.envVars,
       PORT: String(httpPort),
-      API_BASE_URL: `http://localhost:${httpPort}`,
+      CELL_BASE_URL: `http://localhost:${httpPort}`,
+      CELL_STAGE: "test",
     });
     process.exit(testExitCode);
   } finally {
