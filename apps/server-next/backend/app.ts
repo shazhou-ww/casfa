@@ -13,7 +13,7 @@ import { createRealmMiddleware } from "./middleware/realm.ts";
 import { createFilesController } from "./controllers/files.ts";
 import { createFsController } from "./controllers/fs.ts";
 import { createBranchesController } from "./controllers/branches.ts";
-import { createDelegatesController } from "./controllers/delegates.ts";
+import { createDelegatesRoutes } from "./controllers/delegates.ts";
 import { createRealmController } from "./controllers/realm.ts";
 import { createMcpHandler } from "./mcp/handler.ts";
 import { createMeController } from "./controllers/me.ts";
@@ -364,9 +364,10 @@ export function createApp(deps: AppDeps) {
   const files = createFilesController(rootResolverDeps);
   const fs = createFsController(rootResolverDeps);
   const branches = createBranchesController({ ...rootResolverDeps, config: deps.config });
-  const delegates = createDelegatesController({ delegateGrantStore: deps.delegateGrantStore });
   const realm = createRealmController({ realmInfoService });
   const me = createMeController({ userSettingsStore: deps.userSettingsStore });
+
+  app.route("/", createDelegatesRoutes({ oauthServer: deps.oauthServer }));
 
   app.use("/api/me", authMiddleware);
   app.get("/api/me", (c) => me.get(c));
@@ -394,10 +395,6 @@ export function createApp(deps: AppDeps) {
   app.get("/api/realm/:realmId", (c) => realm.info(c));
   app.get("/api/realm/:realmId/usage", (c) => realm.usage(c));
   app.post("/api/realm/:realmId/gc", (c) => realm.gc(c));
-
-  app.get("/api/realm/:realmId/delegates", (c) => delegates.list(c));
-  app.post("/api/realm/:realmId/delegates/assign", (c) => delegates.assign(c));
-  app.post("/api/realm/:realmId/delegates/:delegateId/revoke", (c) => delegates.revoke(c));
 
   // OAuth 2.0 Dynamic Client Registration (RFC 7591): client can send client_name; we store and return client_id.
   const clientMetadataByClientId = new Map<string, { client_name?: string }>();
@@ -575,7 +572,7 @@ export function createApp(deps: AppDeps) {
     });
   });
 
-  // MCP: GET /api/mcp — we do not support long-lived streaming (Lambda would timeout). Return 405 so clients use POST (JSON-RPC) only and stop polling.
+  // MCP: GET /mcp — we do not support long-lived streaming (Lambda would timeout). Return 405 so clients use POST (JSON-RPC) only and stop polling.
   const mcpGetHandler = (c: { req: { header: (n: string) => string | undefined }; json: (body: unknown, status?: number) => Response }) => {
     const accept = c.req.header("Accept") ?? "";
     const isStreamRequest = accept.includes("text/event-stream");
@@ -583,8 +580,8 @@ export function createApp(deps: AppDeps) {
       {
         error: "METHOD_NOT_ALLOWED",
         message: isStreamRequest
-          ? "Streaming (SSE/streamableHttp) not supported in this deployment; use POST /api/mcp for JSON-RPC."
-          : "Use POST /api/mcp for JSON-RPC.",
+          ? "Streaming (SSE/streamableHttp) not supported in this deployment; use POST /mcp for JSON-RPC."
+          : "Use POST /mcp for JSON-RPC.",
         jsonrpc: "2.0",
         id: 0,
         result: null,
@@ -592,17 +589,17 @@ export function createApp(deps: AppDeps) {
       405
     );
   };
-  app.get("/api/mcp", authMiddleware, mcpGetHandler);
-  app.get("/api/mcp/", authMiddleware, mcpGetHandler);
-  // POST to exact path or any subpath (Cursor may POST to e.g. /api/mcp/sse or /api/mcp/messages)
-  app.post("/api/mcp", authMiddleware, createMcpHandler({ ...rootResolverDeps, config: deps.config }));
-  app.post("/api/mcp/*", authMiddleware, createMcpHandler({ ...rootResolverDeps, config: deps.config }));
-  // Any other method/path under /api/mcp (e.g. GET /api/mcp/oauth) → JSON so no empty-body 404
-  app.all("/api/mcp/*", (c) =>
+  app.get("/mcp", authMiddleware, mcpGetHandler);
+  app.get("/mcp/", authMiddleware, mcpGetHandler);
+  // POST to exact path or any subpath (Cursor may POST to e.g. /mcp/sse or /mcp/messages)
+  app.post("/mcp", authMiddleware, createMcpHandler({ ...rootResolverDeps, config: deps.config }));
+  app.post("/mcp/*", authMiddleware, createMcpHandler({ ...rootResolverDeps, config: deps.config }));
+  // Any other method/path under /mcp (e.g. GET /mcp/oauth) → JSON so no empty-body 404
+  app.all("/mcp/*", (c) =>
     c.json(
       {
         error: "NOT_FOUND",
-        message: "Only POST /api/mcp (JSON-RPC) and GET /api/mcp (SSE with Bearer) are supported. No OAuth discovery.",
+        message: "Only POST /mcp (JSON-RPC) and GET /mcp (SSE with Bearer) are supported. No OAuth discovery.",
       } satisfies ErrorBody,
       404
     )

@@ -1,9 +1,11 @@
-/** Delegate 的细粒度权限（可配置） */
+/** Delegate 的细粒度权限（可配置）；cell-oauth 使用 use_mcp、manage_delegates */
 export type DelegatePermission =
   | "file_read"
   | "file_write"
   | "branch_manage"
-  | "delegate_manage";
+  | "delegate_manage"
+  | "use_mcp"
+  | "manage_delegates";
 
 /** Worker 的访问模式 */
 export type WorkerAccess = "readonly" | "readwrite";
