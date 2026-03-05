@@ -35,7 +35,7 @@ const jwtVerifier = process.env.E2E_MOCK_JWT_SECRET
   : createCognitoJwtVerifier(cognitoConfig);
 
 const oauthServer = createOAuthServer({
-  issuerUrl: process.env.APP_ORIGIN ?? "",
+  issuerUrl: process.env.CELL_BASE_URL ?? "",
   cognitoConfig,
   jwtVerifier,
   grantStore,

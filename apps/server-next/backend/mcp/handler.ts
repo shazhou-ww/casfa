@@ -118,7 +118,7 @@ const MCP_TOOLS = [
   {
     name: "branch_create",
     description:
-      "Create a branch. Without parentBranchId creates under realm root (requires branch_manage). With parentBranchId creates sub-branch (Worker only, parent must be own branch). Returns branchId, accessToken, expiresAt; when API_BASE_URL is configured also returns baseUrl for use as casfaBaseUrl in image-workshop flux_image.",
+      "Create a branch. Without parentBranchId creates under realm root (requires branch_manage). With parentBranchId creates sub-branch (Worker only, parent must be own branch). Returns branchId, accessToken, expiresAt; when CELL_BASE_URL is configured also returns baseUrl for use as casfaBaseUrl in image-workshop flux_image.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -375,7 +375,7 @@ async function handleToolsCall(
                 branchId,
                 accessToken: base64urlEncode(branchId),
                 expiresAt,
-                ...(deps.config.apiBaseUrl && { baseUrl: deps.config.apiBaseUrl }),
+                ...(deps.config.baseUrl && { baseUrl: deps.config.baseUrl }),
               }),
             },
           ],
@@ -416,7 +416,7 @@ async function handleToolsCall(
               branchId: childId,
               accessToken: base64urlEncode(childId),
               expiresAt,
-              ...(deps.config.apiBaseUrl && { baseUrl: deps.config.apiBaseUrl }),
+              ...(deps.config.baseUrl && { baseUrl: deps.config.baseUrl }),
             }),
           },
         ],

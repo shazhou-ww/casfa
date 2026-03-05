@@ -133,9 +133,10 @@ export function resolveConfig(
     envVars.S3_ENDPOINT = `http://localhost:${portBase + offset + 4}`;
   }
 
-  // 6. APP_ORIGIN from domain config (cloud only)
+  // 6. Standard Cell env vars (CELL_STAGE, CELL_BASE_URL)
+  envVars.CELL_STAGE = stage;
   if (stage === "cloud" && config.domain?.host) {
-    envVars.APP_ORIGIN = `https://${config.domain.host}`;
+    envVars.CELL_BASE_URL = `https://${config.domain.host}`;
   }
 
   return {

@@ -19,7 +19,7 @@
 
 ## 运行
 
-环境变量通过 **Cell 参数**（见 `cell.yaml` 的 `params`）配置，包括：`COGNITO_REGION`、`COGNITO_USER_POOL_ID`、`COGNITO_CLIENT_ID`、`COGNITO_HOSTED_UI_URL`、`COGNITO_CLIENT_SECRET`（可选）、`MOCK_JWT_SECRET`、`API_BASE_URL`（可选）、`MAX_BRANCH_TTL_MS`、`LOG_LEVEL`。  
+环境变量通过 **Cell 参数**（见 `cell.yaml` 的 `params`）配置，包括：`COGNITO_REGION`、`COGNITO_USER_POOL_ID`、`COGNITO_CLIENT_ID`、`COGNITO_HOSTED_UI_URL`、`MAX_BRANCH_TTL_MS`、`LOG_LEVEL`。`CELL_BASE_URL` 和 `CELL_STAGE` 由 cell-cli 自动注入。  
 数据表为 **realms** 与 **grants**（由 Cell 根据 `cell.yaml` 的 `tables` 创建与管理）。
 
 在 `apps/server-next` 下执行：
@@ -43,7 +43,6 @@
 | `COGNITO_HOSTED_UI_URL` | Cognito Hosted UI 基础 URL |
 | `COGNITO_CLIENT_SECRET` | 可选；OAuth code→token 时使用，PKCE 可留空 |
 | `MOCK_JWT_SECRET` | 设则 mock 鉴权；**生产不要设** |
-| `API_BASE_URL` | 可选；MCP branch_create 返回的 baseUrl（如 `https://beta.casfa.shazhou.me`） |
 | `MAX_BRANCH_TTL_MS` | 可选；Branch 最大 TTL（毫秒） |
 | `LOG_LEVEL` | 可选；日志级别 |
 

@@ -45,7 +45,7 @@ const jwtVerifier = isMockAuthEnabled(config)
     });
 
 const oauthServer = createOAuthServer({
-  issuerUrl: config.apiBaseUrl ?? process.env.APP_ORIGIN ?? "",
+  issuerUrl: config.baseUrl,
   cognitoConfig,
   jwtVerifier,
   grantStore,

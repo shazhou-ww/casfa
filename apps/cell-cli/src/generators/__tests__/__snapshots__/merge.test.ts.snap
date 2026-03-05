@@ -79,7 +79,6 @@ Resources:
             ProjectionType: ALL
   BlobBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
     Properties:
       BucketName: casfa-next-blob
   FrontendBucket:

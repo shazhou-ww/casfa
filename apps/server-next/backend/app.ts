@@ -48,7 +48,6 @@ export function createApp(deps: AppDeps) {
 
   const oauthRoutes = createOAuthRoutes({
     oauthServer: deps.oauthServer,
-    appOrigin: deps.config.appOrigin,
   });
   app.route("/", oauthRoutes);
 
