@@ -55,12 +55,12 @@ describe("Delegates", () => {
     const res = await ctx.helpers.authRequest(
       token,
       "GET",
-      `/api/realm/${realmId}/delegates`
+      "/api/delegates"
     );
     expect(res.status).toBe(200);
-    const data = (await res.json()) as { delegates?: { delegateId: string }[] };
-    expect(Array.isArray(data.delegates)).toBe(true);
-    expect((data.delegates ?? []).length).toBeGreaterThanOrEqual(1);
+    const data = (await res.json()) as { delegateId: string }[];
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(1);
   });
 
   it("revoke delegate then token fails", async () => {
@@ -72,22 +72,21 @@ describe("Delegates", () => {
     const revokeRes = await ctx.helpers.authRequest(
       token,
       "POST",
-      `/api/realm/${realmId}/delegates/${delegateId}/revoke`
+      `/api/delegates/${delegateId}/revoke`
     );
     expect(revokeRes.status).toBe(200);
-    const revokeData = (await revokeRes.json()) as { revoked?: string };
-    expect(revokeData.revoked).toBe(delegateId);
+    const revokeData = (await revokeRes.json()) as { ok?: boolean; revoked?: string };
+    expect(revokeData.ok === true || revokeData.revoked === delegateId).toBe(true);
     const listRes = await ctx.helpers.authRequest(
       token,
       "GET",
-      `/api/realm/${realmId}/delegates`
+      "/api/delegates"
     );
     expect(listRes.status).toBe(200);
     const listData = (await listRes.json()) as {
-      delegates?: { delegateId: string }[];
-    };
-    expect(listData.delegates?.some((d) => d.delegateId === delegateId)).toBe(
-      false
-    );
+      delegateId: string;
+    }[];
+    expect(Array.isArray(listData)).toBe(true);
+    expect(listData.some((d) => d.delegateId === delegateId)).toBe(false);
   });
 });

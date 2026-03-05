@@ -1,6 +1,6 @@
 /**
  * E2E test setup.
- * When BASE_URL is set: hit serverless-offline (DynamoDB + S3 via dev-test), mock auth uses decode-only verifier.
+ * When BASE_URL is set: hit remote server (e.g. cell dev at that URL); mock auth uses decode-only verifier.
  * When BASE_URL is not set: in-process server with memory stores (no DynamoDB/S3), mock auth decode-only so user and delegate tokens work.
  */
 process.env.DYNAMODB_ENDPOINT ??= "http://localhost:7102";
@@ -24,7 +24,6 @@ import { createCasFacade } from "../backend/services/cas.ts";
 import { createMemoryDerivedDataStore } from "../backend/db/derived-data.ts";
 import { createMemoryRealmUsageStore } from "../backend/db/realm-usage-store.ts";
 import { createMemoryUserSettingsStore } from "../backend/db/user-settings.ts";
-import { createMemoryDelegateGrantStore } from "../backend/db/delegate-grants.ts";
 import { createMemoryBranchStore } from "../backend/db/branch-store.ts";
 
 export type TestServer = {
@@ -146,14 +145,16 @@ function createHelpers(url: string): TestHelpers {
     realmId: string,
     options?: { client_id?: string; ttl?: number }
   ): Promise<{ accessToken: string; delegateId: string; expiresAt?: number }> => {
-    const body: Record<string, unknown> = {};
-    if (options?.client_id != null) body.client_id = options.client_id;
+    const body: Record<string, unknown> = {
+      clientName: options?.client_id ?? "e2e-client",
+      permissions: ["use_mcp", "file_read", "file_write"],
+    };
     if (options?.ttl != null) body.ttl = options.ttl;
     const res = await authRequest(
       userToken,
       "POST",
-      `/api/realm/${realmId}/delegates/assign`,
-      Object.keys(body).length > 0 ? body : undefined
+      "/api/delegates",
+      body
     );
     const data = (await res.json()) as {
       accessToken?: string;
@@ -211,7 +212,7 @@ function createHelpers(url: string): TestHelpers {
     method: string,
     params?: unknown
   ): Promise<Response> => {
-    return fetch(`${url}/api/mcp`, {
+    return fetch(`${url}/mcp`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -263,7 +264,6 @@ export function startTestServer(options?: { port?: number }): TestServer {
   };
   const { cas, key } = createCasFacade(testConfig);
   const branchStore = createMemoryBranchStore();
-  const delegateGrantStore = createMemoryDelegateGrantStore();
   const derivedDataStore = createMemoryDerivedDataStore();
   const realmUsageStore = createMemoryRealmUsageStore();
   const userSettingsStore = createMemoryUserSettingsStore();
@@ -288,7 +288,6 @@ export function startTestServer(options?: { port?: number }): TestServer {
     cas,
     key,
     branchStore,
-    delegateGrantStore,
     derivedDataStore,
     realmUsageStore,
     userSettingsStore,
