@@ -1,7 +1,10 @@
 import { createApiFetch, createAuthClient } from "@casfa/cell-auth-client";
 import { useSyncExternalStore } from "react";
 
-export const authClient = createAuthClient({ storagePrefix: "casfa-next" });
+export const authClient = createAuthClient({
+  storagePrefix: "casfa-next",
+  logoutEndpoint: "/oauth/logout",
+});
 
 /** Hook: current auth from cell-auth-client (re-renders on login/logout). */
 export function useAuth() {
