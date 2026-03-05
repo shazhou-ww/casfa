@@ -32,7 +32,7 @@
 
 ## 环境变量（Cell 参数）
 
-将所需变量写在 `.env`（或 Cell 支持的其他方式），与 `cell.yaml` 的 `params` 对齐：
+首次可复制 `.env.example` 为 `.env`。将所需变量写在 `.env`（或 Cell 支持的其他方式），与 `cell.yaml` 的 `params` 对齐。使用 Cognito 时在 `.env` 中设置 `AWS_PROFILE`，需要时执行 `aws sso login`。
 
 | 变量 | 说明 |
 |------|------|

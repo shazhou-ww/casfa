@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "aws:login": "bun ../cell-cli/src/cli.ts aws login",
+    "aws:logout": "bun ../cell-cli/src/cli.ts aws logout",
     "dev": "bun ../cell-cli/src/cli.ts dev",
     "build": "bun ../cell-cli/src/cli.ts build",
     "deploy": "bun ../cell-cli/src/cli.ts deploy",
