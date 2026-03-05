@@ -48,7 +48,10 @@ export async function buildCommand(options?: { cellDir?: string }): Promise<void
           plugins: [react()],
           resolve: (() => {
             const alias = getWorkspaceAlias(frontendDir, cellDir);
-            return Object.keys(alias).length > 0 ? { alias } : undefined;
+            return {
+              ...(Object.keys(alias).length > 0 ? { alias } : undefined),
+              conditions: ["bun"],
+            };
           })(),
           build: { outDir: "dist", emptyOutDir: true },
         });
