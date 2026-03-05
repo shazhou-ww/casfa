@@ -42,6 +42,7 @@ const MCP_OAUTH_DISCOVERY_JSON = getMcpOAuthDiscovery("localhost:7100");
 function proxyApiWithRetry(): Connect.NextHandleFunction {
   return async (req, res, next) => {
     const pathname = req.url?.split("?")[0] ?? "";
+    const method = req.method ?? "GET";
     const host = req.headers.host ?? "localhost:7100";
     // Serve .well-known discovery (authorization is at /oauth/authorize, token at /api/oauth/mcp/token).
     if (pathname.startsWith("/.well-known/oauth-authorization-server")) {
@@ -55,6 +56,61 @@ function proxyApiWithRetry(): Connect.NextHandleFunction {
       res.end(JSON.stringify(discovery));
       return;
     }
+    // Proxy GET /oauth/authorize and POST /oauth/token to backend; /oauth/callback stays SPA so app can read ?code= & ?state=
+    if (pathname === "/oauth/authorize" && method === "GET") {
+      const url = new URL(req.url ?? "", `http://${req.headers.host}`);
+      const path = `${url.pathname}${url.search}`;
+      const options = {
+        hostname: API_HOST,
+        port: API_PORT,
+        path,
+        method: "GET",
+        headers: { ...req.headers, host: `${API_HOST}:${API_PORT}` },
+      };
+      try {
+        const proxyRes = await new Promise<http.IncomingMessage>((resolve, reject) => {
+          const proxyReq = http.request(options, resolve);
+          proxyReq.on("error", reject);
+          proxyReq.end();
+        });
+        res.writeHead(proxyRes.statusCode ?? 500, proxyRes.headers);
+        proxyRes.pipe(res);
+        return;
+      } catch (e) {
+        res.statusCode = 502;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "Bad Gateway", message: String((e as Error)?.message ?? e) }));
+        return;
+      }
+    }
+    if (pathname === "/oauth/token" && method === "POST") {
+      const url = new URL(req.url ?? "", `http://${req.headers.host}`);
+      const path = `${url.pathname}${url.search}`;
+      const body = await readBody(req);
+      const options = {
+        hostname: API_HOST,
+        port: API_PORT,
+        path,
+        method: "POST",
+        headers: { ...req.headers, host: `${API_HOST}:${API_PORT}` },
+      };
+      try {
+        const proxyRes = await new Promise<http.IncomingMessage>((resolve, reject) => {
+          const proxyReq = http.request(options, (proxyRes) => resolve(proxyRes));
+          proxyReq.on("error", reject);
+          if (body) proxyReq.write(body);
+          proxyReq.end();
+        });
+        res.writeHead(proxyRes.statusCode ?? 500, proxyRes.headers);
+        proxyRes.pipe(res);
+        return;
+      } catch (e) {
+        res.statusCode = 502;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "Bad Gateway", message: String((e as Error)?.message ?? e) }));
+        return;
+      }
+    }
     if (!pathname.startsWith("/api")) {
       if (pathname.startsWith("/oauth")) {
         const url = new URL(req.url ?? "", `http://${req.headers.host}`);
@@ -64,7 +120,6 @@ function proxyApiWithRetry(): Connect.NextHandleFunction {
     }
     const url = new URL(req.url!, `http://${req.headers.host}`);
     const path = `${url.pathname}${url.search}`;
-    const method = req.method ?? "GET";
     const hasBody = method !== "GET" && method !== "HEAD";
     const body = hasBody ? await readBody(req) : null;
 

@@ -14,31 +14,23 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { authClient } from "../lib/auth";
-import { useAuth } from "../lib/auth";
-import { useAuthStore } from "../stores/auth-store";
+import { authClient, useAuth } from "../lib/auth";
 
 export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnUrl = searchParams.get("returnUrl") ?? "/";
-  const initialize = useAuthStore((s) => s.initialize);
-  const initialized = useAuthStore((s) => s.initialized);
-  const authType = useAuthStore((s) => s.authType);
   const auth = useAuth();
+  const [authType, setAuthType] = useState<"cognito" | "mock" | null>(null);
   const [config, setConfig] = useState<{ authorizeUrl: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    initialize();
-  }, [initialize]);
-
-  useEffect(() => {
-    if (initialized && auth) {
+    if (auth) {
       navigate(returnUrl || "/", { replace: true });
     }
-  }, [initialized, auth, navigate, returnUrl]);
+  }, [auth, navigate, returnUrl]);
 
   const loadConfig = useCallback(async () => {
     setError(null);
@@ -51,11 +43,12 @@ export function LoginPage() {
       }
       const info = (await infoRes.json()) as { authType?: string };
       const at = info.authType === "cognito" ? "cognito" : info.authType === "mock" ? "mock" : null;
+      setAuthType(at);
       if (at === "cognito") {
-        const origin = window.location.origin;
-        const redirectUri = `${origin}/oauth/callback`;
         setConfig({
-          authorizeUrl: `/oauth/authorize?redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid+email+profile`,
+          authorizeUrl: `/oauth/authorize?redirect_uri=${encodeURIComponent(
+            `${window.location.origin}/oauth/callback`
+          )}&response_type=code&scope=openid+email+profile`,
         });
       }
     } catch {
@@ -69,16 +62,30 @@ export function LoginPage() {
     loadConfig();
   }, [loadConfig]);
 
+  const COGNITO_STATE_PREFIX = "casfa_return_";
+  const RETURN_URL_KEY = "casfa_oauth_return_url";
+
   const buildAuthorizeUrl = (identityProvider: string) => {
     if (!config) return "#";
-    const state = returnUrl && returnUrl.startsWith("/") ? returnUrl : "";
     const params = new URLSearchParams({
       redirect_uri: `${window.location.origin}/oauth/callback`,
       response_type: "code",
       scope: "openid email profile",
       identity_provider: identityProvider,
     });
-    if (state) params.set("state", state);
+    if (returnUrl && returnUrl.startsWith("/")) {
+      if (returnUrl.length > 200) {
+        const stateToken = COGNITO_STATE_PREFIX + Math.random().toString(36).slice(2, 14);
+        try {
+          sessionStorage.setItem(RETURN_URL_KEY, returnUrl);
+          params.set("state", stateToken);
+        } catch {
+          params.set("state", returnUrl);
+        }
+      } else {
+        params.set("state", returnUrl);
+      }
+    }
     return `/oauth/authorize?${params.toString()}`;
   };
 
@@ -102,7 +109,7 @@ export function LoginPage() {
     }
   };
 
-  if (initialized && auth) {
+  if (auth) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
         <CircularProgress />
