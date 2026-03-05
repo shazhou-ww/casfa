@@ -1,5 +1,7 @@
 export type DeriveKey = "path_index" | "dir_entries" | "realm_stats";
 
+// TODO: Persist derived data: add DynamoDB table (e.g. derived_data) and createDynamoDerivedDataStore; see server-next Cell migration design doc.
+
 export type DerivedDataStore = {
   get<T = unknown>(nodeKey: string, deriveKey: DeriveKey): Promise<T | null>;
   set(nodeKey: string, deriveKey: DeriveKey, data: unknown): Promise<void>;
