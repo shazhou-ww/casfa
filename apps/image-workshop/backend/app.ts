@@ -5,8 +5,13 @@ import {
   createCognitoJwtVerifier,
   createMockJwtVerifier,
 } from "@casfa/cell-cognito";
-import { createDynamoGrantStore, createOAuthServer } from "@casfa/cell-oauth";
+import {
+  createDynamoGrantStore,
+  createOAuthServer,
+  getTokenFromRequest,
+} from "@casfa/cell-oauth";
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { createDelegatesRoutes } from "./controllers/delegates";
 import { createMcpRoutes } from "./controllers/mcp";
 import { createOAuthRoutes } from "./controllers/oauth";
@@ -16,6 +21,12 @@ const cognitoConfig: CognitoConfig = {
   userPoolId: process.env.COGNITO_USER_POOL_ID ?? "",
   clientId: process.env.COGNITO_CLIENT_ID ?? "",
   hostedUiUrl: process.env.COGNITO_HOSTED_UI_URL ?? "",
+};
+
+const cookieConfig = {
+  cookieName: "casfa_token",
+  cookieDomain: process.env.AUTH_COOKIE_DOMAIN,
+  cookiePath: "/",
 };
 
 const dynamoClient = new DynamoDBClient(
@@ -30,9 +41,12 @@ const grantStore = createDynamoGrantStore({
   client: docClient,
 });
 
-const jwtVerifier = process.env.E2E_MOCK_JWT_SECRET
-  ? createMockJwtVerifier(process.env.E2E_MOCK_JWT_SECRET)
+const useMockAuth =
+  process.env.CELL_STAGE === "test" && typeof process.env.E2E_MOCK_JWT_SECRET === "string";
+const jwtVerifier = useMockAuth
+  ? createMockJwtVerifier(process.env.E2E_MOCK_JWT_SECRET!)
   : createCognitoJwtVerifier(cognitoConfig);
+console.log("[boot] jwt verifier:", useMockAuth ? "MOCK" : "COGNITO");
 
 const oauthServer = createOAuthServer({
   issuerUrl: process.env.CELL_BASE_URL ?? "",
@@ -44,13 +58,19 @@ const oauthServer = createOAuthServer({
 
 const app = new Hono();
 
-const oauthRoutes = createOAuthRoutes({ oauthServer });
+const oauthRoutes = createOAuthRoutes({ oauthServer, cookieConfig });
 app.route("/", oauthRoutes);
 
 app.use("*", async (c, next) => {
-  const header = c.req.header("authorization");
-  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
-  c.set("auth", token ? await oauthServer.resolveAuth(token) : null);
+  const token = getTokenFromRequest(c.req.raw, {
+    cookieName: cookieConfig.cookieName,
+  });
+  if (!token) {
+    await next();
+    return;
+  }
+  const auth = await oauthServer.resolveAuth(token);
+  c.set("auth", auth);
   await next();
 });
 
@@ -59,6 +79,17 @@ app.route("/", delegateRoutes);
 
 const mcpRoutes = createMcpRoutes();
 app.route("/", mcpRoutes);
+
+app.onError((err, c) => {
+  if (err instanceof HTTPException) {
+    return c.json({ error: err.message }, err.status);
+  }
+  console.error("[api] 500", c.req.method, c.req.path, err instanceof Error ? err.message : String(err));
+  if (err instanceof Error && err.stack) console.error(err.stack);
+  return c.json({ error: "INTERNAL_ERROR", message: err.message ?? "Internal server error" }, 500);
+});
+
+app.notFound((c) => c.json({ error: "NOT_FOUND", message: "Not found" }, 404));
 
 export type App = typeof app;
 export { app };
