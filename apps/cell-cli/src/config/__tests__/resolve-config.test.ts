@@ -28,15 +28,14 @@ describe("resolveConfig", () => {
     const config = makeConfig({
       params: { DB_PASSWORD: { secret: "DB_PASSWORD" } },
     });
-    expect(() => resolveConfig(config, {}, "cloud")).toThrow(/[Mm]issing secret.*DB_PASSWORD/);
+    expect(() => resolveConfig(config, {}, "cloud")).toThrow(/DB_PASSWORD/);
   });
 
-  test("dev: missing secret warns but continues", () => {
+  test("dev: missing secret also throws error", () => {
     const config = makeConfig({
       params: { DB_PASSWORD: { secret: "DB_PASSWORD" } },
     });
-    const resolved = resolveConfig(config, {}, "dev");
-    expect(resolved.envVars.DB_PASSWORD).toBeUndefined();
+    expect(() => resolveConfig(config, {}, "dev")).toThrow(/DB_PASSWORD/);
   });
 
   test("dev: table names include stage prefix", () => {
@@ -133,15 +132,25 @@ describe("resolveConfig", () => {
     const config = makeConfig({
       params: { GOOGLE_CLIENT_ID: { env: "GOOGLE_CLIENT_ID" } },
     });
-    expect(() => resolveConfig(config, {}, "cloud")).toThrow(/[Mm]issing env var.*GOOGLE_CLIENT_ID/);
+    expect(() => resolveConfig(config, {}, "cloud")).toThrow(/GOOGLE_CLIENT_ID/);
   });
 
-  test("dev: missing env ref warns but continues", () => {
+  test("dev: missing env ref also throws error", () => {
     const config = makeConfig({
       params: { GOOGLE_CLIENT_ID: { env: "GOOGLE_CLIENT_ID" } },
     });
-    const resolved = resolveConfig(config, {}, "dev");
-    expect(resolved.envVars.GOOGLE_CLIENT_ID).toBeUndefined();
+    expect(() => resolveConfig(config, {}, "dev")).toThrow(/GOOGLE_CLIENT_ID/);
+  });
+
+  test("multiple missing params listed in single error", () => {
+    const config = makeConfig({
+      params: {
+        A: { secret: "A" },
+        B: { env: "B" },
+        C: "present",
+      },
+    });
+    expect(() => resolveConfig(config, {}, "dev")).toThrow(/A[\s\S]*B/);
   });
 
   test("env ref is not added to secretRefs", () => {

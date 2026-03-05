@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { MissingParamsError } from "./config/resolve-config.js";
 import { buildCommand } from "./commands/build.js";
 import { deployCommand } from "./commands/deploy.js";
 import { devCommand } from "./commands/dev.js";
@@ -10,6 +11,19 @@ import { statusCommand } from "./commands/status.js";
 import { testCommand, testE2eCommand, testUnitCommand } from "./commands/test.js";
 import { typecheckCommand } from "./commands/typecheck.js";
 
+/** Run async command; on MissingParamsError print message and exit 1 without stack trace */
+async function run(fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+  } catch (e) {
+    if (e instanceof MissingParamsError) {
+      console.error(e.message);
+      process.exit(1);
+    }
+    throw e;
+  }
+}
+
 const program = new Command();
 
 program.name("cell").description("CLI for casfa Cell services").version("0.0.1");
@@ -18,7 +32,7 @@ program
   .command("dev")
   .description("Start local development environment")
   .action(async () => {
-    await devCommand();
+    await run(() => devCommand());
   });
 
 program
@@ -33,14 +47,14 @@ program
   .description("Deploy to cloud")
   .option("--yes", "Skip confirmation")
   .action(async (opts) => {
-    await deployCommand({ yes: opts.yes });
+    await run(() => deployCommand({ yes: opts.yes }));
   });
 
 program
   .command("test")
   .description("Run all tests (unit + e2e)")
   .action(async () => {
-    await testCommand();
+    await run(() => testCommand());
   });
 
 program
@@ -54,7 +68,7 @@ program
   .command("test:e2e")
   .description("Run e2e tests")
   .action(async () => {
-    await testE2eCommand();
+    await run(() => testE2eCommand());
   });
 
 program
