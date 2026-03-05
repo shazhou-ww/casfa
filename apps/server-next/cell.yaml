@@ -17,6 +17,7 @@ backend:
         - /oauth/consent-info
         - /oauth/approve
         - /oauth/deny
+        - /oauth/logout
         - /.well-known/*
         - /mcp
 

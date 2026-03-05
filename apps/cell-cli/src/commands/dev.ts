@@ -251,7 +251,10 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
       const alias = getWorkspaceAlias(frontendDir, cellDir);
       const baseFromCell: UserConfig = defineConfig({
         plugins: [react()],
-        resolve: Object.keys(alias).length > 0 ? { alias } : undefined,
+        resolve: {
+          ...(Object.keys(alias).length > 0 ? { alias } : undefined),
+          conditions: ["bun"],
+        },
         server: { port: frontendPort, proxy },
         build: { outDir: "dist", emptyOutDir: true },
       });
