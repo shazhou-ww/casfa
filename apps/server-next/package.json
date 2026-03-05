@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "aws:login": "bun ../cell-cli/src/cli.ts aws login",
+    "aws:logout": "bun ../cell-cli/src/cli.ts aws logout",
     "clean": "rimraf .esbuild .local-storage",
     "clean:db": "rimraf .dynamodb",
     "dev": "bun ../cell-cli/src/cli.ts dev",

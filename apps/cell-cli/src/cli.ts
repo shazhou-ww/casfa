@@ -4,6 +4,7 @@ import { deployCommand } from "./commands/deploy.js";
 import { devCommand } from "./commands/dev.js";
 import { initCommand } from "./commands/init.js";
 import { lintCommand } from "./commands/lint.js";
+import { awsLoginCommand, awsLogoutCommand } from "./commands/aws.js";
 import { logsCommand } from "./commands/logs.js";
 import { secretGetCommand, secretListCommand, secretSetCommand } from "./commands/secret.js";
 import { statusCommand } from "./commands/status.js";
@@ -85,6 +86,22 @@ program
   .description("Run TypeScript type checking")
   .action(async () => {
     await typecheckCommand();
+  });
+
+const aws = program.command("aws").description("AWS SSO login / logout (uses AWS_PROFILE from .env)");
+
+aws
+  .command("login")
+  .description("Run aws sso login")
+  .action(async () => {
+    await awsLoginCommand();
+  });
+
+aws
+  .command("logout")
+  .description("Run aws sso logout")
+  .action(async () => {
+    await awsLogoutCommand();
   });
 
 program

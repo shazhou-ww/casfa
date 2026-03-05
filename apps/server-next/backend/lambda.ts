@@ -1,9 +1,8 @@
 /**
  * AWS Lambda entry: same app as index.ts, exported as handler for API Gateway HTTP API.
- * Used by Serverless Framework and serverless-offline.
- * DB = DynamoDB, Blob = S3 (local dev uses Docker DynamoDB + serverless-s3-local).
+ * Used by Cell deploy (Lambda) and local dev (Bun). DB = DynamoDB, Blob = S3 (local uses Docker + MinIO).
  *
- * Normalizes path: serverless-offline may pass rawPath with stage prefix (e.g. /dev/api/...).
+ * Normalizes path: API Gateway may pass rawPath with stage prefix (e.g. /dev/api/...).
  * We strip a leading /{stage}/ so that Hono routes like /api/realm/:id/files match.
  */
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
@@ -89,7 +88,7 @@ const app = createApp({
 
 const honoHandler = handle(app);
 
-/** Strip leading /{stage}/ from rawPath so /dev/api/... becomes /api/... (serverless-offline may prepend stage in Lambda event). */
+/** Strip leading /{stage}/ from rawPath so /dev/api/... becomes /api/... (API Gateway may prepend stage in Lambda event). */
 function normalizeEventPath(event: { rawPath?: string }): void {
   const raw = event.rawPath;
   if (!raw || !raw.startsWith("/")) return;

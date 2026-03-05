@@ -1,6 +1,6 @@
 /**
  * All stages (local-dev, local-test, beta, prod) use the same env var names; only values differ.
- * DB = DynamoDB only; Blob = S3 only. Local dev/test use serverless-dynamodb-local and serverless-s3-local.
+ * DB = DynamoDB only; Blob = S3 only. Local dev/test use Docker DynamoDB + MinIO (cell-cli).
  */
 export const ENV_NAMES = {
   PORT: "PORT",
