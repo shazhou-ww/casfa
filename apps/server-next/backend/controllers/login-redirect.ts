@@ -41,18 +41,16 @@ export function createLoginRedirectRoutes(config: ServerConfig) {
   });
 
   routes.get("/.well-known/oauth-authorization-server", (c) => {
-    // Resource server (server-next) is the OAuth issuer for MCP delegate flow. Authorize/token/register
-    // are on this cell; user login (when not logged in) goes to SSO via /oauth/login.
+    // Resource server (server-next) is the OAuth issuer for delegate flow. Authorize/token on this cell.
     const base = config.baseUrl.replace(/\/$/, "");
     return c.json({
       issuer: base,
       authorization_endpoint: `${base}/oauth/authorize`,
       token_endpoint: `${base}/oauth/token`,
-      registration_endpoint: `${base}/oauth/register`,
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code", "refresh_token"],
       code_challenge_methods_supported: ["S256"],
-      scopes_supported: ["delegate"],
+      scopes_supported: ["use_mcp", "file_read", "file_write", "branch_manage", "manage_delegates"],
     });
   });
 

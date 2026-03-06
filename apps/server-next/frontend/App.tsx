@@ -1,19 +1,41 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { DelegateOAuthConsentPage } from "@casfa/cell-delegates-webui";
 import { AuthGuard } from "./components/auth-guard";
 import { Layout } from "./components/layout";
 import { ExplorerPage } from "./pages/explorer-page";
 import { LoginPage } from "./pages/login-page";
-import { OAuthAuthorizePage } from "./pages/oauth-authorize-page";
 import { OAuthCallbackPage } from "./pages/oauth-callback-page";
 import { OAuthConsentPage } from "./pages/oauth-consent-page";
 import { SettingsPage } from "./pages/settings-page";
+import { apiFetch, useCookieAuthCheck } from "./lib/auth";
+
+const SCOPE_DESCRIPTIONS: Record<string, string> = {
+  use_mcp: "使用 MCP 接口",
+  file_read: "读取文件",
+  file_write: "写入文件",
+  branch_manage: "管理分支",
+  manage_delegates: "管理授权",
+};
+
+function DelegateOAuthAuthorizeRoute() {
+  const { isLoggedIn } = useCookieAuthCheck();
+  return (
+    <DelegateOAuthConsentPage
+      authorizeUrl="/api/oauth/delegate/authorize"
+      loginUrl="/oauth/login"
+      isLoggedIn={isLoggedIn}
+      fetch={apiFetch}
+      scopeDescriptions={SCOPE_DESCRIPTIONS}
+    />
+  );
+}
 
 export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/oauth/login" element={<LoginPage />} />
-      <Route path="/oauth/authorize" element={<OAuthAuthorizePage />} />
+      <Route path="/oauth/authorize" element={<DelegateOAuthAuthorizeRoute />} />
       <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
       <Route path="/oauth/callback-complete" element={<OAuthCallbackPage />} />
 

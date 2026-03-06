@@ -1,7 +1,7 @@
 import type { CasFacade } from "@casfa/cas";
 import { getTokenFromRequest } from "@casfa/cell-auth-server";
 import type { DelegatesEnv, DelegateGrantStore } from "@casfa/cell-delegates-server";
-import { createDelegatesRoutes } from "@casfa/cell-delegates-server";
+import { createDelegatesRoutes, createDelegateOAuthRoutes, createMemoryAuthCodeStore } from "@casfa/cell-delegates-server";
 import type { OAuthServer } from "@casfa/cell-cognito-server";
 import type { KeyProvider } from "@casfa/core";
 import { Hono } from "hono";
@@ -14,7 +14,6 @@ import { createDevMockTokenController } from "./controllers/dev-mock-token.ts";
 import { createFilesController } from "./controllers/files.ts";
 import { createFsController } from "./controllers/fs.ts";
 import { createLoginRedirectRoutes } from "./controllers/login-redirect.ts";
-import { createMcpOAuthRoutes } from "./controllers/mcp-oauth.ts";
 import { createMeController } from "./controllers/me.ts";
 import { createRealmController } from "./controllers/realm.ts";
 import type { BranchStore } from "./db/branch-store.ts";
@@ -113,8 +112,19 @@ export function createApp(deps: AppDeps) {
 
   const oauthRoutes = createLoginRedirectRoutes(deps.config);
   app.route("/", oauthRoutes);
-  // Delegate-only MCP OAuth: authorize/token/register on this cell; no Cognito. User must be logged in (SSO).
-  app.route("/", createMcpOAuthRoutes({ oauthServer: deps.oauthServer }));
+  // Delegate OAuth: authorize (POST) and token on this cell; auth from cookie/Bearer above.
+  app.route(
+    "/",
+    createDelegateOAuthRoutes({
+      grantStore: deps.grantStore,
+      authCodeStore: createMemoryAuthCodeStore(),
+      getUserId: (auth: unknown) => {
+        const a = auth as Env["Variables"]["auth"];
+        return a?.type === "user" ? a.userId : "";
+      },
+      baseUrl: deps.config.baseUrl,
+    })
+  );
 
   const csrfRoutes = createCsrfController(deps.config);
   app.route("/", csrfRoutes);
