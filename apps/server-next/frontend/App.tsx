@@ -18,11 +18,12 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
 };
 
 function DelegateOAuthAuthorizeRoute() {
-  const { isLoggedIn } = useCookieAuthCheck();
+  const { loading, isLoggedIn } = useCookieAuthCheck();
   return (
     <DelegateOAuthConsentPage
       authorizeUrl="/api/oauth/delegate/authorize"
       loginUrl="/oauth/login"
+      loading={loading}
       isLoggedIn={isLoggedIn}
       fetch={apiFetch}
       scopeDescriptions={SCOPE_DESCRIPTIONS}

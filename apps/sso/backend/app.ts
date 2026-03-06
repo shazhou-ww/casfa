@@ -21,6 +21,13 @@ export function createApp(deps: { config: SsoConfig; oauthServer: OAuthServer })
   app.get("/", (c) => c.json({ ok: true, service: "sso" }, 200));
   app.get("/api/health", (c) => c.json({ ok: true }, 200));
 
+  // Login page is served by frontend; if request hits backend (e.g. wrong port), redirect to frontend.
+  app.get("/login", (c) => {
+    const base = config.baseUrl.replace(/\/$/, "");
+    const q = c.req.url.includes("?") ? "?" + new URL(c.req.url).searchParams.toString() : "";
+    return c.redirect(`${base}/login${q}`, 302);
+  });
+
   const oauthRoutes = createSsoOAuthRoutes({
     config,
     cognitoConfig: config.cognito,

@@ -40,7 +40,7 @@ export function loadConfig(): SsoConfig {
   const secure = !isLocalhost(baseUrl);
   const authCookieName = process.env.AUTH_COOKIE_NAME ?? "auth";
   const refreshCookieName = process.env.AUTH_REFRESH_COOKIE_NAME ?? "auth_refresh";
-  // When on localhost, default cookie domain to hostname so all ports (7000, 7100, ...) share the cookie.
+  // When on localhost, default cookie domain to hostname so all ports (7100, 7120, ...) share the cookie.
   const explicitDomain = process.env.AUTH_COOKIE_DOMAIN?.trim() || undefined;
   const authCookieDomain =
     explicitDomain ??
