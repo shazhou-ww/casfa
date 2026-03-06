@@ -14,6 +14,7 @@ import { createApp } from "./app.ts";
 import { isMockAuthEnabled, loadConfig } from "./config.ts";
 import { createMemoryDerivedDataStore } from "./db/derived-data.ts";
 import { createDynamoBranchStore } from "./db/dynamo-branch-store.ts";
+import { createDynamoPendingClientInfoStore } from "./db/pending-client-info-store.ts";
 import { createMemoryRealmUsageStore } from "./db/realm-usage-store.ts";
 import { createMemoryUserSettingsStore } from "./db/user-settings.ts";
 import { createCasFacade } from "./services/cas.ts";
@@ -35,6 +36,11 @@ const docClient = DynamoDBDocumentClient.from(dynamoClient);
 
 const grantStore = createDynamoGrantStore({
   tableName: config.dynamodbTableGrants,
+  client: docClient,
+});
+
+const pendingClientInfoStore = createDynamoPendingClientInfoStore({
+  tableName: config.dynamodbTablePendingClientInfo,
   client: docClient,
 });
 
@@ -80,5 +86,6 @@ const app = createApp({
   userSettingsStore,
   grantStore,
   oauthServer,
+  pendingClientInfoStore,
 });
 Bun.serve({ port: config.port, fetch: app.fetch });

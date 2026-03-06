@@ -18,6 +18,7 @@ export const ENV_NAMES = {
   DYNAMODB_ENDPOINT: "DYNAMODB_ENDPOINT",
   DYNAMODB_TABLE_REALMS: "DYNAMODB_TABLE_REALMS",
   DYNAMODB_TABLE_GRANTS: "DYNAMODB_TABLE_GRANTS",
+  DYNAMODB_TABLE_PENDING_CLIENT_INFO: "DYNAMODB_TABLE_PENDING_CLIENT_INFO",
   S3_BUCKET: "S3_BUCKET",
   S3_BUCKET_BLOB: "S3_BUCKET_BLOB",
   S3_ENDPOINT: "S3_ENDPOINT",
@@ -56,6 +57,7 @@ export type ServerConfig = {
   dynamodbEndpoint?: string;
   dynamodbTableRealms: string;
   dynamodbTableGrants: string;
+  dynamodbTablePendingClientInfo: string;
   /** S3 bucket for CAS blob */
   s3Bucket: string;
   /** S3 bucket for frontend static assets (used by Lambda to serve index.html for /oauth/callback) */
@@ -108,6 +110,8 @@ export function loadConfig(): ServerConfig {
     dynamodbEndpoint: process.env.DYNAMODB_ENDPOINT,
     dynamodbTableRealms: process.env.DYNAMODB_TABLE_REALMS ?? `casfa-next-${stage}-realms`,
     dynamodbTableGrants: process.env.DYNAMODB_TABLE_GRANTS ?? `casfa-next-${stage}-grants`,
+    dynamodbTablePendingClientInfo:
+      process.env.DYNAMODB_TABLE_PENDING_CLIENT_INFO ?? `casfa-next-${stage}-pending_client_info`,
     s3Bucket: process.env.S3_BUCKET_BLOB ?? process.env.S3_BUCKET ?? `casfa-next-${stage}-blob`,
     frontendBucket: process.env.FRONTEND_BUCKET ?? undefined,
     s3Endpoint: process.env.S3_ENDPOINT,

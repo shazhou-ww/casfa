@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import * as readline from "node:readline";
 import { dirname, relative, resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { createServer, defineConfig, mergeConfig, type UserConfig } from "vite";
@@ -85,6 +86,24 @@ function pipeWithLabel(
   })();
 }
 
+/** Ask user to confirm before recreating a container (data loss). Returns true to proceed, false to abort. */
+function confirmBeforeRecreate(
+  serviceName: string,
+  actualPort: number,
+  requiredPort: number
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(
+      `${serviceName} is on port ${actualPort} but PORT_BASE requires ${requiredPort}. Recreating will delete local data. Continue? [y/N]: `,
+      (answer) => {
+        rl.close();
+        resolve(/^y(es)?$/i.test(answer.trim()));
+      }
+    );
+  });
+}
+
 export async function devCommand(options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
@@ -111,17 +130,32 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
       containerName: dynamoContainerName,
     });
 
-    // If container was already running, it may be bound to a different host port (e.g. from a previous PORT_BASE).
-    // Use the actual mapped port so the readiness check and backend env both match.
-    let effectiveDynamoPort = dynamodbPort;
+    // If existing container was bound to a different port (e.g. from a previous PORT_BASE), remove and recreate.
     if (await isContainerRunning(dynamoContainerName)) {
       const actualPort = await getContainerHostPort(dynamoContainerName, 8000);
       if (actualPort != null && actualPort !== dynamodbPort) {
-        effectiveDynamoPort = actualPort;
+        console.warn(
+          `DynamoDB container is on port ${actualPort}, but PORT_BASE requires ${dynamodbPort}.`
+        );
+        const ok = await confirmBeforeRecreate("DynamoDB", actualPort, dynamodbPort);
+        if (!ok) {
+          console.error(
+            "Aborted. Keep current PORT_BASE or remove the container manually: docker rm -f " +
+              dynamoContainerName
+          );
+          process.exit(1);
+        }
+        console.log("Recreating DynamoDB container...");
+        await stopContainer(dynamoContainerName);
+        await startDynamoDB({
+          port: dynamodbPort,
+          persistent: true,
+          containerName: dynamoContainerName,
+        });
       }
     }
 
-    const endpoint = `http://localhost:${effectiveDynamoPort}`;
+    const endpoint = `http://localhost:${dynamodbPort}`;
     let ready = false;
     for (let i = 0; i < 30; i++) {
       if (await isDynamoDBReady(endpoint)) {
@@ -131,14 +165,13 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
       await Bun.sleep(500);
     }
     if (!ready) {
-      console.error("DynamoDB failed to become ready");
+      console.error(
+        `DynamoDB failed to become ready at ${endpoint}. Check that port ${dynamodbPort} is free and Docker is running.`
+      );
       process.exit(1);
     }
     console.log("DynamoDB ready");
 
-    if (effectiveDynamoPort !== dynamodbPort) {
-      resolved.envVars.DYNAMODB_ENDPOINT = endpoint;
-    }
     await ensureLocalTables(endpoint, resolved.tables);
     console.log(`Created ${resolved.tables.length} table(s)`);
   }
@@ -160,6 +193,30 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
       containerName: minioContainerName,
     });
 
+    // If existing container was bound to a different port, remove and recreate.
+    if (await isContainerRunning(minioContainerName)) {
+      const actualPort = await getContainerHostPort(minioContainerName, 9000);
+      if (actualPort != null && actualPort !== s3Port) {
+        console.warn(
+          `MinIO container is on port ${actualPort}, but PORT_BASE requires ${s3Port}.`
+        );
+        const ok = await confirmBeforeRecreate("MinIO", actualPort, s3Port);
+        if (!ok) {
+          console.error(
+            "Aborted. Keep current PORT_BASE or remove the container manually: docker rm -f " +
+              minioContainerName
+          );
+          process.exit(1);
+        }
+        console.log("Recreating MinIO container...");
+        await stopContainer(minioContainerName);
+        await startMinIO({
+          port: s3Port,
+          containerName: minioContainerName,
+        });
+      }
+    }
+
     if (!(await waitForPort(s3Port))) {
       console.log(
         "MinIO port not ready; removing container and retrying (port may have changed)..."
@@ -170,7 +227,9 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
         containerName: minioContainerName,
       });
       if (!(await waitForPort(s3Port))) {
-        console.error("MinIO failed to start");
+        console.error(
+          `MinIO failed to become ready at port ${s3Port}. Check that the port is free and Docker is running.`
+        );
         process.exit(1);
       }
     }
@@ -272,14 +331,16 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
       });
       finalConfig = baseFromCell;
     }
+
     console.log(`Starting frontend [web] on port ${frontendPort}...`);
     viteServer = await createServer({
       ...finalConfig,
       root: frontendDir,
       configFile: false,
+      plugins: Array.isArray(finalConfig.plugins) ? finalConfig.plugins : [],
+      logLevel: "warn",
     });
     await viteServer.listen();
-    viteServer.printUrls();
   }
 
   const cleanup = async () => {
