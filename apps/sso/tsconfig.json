@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@casfa/cell-cognito": ["../../packages/cell-cognito/src/index.ts"],
+      "@casfa/cell-oauth": ["../../packages/cell-oauth/src/index.ts"]
+    }
+  },
+  "include": ["backend/**/*.ts"]
+}

@@ -1,0 +1,32 @@
+{
+  "name": "@casfa/sso",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "aws:login": "bun ../cell-cli/src/cli.ts aws login",
+    "aws:logout": "bun ../cell-cli/src/cli.ts aws logout",
+    "clean": "rimraf .esbuild .local-storage",
+    "dev": "bun ../cell-cli/src/cli.ts dev",
+    "build": "bun ../cell-cli/src/cli.ts build",
+    "deploy": "bun ../cell-cli/src/cli.ts deploy",
+    "typecheck": "bun ../cell-cli/src/cli.ts typecheck",
+    "test": "bun ../cell-cli/src/cli.ts test",
+    "test:unit": "bun test backend/",
+    "lint": "bun ../cell-cli/src/cli.ts lint"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.700.0",
+    "@aws-sdk/lib-dynamodb": "^3.700.0",
+    "@casfa/cell-cognito": "workspace:*",
+    "@casfa/cell-oauth": "workspace:*",
+    "hono": "^4.6.0",
+    "jose": "^6.1.3"
+  },
+  "devDependencies": {
+    "@casfa/cell-cli": "workspace:*",
+    "@types/bun": "latest",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.8.3"
+  }
+}

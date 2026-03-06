@@ -1,0 +1,52 @@
+name: sso
+
+backend:
+  runtime: nodejs20.x
+  entries:
+    api:
+      handler: backend/lambda.ts
+      app: backend/dev-app.ts
+      timeout: 30
+      memory: 512
+      routes:
+        - /oauth/authorize
+        - /oauth/callback
+        - /oauth/token
+        - /oauth/refresh
+        - /oauth/logout
+        - /oauth/register
+        - /.well-known/*
+        - /api/health
+
+tables:
+  grants:
+    keys: { pk: S, sk: S }
+    gsi:
+      user-hash-index:
+        keys: { gsi1pk: S, gsi1sk: S }
+        projection: ALL
+      user-refresh-index:
+        keys: { gsi2pk: S, gsi2sk: S }
+        projection: ALL
+
+params:
+  COGNITO_REGION: !Env
+  COGNITO_USER_POOL_ID: !Env
+  COGNITO_CLIENT_ID: !Env
+  COGNITO_HOSTED_UI_URL: !Env
+  AUTH_COOKIE_NAME: !Env
+  AUTH_REFRESH_COOKIE_NAME: !Env
+  AUTH_COOKIE_DOMAIN: !Env
+  AUTH_COOKIE_MAX_AGE_SECONDS: !Env
+  AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS: !Env
+  LOG_LEVEL: !Env
+
+cognito:
+  region: !Param COGNITO_REGION
+  userPoolId: !Param COGNITO_USER_POOL_ID
+  clientId: !Param COGNITO_CLIENT_ID
+  hostedUiUrl: !Param COGNITO_HOSTED_UI_URL
+
+domain:
+  zone: shazhou.me
+  host: auth.casfa.shazhou.me
