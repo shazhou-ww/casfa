@@ -19,35 +19,29 @@
 
 ## 运行
 
-环境变量通过 **Cell 参数**（见 `cell.yaml` 的 `params`）配置。使用 **SSO** 时只需 `COGNITO_REGION`、`COGNITO_USER_POOL_ID`（用于校验 JWT）；未使用 SSO 时还需 `COGNITO_CLIENT_ID`、`COGNITO_HOSTED_UI_URL` 等。`CELL_BASE_URL` 和 `CELL_STAGE` 由 cell-cli 自动注入。  
-数据表为 **realms** 与 **grants**（由 Cell 根据 `cell.yaml` 的 `tables` 创建与管理）。
+配置规则见 [Cell 配置规则](../../docs/cell-config-rules.md)。**cell.yaml** 中写死非敏感且本地/线上一致的项（如 COGNITO_REGION、COGNITO_USER_POOL_ID、MAX_BRANCH_TTL_MS）；仅 **LOG_LEVEL**、**SSO_BASE_URL** 为 `!Env`，须在 `.env` 中提供。`CELL_BASE_URL`、`CELL_STAGE`、表名等由 cell-cli 自动注入。
+
+- 复制 **`.env.example`** 为 `.env`，填写 `LOG_LEVEL`、`SSO_BASE_URL`。
+- 本地开发需覆盖时：复制 **`.env.local.example`** 为 `.env.local`，填写 `PORT_BASE`、`SSO_BASE_URL`（本地 SSO 地址）、`LOG_LEVEL` 等。
 
 在 `apps/server-next` 下执行：
 
-- **本地开发**：`cell dev` — 启动 API 与前端，默认端口由 Cell 分配（如 7101 / 7100）。
-- **本地测试**：`cell test` — 运行单元测试与 E2E（E2E 会启动临时实例）。
-- **部署**：`cell deploy` — 部署 API、前端与基础设施（DynamoDB 表、S3、CloudFront 等）。
+- **本地开发**：`cell dev` — 启动 API 与前端，端口由 PORT_BASE 推算（如 7100/7101）。
+- **本地测试**：`cell test` — 单元测试与 E2E。
+- **部署**：`cell deploy` — 部署 API、前端与基础设施。
 
 **生产域名**：`beta.casfa.shazhou.me`（在 `cell.yaml` 的 `domain` 中配置）。
 
 ## 环境变量（Cell 参数）
 
-首次可复制 `.env.example` 为 `.env`。将所需变量写在 `.env`（或 Cell 支持的其他方式），与 `cell.yaml` 的 `params` 对齐。使用 Cognito 时在 `.env` 中设置 `AWS_PROFILE`，需要时执行 `aws sso login`。
+| 来源 | 变量 | 说明 |
+|------|------|------|
+| **cell.yaml 写死** | COGNITO_REGION, COGNITO_USER_POOL_ID, MAX_BRANCH_TTL_MS | 非敏感、本地与线上一致 |
+| **.env 必填** | LOG_LEVEL | 日志级别（推荐 info） |
+| **.env 必填** | SSO_BASE_URL | SSO cell 的 base URL（如 https://auth.casfa.shazhou.me） |
+| **.env.local 覆盖** | PORT_BASE, SSO_BASE_URL, LOG_LEVEL | 见 .env.local.example |
 
-| 变量 | 说明 |
-|------|------|
-| `PORT_BASE` | 端口基数（可选，Cell 用于分配端口） |
-| `COGNITO_REGION` | Cognito 区域（**SSO 与 Legacy 均需**，用于 JWT 验签） |
-| `COGNITO_USER_POOL_ID` | Cognito User Pool ID（**SSO 与 Legacy 均需**） |
-| `COGNITO_CLIENT_ID` | 仅 **未使用 SSO** 时需要（本 cell 自管 OAuth 时） |
-| `COGNITO_HOSTED_UI_URL` | 仅 **未使用 SSO** 时需要 |
-| `COGNITO_CLIENT_SECRET` | 可选；未用 SSO 且未用 PKCE 时需填 |
-| `SSO_BASE_URL` | 使用 SSO 时填 SSO cell 的 base URL（如 `https://auth.example.com`） |
-| `MOCK_JWT_SECRET` | 设则 mock 鉴权；**生产不要设** |
-| `MAX_BRANCH_TTL_MS` | 可选；Branch 最大 TTL（毫秒） |
-| `LOG_LEVEL` | 可选；日志级别 |
-
-表名由 Cell 根据 `tables`（realms、grants）自动管理，无需单独配置表名变量。
+表名、DYNAMODB_ENDPOINT、S3_ENDPOINT 等由 Cell 根据 `cell.yaml` 与 stage 自动管理。
 
 ## API 设计
 
