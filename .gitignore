@@ -50,8 +50,11 @@ tsconfig.build.json
 # git worktrees (subagent-driven / executing-plans)
 .worktrees
 
-# cell-cli build output
+# cell-cli build output (and cell app local state)
 .cell
+
+# cell frontend: generated index.html when not in repo
+apps/*/frontend/index.html
 
 # Vim swap files
 *.swp

@@ -1,17 +1,4 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "allowImportingTsExtensions": true,
-    "paths": {
-      "@casfa/cell-auth-server": ["../../packages/cell-auth-server/src/index.ts"],
-      "@casfa/cell-cognito-server": ["../../packages/cell-cognito-server/src/index.ts"],
-      "@casfa/cell-delegates-server": ["../../packages/cell-delegates-server/src/index.ts"]
-    }
-  },
+  "extends": "../../tsconfig.cell-backend.json",
   "include": ["backend/**/*.ts"]
 }

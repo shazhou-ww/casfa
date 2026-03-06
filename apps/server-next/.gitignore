@@ -1,5 +1,0 @@
-# Cell CLI generated (dev server entry, build output)
-.cell/
-
-# Local env (see root .gitignore for full list)
-.env
