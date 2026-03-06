@@ -9,8 +9,14 @@ import type { DelegateAuth, DelegateGrantStore, DelegatePermission } from "./typ
 
 export type { DelegateAuth, DelegateGrant, DelegateGrantStore, DelegatePermission } from "./types.ts";
 export type { AuthCodeEntry, AuthCodeStore } from "./auth-code-store.ts";
+export type { PendingClientInfoStore } from "./pending-client-info-store.ts";
 export { createMemoryAuthCodeStore } from "./auth-code-store.ts";
 export { createDynamoGrantStore } from "./dynamo-grant-store.ts";
+export { createMemoryDelegateGrantStore } from "./memory-grant-store.ts";
+export {
+  createDynamoPendingClientInfoStore,
+  createMemoryPendingClientInfoStore,
+} from "./pending-client-info-store.ts";
 export { createDelegateAccessToken, decodeDelegateTokenPayload, generateDelegateId, generateRandomToken, sha256Hex, verifyCodeChallenge } from "./token.ts";
 export { verifyDelegateToken } from "./verify-delegate-token.ts";
 export { createDelegate, listDelegates, revokeDelegate } from "./delegate-ops.ts";

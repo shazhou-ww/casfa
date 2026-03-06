@@ -1,6 +1,6 @@
 import type { CasFacade } from "@casfa/cas";
 import { getTokenFromRequest } from "@casfa/cell-auth-server";
-import type { DelegatesEnv, DelegateGrantStore } from "@casfa/cell-delegates-server";
+import type { DelegatesEnv, DelegateGrantStore, PendingClientInfoStore } from "@casfa/cell-delegates-server";
 import { createDelegatesRoutes, createDelegateOAuthRoutes, createMemoryAuthCodeStore } from "@casfa/cell-delegates-server";
 import type { OAuthServer } from "@casfa/cell-cognito-server";
 import type { KeyProvider } from "@casfa/core";
@@ -18,7 +18,6 @@ import { createMeController } from "./controllers/me.ts";
 import { createRealmController } from "./controllers/realm.ts";
 import type { BranchStore } from "./db/branch-store.ts";
 import type { DerivedDataStore } from "./db/derived-data.ts";
-import type { PendingClientInfoStore } from "./db/pending-client-info-store.ts";
 import type { RealmUsageStore } from "./db/realm-usage-store.ts";
 import type { UserSettingsStore } from "./db/user-settings.ts";
 import { createMcpHandler } from "./mcp/handler.ts";

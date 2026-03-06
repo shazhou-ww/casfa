@@ -10,7 +10,10 @@ process.env.S3_ENDPOINT ??= "http://localhost:7104";
 process.env.S3_BUCKET ??= "casfa-next-local-test-blob";
 process.env.STAGE ??= "local-test";
 
-import type { DelegateGrant, DelegateGrantStore } from "@casfa/cell-delegates-server";
+import {
+  createMemoryDelegateGrantStore,
+  createMemoryPendingClientInfoStore,
+} from "@casfa/cell-delegates-server";
 import { createMockJwtVerifier, createOAuthServer } from "@casfa/cell-cognito-server";
 import * as jose from "jose";
 import { createApp } from "../backend/app.ts";
@@ -20,40 +23,6 @@ import { createMemoryDerivedDataStore } from "../backend/db/derived-data.ts";
 import { createMemoryRealmUsageStore } from "../backend/db/realm-usage-store.ts";
 import { createMemoryUserSettingsStore } from "../backend/db/user-settings.ts";
 import { createCasFacade } from "../backend/services/cas.ts";
-
-function createMemoryGrantStore(): DelegateGrantStore {
-  const grants = new Map<string, DelegateGrant>();
-  return {
-    async list(userId) {
-      return [...grants.values()].filter((g) => g.userId === userId);
-    },
-    async get(delegateId) {
-      return grants.get(delegateId) ?? null;
-    },
-    async getByAccessTokenHash(userId, hash) {
-      return (
-        [...grants.values()].find((g) => g.userId === userId && g.accessTokenHash === hash) ?? null
-      );
-    },
-    async getByRefreshTokenHash(userId, hash) {
-      return (
-        [...grants.values()].find((g) => g.userId === userId && g.refreshTokenHash === hash) ?? null
-      );
-    },
-    async insert(grant) {
-      grants.set(grant.delegateId, grant);
-    },
-    async remove(delegateId) {
-      grants.delete(delegateId);
-    },
-    async updateTokens(delegateId, update) {
-      const g = grants.get(delegateId);
-      if (!g) throw new Error("not found");
-      g.accessTokenHash = update.accessTokenHash;
-      g.refreshTokenHash = update.refreshTokenHash;
-    },
-  };
-}
 
 export type TestServer = {
   url: string;
@@ -211,7 +180,8 @@ export function startTestServer(options?: { port?: number }): TestServer {
     },
   };
   const jwtVerifier = createMockJwtVerifier(secret);
-  const grantStore = createMemoryGrantStore();
+  const grantStore = createMemoryDelegateGrantStore();
+  const pendingClientInfoStore = createMemoryPendingClientInfoStore();
   const oauthServer = createOAuthServer({
     issuerUrl: "http://test",
     cognitoConfig: {
@@ -247,6 +217,7 @@ export function startTestServer(options?: { port?: number }): TestServer {
     userSettingsStore,
     grantStore,
     oauthServer,
+    pendingClientInfoStore,
   });
 
   const port = options?.port ?? 0;

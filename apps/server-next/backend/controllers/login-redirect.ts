@@ -4,7 +4,7 @@
 import { buildClearAuthCookieHeader } from "@casfa/cell-auth-server";
 import type { ServerConfig } from "../config.ts";
 import type { Env } from "../types.ts";
-import type { PendingClientInfoStore } from "../db/pending-client-info-store.ts";
+import type { PendingClientInfoStore } from "@casfa/cell-delegates-server";
 import { Hono } from "hono";
 
 const PENDING_CLIENT_TTL_SEC = 3600; // 1 hour

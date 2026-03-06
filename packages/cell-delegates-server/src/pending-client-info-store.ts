@@ -1,9 +1,9 @@
 /**
- * DynamoDB store for pending OAuth client info (client_name from dynamic registration).
+ * Store for pending OAuth client info (client_name from dynamic registration).
  * Used by stub registration; items have TTL for auto-delete; also delete on authorize success or user deny.
  */
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { GetCommand, PutCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 
 const DEFAULT_TTL_SEC = 3600; // 1 hour
 
@@ -52,6 +52,21 @@ export function createDynamoPendingClientInfoStore(deps: {
           Key: { pk: clientId },
         })
       );
+    },
+  };
+}
+
+export function createMemoryPendingClientInfoStore(): PendingClientInfoStore {
+  const byId = new Map<string, { name: string }>();
+  return {
+    async put(clientId: string, clientName: string) {
+      byId.set(clientId, { name: clientName });
+    },
+    async get(clientId: string) {
+      return byId.get(clientId)?.name ?? null;
+    },
+    async delete(clientId: string) {
+      byId.delete(clientId);
     },
   };
 }
