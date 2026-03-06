@@ -52,7 +52,8 @@
       "@casfa/cell-auth-server": ["./packages/cell-auth-server/src/index.ts"],
       "@casfa/cell-auth-client": ["./packages/cell-auth-client/src/index.ts"],
       "@casfa/cell-auth-webui": ["./packages/cell-auth-webui/src/index.ts"],
-      "@casfa/cell-delegates-server": ["./packages/cell-delegates-server/src/index.ts"]
+      "@casfa/cell-delegates-server": ["./packages/cell-delegates-server/src/index.ts"],
+      "@casfa/cell-delegates-webui": ["./packages/cell-delegates-webui/src/index.tsx"]
     },
 
     // Best practices
