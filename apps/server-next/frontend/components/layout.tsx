@@ -35,9 +35,9 @@ export function Layout() {
     navigate("/settings");
   }, [navigate, handleCloseMenu]);
 
-  const handleLogout = useCallback(async () => {
+  const handleLogout = useCallback(() => {
     handleCloseMenu();
-    await authClient.logout();
+    window.location.href = "/oauth/logout";
   }, [handleCloseMenu]);
 
   const displayName = user ? user.email || user.userId : "";

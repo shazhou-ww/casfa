@@ -12,6 +12,7 @@ backend:
       routes:
         - /api/*
         - /oauth/login
+        - /oauth/logout
         - /.well-known/*
         - /mcp
 
