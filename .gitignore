@@ -50,6 +50,9 @@ tsconfig.build.json
 # git worktrees (subagent-driven / executing-plans)
 .worktrees
 
+# cell-cli build output
+.cell
+
 # Vim swap files
 *.swp
 *.swo
