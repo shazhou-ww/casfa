@@ -51,7 +51,7 @@ function generateDevServer(
       `import { app } from "${importPath}";`,
       `const port = parseInt(process.env.PORT || "${port}");`,
       `console.log(\`Listening on http://localhost:\${port}\`);`,
-      `Bun.serve({ port, fetch: app.fetch });`,
+      `Bun.serve({ port, hostname: "0.0.0.0", fetch: app.fetch });`,
       "",
     ].join("\n")
   );
