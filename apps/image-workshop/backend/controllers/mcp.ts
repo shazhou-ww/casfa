@@ -1,10 +1,10 @@
-import type { Auth } from "@casfa/cell-oauth";
+import type { Auth } from "@casfa/cell-cognito-server";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { createMcpServer } from "../index";
 
-function requireUseMcp(auth: Auth | null) {
+function requireUseMcp(auth: Auth | null | undefined) {
   if (!auth) throw new HTTPException(401, { message: "Unauthorized" });
   if (auth.type === "user") return auth;
   if (auth.permissions.includes("use_mcp")) return auth;

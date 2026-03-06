@@ -1,7 +1,7 @@
-import type { Auth } from "@casfa/cell-oauth";
+import type { Auth } from "@casfa/cell-cognito-server";
 
 declare module "hono" {
   interface ContextVariableMap {
-    auth: Auth | null;
+    auth?: Auth;
   }
 }
