@@ -8,6 +8,8 @@ import { createDelegate, listDelegates, revokeDelegate } from "./delegate-ops.ts
 import type { DelegateAuth, DelegateGrantStore, DelegatePermission } from "./types.ts";
 
 export type { DelegateAuth, DelegateGrant, DelegateGrantStore, DelegatePermission } from "./types.ts";
+export type { AuthCodeEntry, AuthCodeStore } from "./auth-code-store.ts";
+export { createMemoryAuthCodeStore } from "./auth-code-store.ts";
 export { createDynamoGrantStore } from "./dynamo-grant-store.ts";
 export { createDelegateAccessToken, decodeDelegateTokenPayload, generateDelegateId, generateRandomToken, sha256Hex, verifyCodeChallenge } from "./token.ts";
 export { verifyDelegateToken } from "./verify-delegate-token.ts";
