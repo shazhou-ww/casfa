@@ -1,9 +1,9 @@
 /**
- * AWS Lambda entry for Image Workshop MCP (Streamable HTTP).
+ * Entry for cell dev: exports app so cell-cli can run Bun.serve({ fetch: app.fetch }).
+ * Bootstrap is the same as lambda.ts; env vars are injected by cell dev.
  */
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { handle } from "hono/aws-lambda";
 import {
   type CognitoConfig,
   createCognitoJwtVerifier,
@@ -63,4 +63,4 @@ const app = createApp({
   pendingClientInfoStore,
 });
 
-export const handler = handle(app);
+export { app };
