@@ -7,6 +7,13 @@ export {
   getTokenFromRequest,
 } from "./cookie.ts";
 export {
+  buildCsrfCookieHeader,
+  generateCsrfToken,
+  getCsrfFromRequest,
+  validateCsrf,
+} from "./csrf.ts";
+export type { BuildCsrfCookieOptions, ValidateCsrfOptions } from "./csrf.ts";
+export {
   createOAuthServer,
   type OAuthServer,
   type OAuthServerConfig,
