@@ -7,8 +7,9 @@ import {
   type CognitoConfig,
   createCognitoJwtVerifier,
   createMockJwtVerifier,
-} from "@casfa/cell-cognito";
-import { createDynamoGrantStore, createOAuthServer } from "@casfa/cell-oauth";
+} from "@casfa/cell-cognito-server";
+import { createDynamoGrantStore } from "@casfa/cell-delegates-server";
+import { createOAuthServer } from "@casfa/cell-cognito-server";
 import { createApp } from "./app.ts";
 import { isMockAuthEnabled, loadConfig } from "./config.ts";
 import { createMemoryDerivedDataStore } from "./db/derived-data.ts";
@@ -76,6 +77,7 @@ const app = createApp({
   derivedDataStore,
   realmUsageStore,
   userSettingsStore,
+  grantStore,
   oauthServer,
 });
 Bun.serve({ port: config.port, fetch: app.fetch });

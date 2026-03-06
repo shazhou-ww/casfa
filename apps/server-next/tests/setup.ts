@@ -10,9 +10,8 @@ process.env.S3_ENDPOINT ??= "http://localhost:7104";
 process.env.S3_BUCKET ??= "casfa-next-local-test-blob";
 process.env.STAGE ??= "local-test";
 
-import { createMockJwtVerifier } from "@casfa/cell-cognito";
-import type { DelegateGrant, DelegateGrantStore } from "@casfa/cell-oauth";
-import { createOAuthServer } from "@casfa/cell-oauth";
+import type { DelegateGrant, DelegateGrantStore } from "@casfa/cell-delegates-server";
+import { createMockJwtVerifier, createOAuthServer } from "@casfa/cell-cognito-server";
 import * as jose from "jose";
 import { createApp } from "../backend/app.ts";
 import { loadConfig } from "../backend/config.ts";
@@ -246,6 +245,7 @@ export function startTestServer(options?: { port?: number }): TestServer {
     derivedDataStore,
     realmUsageStore,
     userSettingsStore,
+    grantStore,
     oauthServer,
   });
 

@@ -1,4 +1,4 @@
-import { validateCsrf } from "@casfa/cell-oauth";
+import { validateCsrf } from "@casfa/cell-auth-server";
 import type { Context, Next } from "hono";
 import type { Env } from "../types.ts";
 
