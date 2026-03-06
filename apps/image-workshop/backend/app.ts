@@ -45,6 +45,22 @@ export function createApp(deps: AppDeps) {
   });
   app.route("/", oauthRoutes);
 
+  app.get("/api/info", (c) =>
+    c.json({ ssoBaseUrl: deps.config.ssoBaseUrl ?? null })
+  );
+  app.get("/api/me", (c) => {
+    const auth = c.get("auth");
+    if (!auth || auth.type !== "user") {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    return c.json({
+      userId: auth.userId,
+      email: auth.email,
+      name: auth.name,
+      picture: auth.picture,
+    });
+  });
+
   const delegateAllowedScopes = ["use_mcp", "manage_delegates"];
   app.route(
     "/",
