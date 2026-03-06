@@ -1,38 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import type { DelegateGrant, DelegateGrantStore } from "../types.ts";
 import { createMemoryAuthCodeStore } from "../auth-code-store.ts";
 import { createDelegateOAuthRoutes } from "../delegate-oauth-routes.ts";
-
-type AuthVar = { userId: string };
-
-function createMemoryGrantStore(): DelegateGrantStore {
-  const byId = new Map<string, DelegateGrant>();
-  return {
-    async list(userId: string) {
-      return Array.from(byId.values()).filter((g) => g.userId === userId);
-    },
-    async get(delegateId: string) {
-      return byId.get(delegateId) ?? null;
-    },
-    async getByAccessTokenHash() {
-      return null;
-    },
-    async getByRefreshTokenHash() {
-      return null;
-    },
-    async insert(grant: DelegateGrant) {
-      byId.set(grant.delegateId, grant);
-    },
-    async remove(delegateId: string) {
-      byId.delete(delegateId);
-    },
-    async updateTokens(delegateId: string, update: { accessTokenHash: string; refreshTokenHash: string | null }) {
-      const g = byId.get(delegateId);
-      if (g) byId.set(delegateId, { ...g, ...update });
-    },
-  };
-}
+import { createMemoryDelegateGrantStore } from "../memory-grant-store.ts";
 
 async function s256Challenge(verifier: string): Promise<string> {
   const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
@@ -42,8 +12,10 @@ async function s256Challenge(verifier: string): Promise<string> {
     .replace(/=+$/, "");
 }
 
+type AuthVar = { userId: string };
+
 function createTestApp() {
-  const grantStore = createMemoryGrantStore();
+  const grantStore = createMemoryDelegateGrantStore();
   const authCodeStore = createMemoryAuthCodeStore();
   const oauthRoutes = createDelegateOAuthRoutes<{ Variables: { auth: AuthVar } }>({
     grantStore,
