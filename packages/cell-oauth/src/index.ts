@@ -2,6 +2,8 @@ export { createDynamoGrantStore } from "./dynamo-grant-store.ts";
 export {
   buildAuthCookieHeader,
   buildClearAuthCookieHeader,
+  buildRefreshCookieHeader,
+  buildClearRefreshCookieHeader,
   getTokenFromRequest,
 } from "./cookie.ts";
 export {
