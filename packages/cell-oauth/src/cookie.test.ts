@@ -78,6 +78,24 @@ describe("getCookieFromRequest", () => {
     const req = new Request("https://x/y");
     expect(getCookieFromRequest(req, "auth_refresh")).toBeNull();
   });
+
+  it("getTokenFromRequest with cookieOnly: true ignores Authorization and uses only cookie", () => {
+    const reqWithBoth = new Request("https://x/y", {
+      headers: {
+        Authorization: "Bearer from-header",
+        Cookie: "auth=from-cookie",
+      },
+    });
+    expect(getTokenFromRequest(reqWithBoth, { cookieName: "auth", cookieOnly: true })).toBe(
+      "from-cookie"
+    );
+    const reqCookieOnly = new Request("https://x/y", {
+      headers: { Cookie: "auth=only-cookie" },
+    });
+    expect(getTokenFromRequest(reqCookieOnly, { cookieName: "auth", cookieOnly: true })).toBe(
+      "only-cookie"
+    );
+  });
 });
 
 describe("buildAuthCookieHeader", () => {

@@ -7,14 +7,17 @@
 /**
  * Get bearer token from request: Authorization Bearer first, then cookie if
  * cookieName is set. Returns null if neither present or cookieName omitted.
+ * When cookieOnly is true, only the Cookie header is read (no Authorization).
  */
 export function getTokenFromRequest(
   request: Request,
-  options: { cookieName?: string }
+  options: { cookieName?: string; cookieOnly?: boolean }
 ): string | null {
-  const auth = request.headers.get("Authorization") ?? request.headers.get("authorization");
-  if (auth?.startsWith("Bearer ")) {
-    return auth.slice(7).trim() || null;
+  if (!options.cookieOnly) {
+    const auth = request.headers.get("Authorization") ?? request.headers.get("authorization");
+    if (auth?.startsWith("Bearer ")) {
+      return auth.slice(7).trim() || null;
+    }
   }
   if (!options.cookieName) return null;
   return getCookieFromRequest(request, options.cookieName);
