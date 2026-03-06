@@ -10,6 +10,7 @@ export type { DelegateAuth, DelegateGrant, DelegateGrantStore, DelegatePermissio
 export { createDynamoGrantStore } from "./dynamo-grant-store.ts";
 export { createDelegateAccessToken, decodeDelegateTokenPayload, generateDelegateId, generateRandomToken, sha256Hex, verifyCodeChallenge } from "./token.ts";
 export { verifyDelegateToken } from "./verify-delegate-token.ts";
+export { createDelegate, listDelegates, revokeDelegate } from "./delegate-ops.ts";
 
 export type DelegatesEnv = {
   Variables: {
