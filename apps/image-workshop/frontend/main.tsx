@@ -1,10 +1,8 @@
-import { createApiFetch, createAuthClient } from "@casfa/cell-auth-client";
+import { apiFetch, authClient, getCookieUser, initAuth, useCookieAuthCheck } from "./lib/auth";
 import AddIcon from "@mui/icons-material/Add";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DoneIcon from "@mui/icons-material/Done";
-import GoogleIcon from "@mui/icons-material/Google";
 import LogoutIcon from "@mui/icons-material/Logout";
-import MicrosoftIcon from "@mui/icons-material/Microsoft";
 import {
   Alert,
   AppBar,
@@ -38,13 +36,6 @@ import {
 } from "@mui/material";
 import { StrictMode, useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
-
-const authClient = createAuthClient({ storagePrefix: "iw" });
-const apiFetch = createApiFetch({
-  authClient,
-  baseUrl: "",
-  onUnauthorized: () => authClient.logout(),
-});
 
 const theme = createTheme({
   palette: {
@@ -256,8 +247,9 @@ function ConsentPage() {
   );
 }
 
-// ── Login Page ──
+// ── Login Page (SSO: redirect to /oauth/login) ──
 function LoginPage() {
+  const loginUrl = `/oauth/login?return_url=${encodeURIComponent(window.location.origin + "/")}`;
   return (
     <Box
       sx={{
@@ -275,26 +267,14 @@ function LoginPage() {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
           Sign in to manage delegates and access MCP tools
         </Typography>
-        <Stack spacing={1.5}>
-          <Button
-            variant="outlined"
-            size="large"
-            startIcon={<GoogleIcon />}
-            href="/oauth/authorize?identity_provider=Google"
-            fullWidth
-          >
-            Sign in with Google
-          </Button>
-          <Button
-            variant="outlined"
-            size="large"
-            startIcon={<MicrosoftIcon />}
-            href="/oauth/authorize?identity_provider=Microsoft"
-            fullWidth
-          >
-            Sign in with Microsoft
-          </Button>
-        </Stack>
+        <Button
+          variant="contained"
+          size="large"
+          href={loginUrl}
+          fullWidth
+        >
+          Sign in
+        </Button>
       </Paper>
     </Box>
   );
@@ -584,10 +564,8 @@ function DelegatesPage() {
 
 // ── App ──
 function App() {
-  const auth = useSyncExternalStore(
-    (onStoreChange) => authClient.subscribe(() => onStoreChange()),
-    () => authClient.getAuth()
-  );
+  const { loading, isLoggedIn } = useCookieAuthCheck();
+  const user = getCookieUser();
 
   if (window.location.pathname === "/oauth/consent") {
     return <ConsentPage />;
@@ -597,7 +575,15 @@ function App() {
     return <OAuthCallbackComplete />;
   }
 
-  if (!auth) {
+  if (loading) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!isLoggedIn) {
     return <LoginPage />;
   }
 
@@ -614,7 +600,7 @@ function App() {
             Image Workshop
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>
-            {auth.email ?? auth.userId}
+            {user?.email ?? user?.userId ?? ""}
           </Typography>
           <Button size="small" startIcon={<LogoutIcon />} onClick={() => authClient.logout()}>
             Logout
@@ -628,11 +614,39 @@ function App() {
   );
 }
 
+// ── Bootstrap: initAuth then render ──
+function Root() {
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    initAuth()
+      .then(() => setReady(true))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  if (error) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", p: 2 }}>
+        <Alert severity="error">{error}</Alert>
+      </Box>
+    );
+  }
+  if (!ready) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+  return <App />;
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <App />
+      <Root />
     </ThemeProvider>
   </StrictMode>
 );
