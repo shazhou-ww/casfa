@@ -35,6 +35,22 @@ export async function containerExists(name: string): Promise<boolean> {
   return exitCode === 0;
 }
 
+/** Get host port mapped to container port (e.g. 8000 for DynamoDB). Returns null if not found. */
+export async function getContainerHostPort(
+  containerName: string,
+  containerPort: number
+): Promise<number | null> {
+  const { exitCode, stdout } = await exec([
+    "docker",
+    "port",
+    containerName,
+    `${containerPort}/tcp`,
+  ]);
+  if (exitCode !== 0 || !stdout) return null;
+  const match = stdout.match(/:(\d+)$/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
 export async function stopContainer(name: string): Promise<void> {
   await exec(["docker", "rm", "-f", name]);
 }
