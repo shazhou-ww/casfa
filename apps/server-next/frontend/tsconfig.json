@@ -1,4 +1,4 @@
 {
   "extends": "../../../tsconfig.cell-frontend.json",
-  "include": ["src"]
+  "include": ["."]
 }

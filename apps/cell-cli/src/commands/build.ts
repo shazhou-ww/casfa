@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 import { build } from "esbuild";
 import { defineConfig, mergeConfig, type UserConfig, build as viteBuild } from "vite";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
-import { ensureIndexHtml } from "../utils/frontend.js";
+import { virtualIndexBuildPlugin } from "../utils/frontend.js";
 import { getWorkspaceAlias } from "../utils/vite-config.js";
 
 export async function buildCommand(options?: { cellDir?: string }): Promise<void> {
@@ -39,7 +39,7 @@ export async function buildCommand(options?: { cellDir?: string }): Promise<void
 
   if (config.frontend) {
     const frontendDir = resolve(cellDir, config.frontend.dir);
-    ensureIndexHtml(frontendDir, config);
+    const virtualIndex = virtualIndexBuildPlugin(config, frontendDir);
 
     const userConfigPath = resolve(frontendDir, "vite.config.ts");
     const baseConfig: UserConfig = existsSync(userConfigPath)
@@ -64,6 +64,10 @@ export async function buildCommand(options?: { cellDir?: string }): Promise<void
     } else {
       finalConfig = baseConfig;
     }
+    const plugins = Array.isArray(finalConfig.plugins)
+      ? [virtualIndex, ...finalConfig.plugins]
+      : [virtualIndex];
+    finalConfig = { ...finalConfig, plugins };
 
     console.log("Building frontend...");
     await viteBuild({

@@ -10,15 +10,7 @@ backend:
       memory: 1024
       routes:
         - /api/*
-        - /oauth/authorize
         - /oauth/login
-        - /oauth/token
-        - /oauth/register
-        - /oauth/callback
-        - /oauth/consent-info
-        - /oauth/approve
-        - /oauth/deny
-        - /oauth/logout
         - /.well-known/*
         - /mcp
 
@@ -26,7 +18,7 @@ frontend:
   dir: frontend
   entries:
     main:
-      src: src/main.tsx
+      src: main.tsx
 
 tables:
   realms:

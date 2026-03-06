@@ -18,7 +18,7 @@ import {
 import { ensureLocalTables, isDynamoDBReady } from "../local/dynamodb-local.js";
 import { ensureLocalBuckets } from "../local/minio-local.js";
 import { loadEnvFiles } from "../utils/env.js";
-import { ensureIndexHtml } from "../utils/frontend.js";
+import { virtualIndexPlugin } from "../utils/frontend.js";
 import { buildDevProxy, getWorkspaceAlias } from "../utils/vite-config.js";
 
 function resolveAppPath(cellDir: string, entry: BackendEntry): string {
@@ -154,7 +154,8 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
       console.error("Docker is not running. Please start Docker and try again.");
       process.exit(1);
     }
-    const dataDir = resolve(cellDir, ".local-storage/s3");
+    const dataDir = resolve(cellDir, ".cell/local-storage/s3");
+    mkdirSync(dataDir, { recursive: true });
     const minioContainerName = `${resolved.name}-minio-dev`;
     console.log(`Starting MinIO on port ${s3Port}...`);
     await startMinIO({
@@ -243,7 +244,7 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
   let viteServer: Awaited<ReturnType<typeof createServer>> | undefined;
   if (resolved.frontend) {
     const frontendDir = resolve(cellDir, resolved.frontend.dir);
-    ensureIndexHtml(frontendDir, config);
+    const virtualIndex = virtualIndexPlugin(config);
 
     const proxy = buildDevProxy(
       resolved.backend ? Object.values(resolved.backend.entries) : undefined,
@@ -276,6 +277,10 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
       });
       finalConfig = baseFromCell;
     }
+    const plugins = Array.isArray(finalConfig.plugins)
+      ? [virtualIndex, ...finalConfig.plugins]
+      : [virtualIndex];
+    finalConfig = { ...finalConfig, plugins };
 
     console.log(`Starting frontend [web] on port ${frontendPort}...`);
     viteServer = await createServer({
