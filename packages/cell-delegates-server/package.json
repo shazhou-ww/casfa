@@ -1,7 +1,7 @@
 {
   "name": "@casfa/cell-delegates-server",
   "version": "0.1.0",
-  "description": "Delegate management server routes: list, create, revoke. Uses OAuthServer from cell-oauth.",
+  "description": "Delegate management server routes: list, create, revoke. Uses DelegateGrantStore for persistence.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,7 +22,6 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.700.0",
     "@aws-sdk/lib-dynamodb": "^3.700.0",
-    "@casfa/cell-oauth": "workspace:*",
     "hono": "^4.6.0"
   },
   "devDependencies": {
