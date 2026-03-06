@@ -24,6 +24,7 @@
     "@casfa/cell-auth-webui": "workspace:*",
     "@casfa/cell-auth-server": "workspace:*",
     "@casfa/cell-delegates-server": "workspace:*",
+    "@casfa/cell-delegates-webui": "workspace:*",
     "@casfa/cell-cognito-server": "workspace:*",
     "@casfa/core": "workspace:*",
     "@casfa/storage-fs": "workspace:*",
