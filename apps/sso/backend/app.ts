@@ -1,10 +1,12 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { SsoConfig } from "./config.ts";
+import { createSsoOAuthRoutes } from "./controllers/oauth.ts";
+import type { OAuthServer } from "@casfa/cell-oauth";
 
-export function createApp(deps: { config: SsoConfig }) {
+export function createApp(deps: { config: SsoConfig; oauthServer: OAuthServer }) {
   const app = new Hono();
-  const { config } = deps;
+  const { config, oauthServer } = deps;
 
   app.use(
     "*",
@@ -18,6 +20,12 @@ export function createApp(deps: { config: SsoConfig }) {
   app.get("/", (c) => c.json({ ok: true, service: "sso" }, 200));
   app.get("/api/health", (c) => c.json({ ok: true }, 200));
 
-  // OAuth routes will be mounted in Task 5
+  const oauthRoutes = createSsoOAuthRoutes({
+    config,
+    cognitoConfig: config.cognito,
+    oauthServer,
+  });
+  app.route("/", oauthRoutes);
+
   return app;
 }
