@@ -54,6 +54,7 @@ export type OAuthServerConfig = {
 export type OAuthServer = {
   getMetadata(): OAuthMetadata;
   registerClient(params: { clientName: string; redirectUris: string[] }): RegisteredClient;
+  getClientInfo(clientId: string): { clientName: string; redirectUris: string[] } | null;
   handleAuthorize(params: {
     responseType: string;
     clientId: string;

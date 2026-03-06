@@ -14,8 +14,8 @@ import { createDevMockTokenController } from "./controllers/dev-mock-token.ts";
 import { createFilesController } from "./controllers/files.ts";
 import { createFsController } from "./controllers/fs.ts";
 import { createLoginRedirectRoutes } from "./controllers/login-redirect.ts";
+import { createMcpOAuthRoutes } from "./controllers/mcp-oauth.ts";
 import { createMeController } from "./controllers/me.ts";
-import { createOAuthRoutes } from "./controllers/oauth.ts";
 import { createRealmController } from "./controllers/realm.ts";
 import type { BranchStore } from "./db/branch-store.ts";
 import type { DerivedDataStore } from "./db/derived-data.ts";
@@ -65,10 +65,10 @@ export function createApp(deps: AppDeps) {
 
   app.use("*", async (c, next) => {
     const cookieName = deps.config.auth.cookieName ?? undefined;
-    const cookieOnly = Boolean(deps.config.ssoBaseUrl);
+    // Accept both Cookie (browser after SSO login) and Bearer (MCP / API clients). cookieOnly would block Bearer.
     const token = getTokenFromRequest(c.req.raw, {
       cookieName: cookieName ?? undefined,
-      cookieOnly,
+      cookieOnly: false,
     });
     if (!token) {
       await next();
@@ -113,13 +113,8 @@ export function createApp(deps: AppDeps) {
 
   const oauthRoutes = createLoginRedirectRoutes(deps.config);
   app.route("/", oauthRoutes);
-  if (!deps.config.ssoBaseUrl) {
-    const legacyOAuth = createOAuthRoutes({
-      oauthServer: deps.oauthServer,
-      cookieConfig: deps.config.auth,
-    });
-    app.route("/", legacyOAuth);
-  }
+  // Delegate-only MCP OAuth: authorize/token/register on this cell; no Cognito. User must be logged in (SSO).
+  app.route("/", createMcpOAuthRoutes({ oauthServer: deps.oauthServer }));
 
   const csrfRoutes = createCsrfController(deps.config);
   app.route("/", csrfRoutes);

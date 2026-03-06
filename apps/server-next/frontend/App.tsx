@@ -5,6 +5,7 @@ import { ExplorerPage } from "./pages/explorer-page";
 import { LoginPage } from "./pages/login-page";
 import { OAuthAuthorizePage } from "./pages/oauth-authorize-page";
 import { OAuthCallbackPage } from "./pages/oauth-callback-page";
+import { OAuthConsentPage } from "./pages/oauth-consent-page";
 import { SettingsPage } from "./pages/settings-page";
 
 export function App() {

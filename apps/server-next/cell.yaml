@@ -13,6 +13,8 @@ backend:
         - /api/*
         - /oauth/login
         - /oauth/logout
+        - /oauth/token
+        - /oauth/register
         - /.well-known/*
         - /mcp
 
