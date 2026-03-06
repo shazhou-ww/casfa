@@ -19,7 +19,7 @@ export function OAuthCallbackPage(): JSX.Element {
     if (exchangeStarted.current) return;
     const code = searchParams.get("code");
     if (!code) {
-      const t = setTimeout(() => navigate("/login", { replace: true }), 1500);
+      const t = setTimeout(() => navigate("/oauth/login", { replace: true }), 1500);
       return () => clearTimeout(t);
     }
     exchangeStarted.current = true;

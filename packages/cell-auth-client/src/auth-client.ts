@@ -1,19 +1,12 @@
 import type { AuthClient, AuthSubscriber, ClientAuth } from "./types.ts";
 
-export function createAuthClient(params: {
-  storagePrefix: string;
-  /** SSO base URL. When set, cookie-only mode: no localStorage, getAuth() returns null; logout uses ssoBaseUrl + logoutEndpoint. */
-  ssoBaseUrl?: string;
-  /** Path for logout (e.g. "/oauth/logout"). Used with ssoBaseUrl. */
-  logoutEndpoint?: string;
-}): AuthClient {
+/**
+ * Auth client for CLI / non-browser: token in localStorage (or set via setTokens).
+ * Requests use Authorization: Bearer. No cookie, no CSRF.
+ */
+export function createAuthClient(params: { storagePrefix: string }): AuthClient {
   const tokenKey = `${params.storagePrefix}_token`;
   const refreshKey = `${params.storagePrefix}_refresh`;
-  const cookieOnly = Boolean(params.ssoBaseUrl);
-  const logoutUrl =
-    params.ssoBaseUrl && params.logoutEndpoint
-      ? `${params.ssoBaseUrl.replace(/\/$/, "")}${params.logoutEndpoint.startsWith("/") ? "" : "/"}${params.logoutEndpoint}`
-      : params.logoutEndpoint;
 
   let currentAuth: ClientAuth | null = null;
   const listeners = new Set<AuthSubscriber>();
@@ -37,16 +30,16 @@ export function createAuthClient(params: {
 
   const client: AuthClient = {
     getAuth() {
-      if (cookieOnly) return null;
       if (currentAuth) return currentAuth;
-      const stored = localStorage.getItem(tokenKey);
+      const stored = typeof localStorage !== "undefined" ? localStorage.getItem(tokenKey) : null;
       if (!stored) return null;
       const parsed = parseTokenPayload(stored);
       if (!parsed) {
-        localStorage.removeItem(tokenKey);
+        if (typeof localStorage !== "undefined") localStorage.removeItem(tokenKey);
         return null;
       }
-      const refreshToken = localStorage.getItem(refreshKey);
+      const refreshToken =
+        typeof localStorage !== "undefined" ? localStorage.getItem(refreshKey) : null;
       currentAuth = {
         token: stored,
         userId: parsed.userId,
@@ -57,12 +50,13 @@ export function createAuthClient(params: {
     },
 
     setTokens(token, refreshToken) {
-      if (cookieOnly) return;
-      localStorage.setItem(tokenKey, token);
-      if (refreshToken) {
-        localStorage.setItem(refreshKey, refreshToken);
-      } else {
-        localStorage.removeItem(refreshKey);
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem(tokenKey, token);
+        if (refreshToken) {
+          localStorage.setItem(refreshKey, refreshToken);
+        } else {
+          localStorage.removeItem(refreshKey);
+        }
       }
       currentAuth = null;
       client.getAuth();
@@ -70,25 +64,12 @@ export function createAuthClient(params: {
     },
 
     logout() {
-      if (logoutUrl) {
-        fetch(logoutUrl, { method: "POST", credentials: "include" })
-          .catch(() => {})
-          .finally(() => {
-            if (!cookieOnly) {
-              localStorage.removeItem(tokenKey);
-              localStorage.removeItem(refreshKey);
-            }
-            currentAuth = null;
-            notify();
-          });
-      } else {
-        if (!cookieOnly) {
-          localStorage.removeItem(tokenKey);
-          localStorage.removeItem(refreshKey);
-        }
-        currentAuth = null;
-        notify();
+      if (typeof localStorage !== "undefined") {
+        localStorage.removeItem(tokenKey);
+        localStorage.removeItem(refreshKey);
       }
+      currentAuth = null;
+      notify();
     },
 
     subscribe(fn) {

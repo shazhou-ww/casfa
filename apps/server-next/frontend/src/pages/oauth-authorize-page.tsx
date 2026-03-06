@@ -1,12 +1,12 @@
 import { Box, Button, Card, CardContent, TextField, Typography } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { apiFetch, useAuth } from "../lib/auth";
+import { apiFetch, useCookieAuthCheck } from "../lib/auth";
 
 export function OAuthAuthorizePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const auth = useAuth();
+  const { loading, isLoggedIn } = useCookieAuthCheck();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
@@ -44,13 +44,13 @@ export function OAuthAuthorizePage() {
     };
   }, [client_id]);
 
-  // Not logged in: redirect to login with returnUrl so we come back here after
+  // Not logged in: redirect to SSO login with return_url so we come back here after
   useEffect(() => {
-    if (!auth) {
-      const returnUrl = `/oauth/authorize?${searchParams.toString()}`;
-      navigate(`/login?returnUrl=${encodeURIComponent(returnUrl)}`, { replace: true });
+    if (!loading && !isLoggedIn) {
+      const returnUrl = `${window.location.origin}/oauth/authorize?${searchParams.toString()}`;
+      navigate(`/oauth/login?return_url=${encodeURIComponent(returnUrl)}`, { replace: true });
     }
-  }, [auth, navigate, searchParams]);
+  }, [loading, isLoggedIn, navigate, searchParams]);
 
   const handleAllow = useCallback(async () => {
     if (!client_id || !redirect_uri || !state || !code_challenge) {
@@ -101,10 +101,12 @@ export function OAuthAuthorizePage() {
     }
   }, [redirect_uri, state, navigate]);
 
-  if (!auth) {
+  if (loading || !isLoggedIn) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
-        <Typography color="text.secondary">Redirecting to login…</Typography>
+        <Typography color="text.secondary">
+          {loading ? "Checking sign-in…" : "Redirecting to sign in…"}
+        </Typography>
       </Box>
     );
   }

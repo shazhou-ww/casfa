@@ -1,7 +1,7 @@
 {
-  "name": "@casfa/cell-auth-client",
+  "name": "@casfa/cell-auth-webui",
   "version": "0.1.0",
-  "description": "Auth client for CLI / non-browser: Bearer token, no cookie. Use cell-auth-webui for frontend cookie-only.",
+  "description": "Frontend auth for cell apps: cookie-only apiFetch, SSO logout/refresh, CSRF. No token storage.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
