@@ -15,6 +15,7 @@
   "scripts": {
     "build": "bun ../../scripts/build-pkg.ts",
     "typecheck": "tsc --noEmit",
+    "test": "bun test",
     "lint": "biome check .",
     "check": "tsc --noEmit && biome check .",
     "prepublishOnly": "bun run build"
