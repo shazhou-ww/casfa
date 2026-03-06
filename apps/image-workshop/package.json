@@ -24,6 +24,7 @@
     "@casfa/cell-auth-webui": "workspace:*",
     "@casfa/cell-cognito-server": "workspace:*",
     "@casfa/cell-delegates-server": "workspace:*",
+    "@casfa/cell-delegates-webui": "workspace:*",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@modelcontextprotocol/sdk": "^1.27.1",
@@ -32,6 +33,7 @@
     "hono": "^4.6.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-router-dom": "^6.22.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

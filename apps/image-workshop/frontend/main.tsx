@@ -1,4 +1,5 @@
 import { apiFetch, authClient, getCookieUser, initAuth, useCookieAuthCheck } from "./lib/auth";
+import { DelegateOAuthConsentPage } from "@casfa/cell-delegates-webui";
 import AddIcon from "@mui/icons-material/Add";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DoneIcon from "@mui/icons-material/Done";
@@ -34,8 +35,9 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { StrictMode, useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { StrictMode, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 const theme = createTheme({
   palette: {
@@ -65,7 +67,27 @@ type NewDelegate = {
   expiresAt: number;
 };
 
-// ── OAuth Callback Complete (after backend exchanged code with Cognito) ──
+// ── Delegate OAuth consent (cell-delegates-webui) ──
+const SCOPE_DESCRIPTIONS: Record<string, string> = {
+  use_mcp: "Use MCP interface",
+  manage_delegates: "Manage delegates",
+};
+
+function DelegateOAuthAuthorizeRoute() {
+  const { loading, isLoggedIn } = useCookieAuthCheck();
+  return (
+    <DelegateOAuthConsentPage
+      authorizeUrl="/api/oauth/delegate/authorize"
+      loginUrl="/oauth/login"
+      loading={loading}
+      isLoggedIn={isLoggedIn}
+      fetch={apiFetch}
+      scopeDescriptions={SCOPE_DESCRIPTIONS}
+    />
+  );
+}
+
+// ── OAuth Callback Complete (legacy; SSO does not redirect here) ──
 let exchangeInFlight = false;
 
 function OAuthCallbackComplete() {
@@ -567,14 +589,6 @@ function App() {
   const { loading, isLoggedIn } = useCookieAuthCheck();
   const user = getCookieUser();
 
-  if (window.location.pathname === "/oauth/consent") {
-    return <ConsentPage />;
-  }
-
-  if (window.location.pathname === "/oauth/callback-complete") {
-    return <OAuthCallbackComplete />;
-  }
-
   if (loading) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
@@ -639,7 +653,14 @@ function Root() {
       </Box>
     );
   }
-  return <App />;
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/oauth/authorize" element={<DelegateOAuthAuthorizeRoute />} />
+        <Route path="*" element={<App />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
 createRoot(document.getElementById("root")!).render(
