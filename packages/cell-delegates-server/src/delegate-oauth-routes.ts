@@ -42,7 +42,7 @@ export function createDelegateOAuthRoutes<E extends DelegateOAuthRoutesEnv>(
     const auth = c.get("auth");
     const userId = deps.getUserId(auth);
     if (!userId) {
-      return c.json({ error: "unauthorized" }, 401);
+      return c.json({ error: "invalid_client", error_description: "Login required" }, 401);
     }
 
     let body: {
@@ -103,7 +103,7 @@ export function createDelegateOAuthRoutes<E extends DelegateOAuthRoutesEnv>(
     };
     await Promise.resolve(authCodeStore.set(code, entry));
 
-    const redirect_url = `${redirect_uri}${redirect_uri.includes("?") ? "&" : "?"}code=${code}&state=${state}`;
+    const redirect_url = `${redirect_uri}${redirect_uri.includes("?") ? "&" : "?"}code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
     return c.json({ redirect_url });
   });
 
