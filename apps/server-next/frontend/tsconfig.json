@@ -17,7 +17,7 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "paths": {
-      "@casfa/cell-auth-client": ["../../../packages/cell-auth-client/src/index.ts"]
+      "@casfa/cell-auth-webui": ["../../../packages/cell-auth-webui/src/index.ts"]
     }
   },
   "include": ["src"]
