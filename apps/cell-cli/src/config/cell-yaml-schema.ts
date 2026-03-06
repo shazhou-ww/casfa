@@ -35,17 +35,21 @@ export interface BackendEntry {
 }
 
 export interface BackendConfig {
+  /** Root directory for backend code (default: "."). Handler and app paths are relative to this. */
+  dir?: string;
   runtime: string;
   entries: Record<string, BackendEntry>;
 }
 
 export interface FrontendEntry {
-  src: string;
+  /** Entry file path relative to frontend dir (e.g. index.html, sw.ts) */
+  entry: string;
+  /** URL path patterns this entry serves (e.g. "/*", "/service-worker.js") */
+  routes: string[];
 }
 
 export interface FrontendConfig {
   dir: string;
-  title?: string;
   entries: Record<string, FrontendEntry>;
 }
 

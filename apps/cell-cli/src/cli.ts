@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { Command } from "commander";
 import { buildCommand } from "./commands/build.js";
 import { cleanCommand } from "./commands/clean.js";

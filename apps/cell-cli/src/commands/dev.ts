@@ -20,11 +20,11 @@ import { ensureLocalBuckets } from "../local/minio-local.js";
 import { loadEnvFiles } from "../utils/env.js";
 import { buildDevProxy, getWorkspaceAlias } from "../utils/vite-config.js";
 
-function resolveAppPath(cellDir: string, entry: BackendEntry): string {
+function resolveAppPath(backendDir: string, entry: BackendEntry): string {
   if (entry.app) {
-    return resolve(cellDir, entry.app);
+    return resolve(backendDir, entry.app);
   }
-  const handlerDir = dirname(resolve(cellDir, entry.handler));
+  const handlerDir = dirname(resolve(backendDir, entry.handler));
   const candidate = resolve(handlerDir, "app.ts");
   if (existsSync(candidate)) {
     return candidate;
@@ -212,8 +212,9 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
 
   // Backend: generate dev server wrapper for each entry, start with Bun.serve()
   if (resolved.backend) {
+    const backendDir = resolve(cellDir, config.backend!.dir ?? ".");
     for (const [name, entry] of Object.entries(resolved.backend.entries)) {
-      const appPath = resolveAppPath(cellDir, entry);
+      const appPath = resolveAppPath(backendDir, entry);
       const devServerPath = generateDevServer(cellDir, name, appPath, httpPort);
       const env = {
         ...process.env,

@@ -1,11 +1,12 @@
 name: casfa-next
 
 backend:
+  dir: backend
   runtime: nodejs20.x
   entries:
     api:
-      handler: backend/lambda.ts
-      app: backend/dev-app.ts
+      handler: lambda.ts
+      app: dev-app.ts
       timeout: 30
       memory: 1024
       routes:
@@ -18,7 +19,8 @@ frontend:
   dir: frontend
   entries:
     main:
-      src: main.tsx
+      entry: index.html
+      routes: ["/*"]
 
 tables:
   realms:

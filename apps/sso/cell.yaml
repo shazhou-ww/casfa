@@ -1,11 +1,12 @@
 name: sso
 
 backend:
+  dir: backend
   runtime: nodejs20.x
   entries:
     api:
-      handler: backend/lambda.ts
-      app: backend/dev-app.ts
+      handler: lambda.ts
+      app: dev-app.ts
       timeout: 30
       memory: 512
       routes:
@@ -22,8 +23,8 @@ frontend:
   dir: frontend
   entries:
     main:
-      src: src/main.tsx
-  title: Casfa Sign-in
+      entry: index.html
+      routes: ["/*"]
 
 tables:
   grants:

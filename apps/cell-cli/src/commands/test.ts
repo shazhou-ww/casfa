@@ -146,8 +146,9 @@ export async function testE2eCommand(options?: { cellDir?: string }): Promise<vo
 
     // Start backend server
     if (resolved.backend) {
+      const backendDir = resolve(cellDir, config.backend?.dir ?? ".");
       for (const [name, entry] of Object.entries(resolved.backend.entries)) {
-        const handlerPath = resolve(cellDir, entry.handler);
+        const handlerPath = resolve(backendDir, entry.handler);
         const env = {
           ...process.env,
           ...resolved.envVars,
