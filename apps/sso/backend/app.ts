@@ -11,9 +11,10 @@ export function createApp(deps: { config: SsoConfig; oauthServer: OAuthServer })
   app.use(
     "*",
     cors({
-      origin: "*",
-      allowHeaders: ["Content-Type", "Authorization"],
+      origin: (origin) => origin ?? "*",
+      allowHeaders: ["Content-Type", "Authorization", "X-CSRF-Token"],
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      credentials: true,
     })
   );
 
