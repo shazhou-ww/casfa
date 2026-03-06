@@ -64,30 +64,17 @@ export function createApp(deps: AppDeps) {
   }
 
   app.use("*", async (c, next) => {
-    const path = new URL(c.req.url).pathname;
     const cookieName = deps.config.auth.cookieName ?? undefined;
     const cookieOnly = Boolean(deps.config.ssoBaseUrl);
     const token = getTokenFromRequest(c.req.raw, {
       cookieName: cookieName ?? undefined,
       cookieOnly,
     });
-    if (path === "/oauth/login") {
-      console.log("[auth]", {
-        path,
-        cookieName: cookieName ?? "(not set)",
-        cookieOnly,
-        hasToken: !!token,
-        cookieHeader: c.req.raw.headers.get("cookie")?.slice(0, 80) ?? null,
-      });
-    }
     if (!token) {
       await next();
       return;
     }
     const auth = await deps.oauthServer.resolveAuth(token);
-    if (path === "/oauth/login") {
-      console.log("[auth] resolveAuth", { hasAuth: !!auth, authType: auth?.type });
-    }
     if (auth) {
       if (auth.type === "user") {
         c.set("auth", {

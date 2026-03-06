@@ -16,7 +16,6 @@ export function createLoginRedirectRoutes(config: ServerConfig) {
   routes.get("/oauth/login", (c) => {
     const returnUrl = c.req.query("return_url") ?? config.baseUrl;
     const auth = c.get("auth");
-    console.log("[oauth/login]", { hasAuth: !!auth, authType: auth?.type, returnUrl });
     if (auth) {
       return c.redirect(returnUrl);
     }
