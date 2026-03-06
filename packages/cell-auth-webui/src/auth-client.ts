@@ -1,13 +1,22 @@
 import type { AuthClient } from "./types.ts";
 
+/** Clear a cookie by name/path (must match how the server set it). */
+function clearCookie(name: string, path: string = "/"): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${name}=; Path=${path}; Max-Age=0; SameSite=Strict`;
+}
+
 export function createAuthClient(params: {
   /** SSO base URL (e.g. https://auth.example.com). */
   ssoBaseUrl: string;
   /** Logout path (e.g. /oauth/logout). */
   logoutEndpoint: string;
+  /** If set, clear this CSRF cookie on logout (same name/path as backend). */
+  clearCsrfOnLogout?: { cookieName: string; path?: string };
 }): AuthClient {
   const logoutUrl = `${params.ssoBaseUrl.replace(/\/$/, "")}${params.logoutEndpoint.startsWith("/") ? "" : "/"}${params.logoutEndpoint}`;
   const listeners = new Set<(auth: null) => void>();
+  const csrfClear = params.clearCsrfOnLogout;
 
   function notify() {
     for (const fn of listeners) fn(null);
@@ -26,6 +35,7 @@ export function createAuthClient(params: {
       fetch(logoutUrl, { method: "POST", credentials: "include" })
         .catch(() => {})
         .finally(() => {
+          if (csrfClear) clearCookie(csrfClear.cookieName, csrfClear.path ?? "/");
           notify();
         });
     },

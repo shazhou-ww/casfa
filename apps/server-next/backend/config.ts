@@ -8,8 +8,10 @@ export const ENV_NAMES = {
   CELL_BASE_URL: "CELL_BASE_URL",
   MOCK_JWT_SECRET: "MOCK_JWT_SECRET",
   MAX_BRANCH_TTL_MS: "MAX_BRANCH_TTL_MS",
+  /** Required for JWT verification (SSO and legacy). */
   COGNITO_REGION: "COGNITO_REGION",
   COGNITO_USER_POOL_ID: "COGNITO_USER_POOL_ID",
+  /** Only required when not using SSO (legacy OAuth on this cell). */
   COGNITO_CLIENT_ID: "COGNITO_CLIENT_ID",
   COGNITO_HOSTED_UI_URL: "COGNITO_HOSTED_UI_URL",
   COGNITO_CLIENT_SECRET: "COGNITO_CLIENT_SECRET",
@@ -37,6 +39,7 @@ export type ServerConfig = {
     maxBranchTtlMs?: number;
     cognitoRegion?: string;
     cognitoUserPoolId?: string;
+    /** Used only when SSO_BASE_URL is not set (legacy OAuth). */
     cognitoClientId?: string;
     cognitoHostedUiUrl?: string;
     cognitoClientSecret?: string;
