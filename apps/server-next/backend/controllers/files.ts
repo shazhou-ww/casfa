@@ -251,7 +251,7 @@ export function createFilesController(deps: FilesControllerDeps) {
         if (node.kind === "file") {
           const data = node.data ?? new Uint8Array(0);
           const contentType = node.fileInfo?.contentType ?? "application/octet-stream";
-          return new Response(data, {
+          return new Response(data as BodyInit, {
             status: 200,
             headers: {
               "Content-Type": contentType,

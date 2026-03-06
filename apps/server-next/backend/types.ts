@@ -1,4 +1,4 @@
-/** Delegate 的细粒度权限（可配置）；cell-oauth 使用 use_mcp、manage_delegates */
+/** Delegate 的细粒度权限（可配置）；delegates 使用 use_mcp、manage_delegates */
 export type DelegatePermission =
   | "file_read"
   | "file_write"

@@ -1,6 +1,8 @@
 import type { CasFacade } from "@casfa/cas";
-import { getTokenFromRequest } from "@casfa/cell-oauth";
-import type { OAuthServer } from "@casfa/cell-oauth";
+import { getTokenFromRequest } from "@casfa/cell-auth-server";
+import type { DelegatesEnv, DelegateGrantStore } from "@casfa/cell-delegates-server";
+import { createDelegatesRoutes } from "@casfa/cell-delegates-server";
+import type { OAuthServer } from "@casfa/cell-cognito-server";
 import type { KeyProvider } from "@casfa/core";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -8,7 +10,6 @@ import type { ServerConfig } from "./config.ts";
 import { isMockAuthEnabled } from "./config.ts";
 import { createBranchesController } from "./controllers/branches.ts";
 import { createCsrfController } from "./controllers/csrf.ts";
-import { createDelegatesRoutes } from "./controllers/delegates.ts";
 import { createDevMockTokenController } from "./controllers/dev-mock-token.ts";
 import { createFilesController } from "./controllers/files.ts";
 import { createFsController } from "./controllers/fs.ts";
@@ -35,6 +36,7 @@ export type AppDeps = {
   derivedDataStore: DerivedDataStore;
   realmUsageStore: RealmUsageStore;
   userSettingsStore: UserSettingsStore;
+  grantStore: DelegateGrantStore;
   oauthServer: OAuthServer;
 };
 
@@ -175,7 +177,7 @@ export function createApp(deps: AppDeps) {
     cas: deps.cas,
     key: deps.key,
     branchStore: deps.branchStore,
-    oauthServer: deps.oauthServer,
+    grantStore: deps.grantStore,
     realmUsageStore: deps.realmUsageStore,
   });
   const rootResolverDeps = {
@@ -191,7 +193,13 @@ export function createApp(deps: AppDeps) {
   const realm = createRealmController({ realmInfoService });
   const me = createMeController({ userSettingsStore: deps.userSettingsStore });
 
-  app.route("/", createDelegatesRoutes({ oauthServer: deps.oauthServer }));
+  app.route("/", createDelegatesRoutes({
+    grantStore: deps.grantStore,
+    getUserId: ((auth: Env["Variables"]["auth"]) =>
+      !auth ? "" : auth.type === "user" ? auth.userId : auth.type === "delegate" ? auth.realmId : "") as (
+      auth: DelegatesEnv["Variables"]["auth"]
+    ) => string,
+  }));
 
   app.use("/api/me", authMiddleware);
   app.get("/api/me", (c) => me.get(c));
