@@ -25,6 +25,8 @@ export type DelegateOAuthRoutesDeps<E extends DelegateOAuthRoutesEnv = DelegateO
   getUserId: (auth: E["Variables"]["auth"]) => string;
   baseUrl: string;
   allowedScopes?: string[];
+  /** Called after delegate is created and auth code is issued (e.g. to delete stub client info). */
+  onAuthorizeSuccess?: () => void | Promise<void>;
 };
 
 function getAuthCodeStore(deps: { authCodeStore?: AuthCodeStore }): AuthCodeStore {
@@ -102,6 +104,8 @@ export function createDelegateOAuthRoutes<E extends DelegateOAuthRoutesEnv>(
       delegateId: grant.delegateId,
     };
     await Promise.resolve(authCodeStore.set(code, entry));
+
+    await Promise.resolve(deps.onAuthorizeSuccess?.());
 
     const redirect_url = `${redirect_uri}${redirect_uri.includes("?") ? "&" : "?"}code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
     return c.json({ redirect_url });

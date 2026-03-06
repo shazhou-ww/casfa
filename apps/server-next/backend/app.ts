@@ -18,6 +18,7 @@ import { createMeController } from "./controllers/me.ts";
 import { createRealmController } from "./controllers/realm.ts";
 import type { BranchStore } from "./db/branch-store.ts";
 import type { DerivedDataStore } from "./db/derived-data.ts";
+import type { PendingClientInfoStore } from "./db/pending-client-info-store.ts";
 import type { RealmUsageStore } from "./db/realm-usage-store.ts";
 import type { UserSettingsStore } from "./db/user-settings.ts";
 import { createMcpHandler } from "./mcp/handler.ts";
@@ -37,6 +38,7 @@ export type AppDeps = {
   userSettingsStore: UserSettingsStore;
   grantStore: DelegateGrantStore;
   oauthServer: OAuthServer;
+  pendingClientInfoStore: PendingClientInfoStore;
 };
 
 export function createApp(deps: AppDeps) {
@@ -110,9 +112,12 @@ export function createApp(deps: AppDeps) {
     await next();
   });
 
-  const oauthRoutes = createLoginRedirectRoutes(deps.config);
+  const oauthRoutes = createLoginRedirectRoutes(deps.config, {
+    pendingClientInfoStore: deps.pendingClientInfoStore,
+  });
   app.route("/", oauthRoutes);
   // Delegate OAuth: authorize (POST) and token on this cell; auth from cookie/Bearer above.
+  const delegateAllowedScopes = ["use_mcp", "file_read", "file_write", "branch_manage", "manage_delegates"];
   app.route(
     "/",
     createDelegateOAuthRoutes({
@@ -123,6 +128,8 @@ export function createApp(deps: AppDeps) {
         return a?.type === "user" ? a.userId : "";
       },
       baseUrl: deps.config.baseUrl,
+      allowedScopes: delegateAllowedScopes,
+      onAuthorizeSuccess: () => deps.pendingClientInfoStore.delete("mcp"),
     })
   );
 

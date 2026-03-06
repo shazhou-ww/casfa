@@ -11,6 +11,10 @@ import Typography from "@mui/material/Typography";
 export interface DelegateOAuthConsentPageProps {
   authorizeUrl: string;
   loginUrl: string;
+  /** Base URL for client-info lookup (e.g. "" for same-origin). Used when URL has client_id but no client_name. */
+  clientInfoUrl?: string;
+  /** True only after auth check has completed (wait for this before redirecting to login). */
+  loading: boolean;
   isLoggedIn: boolean;
   fetch?: typeof window.fetch;
   scopeDescriptions?: Record<string, string>;
@@ -31,12 +35,15 @@ function scopeForBody(scopeParam: string | null, scopes: string[]): string {
 export function DelegateOAuthConsentPage({
   authorizeUrl,
   loginUrl,
+  clientInfoUrl = "",
+  loading,
   isLoggedIn,
   fetch: fetchFn = window.fetch,
   scopeDescriptions = {},
 }: DelegateOAuthConsentPageProps): React.ReactElement | null {
   const [searchParams] = useSearchParams();
   const clientNameParam = searchParams.get("client_name") ?? "";
+  const clientIdParam = searchParams.get("client_id") ?? "";
   const redirectUri = searchParams.get("redirect_uri") ?? "";
   const state = searchParams.get("state") ?? "";
   const codeChallenge = searchParams.get("code_challenge") ?? "";
@@ -46,27 +53,40 @@ export function DelegateOAuthConsentPage({
   const scopes = useMemo(() => parseScope(scopeParam), [scopeParam]);
 
   const [clientName, setClientName] = useState(clientNameParam || "此应用");
-  const [loading, setLoading] = useState(false);
+  const [loadingPost, setLoadingPost] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Sync display name when URL client_name changes (e.g. first render)
+  // When URL has client_name, use it
   useEffect(() => {
     if (clientNameParam) setClientName(clientNameParam);
   }, [clientNameParam]);
 
-  // Not logged in: redirect to login with return_url
+  // When URL has client_id but no client_name, fetch name from registration (GET /oauth/client-info)
   useEffect(() => {
-    if (!isLoggedIn) {
+    if (clientNameParam || !clientIdParam.trim()) return;
+    const base = clientInfoUrl.replace(/\/$/, "");
+    const url = `${base}/oauth/client-info?client_id=${encodeURIComponent(clientIdParam)}`;
+    fetchFn(url, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { client_name?: string } | null) => {
+        if (data?.client_name) setClientName(data.client_name);
+      })
+      .catch(() => {});
+  }, [clientIdParam, clientNameParam, clientInfoUrl, fetchFn]);
+
+  // Not logged in: redirect to login only after auth check has completed (avoid redirect loop)
+  useEffect(() => {
+    if (!loading && !isLoggedIn) {
       const returnUrl = encodeURIComponent(window.location.href);
       window.location.href = `${loginUrl}?return_url=${returnUrl}`;
     }
-  }, [isLoggedIn, loginUrl]);
+  }, [loading, isLoggedIn, loginUrl]);
 
-  if (!isLoggedIn) return null;
+  if (loading || !isLoggedIn) return null;
 
   const handleAllow = async () => {
     setError(null);
-    setLoading(true);
+    setLoadingPost(true);
     try {
       const body = {
         client_name: clientName,
@@ -85,7 +105,7 @@ export function DelegateOAuthConsentPage({
       if (!res.ok) {
         const errData = data as { message?: string };
         setError(errData?.message ?? `请求失败: ${res.status}`);
-        setLoading(false);
+        setLoadingPost(false);
         return;
       }
       const redirectUrl = data.redirect_url;
@@ -97,13 +117,19 @@ export function DelegateOAuthConsentPage({
     } catch (e) {
       setError(e instanceof Error ? e.message : "网络错误");
     } finally {
-      setLoading(false);
+      setLoadingPost(false);
     }
   };
 
   const handleDeny = () => {
     const sep = redirectUri.includes("?") ? "&" : "?";
-    window.location.href = `${redirectUri}${sep}error=access_denied&state=${encodeURIComponent(state)}`;
+    const denyRedirect = `${redirectUri}${sep}error=access_denied&state=${encodeURIComponent(state)}`;
+    if (clientIdParam.trim()) {
+      const base = clientInfoUrl.replace(/\/$/, "");
+      const url = `${base}/oauth/client-info?client_id=${encodeURIComponent(clientIdParam)}`;
+      fetchFn(url, { method: "DELETE", credentials: "include" }).catch(() => {});
+    }
+    window.location.href = denyRedirect;
   };
 
   return (
@@ -119,7 +145,7 @@ export function DelegateOAuthConsentPage({
             onChange={(e) => setClientName(e.target.value)}
             fullWidth
             margin="normal"
-            disabled={loading}
+            disabled={loadingPost}
           />
           {scopes.length > 0 && (
             <>
@@ -141,10 +167,10 @@ export function DelegateOAuthConsentPage({
             </Typography>
           )}
           <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
-            <Button variant="contained" onClick={handleAllow} disabled={loading}>
-              {loading ? "处理中…" : "允许"}
+            <Button variant="contained" onClick={handleAllow} disabled={loadingPost}>
+              {loadingPost ? "处理中…" : "允许"}
             </Button>
-            <Button variant="outlined" onClick={handleDeny} disabled={loading}>
+            <Button variant="outlined" onClick={handleDeny} disabled={loadingPost}>
               拒绝
             </Button>
           </Box>

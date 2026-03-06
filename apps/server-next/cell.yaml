@@ -13,6 +13,8 @@ backend:
         - /api/*
         - /oauth/login
         - /oauth/logout
+        - /oauth/register
+        - /oauth/client-info
         - /oauth/token
         - /.well-known/*
         - /mcp
@@ -40,6 +42,9 @@ tables:
       user-refresh-index:
         keys: { gsi2pk: S, gsi2sk: S }
         projection: ALL
+  # Stub OAuth client_name from dynamic registration; set item attribute "ttl" (epoch seconds) for AWS DynamoDB TTL (enable on table in AWS).
+  pending_client_info:
+    keys: { pk: S }
 
 buckets:
   blob: {}
