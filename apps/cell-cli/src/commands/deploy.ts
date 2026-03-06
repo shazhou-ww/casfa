@@ -191,8 +191,11 @@ async function fetchNewEvents(
       const startTime = logicalId ? inProgress.get(logicalId) : undefined;
       if (logicalId) inProgress.delete(logicalId);
 
+      const isStackRollbackComplete =
+        logicalId === stackName && status === "ROLLBACK_COMPLETE";
       const isBad =
-        status?.includes("FAILED") || status?.includes("ROLLBACK");
+        !isStackRollbackComplete &&
+        (status?.includes("FAILED") || status?.includes("ROLLBACK"));
       const icon = isBad
         ? "\x1b[31m\u2717\x1b[0m"
         : "\x1b[32m\u2713\x1b[0m";
@@ -475,41 +478,177 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
     const stderr = await new Response(deployProc.stderr).text();
     const useful = stderr.split("\n").filter((l) => !l.includes("Waiting for") && l.trim());
     if (useful.length) console.error(useful.join("\n"));
-    // Try to get detailed failure reason (e.g. ResourceExistenceCheck / EarlyValidation)
-    const { exitCode: evCode, stdout: evOut } = await awsCli(
-      [
-        "cloudformation",
-        "describe-stack-events",
-        "--stack-name",
-        stackName,
-        "--max-items",
-        "15",
-        "--query",
-        "StackEvents[*].{Reason:ResourceStatusReason,Resource:LogicalResourceId}",
-        "--output",
-        "json",
-      ],
-      awsEnv,
-      { pipeStderr: true }
-    );
-    if (evCode === 0 && evOut) {
-      try {
-        const events = JSON.parse(evOut) as Array<{ Reason?: string; Resource?: string }>;
-        const withReason = events.filter(
-          (e) =>
-            e.Reason &&
-            (e.Reason.includes("EarlyValidation") ||
-              e.Reason.includes("ResourceExistence") ||
-              e.Reason.includes("FAILED"))
+    const isEarlyValidation = /EarlyValidation|ResourceExistenceCheck/i.test(stderr);
+    if (isEarlyValidation) {
+      const { exitCode: csListCode, stdout: csListOut } = await awsCli(
+        [
+          "cloudformation",
+          "list-change-sets",
+          "--stack-name",
+          stackName,
+          "--query",
+          "Summaries | sort_by(@, &CreationTime) | [-1].ChangeSetName",
+          "--output",
+          "text",
+        ],
+        awsEnv,
+        { pipeStderr: true }
+      );
+      let changeSetName: string | null = null;
+      if (csListCode === 0 && csListOut?.trim()) changeSetName = csListOut.trim();
+      if (!changeSetName && csListCode !== 0) {
+        console.error("\n  (Could not list change sets; run: aws cloudformation list-change-sets --stack-name " + stackName + ")");
+      }
+      if (changeSetName) {
+        const { exitCode: descCsCode, stdout: descCsOut } = await awsCli(
+          [
+            "cloudformation",
+            "describe-change-set",
+            "--stack-name",
+            stackName,
+            "--change-set-name",
+            changeSetName,
+            "--query",
+            "{Status:Status,StatusReason:StatusReason}",
+            "--output",
+            "json",
+          ],
+          awsEnv,
+          { pipeStderr: true }
         );
-        if (withReason.length > 0) {
-          console.error("\n  Detail from stack events:");
-          for (const e of withReason.slice(0, 3)) {
-            console.error("    " + (e.Reason ?? "").replace(/\n/g, "\n    "));
+        if (descCsCode === 0 && descCsOut) {
+          try {
+            const { Status } = JSON.parse(descCsOut) as { Status?: string };
+            if (Status === "FAILED") {
+              const { exitCode: evCode, stdout: evOut } = await awsCli(
+                [
+                  "cloudformation",
+                  "describe-events",
+                  "--stack-name",
+                  stackName,
+                  "--change-set-name",
+                  changeSetName,
+                  "--filters",
+                  "FailedEvents=true",
+                  "--max-items",
+                  "25",
+                  "--output",
+                  "json",
+                ],
+                awsEnv,
+                { pipeStderr: true }
+              );
+              if (evCode === 0 && evOut) {
+                try {
+                  const out = JSON.parse(evOut) as {
+                    OperationEvents?: Array<{
+                      EventType?: string;
+                      LogicalResourceId?: string;
+                      ResourceType?: string;
+                      ValidationStatusReason?: string;
+                      ResourceStatusReason?: string;
+                      HookStatusReason?: string;
+                    }>;
+                  };
+                  const events = out.OperationEvents ?? [];
+                  const failed = events.filter(
+                    (e) =>
+                      e.EventType === "VALIDATION_ERROR" ||
+                      e.EventType === "HOOK_INVOCATION_ERROR"
+                  );
+                  if (failed.length > 0) {
+                    console.error("\n  Resource(s) that failed validation (from CloudFormation DescribeEvents API):");
+                    for (const e of failed) {
+                      const reason =
+                        e.ValidationStatusReason ??
+                        e.ResourceStatusReason ??
+                        e.HookStatusReason ??
+                        "no detail";
+                      console.error(
+                        `    ${e.LogicalResourceId ?? "?"} (${e.ResourceType ?? "?"}): ${reason}`
+                      );
+                    }
+                    const s3Conflict = failed.find(
+                      (e) =>
+                        e.ResourceType === "AWS::S3::Bucket" &&
+                        (e.ValidationStatusReason?.includes("already exists") ||
+                          e.ResourceStatusReason?.includes("already exists"))
+                    );
+                    if (s3Conflict) {
+                      console.error(
+                        "\n  Tip: If you just deleted this bucket, wait 1–2 minutes (S3 eventual consistency) then retry."
+                      );
+                      console.error(
+                        "  If you use a non-default AWS profile (e.g. in .env), delete the bucket with that profile:"
+                      );
+                      console.error(
+                        "    AWS_PROFILE=yourprofile aws s3 rb s3://<bucket-name> --force"
+                      );
+                    }
+                  } else {
+                    console.error(
+                      "\n  (No event detail; run: aws cloudformation describe-events --stack-name " +
+                        stackName +
+                        " --change-set-name " +
+                        changeSetName +
+                        " --filters FailedEvents=true)"
+                    );
+                  }
+                } catch {
+                  console.error(
+                    "\n  (Run for detail: aws cloudformation describe-events --stack-name " +
+                      stackName +
+                      " --change-set-name " +
+                      changeSetName +
+                      " --filters FailedEvents=true)"
+                  );
+                }
+              }
+            }
+          } catch {
+            // ignore
           }
         }
-      } catch {
-        // ignore parse errors
+      } else if (!changeSetName && csListCode === 0) {
+        console.error("\n  (No change set found for stack " + stackName + "; run: aws cloudformation list-change-sets --stack-name " + stackName + ")");
+      }
+    }
+    if (!isEarlyValidation) {
+      const { exitCode: evCode, stdout: evOut } = await awsCli(
+        [
+          "cloudformation",
+          "describe-stack-events",
+          "--stack-name",
+          stackName,
+          "--max-items",
+          "15",
+          "--query",
+          "StackEvents[*].{Reason:ResourceStatusReason,Resource:LogicalResourceId}",
+          "--output",
+          "json",
+        ],
+        awsEnv,
+        { pipeStderr: true }
+      );
+      if (evCode === 0 && evOut) {
+        try {
+          const events = JSON.parse(evOut) as Array<{ Reason?: string; Resource?: string }>;
+          const withReason = events.filter(
+            (e) =>
+              e.Reason &&
+              (e.Reason.includes("EarlyValidation") ||
+                e.Reason.includes("ResourceExistence") ||
+                e.Reason.includes("FAILED"))
+          );
+          if (withReason.length > 0) {
+            console.error("\n  Detail from stack events:");
+            for (const e of withReason.slice(0, 3)) {
+              console.error("    " + (e.Reason ?? "").replace(/\n/g, "\n    "));
+            }
+          }
+        } catch {
+          // ignore parse errors
+        }
       }
     }
     console.error("\nCloudFormation deploy failed");

@@ -97,6 +97,8 @@ export interface NetworkConfig {
 
 export interface CellConfig {
   name: string;
+  /** Required for cloud deploy when using buckets or frontend. Combined as key-name-suffix for bucket names (e.g. frontend-sso-casfa-shazhou-me) to avoid global S3 collisions. */
+  bucketNameSuffix?: string;
   backend?: BackendConfig;
   frontend?: FrontendConfig;
   static?: StaticMapping[];

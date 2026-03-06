@@ -1,4 +1,5 @@
 name: image-workshop
+bucketNameSuffix: casfa-shazhou-me
 
 backend:
   dir: backend
