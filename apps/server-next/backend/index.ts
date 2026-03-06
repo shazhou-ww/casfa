@@ -20,11 +20,12 @@ import { createCasFacade } from "./services/cas.ts";
 
 const config = loadConfig();
 
+// SSO mode: only JWT verification (region + userPoolId) is needed; clientId/hostedUiUrl are for legacy OAuth routes (not mounted).
 const cognitoConfig: CognitoConfig = {
   region: config.auth.cognitoRegion ?? "us-east-1",
   userPoolId: config.auth.cognitoUserPoolId ?? "",
-  clientId: config.auth.cognitoClientId ?? "",
-  hostedUiUrl: config.auth.cognitoHostedUiUrl ?? "",
+  clientId: config.ssoBaseUrl ? "" : (config.auth.cognitoClientId ?? ""),
+  hostedUiUrl: config.ssoBaseUrl ? "" : (config.auth.cognitoHostedUiUrl ?? ""),
 };
 
 const dynamoClient = new DynamoDBClient(

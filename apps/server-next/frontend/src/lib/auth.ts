@@ -61,6 +61,7 @@ export async function initAuth(): Promise<void> {
   authClientInstance = createAuthClient({
     ssoBaseUrl,
     logoutEndpoint: "/oauth/logout",
+    clearCsrfOnLogout: { cookieName: "csrf_token", path: "/" },
   });
   apiFetchInstance = createApiFetch({
     authClient: authClientInstance,

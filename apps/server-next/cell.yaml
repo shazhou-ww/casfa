@@ -48,20 +48,15 @@ tables:
 buckets:
   blob: {}
 
+# App reads all config from params (env). When using SSO, only COGNITO_REGION and
+# COGNITO_USER_POOL_ID are required. No cognito block: SSO cell owns OAuth callback;
+# cell-cli does not need to sync this cell's URL to Cognito.
 params:
   COGNITO_REGION: !Env
   COGNITO_USER_POOL_ID: !Env
-  COGNITO_CLIENT_ID: !Env
-  COGNITO_HOSTED_UI_URL: !Env
   MAX_BRANCH_TTL_MS: !Env
   LOG_LEVEL: !Env
   SSO_BASE_URL: !Env
-
-cognito:
-  region: !Param COGNITO_REGION
-  userPoolId: !Param COGNITO_USER_POOL_ID
-  clientId: !Param COGNITO_CLIENT_ID
-  hostedUiUrl: !Param COGNITO_HOSTED_UI_URL
 
 domain:
   zone: shazhou.me
