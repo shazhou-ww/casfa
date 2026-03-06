@@ -17,15 +17,22 @@ export function getTokenFromRequest(
     return auth.slice(7).trim() || null;
   }
   if (!options.cookieName) return null;
+  return getCookieFromRequest(request, options.cookieName);
+}
+
+/**
+ * Get a cookie value from request by name. Only reads Cookie header (no Authorization).
+ * Use for refresh token or any other cookie that is not the auth Bearer token.
+ */
+export function getCookieFromRequest(request: Request, cookieName: string): string | null {
   const cookieHeader = request.headers.get("Cookie");
   if (!cookieHeader) return null;
-  const name = options.cookieName;
   const parts = cookieHeader.split(";");
   for (const part of parts) {
     const eq = part.indexOf("=");
     if (eq === -1) continue;
     const key = part.slice(0, eq).trim();
-    if (key !== name) continue;
+    if (key !== cookieName) continue;
     let value = part.slice(eq + 1).trim();
     if (value.startsWith('"') && value.endsWith('"')) {
       value = value.slice(1, -1).replace(/\\"/g, '"');

@@ -4,6 +4,7 @@ import {
   buildClearAuthCookieHeader,
   buildRefreshCookieHeader,
   buildClearRefreshCookieHeader,
+  getCookieFromRequest,
   getTokenFromRequest,
 } from "./cookie.ts";
 
@@ -55,6 +56,27 @@ describe("getTokenFromRequest", () => {
       headers: { Authorization: "Bearer  trimmed  " },
     });
     expect(getTokenFromRequest(req, {})).toBe("trimmed");
+  });
+});
+
+describe("getCookieFromRequest", () => {
+  it("returns cookie value when present", () => {
+    const req = new Request("https://x/y", {
+      headers: { Cookie: "auth_refresh=rt-value; other=ignored" },
+    });
+    expect(getCookieFromRequest(req, "auth_refresh")).toBe("rt-value");
+  });
+
+  it("returns null when cookie name not present", () => {
+    const req = new Request("https://x/y", {
+      headers: { Cookie: "other=value" },
+    });
+    expect(getCookieFromRequest(req, "auth_refresh")).toBeNull();
+  });
+
+  it("returns null when Cookie header missing", () => {
+    const req = new Request("https://x/y");
+    expect(getCookieFromRequest(req, "auth_refresh")).toBeNull();
   });
 });
 

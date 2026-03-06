@@ -4,6 +4,7 @@ export {
   buildClearAuthCookieHeader,
   buildRefreshCookieHeader,
   buildClearRefreshCookieHeader,
+  getCookieFromRequest,
   getTokenFromRequest,
 } from "./cookie.ts";
 export {
