@@ -2,10 +2,20 @@
  * Image Workshop MCP Server — tool logic and server creation.
  * Used by both stdio (src/stdio.ts) and Lambda HTTP (src/app.ts).
  */
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { createBflClient } from "./bfl";
 import { createCasfaBranchClient } from "./casfa-branch";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const skillContent = readFileSync(
+  resolve(__dirname, "skills", "flux-image-gen.md"),
+  "utf-8"
+);
 
 export const fluxImageInputSchema = z.object({
   casfaBaseUrl: z
@@ -89,6 +99,25 @@ export function createMcpServer(): McpServer {
       version: "0.1.0",
     },
     {}
+  );
+
+  server.registerResource(
+    "FLUX Image Generation",
+    "skill://flux-image-gen",
+    {
+      description: "Skill definition for FLUX image generation",
+      mimeType: "text/markdown",
+      annotations: { audience: ["assistant"], priority: 1 },
+    },
+    async () => ({
+      contents: [
+        {
+          uri: "skill://flux-image-gen",
+          mimeType: "text/markdown",
+          text: skillContent,
+        },
+      ],
+    })
   );
 
   server.registerTool(
