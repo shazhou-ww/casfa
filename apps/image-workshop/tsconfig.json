@@ -8,8 +8,9 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "paths": {
-      "@casfa/cell-cognito": ["../../packages/cell-cognito/src/index.ts"],
-      "@casfa/cell-oauth": ["../../packages/cell-oauth/src/index.ts"]
+      "@casfa/cell-auth-server": ["../../packages/cell-auth-server/src/index.ts"],
+      "@casfa/cell-cognito-server": ["../../packages/cell-cognito-server/src/index.ts"],
+      "@casfa/cell-delegates-server": ["../../packages/cell-delegates-server/src/index.ts"]
     }
   },
   "include": ["backend/**/*.ts", "shared/**/*.ts"]

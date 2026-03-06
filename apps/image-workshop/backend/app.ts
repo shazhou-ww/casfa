@@ -4,15 +4,12 @@ import {
   type CognitoConfig,
   createCognitoJwtVerifier,
   createMockJwtVerifier,
-} from "@casfa/cell-cognito";
-import {
-  createDynamoGrantStore,
-  createOAuthServer,
-  getTokenFromRequest,
-} from "@casfa/cell-oauth";
+} from "@casfa/cell-cognito-server";
+import { getTokenFromRequest } from "@casfa/cell-auth-server";
+import { type Auth, createOAuthServer } from "@casfa/cell-cognito-server";
+import { createDynamoGrantStore, createDelegatesRoutes } from "@casfa/cell-delegates-server";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { createDelegatesRoutes } from "./controllers/delegates";
 import { createMcpRoutes } from "./controllers/mcp";
 import { createOAuthRoutes } from "./controllers/oauth";
 
@@ -70,11 +67,14 @@ app.use("*", async (c, next) => {
     return;
   }
   const auth = await oauthServer.resolveAuth(token);
-  c.set("auth", auth);
+  c.set("auth", auth ?? undefined);
   await next();
 });
 
-const delegateRoutes = createDelegatesRoutes({ oauthServer });
+const delegateRoutes = createDelegatesRoutes({
+  grantStore,
+  getUserId: (auth) => (auth ? auth.userId : ""),
+});
 app.route("/", delegateRoutes);
 
 const mcpRoutes = createMcpRoutes();

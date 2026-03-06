@@ -1,8 +1,8 @@
 import {
   buildAuthCookieHeader,
   buildClearAuthCookieHeader,
-} from "@casfa/cell-oauth";
-import type { OAuthServer } from "@casfa/cell-oauth";
+} from "@casfa/cell-auth-server";
+import type { OAuthServer } from "@casfa/cell-cognito-server";
 import { Hono } from "hono";
 
 export type OAuthCookieConfig = {
@@ -125,7 +125,7 @@ export function createOAuthRoutes(deps: OAuthControllerDeps) {
           cookieDomain: cookieConfig.cookieDomain,
           cookiePath: cookieConfig.cookiePath ?? "/",
           cookieMaxAgeSeconds: cookieConfig.cookieMaxAgeSeconds,
-          secure: cookieConfig.cookieSecure,
+          secure: cookieConfig.cookieSecure ?? false,
         });
         c.header("Set-Cookie", headerValue);
       }
