@@ -1,4 +1,4 @@
-import { apiFetch, authClient, getCookieUser, initAuth, useCookieAuthCheck } from "./lib/auth";
+import { apiFetch, authClient, getBaseUrl, getCookieUser, initAuth, useCookieAuthCheck } from "./lib/auth";
 import { DelegateOAuthConsentPage } from "@casfa/cell-delegates-webui";
 import AddIcon from "@mui/icons-material/Add";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
@@ -79,6 +79,7 @@ function DelegateOAuthAuthorizeRoute() {
     <DelegateOAuthConsentPage
       authorizeUrl="/api/oauth/delegate/authorize"
       loginUrl="/oauth/login"
+      clientInfoUrl={getBaseUrl() ?? ""}
       loading={loading}
       isLoggedIn={isLoggedIn}
       fetch={apiFetch}
