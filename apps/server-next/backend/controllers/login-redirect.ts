@@ -1,6 +1,7 @@
 /**
- * When using SSO: only login redirect and .well-known. No token/callback on this cell.
+ * When using SSO: only login redirect, logout redirect, and .well-known. No token/callback on this cell.
  */
+import { buildClearAuthCookieHeader } from "@casfa/cell-auth-server";
 import type { ServerConfig } from "../config.ts";
 import type { Env } from "../types.ts";
 import { Hono } from "hono";
@@ -22,6 +23,21 @@ export function createLoginRedirectRoutes(config: ServerConfig) {
     const url = new URL(`${ssoBaseUrl}/login`);
     url.searchParams.set("return_url", returnUrl);
     return c.redirect(url.toString());
+  });
+
+  routes.get("/oauth/logout", (c) => {
+    const auth = config.auth;
+    if (auth.cookieName) {
+      const clearHeader = buildClearAuthCookieHeader({
+        cookieName: auth.cookieName,
+        cookiePath: auth.cookiePath ?? "/",
+        cookieDomain: auth.cookieDomain,
+        sameSite: "Strict",
+      });
+      c.header("Set-Cookie", clearHeader);
+    }
+    const base = config.baseUrl.replace(/\/$/, "");
+    return c.redirect(`${base}/oauth/login`);
   });
 
   routes.get("/.well-known/oauth-authorization-server", (c) => {

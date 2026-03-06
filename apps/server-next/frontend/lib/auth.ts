@@ -68,9 +68,8 @@ export async function initAuth(): Promise<void> {
     authClient: authClientInstance,
     baseUrl: "",
     onUnauthorized: () => {
-      console.log("[auth] onUnauthorized: redirecting to /oauth/login");
-      window.location.replace("/oauth/login");
-      authClientInstance!.logout();
+      console.log("[auth] onUnauthorized: redirecting to /oauth/logout");
+      window.location.replace("/oauth/logout");
     },
     csrfCookieName: "csrf_token",
     ssoBaseUrl,
