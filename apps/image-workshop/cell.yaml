@@ -63,3 +63,6 @@ cognito:
 domain:
   zone: shazhou.me
   host: image-workshop.casfa.shazhou.me
+
+testing:
+  unit: backend/
