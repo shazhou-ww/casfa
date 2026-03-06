@@ -11,6 +11,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/oauth/login" element={<LoginPage />} />
       <Route path="/oauth/authorize" element={<OAuthAuthorizePage />} />
       <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
       <Route path="/oauth/callback-complete" element={<OAuthCallbackPage />} />

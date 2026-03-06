@@ -45,16 +45,20 @@ export function createApiFetch(params: {
 
     if (res.status === 401 && ssoBaseUrl && ssoRefreshPath) {
       const refreshUrl = `${ssoBaseUrl.replace(/\/$/, "")}${ssoRefreshPath.startsWith("/") ? "" : "/"}${ssoRefreshPath}`;
+      console.log("[cell-auth-webui] 401 on", path, "→ trying refresh", refreshUrl);
       const refreshRes = await fetch(refreshUrl, {
         method: "POST",
         credentials: "include",
       });
+      console.log("[cell-auth-webui] refresh result:", refreshRes.status, refreshRes.ok);
       if (refreshRes.ok) {
         res = await fetch(`${baseUrl}${path}`, { ...init, headers, credentials: "include" });
+        console.log("[cell-auth-webui] retry result:", res.status);
       }
     }
 
     if (res.status === 401) {
+      console.log("[cell-auth-webui] still 401 → calling onUnauthorized()");
       onUnauthorized();
     }
     return res;

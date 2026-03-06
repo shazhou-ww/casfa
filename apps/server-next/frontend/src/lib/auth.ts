@@ -66,8 +66,9 @@ export async function initAuth(): Promise<void> {
     authClient: authClientInstance,
     baseUrl: "",
     onUnauthorized: () => {
-      authClientInstance!.logout();
+      console.log("[auth] onUnauthorized: redirecting to /oauth/login");
       window.location.replace("/oauth/login");
+      authClientInstance!.logout();
     },
     csrfCookieName: "csrf_token",
     ssoBaseUrl,
@@ -102,7 +103,7 @@ export function useAuth() {
   );
 }
 
-/** Probe /api/me and cache user for getRealmId() / useCurrentUser(). */
+/** Probe /api/me and cache user for getRealmId() / useCurrentUser(). Uses apiFetch so 401 → onUnauthorized (redirect to login). */
 export function useCookieAuthCheck(): { loading: boolean; isLoggedIn: boolean } {
   const [state, setState] = useState<{ loading: boolean; isLoggedIn: boolean }>({
     loading: true,
@@ -110,7 +111,11 @@ export function useCookieAuthCheck(): { loading: boolean; isLoggedIn: boolean } 
   });
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/me", { credentials: "include" })
+    if (!apiFetchInstance) {
+      setState({ loading: false, isLoggedIn: false });
+      return;
+    }
+    apiFetchInstance("/api/me", null)
       .then(async (res) => {
         if (cancelled) return;
         const data = res.ok ? ((await res.json()) as { userId?: string; email?: string; name?: string; picture?: string }) : null;
