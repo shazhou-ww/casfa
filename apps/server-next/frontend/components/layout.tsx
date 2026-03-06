@@ -35,11 +35,10 @@ export function Layout() {
     navigate("/settings");
   }, [navigate, handleCloseMenu]);
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
     handleCloseMenu();
-    authClient.logout();
-    navigate("/oauth/login", { replace: true });
-  }, [navigate, handleCloseMenu]);
+    await authClient.logout();
+  }, [handleCloseMenu]);
 
   const displayName = user ? user.email || user.userId : "";
 

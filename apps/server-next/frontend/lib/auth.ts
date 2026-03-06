@@ -62,6 +62,7 @@ export async function initAuth(): Promise<void> {
     ssoBaseUrl,
     logoutEndpoint: "/oauth/logout",
     clearCsrfOnLogout: { cookieName: "csrf_token", path: "/" },
+    redirectAfterLogout: { path: "/oauth/login" },
   });
   apiFetchInstance = createApiFetch({
     authClient: authClientInstance,
