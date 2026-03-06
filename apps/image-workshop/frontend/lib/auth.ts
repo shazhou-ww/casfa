@@ -5,9 +5,10 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 let authClientInstance: AuthClient | null = null;
 let apiFetchInstance: ((path: string, init: RequestInit | null) => Promise<Response>) | null = null;
 let ssoBaseUrlValue: string | undefined = undefined;
+let baseUrlValue: string | undefined = undefined;
 let cookieUser: { userId: string; email?: string; name?: string; picture?: string } | null = null;
 
-export type AuthConfig = { ssoBaseUrl?: string | null };
+export type AuthConfig = { ssoBaseUrl?: string | null; baseUrl?: string | null };
 
 export function setCookieUser(user: { userId: string; email?: string; name?: string; picture?: string } | null): void {
   cookieUser = user;
@@ -47,6 +48,7 @@ export async function initAuth(): Promise<void> {
     throw new Error("SSO base URL not configured; backend must return ssoBaseUrl in /api/info.");
   }
   ssoBaseUrlValue = ssoBaseUrl;
+  baseUrlValue = config.baseUrl ?? undefined;
 
   authClientInstance = createAuthClient({
     ssoBaseUrl,
@@ -68,6 +70,11 @@ export async function initAuth(): Promise<void> {
 
 export function getSsoBaseUrl(): string | undefined {
   return ssoBaseUrlValue;
+}
+
+/** Backend base URL (for client-info etc.). Same as current origin when served behind same host. */
+export function getBaseUrl(): string | undefined {
+  return baseUrlValue;
 }
 
 export function getAuthClient(): AuthClient {
@@ -133,9 +140,5 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   } else {
     path = (input as Request).url;
   }
-  const pathOnly =
-    path.startsWith("http://") || path.startsWith("https://")
-      ? new URL(path).pathname + new URL(path).search
-      : path;
-  return apiFetchInstance(pathOnly, init ?? null);
+  return apiFetchInstance(path, init ?? null);
 }

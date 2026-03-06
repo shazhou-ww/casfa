@@ -46,7 +46,10 @@ export function createApp(deps: AppDeps) {
   app.route("/", oauthRoutes);
 
   app.get("/api/info", (c) =>
-    c.json({ ssoBaseUrl: deps.config.ssoBaseUrl ?? null })
+    c.json({
+      ssoBaseUrl: deps.config.ssoBaseUrl ?? null,
+      baseUrl: deps.config.baseUrl || null,
+    })
   );
   app.get("/api/me", (c) => {
     const auth = c.get("auth");

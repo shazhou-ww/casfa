@@ -14,6 +14,7 @@ backend:
         - /oauth/login
         - /oauth/logout
         - /oauth/register
+        - /oauth/client-info
         - /oauth/token
         - /.well-known/*
         - /mcp
