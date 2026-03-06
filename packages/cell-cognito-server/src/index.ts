@@ -4,6 +4,8 @@ export {
   refreshCognitoTokens,
 } from "./cognito-client.ts";
 
+export { createOAuthServer } from "./oauth-server.ts";
+
 export {
   createCognitoJwtVerifier,
   createMockJwt,
