@@ -271,6 +271,8 @@
       "name": "@casfa/cell-cognito-server",
       "version": "0.1.0",
       "dependencies": {
+        "@casfa/cell-auth-server": "workspace:*",
+        "@casfa/cell-delegates-server": "workspace:*",
         "jose": "^6.0.11",
       },
       "devDependencies": {
@@ -300,7 +302,6 @@
       "dependencies": {
         "@aws-sdk/client-dynamodb": "^3.700.0",
         "@aws-sdk/lib-dynamodb": "^3.700.0",
-        "@casfa/cell-oauth": "workspace:*",
         "hono": "^4.6.0",
       },
       "devDependencies": {
