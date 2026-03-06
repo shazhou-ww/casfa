@@ -7,73 +7,83 @@ import {
 } from "@casfa/cell-cognito-server";
 import { getTokenFromRequest } from "@casfa/cell-auth-server";
 import { type Auth, createOAuthServer } from "@casfa/cell-cognito-server";
-import { createDynamoGrantStore, createDelegatesRoutes } from "@casfa/cell-delegates-server";
+import {
+  createDynamoGrantStore,
+  createDynamoPendingClientInfoStore,
+  createDelegatesRoutes,
+} from "@casfa/cell-delegates-server";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { createMcpRoutes } from "./controllers/mcp";
-import { createOAuthRoutes } from "./controllers/oauth";
+import { loadConfig, isMockAuthEnabled } from "./config.ts";
+import { createLoginRedirectRoutes } from "./controllers/login-redirect.ts";
+import { createMcpRoutes } from "./controllers/mcp.ts";
+import type { Env } from "./types.ts";
+
+const config = loadConfig();
 
 const cognitoConfig: CognitoConfig = {
-  region: process.env.COGNITO_REGION ?? "us-east-1",
-  userPoolId: process.env.COGNITO_USER_POOL_ID ?? "",
-  clientId: process.env.COGNITO_CLIENT_ID ?? "",
-  hostedUiUrl: process.env.COGNITO_HOSTED_UI_URL ?? "",
-};
-
-const cookieConfig = {
-  cookieName: "casfa_token",
-  cookieDomain: process.env.AUTH_COOKIE_DOMAIN,
-  cookiePath: "/",
+  region: config.auth.cognitoRegion ?? "us-east-1",
+  userPoolId: config.auth.cognitoUserPoolId ?? "",
+  clientId: "",
+  hostedUiUrl: "",
 };
 
 const dynamoClient = new DynamoDBClient(
-  process.env.DYNAMODB_ENDPOINT
-    ? { endpoint: process.env.DYNAMODB_ENDPOINT, region: "us-east-1" }
-    : {}
+  config.dynamodbEndpoint ? { endpoint: config.dynamodbEndpoint, region: "us-east-1" } : {}
 );
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
 
 const grantStore = createDynamoGrantStore({
-  tableName: process.env.DYNAMODB_TABLE_GRANTS ?? "image-workshop-grants",
+  tableName: config.dynamodbTableGrants,
   client: docClient,
 });
 
-const useMockAuth =
-  process.env.CELL_STAGE === "test" && typeof process.env.E2E_MOCK_JWT_SECRET === "string";
-const jwtVerifier = useMockAuth
-  ? createMockJwtVerifier(process.env.E2E_MOCK_JWT_SECRET!)
-  : createCognitoJwtVerifier(cognitoConfig);
-console.log("[boot] jwt verifier:", useMockAuth ? "MOCK" : "COGNITO");
+const pendingClientInfoStore = createDynamoPendingClientInfoStore({
+  tableName: config.dynamodbTablePendingClientInfo,
+  client: docClient,
+});
+
+const jwtVerifier = isMockAuthEnabled(config)
+  ? createMockJwtVerifier(config.auth.mockJwtSecret!)
+  : createCognitoJwtVerifier({
+      region: cognitoConfig.region,
+      userPoolId: cognitoConfig.userPoolId,
+    });
+console.log("[boot] jwt verifier:", isMockAuthEnabled(config) ? "MOCK" : "COGNITO");
 
 const oauthServer = createOAuthServer({
-  issuerUrl: process.env.CELL_BASE_URL ?? "",
+  issuerUrl: config.baseUrl,
   cognitoConfig,
   jwtVerifier,
   grantStore,
   permissions: ["use_mcp", "manage_delegates"],
 });
 
-const app = new Hono();
-
-const oauthRoutes = createOAuthRoutes({ oauthServer, cookieConfig });
-app.route("/", oauthRoutes);
+const app = new Hono<Env>();
 
 app.use("*", async (c, next) => {
+  const cookieName = config.auth.cookieName ?? undefined;
   const token = getTokenFromRequest(c.req.raw, {
-    cookieName: cookieConfig.cookieName,
+    cookieName: cookieName ?? undefined,
+    cookieOnly: false,
   });
   if (!token) {
     await next();
     return;
   }
   const auth = await oauthServer.resolveAuth(token);
-  c.set("auth", auth ?? undefined);
+  if (auth) {
+    c.set("auth", auth);
+  }
   await next();
 });
 
+const oauthRoutes = createLoginRedirectRoutes(config, { pendingClientInfoStore });
+app.route("/", oauthRoutes);
+
 const delegateRoutes = createDelegatesRoutes({
   grantStore,
-  getUserId: (auth) => (auth ? auth.userId : ""),
+  getUserId: (auth) => (auth?.type === "user" ? auth.userId : ""),
 });
 app.route("/", delegateRoutes);
 
