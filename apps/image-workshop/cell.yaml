@@ -10,14 +10,10 @@ backend:
       memory: 1024
       routes:
         - /api/*
-        - /oauth/authorize
-        - /oauth/token
-        - /oauth/register
-        - /oauth/callback
-        - /oauth/consent-info
-        - /oauth/approve
-        - /oauth/deny
+        - /oauth/login
         - /oauth/logout
+        - /oauth/register
+        - /oauth/token
         - /.well-known/*
         - /mcp
 
@@ -28,15 +24,13 @@ frontend:
       entry: index.html
       routes: ["/*"]
 
+# Per docs/cell-config-rules: literal = non-secret & same local/prod; !Env/!Secret = secret or env-specific.
+# SSO: only REGION + USER_POOL_ID needed for JWT (rest on SSO cell).
 params:
-  COGNITO_REGION: !Env
-  COGNITO_USER_POOL_ID: !Env
-  COGNITO_CLIENT_ID: !Env
-  COGNITO_HOSTED_UI_URL: !Env
-  GOOGLE_CLIENT_ID: !Env
-  GOOGLE_CLIENT_SECRET: !Secret
-  MICROSOFT_CLIENT_ID: !Env
-  MICROSOFT_CLIENT_SECRET: !Secret
+  COGNITO_REGION: "us-east-1"
+  COGNITO_USER_POOL_ID: "us-east-1_gMTKxXOKo"
+  LOG_LEVEL: !Env
+  SSO_BASE_URL: !Env
   BFL_API_KEY: !Secret
 
 tables:
@@ -55,12 +49,8 @@ tables:
           gsi2pk: S
           gsi2sk: S
         projection: ALL
-
-cognito:
-  region: !Param COGNITO_REGION
-  userPoolId: !Param COGNITO_USER_POOL_ID
-  clientId: !Param COGNITO_CLIENT_ID
-  hostedUiUrl: !Param COGNITO_HOSTED_UI_URL
+  pending_client_info:
+    keys: { pk: S }
 
 domain:
   zone: shazhou.me
