@@ -7,6 +7,8 @@ import { loadCellYaml } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import { ensureCognitoDevCallbackUrl } from "../local/cognito-dev.js";
 import {
+  getContainerHostPort,
+  isContainerRunning,
   isDockerRunning,
   startDynamoDB,
   startMinIO,
@@ -102,14 +104,25 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
       console.error("Docker is not running. Please start Docker and try again.");
       process.exit(1);
     }
+    const dynamoContainerName = `${resolved.name}-dynamodb-dev`;
     console.log(`Starting DynamoDB on port ${dynamodbPort}...`);
     await startDynamoDB({
       port: dynamodbPort,
       persistent: true,
-      containerName: `${resolved.name}-dynamodb-dev`,
+      containerName: dynamoContainerName,
     });
 
-    const endpoint = `http://localhost:${dynamodbPort}`;
+    // If container was already running, it may be bound to a different host port (e.g. from a previous PORT_BASE).
+    // Use the actual mapped port so the readiness check and backend env both match.
+    let effectiveDynamoPort = dynamodbPort;
+    if (await isContainerRunning(dynamoContainerName)) {
+      const actualPort = await getContainerHostPort(dynamoContainerName, 8000);
+      if (actualPort != null && actualPort !== dynamodbPort) {
+        effectiveDynamoPort = actualPort;
+      }
+    }
+
+    const endpoint = `http://localhost:${effectiveDynamoPort}`;
     let ready = false;
     for (let i = 0; i < 30; i++) {
       if (await isDynamoDBReady(endpoint)) {
@@ -124,6 +137,9 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
     }
     console.log("DynamoDB ready");
 
+    if (effectiveDynamoPort !== dynamodbPort) {
+      resolved.envVars.DYNAMODB_ENDPOINT = endpoint;
+    }
     await ensureLocalTables(endpoint, resolved.tables);
     console.log(`Created ${resolved.tables.length} table(s)`);
   }
