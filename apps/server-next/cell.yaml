@@ -11,6 +11,7 @@ backend:
       routes:
         - /api/*
         - /oauth/authorize
+        - /oauth/login
         - /oauth/token
         - /oauth/register
         - /oauth/callback
@@ -54,6 +55,7 @@ params:
   COGNITO_HOSTED_UI_URL: !Env
   MAX_BRANCH_TTL_MS: !Env
   LOG_LEVEL: !Env
+  SSO_BASE_URL: !Env
 
 cognito:
   region: !Param COGNITO_REGION
