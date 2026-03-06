@@ -7,6 +7,7 @@ import { cors } from "hono/cors";
 import type { ServerConfig } from "./config.ts";
 import { isMockAuthEnabled } from "./config.ts";
 import { createBranchesController } from "./controllers/branches.ts";
+import { createCsrfController } from "./controllers/csrf.ts";
 import { createDelegatesRoutes } from "./controllers/delegates.ts";
 import { createDevMockTokenController } from "./controllers/dev-mock-token.ts";
 import { createFilesController } from "./controllers/files.ts";
@@ -21,6 +22,7 @@ import type { RealmUsageStore } from "./db/realm-usage-store.ts";
 import type { UserSettingsStore } from "./db/user-settings.ts";
 import { createMcpHandler } from "./mcp/handler.ts";
 import { createAuthMiddleware } from "./middleware/auth.ts";
+import { createCsrfMiddleware } from "./middleware/csrf.ts";
 import { createRealmMiddleware } from "./middleware/realm.ts";
 import { createRealmInfoService } from "./services/realm-info.ts";
 import type { AuthContext, Env, ErrorBody } from "./types.ts";
@@ -43,7 +45,7 @@ export function createApp(deps: AppDeps) {
     "*",
     cors({
       origin: "*",
-      allowHeaders: ["Content-Type", "Authorization"],
+      allowHeaders: ["Content-Type", "Authorization", "X-CSRF-Token"],
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     })
   );
@@ -108,6 +110,13 @@ export function createApp(deps: AppDeps) {
     }
     await next();
   });
+
+  const csrfRoutes = createCsrfController(deps.config);
+  app.route("/", csrfRoutes);
+
+  if (deps.config.ssoBaseUrl) {
+    app.use("/api/*", createCsrfMiddleware());
+  }
 
   app.get("/api/health", (c) => c.json({ ok: true }, 200));
   app.get("/api/info", (c) =>
