@@ -1,4 +1,5 @@
 name: casfa-next
+bucketNameSuffix: casfa-shazhou-me
 
 backend:
   dir: backend

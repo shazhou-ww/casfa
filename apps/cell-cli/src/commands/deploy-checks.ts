@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ResolvedConfig } from "../config/resolve-config.js";
+import { toPascalCase } from "../generators/types.js";
 
 /** Thrown when a pre-deploy check fails. May include an optional resolution the user can apply. */
 export class PreDeployCheckError extends Error {
@@ -21,6 +22,32 @@ type AwsCliFn = (
   env: Record<string, string | undefined>,
   opts?: { pipeStderr?: boolean }
 ) => Promise<{ exitCode: number; stdout: string }>;
+
+
+/** Poll head-bucket until 404 (bucket name really gone) or timeout. */
+async function waitForBucketGone(
+  name: string,
+  awsCli: AwsCliFn,
+  awsEnv: Record<string, string | undefined>,
+  maxWaitMs: number
+): Promise<void> {
+  const stepMs = 2000;
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    const { exitCode } = await awsCli(
+      ["s3api", "head-bucket", "--bucket", name],
+      awsEnv,
+      { pipeStderr: true }
+    );
+    if (exitCode !== 0) return;
+    process.stderr.write(`  Waiting for S3 bucket "${name}" to be gone… (${Math.round((deadline - Date.now()) / 1000)}s left)\n`);
+    await new Promise((r) => setTimeout(r, stepMs));
+  }
+  throw new PreDeployCheckError(
+    `Bucket "${name}" was deleted but still appears to exist after ${maxWaitMs / 1000}s. S3 eventual consistency may need more time.\n` +
+      `  → Wait 1–2 minutes and run deploy again.`
+  );
+}
 
 const UNHEALTHY_STACK_STATUSES = new Set([
   "ROLLBACK_COMPLETE",
@@ -115,32 +142,123 @@ async function runPreDeployChecks(
         if (!needsResourceChecks()) return;
         const existing: string[] = [];
         for (const name of bucketNames) {
-          const { exitCode } = await awsCli(
+          const { exitCode: headCode } = await awsCli(
             ["s3api", "head-bucket", "--bucket", name],
             awsEnv,
             { pipeStderr: true }
           );
-          if (exitCode === 0) existing.push(name);
+          if (headCode === 0) {
+            existing.push(name);
+          }
         }
-        if (existing.length === 0) return;
+        if (existing.length > 0) {
+          throw new PreDeployCheckError(
+            `The following S3 bucket(s) already exist and would block stack creation: ${existing.join(", ")}.\n` +
+              `  → This often happens after a failed deploy: the stack was deleted but buckets were retained.`,
+            {
+              description: `Empty and delete the existing bucket(s) (${existing.join(", ")}) so this stack can create them.`,
+              apply: async () => {
+                for (const bucket of existing) {
+                  console.log(`  Emptying and deleting bucket: ${bucket}`);
+                  const { exitCode: rmCode } = await awsCli(
+                    ["s3", "rm", `s3://${bucket}`, "--recursive"],
+                    awsEnv
+                  );
+                  if (rmCode !== 0) throw new Error(`Failed to empty bucket: ${bucket}`);
+                  const { exitCode: delCode } = await awsCli(
+                    ["s3api", "delete-bucket", "--bucket", bucket],
+                    awsEnv
+                  );
+                  if (delCode !== 0) throw new Error(`Failed to delete bucket: ${bucket}`);
+                  await waitForBucketGone(bucket, awsCli, awsEnv, 90_000);
+                }
+              },
+            }
+          );
+        }
+      },
+    });
+  }
+
+  // 2b. S3 bucket replacement check: when bucket names change on an existing healthy stack,
+  //     CloudFormation will replace the bucket (create new, delete old). Old non-empty buckets
+  //     cause DELETE_FAILED. Detect this and offer to empty them before deploy.
+  if (stackExists && !stackIsUnhealthy) {
+    checks.push({
+      name: "S3 bucket replacements",
+      run: async () => {
+        const expectedBuckets = new Map<string, string>();
+        for (const bucket of resolved.buckets) {
+          expectedBuckets.set(`${toPascalCase(bucket.key)}Bucket`, bucket.bucketName);
+        }
+        expectedBuckets.set("FrontendBucket", resolved.frontendBucketName);
+
+        const { exitCode, stdout } = await awsCli(
+          [
+            "cloudformation",
+            "describe-stack-resources",
+            "--stack-name",
+            resolved.name,
+            "--query",
+            "StackResources[?ResourceType=='AWS::S3::Bucket'].[LogicalResourceId,PhysicalResourceId]",
+            "--output",
+            "json",
+          ],
+          awsEnv,
+          { pipeStderr: true }
+        );
+        if (exitCode !== 0 || !stdout) return;
+
+        const currentBuckets = JSON.parse(stdout) as [string, string][];
+        const bucketsToEmpty: { logicalId: string; oldName: string; newName: string | null }[] = [];
+
+        for (const [logicalId, physicalId] of currentBuckets) {
+          const expectedName = expectedBuckets.get(logicalId);
+          if (expectedName === undefined) {
+            bucketsToEmpty.push({ logicalId, oldName: physicalId, newName: null });
+          } else if (expectedName !== physicalId) {
+            bucketsToEmpty.push({ logicalId, oldName: physicalId, newName: expectedName });
+          }
+        }
+
+        if (bucketsToEmpty.length === 0) return;
+
+        const nonEmpty: typeof bucketsToEmpty = [];
+        for (const b of bucketsToEmpty) {
+          const { exitCode: lsCode, stdout: lsOut } = await awsCli(
+            ["s3api", "list-objects-v2", "--bucket", b.oldName, "--max-keys", "1", "--query", "KeyCount", "--output", "text"],
+            awsEnv,
+            { pipeStderr: true }
+          );
+          if (lsCode === 0 && lsOut?.trim() !== "0") {
+            nonEmpty.push(b);
+          }
+        }
+
+        if (nonEmpty.length === 0) return;
+
+        const details = nonEmpty
+          .map((b) =>
+            b.newName
+              ? `${b.logicalId}: ${b.oldName} → ${b.newName}`
+              : `${b.logicalId}: ${b.oldName} (will be removed)`
+          )
+          .join("\n  ");
+        const oldNames = nonEmpty.map((b) => b.oldName);
+
         throw new PreDeployCheckError(
-          `The following S3 bucket(s) already exist and would block stack creation: ${existing.join(", ")}.\n` +
-            `  → This often happens after a failed deploy: the stack was deleted but buckets were retained.`,
+          `The following S3 bucket(s) will be replaced/removed and are not empty:\n  ${details}\n` +
+            `  → CloudFormation cannot delete non-empty S3 buckets. They must be emptied first.`,
           {
-            description: `Empty and delete the existing bucket(s) (${existing.join(", ")}) so this stack can create them.`,
+            description: `Empty the old bucket(s) (${oldNames.join(", ")}) so CloudFormation can delete them during deployment.`,
             apply: async () => {
-              for (const bucket of existing) {
-                console.log(`  Emptying and deleting bucket: ${bucket}`);
+              for (const bucket of nonEmpty) {
+                console.log(`  Emptying bucket: ${bucket.oldName}`);
                 const { exitCode: rmCode } = await awsCli(
-                  ["s3", "rm", `s3://${bucket}`, "--recursive"],
+                  ["s3", "rm", `s3://${bucket.oldName}`, "--recursive"],
                   awsEnv
                 );
-                if (rmCode !== 0) throw new Error(`Failed to empty bucket: ${bucket}`);
-                const { exitCode: delCode } = await awsCli(
-                  ["s3api", "delete-bucket", "--bucket", bucket],
-                  awsEnv
-                );
-                if (delCode !== 0) throw new Error(`Failed to delete bucket: ${bucket}`);
+                if (rmCode !== 0) throw new Error(`Failed to empty bucket: ${bucket.oldName}`);
               }
             },
           }

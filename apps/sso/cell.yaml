@@ -1,4 +1,5 @@
 name: sso
+bucketNameSuffix: casfa-shazhou-me
 
 backend:
   dir: backend
@@ -59,7 +60,7 @@ cognito:
 
 domain:
   zone: shazhou.me
-  host: auth.casfa.shazhou.me
+  host: sso.casfa.shazhou.me
 
 testing:
   unit: backend/

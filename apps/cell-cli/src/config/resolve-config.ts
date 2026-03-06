@@ -65,6 +65,34 @@ function resourceName(appName: string, key: string, stage: Stage): string {
   return stage === "cloud" ? `${appName}-${key}` : `${appName}-${stage}-${key}`;
 }
 
+const S3_BUCKET_NAME_MAX = 63;
+const BUCKET_SUFFIX_REGEX = /^[a-z0-9-]{1,50}$/;
+
+/** Bucket name for cloud uses optional suffix to reduce global name collisions. */
+function bucketResourceName(
+  appName: string,
+  key: string,
+  stage: Stage,
+  suffix?: string
+): string {
+  if (stage !== "cloud" || !suffix) {
+    return resourceName(appName, key, stage);
+  }
+  const normalized = suffix.toLowerCase().trim();
+  if (!BUCKET_SUFFIX_REGEX.test(normalized)) {
+    throw new Error(
+      `Invalid bucketNameSuffix "${suffix}": must be 1-50 characters, only lowercase letters, digits, and hyphens (e.g. mycompany or my-org-42).`
+    );
+  }
+  const name = `${key}-${appName}-${normalized}`;
+  if (name.length > S3_BUCKET_NAME_MAX) {
+    throw new Error(
+      `Bucket name "${name}" exceeds S3 limit of ${S3_BUCKET_NAME_MAX} characters. Use a shorter bucketNameSuffix.`
+    );
+  }
+  return name;
+}
+
 export function resolveConfig(
   config: CellConfig,
   envMap: Record<string, string>,
@@ -72,6 +100,17 @@ export function resolveConfig(
 ): ResolvedConfig {
   const envVars: Record<string, string> = {};
   const secretRefs: Record<string, string> = {};
+
+  const hasBuckets = config.buckets && Object.keys(config.buckets).length > 0;
+  const hasFrontend = !!config.frontend;
+  const needsBucketSuffix = stage === "cloud" && (hasBuckets || hasFrontend);
+  if (needsBucketSuffix && !config.bucketNameSuffix?.trim()) {
+    throw new Error(
+      `Missing bucketNameSuffix in cell.yaml for cloud deploy.\n` +
+        `  → S3 bucket names are globally unique. Add a suffix to avoid collisions, e.g.:\n` +
+        `     bucketNameSuffix: mycompany   # or your org name / account id`
+    );
+  }
 
   // 1. Params → env vars (all params are required)
   const missingParams: string[] = [];
@@ -115,14 +154,24 @@ export function resolveConfig(
   const buckets: ResolvedBucket[] = [];
   if (config.buckets) {
     for (const key of Object.keys(config.buckets)) {
-      const bucketName = resourceName(config.name, key, stage);
+      const bucketName = bucketResourceName(
+        config.name,
+        key,
+        stage,
+        config.bucketNameSuffix
+      );
       buckets.push({ key, bucketName });
       envVars[`S3_BUCKET_${key.toUpperCase()}`] = bucketName;
     }
   }
 
   // 4. Frontend bucket
-  const frontendBucketName = resourceName(config.name, "frontend", stage);
+  const frontendBucketName = bucketResourceName(
+    config.name,
+    "frontend",
+    stage,
+    config.bucketNameSuffix
+  );
   envVars.FRONTEND_BUCKET = frontendBucketName;
 
   // 5. Local endpoints (dev/test only)

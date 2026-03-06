@@ -69,10 +69,37 @@ describe("resolveConfig", () => {
   test("auto-generated S3_BUCKET_* env vars", () => {
     const config = makeConfig({
       buckets: { uploads: {}, media: {} },
+      bucketNameSuffix: "test",
     });
     const resolved = resolveConfig(config, {}, "cloud");
-    expect(resolved.envVars.S3_BUCKET_UPLOADS).toBe("my-app-uploads");
-    expect(resolved.envVars.S3_BUCKET_MEDIA).toBe("my-app-media");
+    expect(resolved.envVars.S3_BUCKET_UPLOADS).toBe("uploads-my-app-test");
+    expect(resolved.envVars.S3_BUCKET_MEDIA).toBe("media-my-app-test");
+  });
+
+  test("cloud: bucketNameSuffix required when using buckets or frontend", () => {
+    expect(() =>
+      resolveConfig(makeConfig({ buckets: { x: {} } }), {}, "cloud")
+    ).toThrow(/bucketNameSuffix/);
+    expect(() =>
+      resolveConfig(makeConfig({ frontend: { dir: "frontend", entries: { main: { entry: "index.html", routes: ["/*"] } } } }), {}, "cloud")
+    ).toThrow(/bucketNameSuffix/);
+  });
+
+  test("cloud: frontend bucket name includes suffix when frontend present", () => {
+    const config = makeConfig({
+      frontend: { dir: "frontend", entries: { main: { entry: "index.html", routes: ["/*"] } } },
+      bucketNameSuffix: "mycompany",
+    });
+    const resolved = resolveConfig(config, {}, "cloud");
+    expect(resolved.frontendBucketName).toBe("frontend-my-app-mycompany");
+  });
+
+  test("cloud: invalid bucketNameSuffix throws", () => {
+    const config = makeConfig({
+      frontend: { dir: "f", entries: { main: { entry: "i.html", routes: ["/*"] } } },
+      bucketNameSuffix: "has space",
+    });
+    expect(() => resolveConfig(config, {}, "cloud")).toThrow(/Invalid bucketNameSuffix/);
   });
 
   test("dev: DYNAMODB_ENDPOINT and S3_ENDPOINT with default PORT_BASE", () => {
