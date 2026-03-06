@@ -11,6 +11,7 @@ import { createDelegatesRoutes } from "./controllers/delegates.ts";
 import { createDevMockTokenController } from "./controllers/dev-mock-token.ts";
 import { createFilesController } from "./controllers/files.ts";
 import { createFsController } from "./controllers/fs.ts";
+import { createLoginRedirectRoutes } from "./controllers/login-redirect.ts";
 import { createMeController } from "./controllers/me.ts";
 import { createOAuthRoutes } from "./controllers/oauth.ts";
 import { createRealmController } from "./controllers/realm.ts";
@@ -47,11 +48,15 @@ export function createApp(deps: AppDeps) {
     })
   );
 
-  const oauthRoutes = createOAuthRoutes({
-    oauthServer: deps.oauthServer,
-    cookieConfig: deps.config.auth,
-  });
+  const oauthRoutes = createLoginRedirectRoutes(deps.config);
   app.route("/", oauthRoutes);
+  if (!deps.config.ssoBaseUrl) {
+    const legacyOAuth = createOAuthRoutes({
+      oauthServer: deps.oauthServer,
+      cookieConfig: deps.config.auth,
+    });
+    app.route("/", legacyOAuth);
+  }
 
   /** Decode branch token (base64url of branchId) to branchId */
   function decodeBranchToken(token: string): string | null {
@@ -67,6 +72,7 @@ export function createApp(deps: AppDeps) {
   app.use("*", async (c, next) => {
     const token = getTokenFromRequest(c.req.raw, {
       cookieName: deps.config.auth.cookieName ?? undefined,
+      cookieOnly: Boolean(deps.config.ssoBaseUrl),
     });
     if (!token) {
       await next();
@@ -113,6 +119,7 @@ export function createApp(deps: AppDeps) {
           : deps.config.auth.cognitoUserPoolId
             ? "cognito"
             : "mock",
+        ssoBaseUrl: deps.config.ssoBaseUrl ?? null,
       },
       200
     )

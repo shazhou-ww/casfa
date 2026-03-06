@@ -1,8 +1,14 @@
 import { createApiFetch, createAuthClient } from "@casfa/cell-auth-client";
 import { useSyncExternalStore } from "react";
 
+const ssoBaseUrl =
+  (typeof import.meta !== "undefined" && (import.meta as { env?: { VITE_SSO_BASE_URL?: string } }).env?.VITE_SSO_BASE_URL) ||
+  undefined;
+
 export const authClient = createAuthClient({
   storagePrefix: "casfa-next",
+  cookieOnly: !!ssoBaseUrl,
+  ssoBaseUrl,
   logoutEndpoint: "/oauth/logout",
 });
 
@@ -20,8 +26,12 @@ const cellApiFetch = createApiFetch({
   baseUrl: "",
   onUnauthorized: () => {
     authClient.logout();
-    window.location.replace("/login");
+    window.location.replace(ssoBaseUrl ? "/oauth/login" : "/login");
   },
+  cookieOnly: !!ssoBaseUrl,
+  csrfCookieName: ssoBaseUrl ? "csrf_token" : undefined,
+  ssoBaseUrl,
+  ssoRefreshPath: ssoBaseUrl ? "/oauth/refresh" : undefined,
 });
 
 /**

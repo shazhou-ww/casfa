@@ -25,6 +25,7 @@ export const ENV_NAMES = {
   AUTH_COOKIE_DOMAIN: "AUTH_COOKIE_DOMAIN",
   AUTH_COOKIE_PATH: "AUTH_COOKIE_PATH",
   AUTH_COOKIE_MAX_AGE_SECONDS: "AUTH_COOKIE_MAX_AGE_SECONDS",
+  SSO_BASE_URL: "SSO_BASE_URL",
 } as const;
 
 export type ServerConfig = {
@@ -46,6 +47,8 @@ export type ServerConfig = {
     cookieMaxAgeSeconds?: number;
     cookieSecure?: boolean;
   };
+  /** SSO cell base URL (e.g. https://auth.example.com). When set, login redirects here. */
+  ssoBaseUrl?: string;
   /** DynamoDB: endpoint for local (e.g. http://localhost:7102); omit for AWS */
   dynamodbEndpoint?: string;
   dynamodbTableRealms: string;
@@ -92,10 +95,12 @@ export function loadConfig(): ServerConfig {
         ? process.env.AUTH_COOKIE_SECURE === "true"
         : baseUrl.startsWith("https://"),
   };
+  const ssoBaseUrl = process.env.SSO_BASE_URL?.replace(/\/$/, "");
   return {
     port,
     baseUrl,
     auth,
+    ssoBaseUrl: ssoBaseUrl || undefined,
     dynamodbEndpoint: process.env.DYNAMODB_ENDPOINT,
     dynamodbTableRealms: process.env.DYNAMODB_TABLE_REALMS ?? `casfa-next-${stage}-realms`,
     dynamodbTableGrants: process.env.DYNAMODB_TABLE_GRANTS ?? `casfa-next-${stage}-grants`,
