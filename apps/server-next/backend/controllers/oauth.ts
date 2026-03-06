@@ -94,7 +94,8 @@ export function createOAuthRoutes(deps: OAuthControllerDeps) {
 
   routes.post("/oauth/deny", (c) => {
     const session = c.req.query("session") ?? "";
-    oauthServer.denyConsent(session);
+    const result = oauthServer.denyConsent(session);
+    if (result.redirectUrl) return c.json({ redirect: result.redirectUrl });
     return c.json({ ok: true });
   });
 

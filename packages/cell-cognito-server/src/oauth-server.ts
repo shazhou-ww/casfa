@@ -105,6 +105,12 @@ export function createOAuthServer(config: OAuthServerConfig): OAuthServer {
       };
     },
 
+    getClientInfo(clientId: string) {
+      const registered = registeredClients.get(clientId);
+      if (!registered) return null;
+      return { clientName: registered.clientName, redirectUris: registered.redirectUris };
+    },
+
     handleAuthorize(params) {
       const registered = registeredClients.get(params.clientId);
       const clientName = registered?.clientName ?? "MCP Client";
