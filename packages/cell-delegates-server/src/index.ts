@@ -9,6 +9,7 @@ import { HTTPException } from "hono/http-exception";
 export type { DelegateAuth, DelegateGrant, DelegateGrantStore, DelegatePermission } from "./types.ts";
 export { createDynamoGrantStore } from "./dynamo-grant-store.ts";
 export { createDelegateAccessToken, decodeDelegateTokenPayload, generateDelegateId, generateRandomToken, sha256Hex, verifyCodeChallenge } from "./token.ts";
+export { verifyDelegateToken } from "./verify-delegate-token.ts";
 
 export type DelegatesEnv = {
   Variables: {
