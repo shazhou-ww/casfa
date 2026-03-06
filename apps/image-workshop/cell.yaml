@@ -6,6 +6,7 @@ backend:
   entries:
     mcp:
       handler: lambda.ts
+      app: dev-app.ts
       timeout: 90
       memory: 1024
       routes:
