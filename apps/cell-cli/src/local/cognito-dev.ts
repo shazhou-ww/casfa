@@ -52,7 +52,7 @@ export async function ensureCognitoDevCallbackUrl(
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error(`\n✗ Cognito access failed: ${msg}`);
-    console.error("  Run 'aws sso login' to refresh credentials, then retry.\n");
+    console.error("  Run 'cell aws login' to refresh credentials (uses AWS_PROFILE from .env), then retry.\n");
     process.exit(1);
   }
 

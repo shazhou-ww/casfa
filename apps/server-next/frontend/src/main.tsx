@@ -1,8 +1,9 @@
-import { CssBaseline, createTheme, type Shadows, ThemeProvider } from "@mui/material";
-import { StrictMode } from "react";
+import { Box, CircularProgress, CssBaseline, createTheme, type Shadows, ThemeProvider } from "@mui/material";
+import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
+import { initAuth } from "./lib/auth";
 
 const shadows: Shadows = [
   "none", // 0
@@ -145,6 +146,25 @@ const theme = createTheme({
   },
 });
 
+function Root() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    initAuth().then(() => setReady(true));
+  }, []);
+  if (!ready) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
+  return (
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  );
+}
+
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("Missing #root");
 
@@ -152,9 +172,7 @@ createRoot(rootEl).render(
   <StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
+      <Root />
     </ThemeProvider>
   </StrictMode>
 );

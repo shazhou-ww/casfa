@@ -2,16 +2,14 @@ import type { AuthClient, AuthSubscriber, ClientAuth } from "./types.ts";
 
 export function createAuthClient(params: {
   storagePrefix: string;
-  /** When true, do not read or write token/refresh in localStorage; getAuth() returns null. */
-  cookieOnly?: boolean;
-  /** SSO base URL for logout (and later refresh). When set with logoutEndpoint, logout() POSTs here. */
+  /** SSO base URL. When set, cookie-only mode: no localStorage, getAuth() returns null; logout uses ssoBaseUrl + logoutEndpoint. */
   ssoBaseUrl?: string;
   /** Path for logout (e.g. "/oauth/logout"). Used with ssoBaseUrl. */
   logoutEndpoint?: string;
 }): AuthClient {
   const tokenKey = `${params.storagePrefix}_token`;
   const refreshKey = `${params.storagePrefix}_refresh`;
-  const cookieOnly = params.cookieOnly === true;
+  const cookieOnly = Boolean(params.ssoBaseUrl);
   const logoutUrl =
     params.ssoBaseUrl && params.logoutEndpoint
       ? `${params.ssoBaseUrl.replace(/\/$/, "")}${params.logoutEndpoint.startsWith("/") ? "" : "/"}${params.logoutEndpoint}`

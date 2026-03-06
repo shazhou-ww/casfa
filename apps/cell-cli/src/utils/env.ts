@@ -30,7 +30,8 @@ export function parseEnvFile(content: string): Record<string, string> {
 
 /**
  * Load .env files from the cell directory and the monorepo root.
- * Cell-level values take precedence over root-level values.
+ * Precedence (later overrides): root .env (if present) → cell .env → cell .env.local.
+ * Cell-level .env.local overrides cell .env so that PORT_BASE etc. can differ locally.
  */
 export function loadEnvFiles(cellDir: string): Record<string, string> {
   const merged: Record<string, string> = {};
@@ -54,6 +55,12 @@ export function loadEnvFiles(cellDir: string): Record<string, string> {
       break;
     }
     dir = dirname(dir);
+  }
+
+  const cellEnvLocalPath = resolve(cellDir, ".env.local");
+  if (existsSync(cellEnvLocalPath)) {
+    const localVars = parseEnvFile(readFileSync(cellEnvLocalPath, "utf-8"));
+    Object.assign(merged, localVars);
   }
 
   return merged;

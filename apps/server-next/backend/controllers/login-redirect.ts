@@ -2,10 +2,11 @@
  * When using SSO: only login redirect and .well-known. No token/callback on this cell.
  */
 import type { ServerConfig } from "../config.ts";
+import type { Env } from "../types.ts";
 import { Hono } from "hono";
 
 export function createLoginRedirectRoutes(config: ServerConfig) {
-  const routes = new Hono();
+  const routes = new Hono<Env>();
   const ssoBaseUrl = config.ssoBaseUrl;
 
   if (!ssoBaseUrl) {
@@ -14,10 +15,13 @@ export function createLoginRedirectRoutes(config: ServerConfig) {
 
   routes.get("/oauth/login", (c) => {
     const returnUrl = c.req.query("return_url") ?? config.baseUrl;
-    const state = btoa(JSON.stringify({ return_url: returnUrl }));
-    const url = new URL(`${ssoBaseUrl}/oauth/authorize`);
+    const auth = c.get("auth");
+    console.log("[oauth/login]", { hasAuth: !!auth, authType: auth?.type, returnUrl });
+    if (auth) {
+      return c.redirect(returnUrl);
+    }
+    const url = new URL(`${ssoBaseUrl}/login`);
     url.searchParams.set("return_url", returnUrl);
-    url.searchParams.set("state", state);
     return c.redirect(url.toString());
   });
 

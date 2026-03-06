@@ -50,16 +50,6 @@ export function createApp(deps: AppDeps) {
     })
   );
 
-  const oauthRoutes = createLoginRedirectRoutes(deps.config);
-  app.route("/", oauthRoutes);
-  if (!deps.config.ssoBaseUrl) {
-    const legacyOAuth = createOAuthRoutes({
-      oauthServer: deps.oauthServer,
-      cookieConfig: deps.config.auth,
-    });
-    app.route("/", legacyOAuth);
-  }
-
   /** Decode branch token (base64url of branchId) to branchId */
   function decodeBranchToken(token: string): string | null {
     try {
@@ -72,18 +62,39 @@ export function createApp(deps: AppDeps) {
   }
 
   app.use("*", async (c, next) => {
+    const path = new URL(c.req.url).pathname;
+    const cookieName = deps.config.auth.cookieName ?? undefined;
+    const cookieOnly = Boolean(deps.config.ssoBaseUrl);
     const token = getTokenFromRequest(c.req.raw, {
-      cookieName: deps.config.auth.cookieName ?? undefined,
-      cookieOnly: Boolean(deps.config.ssoBaseUrl),
+      cookieName: cookieName ?? undefined,
+      cookieOnly,
     });
+    if (path === "/oauth/login") {
+      console.log("[auth]", {
+        path,
+        cookieName: cookieName ?? "(not set)",
+        cookieOnly,
+        hasToken: !!token,
+        cookieHeader: c.req.raw.headers.get("cookie")?.slice(0, 80) ?? null,
+      });
+    }
     if (!token) {
       await next();
       return;
     }
     const auth = await deps.oauthServer.resolveAuth(token);
+    if (path === "/oauth/login") {
+      console.log("[auth] resolveAuth", { hasAuth: !!auth, authType: auth?.type });
+    }
     if (auth) {
       if (auth.type === "user") {
-        c.set("auth", { type: "user", userId: auth.userId } satisfies Env["Variables"]["auth"]);
+        c.set("auth", {
+          type: "user",
+          userId: auth.userId,
+          email: auth.email,
+          name: auth.name,
+          picture: auth.picture,
+        } satisfies Env["Variables"]["auth"]);
       } else {
         c.set("auth", {
           type: "delegate",
@@ -110,6 +121,16 @@ export function createApp(deps: AppDeps) {
     }
     await next();
   });
+
+  const oauthRoutes = createLoginRedirectRoutes(deps.config);
+  app.route("/", oauthRoutes);
+  if (!deps.config.ssoBaseUrl) {
+    const legacyOAuth = createOAuthRoutes({
+      oauthServer: deps.oauthServer,
+      cookieConfig: deps.config.auth,
+    });
+    app.route("/", legacyOAuth);
+  }
 
   const csrfRoutes = createCsrfController(deps.config);
   app.route("/", csrfRoutes);

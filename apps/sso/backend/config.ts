@@ -40,6 +40,19 @@ export function loadConfig(): SsoConfig {
   const secure = !isLocalhost(baseUrl);
   const authCookieName = process.env.AUTH_COOKIE_NAME ?? "auth";
   const refreshCookieName = process.env.AUTH_REFRESH_COOKIE_NAME ?? "auth_refresh";
+  // When on localhost, default cookie domain to hostname so all ports (7000, 7100, ...) share the cookie.
+  const explicitDomain = process.env.AUTH_COOKIE_DOMAIN?.trim() || undefined;
+  const authCookieDomain =
+    explicitDomain ??
+    (isLocalhost(baseUrl)
+      ? (() => {
+          try {
+            return new URL(baseUrl).hostname;
+          } catch {
+            return "localhost";
+          }
+        })()
+      : undefined);
   return {
     baseUrl,
     cognito: {
@@ -50,7 +63,7 @@ export function loadConfig(): SsoConfig {
     },
     cookie: {
       authCookieName,
-      authCookieDomain: process.env.AUTH_COOKIE_DOMAIN || undefined,
+      authCookieDomain,
       authCookiePath: process.env.AUTH_COOKIE_PATH ?? "/",
       authCookieMaxAgeSeconds: process.env.AUTH_COOKIE_MAX_AGE_SECONDS
         ? Number(process.env.AUTH_COOKIE_MAX_AGE_SECONDS)
