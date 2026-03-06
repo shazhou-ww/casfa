@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "@casfa/cell-auth-webui": ["./packages/cell-auth-webui/src/index.ts"],
+      "@casfa/cell-auth-client": ["./packages/cell-auth-client/src/index.ts"],
+      "@casfa/cell-cognito-webui": ["./packages/cell-cognito-webui/src/index.ts"]
+    }
+  },
+  "exclude": ["node_modules", "dist"]
+}

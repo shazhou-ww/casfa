@@ -1,24 +1,4 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "allowImportingTsExtensions": true,
-    "paths": {
-      "@casfa/cas": ["../../packages/cas/src/index.ts"],
-      "@casfa/core": ["../../packages/core/src/index.ts"],
-      "@casfa/encoding": ["../../packages/encoding/src/index.ts"],
-      "@casfa/storage-core": ["../../packages/storage-core/src/index.ts"],
-      "@casfa/cell-auth-server": ["../../packages/cell-auth-server/src/index.ts"],
-      "@casfa/cell-cognito-server": ["../../packages/cell-cognito-server/src/index.ts"],
-      "@casfa/cell-delegates-server": ["../../packages/cell-delegates-server/src/index.ts"],
-      "@casfa/storage-fs": ["../../packages/storage-fs/src/index.ts"],
-      "@casfa/storage-memory": ["../../packages/storage-memory/src/index.ts"],
-      "@casfa/storage-s3": ["../../packages/storage-s3/src/index.ts"]
-    }
-  },
+  "extends": "../../tsconfig.cell-backend.json",
   "include": ["backend/**/*.ts", "shared/**/*.ts"]
 }
