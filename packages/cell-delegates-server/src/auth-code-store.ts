@@ -6,6 +6,8 @@ export type AuthCodeEntry = {
   codeChallengeMethod: string;
   redirectUri: string;
   createdAt: number;
+  /** Set when creating the auth code from authorize; returned as client_id in token response for refresh. */
+  delegateId?: string;
 };
 
 export type AuthCodeStore = {
