@@ -2,12 +2,20 @@ import type { AuthClient, AuthSubscriber, ClientAuth } from "./types.ts";
 
 export function createAuthClient(params: {
   storagePrefix: string;
-  /** If set, logout() will POST to this URL with credentials to clear SSO cookie. */
+  /** When true, do not read or write token/refresh in localStorage; getAuth() returns null. */
+  cookieOnly?: boolean;
+  /** SSO base URL for logout (and later refresh). When set with logoutEndpoint, logout() POSTs here. */
+  ssoBaseUrl?: string;
+  /** Path for logout (e.g. "/oauth/logout"). Used with ssoBaseUrl. */
   logoutEndpoint?: string;
 }): AuthClient {
   const tokenKey = `${params.storagePrefix}_token`;
   const refreshKey = `${params.storagePrefix}_refresh`;
-  const logoutEndpoint = params.logoutEndpoint;
+  const cookieOnly = params.cookieOnly === true;
+  const logoutUrl =
+    params.ssoBaseUrl && params.logoutEndpoint
+      ? `${params.ssoBaseUrl.replace(/\/$/, "")}${params.logoutEndpoint.startsWith("/") ? "" : "/"}${params.logoutEndpoint}`
+      : params.logoutEndpoint;
 
   let currentAuth: ClientAuth | null = null;
   const listeners = new Set<AuthSubscriber>();
@@ -31,6 +39,7 @@ export function createAuthClient(params: {
 
   const client: AuthClient = {
     getAuth() {
+      if (cookieOnly) return null;
       if (currentAuth) return currentAuth;
       const stored = localStorage.getItem(tokenKey);
       if (!stored) return null;
@@ -50,6 +59,7 @@ export function createAuthClient(params: {
     },
 
     setTokens(token, refreshToken) {
+      if (cookieOnly) return;
       localStorage.setItem(tokenKey, token);
       if (refreshToken) {
         localStorage.setItem(refreshKey, refreshToken);
@@ -62,16 +72,22 @@ export function createAuthClient(params: {
     },
 
     logout() {
-      if (logoutEndpoint) {
-        fetch(logoutEndpoint, { method: "POST", credentials: "include" }).catch(() => {}).finally(() => {
+      if (logoutUrl) {
+        fetch(logoutUrl, { method: "POST", credentials: "include" })
+          .catch(() => {})
+          .finally(() => {
+            if (!cookieOnly) {
+              localStorage.removeItem(tokenKey);
+              localStorage.removeItem(refreshKey);
+            }
+            currentAuth = null;
+            notify();
+          });
+      } else {
+        if (!cookieOnly) {
           localStorage.removeItem(tokenKey);
           localStorage.removeItem(refreshKey);
-          currentAuth = null;
-          notify();
-        });
-      } else {
-        localStorage.removeItem(tokenKey);
-        localStorage.removeItem(refreshKey);
+        }
         currentAuth = null;
         notify();
       }

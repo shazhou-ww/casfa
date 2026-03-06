@@ -4,13 +4,17 @@ export function createApiFetch(params: {
   authClient: AuthClient;
   baseUrl: string;
   onUnauthorized: () => void;
+  /** When true, do not set Authorization header; rely on cookies only. */
+  cookieOnly?: boolean;
 }): (path: string, init: RequestInit | null) => Promise<Response> {
-  const { authClient, baseUrl, onUnauthorized } = params;
+  const { authClient, baseUrl, onUnauthorized, cookieOnly = false } = params;
 
   return async (path, init) => {
-    const auth = authClient.getAuth();
     const headers = new Headers(init?.headers);
-    if (auth) headers.set("Authorization", `Bearer ${auth.token}`);
+    if (!cookieOnly) {
+      const auth = authClient.getAuth();
+      if (auth) headers.set("Authorization", `Bearer ${auth.token}`);
+    }
     if (!headers.has("Content-Type") && init?.body) {
       headers.set("Content-Type", "application/json");
     }
