@@ -18,7 +18,6 @@ import {
 import { ensureLocalTables, isDynamoDBReady } from "../local/dynamodb-local.js";
 import { ensureLocalBuckets } from "../local/minio-local.js";
 import { loadEnvFiles } from "../utils/env.js";
-import { virtualIndexPlugin } from "../utils/frontend.js";
 import { buildDevProxy, getWorkspaceAlias } from "../utils/vite-config.js";
 
 function resolveAppPath(cellDir: string, entry: BackendEntry): string {
@@ -244,7 +243,6 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
   let viteServer: Awaited<ReturnType<typeof createServer>> | undefined;
   if (resolved.frontend) {
     const frontendDir = resolve(cellDir, resolved.frontend.dir);
-    const virtualIndex = virtualIndexPlugin(config);
 
     const proxy = buildDevProxy(
       resolved.backend ? Object.values(resolved.backend.entries) : undefined,
@@ -277,11 +275,6 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
       });
       finalConfig = baseFromCell;
     }
-    const plugins = Array.isArray(finalConfig.plugins)
-      ? [virtualIndex, ...finalConfig.plugins]
-      : [virtualIndex];
-    finalConfig = { ...finalConfig, plugins };
-
     console.log(`Starting frontend [web] on port ${frontendPort}...`);
     viteServer = await createServer({
       ...finalConfig,
