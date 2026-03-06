@@ -1,6 +1,6 @@
 /**
  * SSO OAuth routes: authorize → Cognito, callback → set cookies + redirect to return_url,
- * token (code only), refresh (from cookie), logout. Uses cell-cognito and cell-oauth.
+ * token (code only), refresh (from cookie), logout. Uses cell-cognito-server and cell-auth-server.
  */
 import {
   buildAuthCookieHeader,

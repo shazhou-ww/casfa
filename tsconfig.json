@@ -47,10 +47,12 @@
       "@casfa/dag-diff": ["./packages/dag-diff/src/index.ts"],
       "@casfa/oauth-consumer": ["./packages/oauth-consumer/src/index.ts"],
       "@casfa/oauth-provider": ["./packages/oauth-provider/src/index.ts"],
-      "@casfa/cell-cognito": ["./packages/cell-cognito/src/index.ts"],
-      "@casfa/cell-oauth": ["./packages/cell-oauth/src/index.ts"],
+      "@casfa/cell-cognito-server": ["./packages/cell-cognito-server/src/index.ts"],
+      "@casfa/cell-cognito-webui": ["./packages/cell-cognito-webui/src/index.ts"],
+      "@casfa/cell-auth-server": ["./packages/cell-auth-server/src/index.ts"],
       "@casfa/cell-auth-client": ["./packages/cell-auth-client/src/index.ts"],
-      "@casfa/cell-auth-webui": ["./packages/cell-auth-webui/src/index.ts"]
+      "@casfa/cell-auth-webui": ["./packages/cell-auth-webui/src/index.ts"],
+      "@casfa/cell-delegates-server": ["./packages/cell-delegates-server/src/index.ts"]
     },
 
     // Best practices
