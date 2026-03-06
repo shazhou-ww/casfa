@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 
 export type { DelegateAuth, DelegateGrant, DelegateGrantStore, DelegatePermission } from "./types.ts";
+export { createDelegateAccessToken, decodeDelegateTokenPayload, generateDelegateId, generateRandomToken, sha256Hex, verifyCodeChallenge } from "./token.ts";
 
 export type DelegatesEnv = {
   Variables: {
