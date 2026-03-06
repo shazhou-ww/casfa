@@ -6,13 +6,13 @@
   "scripts": {
     "aws:login": "bun ../cell-cli/src/cli.ts aws login",
     "aws:logout": "bun ../cell-cli/src/cli.ts aws logout",
-    "clean": "rimraf .esbuild .cell",
+    "clean": "bun ../cell-cli/src/cli.ts clean",
     "dev": "bun ../cell-cli/src/cli.ts dev",
     "build": "bun ../cell-cli/src/cli.ts build",
     "deploy": "bun ../cell-cli/src/cli.ts deploy",
     "typecheck": "bun ../cell-cli/src/cli.ts typecheck",
     "test": "bun ../cell-cli/src/cli.ts test",
-    "test:unit": "bun test backend/",
+    "test:unit": "bun ../cell-cli/src/cli.ts test:unit",
     "test:e2e": "bun ../cell-cli/src/cli.ts test:e2e",
     "lint": "bun ../cell-cli/src/cli.ts lint"
   },

@@ -52,3 +52,6 @@ params:
 domain:
   zone: shazhou.me
   host: beta.casfa.shazhou.me
+
+testing:
+  unit: backend/

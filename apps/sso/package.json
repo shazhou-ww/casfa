@@ -6,13 +6,13 @@
   "scripts": {
     "aws:login": "bun ../cell-cli/src/cli.ts aws login",
     "aws:logout": "bun ../cell-cli/src/cli.ts aws logout",
-    "clean": "rimraf .esbuild .cell",
+    "clean": "bun ../cell-cli/src/cli.ts clean",
     "dev": "bun ../cell-cli/src/cli.ts dev",
     "build": "bun ../cell-cli/src/cli.ts build",
     "deploy": "bun ../cell-cli/src/cli.ts deploy",
     "typecheck": "bun ../cell-cli/src/cli.ts typecheck",
     "test": "bun ../cell-cli/src/cli.ts test",
-    "test:unit": "bun test backend/",
+    "test:unit": "bun ../cell-cli/src/cli.ts test:unit",
     "lint": "bun ../cell-cli/src/cli.ts lint"
   },
   "dependencies": {
@@ -37,7 +37,6 @@
     "@types/bun": "latest",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
-    "rimraf": "^6.0.1",
     "typescript": "^5.8.3"
   }
 }

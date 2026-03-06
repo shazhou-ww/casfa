@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { buildCommand } from "./commands/build.js";
+import { cleanCommand } from "./commands/clean.js";
 import { deployCommand } from "./commands/deploy.js";
 import { devCommand } from "./commands/dev.js";
 import { initCommand } from "./commands/init.js";
@@ -41,6 +42,13 @@ program
   .description("Build frontend and backend artifacts")
   .action(async () => {
     await buildCommand();
+  });
+
+program
+  .command("clean")
+  .description("Remove .cell and .esbuild directories")
+  .action(() => {
+    cleanCommand();
   });
 
 program

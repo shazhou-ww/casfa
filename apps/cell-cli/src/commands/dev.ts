@@ -153,14 +153,11 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
       console.error("Docker is not running. Please start Docker and try again.");
       process.exit(1);
     }
-    const dataDir = resolve(cellDir, ".cell/local-storage/s3");
-    mkdirSync(dataDir, { recursive: true });
     const minioContainerName = `${resolved.name}-minio-dev`;
     console.log(`Starting MinIO on port ${s3Port}...`);
     await startMinIO({
       port: s3Port,
       containerName: minioContainerName,
-      dataDir,
     });
 
     if (!(await waitForPort(s3Port))) {
@@ -171,7 +168,6 @@ export async function devCommand(options?: { cellDir?: string }): Promise<void> 
       await startMinIO({
         port: s3Port,
         containerName: minioContainerName,
-        dataDir,
       });
       if (!(await waitForPort(s3Port))) {
         console.error("MinIO failed to start");

@@ -14,7 +14,11 @@ import { ensureLocalBuckets } from "../local/minio-local.js";
 import { loadEnvFiles } from "../utils/env.js";
 
 async function hasMatchingFiles(cwd: string, pattern: string): Promise<boolean> {
-  const glob = new Glob(pattern);
+  const isDirPattern = !pattern.includes("*");
+  const globPattern = isDirPattern
+    ? pattern.replace(/\/?$/, "") + "/**/*.test.ts"
+    : pattern;
+  const glob = new Glob(globPattern);
   for await (const _ of glob.scan({ cwd, onlyFiles: true })) {
     return true;
   }
