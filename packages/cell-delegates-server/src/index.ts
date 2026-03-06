@@ -2,9 +2,10 @@
  * Delegate management routes: list, create, revoke.
  * Requires auth with manage_delegates (user or delegate with that permission).
  */
-import type { DelegatePermission, OAuthServer } from "@casfa/cell-oauth";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { createDelegate, listDelegates, revokeDelegate } from "./delegate-ops.ts";
+import type { DelegateAuth, DelegateGrantStore, DelegatePermission } from "./types.ts";
 
 export type { DelegateAuth, DelegateGrant, DelegateGrantStore, DelegatePermission } from "./types.ts";
 export { createDynamoGrantStore } from "./dynamo-grant-store.ts";
@@ -14,13 +15,12 @@ export { createDelegate, listDelegates, revokeDelegate } from "./delegate-ops.ts
 
 export type DelegatesEnv = {
   Variables: {
-    auth?: { type: "user"; userId: string } | { type: "delegate"; realmId: string; permissions: string[] };
+    auth?: { type: "user"; userId: string } | DelegateAuth;
   };
 };
 
 export type CreateDelegatesRoutesDeps<E extends DelegatesEnv = DelegatesEnv> = {
-  oauthServer: OAuthServer;
-  /** Return the realm owner id (userId for user, realmId for delegate). */
+  grantStore: DelegateGrantStore;
   getUserId: (auth: E["Variables"]["auth"]) => string;
 };
 
@@ -33,12 +33,11 @@ function requireManageDelegates(auth: DelegatesEnv["Variables"]["auth"]): NonNul
 
 export function createDelegatesRoutes<E extends DelegatesEnv>(deps: CreateDelegatesRoutesDeps<E>): Hono<E> {
   const routes = new Hono<E>();
-  const { oauthServer, getUserId } = deps;
+  const { grantStore, getUserId } = deps;
 
   routes.get("/api/delegates", async (c) => {
     const auth = requireManageDelegates(c.get("auth"));
-    const userId = getUserId(auth);
-    const grants = await oauthServer.listDelegates(userId);
+    const grants = await listDelegates(grantStore, getUserId(auth));
     return c.json(
       grants.map((g) => ({
         delegateId: g.delegateId,
@@ -57,7 +56,7 @@ export function createDelegatesRoutes<E extends DelegatesEnv>(deps: CreateDelega
       permissions?: string[];
     };
 
-    const result = await oauthServer.createDelegate({
+    const result = await createDelegate(grantStore, {
       userId: getUserId(auth),
       clientName: body.clientName,
       permissions: (body.permissions ?? ["use_mcp"]) as DelegatePermission[],
@@ -76,10 +75,10 @@ export function createDelegatesRoutes<E extends DelegatesEnv>(deps: CreateDelega
   routes.post("/api/delegates/:id/revoke", async (c) => {
     const auth = requireManageDelegates(c.get("auth"));
     const delegateId = c.req.param("id");
-    const grants = await oauthServer.listDelegates(getUserId(auth));
+    const grants = await listDelegates(grantStore, getUserId(auth));
     const grant = grants.find((g) => g.delegateId === delegateId);
     if (!grant) return c.json({ error: "not_found" }, 404);
-    await oauthServer.revokeDelegate(delegateId);
+    await revokeDelegate(grantStore, delegateId);
     return c.json({ ok: true });
   });
 
