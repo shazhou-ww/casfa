@@ -1,7 +1,7 @@
 /**
  * E2E test setup.
  * When BASE_URL is set: hit remote server (e.g. cell dev); mock auth uses decode-only verifier.
- * When BASE_URL is not set: in-process server with memory stores, cell-oauth with memory grant store.
+ * When BASE_URL is not set: in-process server with memory stores, cell-cognito-server / cell-delegates-server with memory grant store.
  * Paths: /mcp, /api/delegates, /oauth/* (OAuth flow).
  */
 process.env.NODE_ENV = "test";

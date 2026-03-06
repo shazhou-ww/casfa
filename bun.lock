@@ -74,9 +74,9 @@
         "@aws-sdk/client-dynamodb": "^3.1001.0",
         "@aws-sdk/lib-dynamodb": "^3.1001.0",
         "@casfa/cell-auth-client": "workspace:*",
+        "@casfa/cell-auth-server": "workspace:*",
         "@casfa/cell-cognito-server": "workspace:*",
         "@casfa/cell-delegates-server": "workspace:*",
-        "@casfa/cell-oauth": "workspace:*",
         "@emotion/react": "^11.14.0",
         "@emotion/styled": "^11.14.1",
         "@modelcontextprotocol/sdk": "^1.27.1",
@@ -303,20 +303,6 @@
         "@aws-sdk/client-dynamodb": "^3.700.0",
         "@aws-sdk/lib-dynamodb": "^3.700.0",
         "hono": "^4.6.0",
-      },
-      "devDependencies": {
-        "@types/bun": "latest",
-        "typescript": "^5.3.0",
-      },
-    },
-    "packages/cell-oauth": {
-      "name": "@casfa/cell-oauth",
-      "version": "0.1.0",
-      "dependencies": {
-        "@aws-sdk/client-dynamodb": "^3.700.0",
-        "@aws-sdk/lib-dynamodb": "^3.700.0",
-        "@casfa/cell-auth-server": "workspace:*",
-        "@casfa/cell-cognito-server": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -797,8 +783,6 @@
     "@casfa/cell-cognito-webui": ["@casfa/cell-cognito-webui@workspace:packages/cell-cognito-webui"],
 
     "@casfa/cell-delegates-server": ["@casfa/cell-delegates-server@workspace:packages/cell-delegates-server"],
-
-    "@casfa/cell-oauth": ["@casfa/cell-oauth@workspace:packages/cell-oauth"],
 
     "@casfa/cli": ["@casfa/cli@workspace:apps/cli"],
 
@@ -1940,8 +1924,6 @@
 
     "@casfa/cell-delegates-server/@types/bun": ["@types/bun@1.3.10", "", { "dependencies": { "bun-types": "1.3.10" } }, "sha512-0+rlrUrOrTSskibryHbvQkDOWRJwJZqZlxrUs1u4oOoTln8+WIXBPmAuCF35SWB2z4Zl3E84Nl/D0P7803nigQ=="],
 
-    "@casfa/cell-oauth/@types/bun": ["@types/bun@1.3.10", "", { "dependencies": { "bun-types": "1.3.10" } }, "sha512-0+rlrUrOrTSskibryHbvQkDOWRJwJZqZlxrUs1u4oOoTln8+WIXBPmAuCF35SWB2z4Zl3E84Nl/D0P7803nigQ=="],
-
     "@casfa/cli/@aws-sdk/client-dynamodb": ["@aws-sdk/client-dynamodb@3.982.0", "https://mirrors.tencent.com/npm/@aws-sdk/client-dynamodb/-/client-dynamodb-3.982.0.tgz", { "dependencies": { "@aws-crypto/sha256-browser": "5.2.0", "@aws-crypto/sha256-js": "5.2.0", "@aws-sdk/core": "^3.973.6", "@aws-sdk/credential-provider-node": "^3.972.5", "@aws-sdk/dynamodb-codec": "^3.972.6", "@aws-sdk/middleware-endpoint-discovery": "^3.972.3", "@aws-sdk/middleware-host-header": "^3.972.3", "@aws-sdk/middleware-logger": "^3.972.3", "@aws-sdk/middleware-recursion-detection": "^3.972.3", "@aws-sdk/middleware-user-agent": "^3.972.6", "@aws-sdk/region-config-resolver": "^3.972.3", "@aws-sdk/types": "^3.973.1", "@aws-sdk/util-endpoints": "3.982.0", "@aws-sdk/util-user-agent-browser": "^3.972.3", "@aws-sdk/util-user-agent-node": "^3.972.4", "@smithy/config-resolver": "^4.4.6", "@smithy/core": "^3.22.0", "@smithy/fetch-http-handler": "^5.3.9", "@smithy/hash-node": "^4.2.8", "@smithy/invalid-dependency": "^4.2.8", "@smithy/middleware-content-length": "^4.2.8", "@smithy/middleware-endpoint": "^4.4.12", "@smithy/middleware-retry": "^4.4.29", "@smithy/middleware-serde": "^4.2.9", "@smithy/middleware-stack": "^4.2.8", "@smithy/node-config-provider": "^4.3.8", "@smithy/node-http-handler": "^4.4.8", "@smithy/protocol-http": "^5.3.8", "@smithy/smithy-client": "^4.11.1", "@smithy/types": "^4.12.0", "@smithy/url-parser": "^4.2.8", "@smithy/util-base64": "^4.3.0", "@smithy/util-body-length-browser": "^4.2.0", "@smithy/util-body-length-node": "^4.2.1", "@smithy/util-defaults-mode-browser": "^4.3.28", "@smithy/util-defaults-mode-node": "^4.2.31", "@smithy/util-endpoints": "^3.2.8", "@smithy/util-middleware": "^4.2.8", "@smithy/util-retry": "^4.2.8", "@smithy/util-utf8": "^4.2.0", "@smithy/util-waiter": "^4.2.8", "tslib": "^2.6.2" } }, "sha512-PBQ72kW6rk3qXp4TsDMRC0fGKxsPhgc4zXpDu3HSUw9ZjWoP68k1tsouRn3Y1vIjOq8d4ElycChOzoPCi97mLw=="],
 
     "@casfa/cli/@noble/hashes": ["@noble/hashes@2.0.1", "https://mirrors.tencent.com/npm/@noble/hashes/-/hashes-2.0.1.tgz", {}, "sha512-XlOlEbQcE9fmuXxrVTXCTlG2nlRXa9Rj3rr5Ue/+tX+nmkgbX720YHh0VR3hBF9xDvwnb8D2shVGOwNx+ulArw=="],
@@ -2167,8 +2149,6 @@
     "@casfa/cell-cognito-server/@types/bun/bun-types": ["bun-types@1.3.10", "", { "dependencies": { "@types/node": "*" } }, "sha512-tcpfCCl6XWo6nCVnpcVrxQ+9AYN1iqMIzgrSKYMB/fjLtV2eyAVEg7AxQJuCq/26R6HpKWykQXuSOq/21RYcbg=="],
 
     "@casfa/cell-delegates-server/@types/bun/bun-types": ["bun-types@1.3.10", "", { "dependencies": { "@types/node": "*" } }, "sha512-tcpfCCl6XWo6nCVnpcVrxQ+9AYN1iqMIzgrSKYMB/fjLtV2eyAVEg7AxQJuCq/26R6HpKWykQXuSOq/21RYcbg=="],
-
-    "@casfa/cell-oauth/@types/bun/bun-types": ["bun-types@1.3.10", "", { "dependencies": { "@types/node": "*" } }, "sha512-tcpfCCl6XWo6nCVnpcVrxQ+9AYN1iqMIzgrSKYMB/fjLtV2eyAVEg7AxQJuCq/26R6HpKWykQXuSOq/21RYcbg=="],
 
     "@casfa/cli/@aws-sdk/client-dynamodb/@aws-sdk/core": ["@aws-sdk/core@3.973.6", "https://mirrors.tencent.com/npm/@aws-sdk/core/-/core-3.973.6.tgz", { "dependencies": { "@aws-sdk/types": "^3.973.1", "@aws-sdk/xml-builder": "^3.972.4", "@smithy/core": "^3.22.0", "@smithy/node-config-provider": "^4.3.8", "@smithy/property-provider": "^4.2.8", "@smithy/protocol-http": "^5.3.8", "@smithy/signature-v4": "^5.3.8", "@smithy/smithy-client": "^4.11.1", "@smithy/types": "^4.12.0", "@smithy/util-base64": "^4.3.0", "@smithy/util-middleware": "^4.2.8", "@smithy/util-utf8": "^4.2.0", "tslib": "^2.6.2" } }, "sha512-pz4ZOw3BLG0NdF25HoB9ymSYyPbMiIjwQJ2aROXRhAzt+b+EOxStfFv8s5iZyP6Kiw7aYhyWxj5G3NhmkoOTKw=="],
 
@@ -2690,8 +2670,6 @@
 
     "@casfa/cell-delegates-server/@types/bun/bun-types/@types/node": ["@types/node@25.2.0", "https://mirrors.tencent.com/npm/@types/node/-/node-25.2.0.tgz", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-DZ8VwRFUNzuqJ5khrvwMXHmvPe+zGayJhr2CDNiKB1WBE1ST8Djl00D0IC4vvNmHMdj6DlbYRIaFE7WHjlDl5w=="],
 
-    "@casfa/cell-oauth/@types/bun/bun-types/@types/node": ["@types/node@25.2.0", "https://mirrors.tencent.com/npm/@types/node/-/node-25.2.0.tgz", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-DZ8VwRFUNzuqJ5khrvwMXHmvPe+zGayJhr2CDNiKB1WBE1ST8Djl00D0IC4vvNmHMdj6DlbYRIaFE7WHjlDl5w=="],
-
     "@casfa/cli/@aws-sdk/client-dynamodb/@aws-sdk/core/@aws-sdk/xml-builder": ["@aws-sdk/xml-builder@3.972.4", "https://mirrors.tencent.com/npm/@aws-sdk/xml-builder/-/xml-builder-3.972.4.tgz", { "dependencies": { "@smithy/types": "^4.12.0", "fast-xml-parser": "5.3.4", "tslib": "^2.6.2" } }, "sha512-0zJ05ANfYqI6+rGqj8samZBFod0dPPousBjLEqg8WdxSgbMAkRgLyn81lP215Do0rFJ/17LIXwr7q0yK24mP6Q=="],
 
     "@casfa/cli/@aws-sdk/client-dynamodb/@aws-sdk/core/@smithy/property-provider": ["@smithy/property-provider@4.2.8", "https://mirrors.tencent.com/npm/@smithy/property-provider/-/property-provider-4.2.8.tgz", { "dependencies": { "@smithy/types": "^4.12.0", "tslib": "^2.6.2" } }, "sha512-EtCTbyIveCKeOXDSWSdze3k612yCPq1YbXsbqX3UHhkOSW8zKsM9NOJG5gTIya0vbY2DIaieG8pKo1rITHYL0w=="],
@@ -3143,8 +3121,6 @@
     "@casfa/cell-cognito-server/@types/bun/bun-types/@types/node/undici-types": ["undici-types@7.16.0", "https://mirrors.tencent.com/npm/undici-types/-/undici-types-7.16.0.tgz", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
 
     "@casfa/cell-delegates-server/@types/bun/bun-types/@types/node/undici-types": ["undici-types@7.16.0", "https://mirrors.tencent.com/npm/undici-types/-/undici-types-7.16.0.tgz", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
-
-    "@casfa/cell-oauth/@types/bun/bun-types/@types/node/undici-types": ["undici-types@7.16.0", "https://mirrors.tencent.com/npm/undici-types/-/undici-types-7.16.0.tgz", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
 
     "@casfa/cli/@aws-sdk/client-dynamodb/@aws-sdk/core/@aws-sdk/xml-builder/fast-xml-parser": ["fast-xml-parser@5.3.4", "https://mirrors.tencent.com/npm/fast-xml-parser/-/fast-xml-parser-5.3.4.tgz", { "dependencies": { "strnum": "^2.1.0" }, "bin": { "fxparser": "src/cli/cli.js" } }, "sha512-EFd6afGmXlCx8H8WTZHhAoDaWaGyuIBoZJ2mknrNxug+aZKjkp0a0dlars9Izl+jF+7Gu1/5f/2h68cQpe0IiA=="],
 
