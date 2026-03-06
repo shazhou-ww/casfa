@@ -72,3 +72,4 @@
 ## 7. 变更记录
 
 - 2026-03-06：初稿；client=delegate、无 client_id、无 client-info/register、redirect_uri 一次性、scope 与同意页权限列表、简洁无兼容。
+- 2026-03-06：实现计划见 `2026-03-06-delegate-oauth-extract-impl.md`。
