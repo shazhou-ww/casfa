@@ -3,6 +3,9 @@ export type DelegatePermission = "use_mcp" | "manage_delegates" | (string & {});
 export type UserAuth = {
   type: "user";
   userId: string;
+  email?: string;
+  name?: string;
+  picture?: string;
 };
 
 export type DelegateAuth = {

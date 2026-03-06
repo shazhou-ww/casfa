@@ -3,13 +3,13 @@ import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { DirectoryTree } from "../components/explorer/directory-tree";
 import { useExplorerNavigate } from "../hooks/use-explorer-navigate";
-import { useAuth } from "../lib/auth";
+import { useRealmId } from "../lib/auth";
 import { routeToPath } from "../lib/explorer-routes";
 import { useExplorerStore } from "../stores/explorer-store";
 
 export function ExplorerPage() {
   const location = useLocation();
-  const realmId = useAuth()?.userId;
+  const realmId = useRealmId();
   const { setCurrentPath } = useExplorerStore();
   const setPath = useExplorerNavigate();
 

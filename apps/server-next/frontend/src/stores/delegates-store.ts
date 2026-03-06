@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { apiFetch, authClient } from "../lib/auth";
+import { apiFetch, getRealmId } from "../lib/auth";
 import type { CreateDelegateResponse, DelegateListItem } from "../types/delegate";
 
 type DelegatesStore = {
@@ -15,7 +15,7 @@ type DelegatesStore = {
 };
 
 function requireAuth(): void {
-  const userId = authClient.getAuth()?.userId;
+  const userId = getRealmId();
   if (!userId) throw new Error("Not authenticated: user not loaded");
 }
 

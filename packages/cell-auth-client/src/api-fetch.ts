@@ -18,11 +18,9 @@ export function createApiFetch(params: {
   authClient: AuthClient;
   baseUrl: string;
   onUnauthorized: () => void;
-  /** When true, do not set Authorization header; rely on cookies only. */
-  cookieOnly?: boolean;
   /** Cookie name for CSRF token (e.g. "csrf_token"). When set, add X-CSRF-Token header from document.cookie. */
   csrfCookieName?: string;
-  /** SSO base URL for refresh (e.g. "https://auth.example.com"). */
+  /** SSO base URL. When set, cookie-only: do not set Authorization header (rely on cookies). */
   ssoBaseUrl?: string;
   /** Path for refresh (e.g. "/oauth/refresh"). Used with ssoBaseUrl. */
   ssoRefreshPath?: string;
@@ -31,11 +29,11 @@ export function createApiFetch(params: {
     authClient,
     baseUrl,
     onUnauthorized,
-    cookieOnly = false,
     csrfCookieName,
     ssoBaseUrl,
     ssoRefreshPath,
   } = params;
+  const cookieOnly = Boolean(ssoBaseUrl);
 
   return async (path, init) => {
     const headers = new Headers(init?.headers);

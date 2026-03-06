@@ -14,7 +14,7 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { authClient, useAuth } from "../lib/auth";
+import { authClient, getSsoBaseUrl, useAuth } from "../lib/auth";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -25,6 +25,18 @@ export function LoginPage() {
   const [config, setConfig] = useState<{ authorizeUrl: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const ssoBaseUrl = getSsoBaseUrl();
+
+  // When using SSO, login page lives on SSO cell; redirect to it.
+  useEffect(() => {
+    if (ssoBaseUrl) {
+      const url = `/oauth/login?return_url=${encodeURIComponent(
+        returnUrl.startsWith("/") ? `${window.location.origin}${returnUrl}` : returnUrl
+      )}`;
+      window.location.replace(url);
+      return;
+    }
+  }, [returnUrl]);
 
   useEffect(() => {
     if (auth) {
@@ -33,6 +45,7 @@ export function LoginPage() {
   }, [auth, navigate, returnUrl]);
 
   const loadConfig = useCallback(async () => {
+    if (ssoBaseUrl) return;
     setError(null);
     setLoading(true);
     try {
@@ -108,6 +121,14 @@ export function LoginPage() {
       setError("Sign in failed");
     }
   };
+
+  if (ssoBaseUrl) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+        <Typography color="text.secondary">Redirecting to sign in…</Typography>
+      </Box>
+    );
+  }
 
   if (auth) {
     return (

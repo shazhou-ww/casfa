@@ -6,13 +6,13 @@ import StorageIcon from "@mui/icons-material/Storage";
 import { Box, Button, Menu, MenuItem, Snackbar, Typography } from "@mui/material";
 import { useCallback, useState } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
-import { authClient, useAuth } from "../lib/auth";
+import { authClient, getSsoBaseUrl, useCurrentUser } from "../lib/auth";
 import { SidebarTree } from "./explorer/sidebar-tree";
 
 const SIDEBAR_WIDTH = 260;
 
 export function Layout() {
-  const auth = useAuth();
+  const user = useCurrentUser();
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [copied, setCopied] = useState(false);
@@ -24,11 +24,11 @@ export function Layout() {
   const handleCloseMenu = useCallback(() => setAnchorEl(null), []);
 
   const handleCopyUserId = useCallback(() => {
-    if (auth?.userId) {
-      navigator.clipboard.writeText(auth.userId);
+    if (user?.userId) {
+      navigator.clipboard.writeText(user.userId);
       setCopied(true);
     }
-  }, [auth?.userId]);
+  }, [user?.userId]);
 
   const handleSettings = useCallback(() => {
     handleCloseMenu();
@@ -38,10 +38,10 @@ export function Layout() {
   const handleLogout = useCallback(() => {
     handleCloseMenu();
     authClient.logout();
-    navigate("/login", { replace: true });
+    navigate(getSsoBaseUrl() ? "/oauth/login" : "/login", { replace: true });
   }, [navigate, handleCloseMenu]);
 
-  const displayName = auth ? auth.email || auth.userId : "";
+  const displayName = user ? user.email || user.userId : "";
 
   return (
     <Box sx={{ display: "flex", height: "100vh", overflow: "hidden" }}>
@@ -85,7 +85,7 @@ export function Layout() {
 
         {/* Fixed bottom: Profile */}
         <Box sx={{ flexShrink: 0, p: 1, borderTop: 1, borderColor: "divider" }}>
-          {auth && (
+          {user && (
             <>
               <Button
                 fullWidth
@@ -107,9 +107,9 @@ export function Layout() {
                 anchorOrigin={{ vertical: "top", horizontal: "right" }}
                 transformOrigin={{ vertical: "bottom", horizontal: "right" }}
               >
-                {auth.email && (
+                {user?.email && (
                   <MenuItem dense disabled>
-                    <Typography variant="body2">{auth.email}</Typography>
+                    <Typography variant="body2">{user.email}</Typography>
                   </MenuItem>
                 )}
                 <MenuItem dense onClick={handleCopyUserId}>
@@ -118,7 +118,7 @@ export function Layout() {
                     component="code"
                     sx={{ fontSize: "0.8em", mr: 1, fontFamily: "monospace" }}
                   >
-                    {auth.userId}
+                    {user?.userId}
                   </Typography>
                   <ContentCopyIcon sx={{ fontSize: 14, opacity: 0.6 }} />
                 </MenuItem>

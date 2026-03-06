@@ -73,7 +73,9 @@ export function loadConfig(): ServerConfig {
   const port = Number(process.env.PORT) || DEFAULT_PORT;
   const stage = process.env.SLS_STAGE ?? process.env.STAGE ?? "dev";
   const baseUrl = (process.env.CELL_BASE_URL || "").replace(/\/$/, "");
-  const cookieName = process.env.AUTH_COOKIE_NAME || undefined;
+  const ssoBaseUrl = process.env.SSO_BASE_URL?.replace(/\/$/, "");
+  // When using SSO, cookie name must match what SSO sets ("auth"); ignore AUTH_COOKIE_NAME.
+  const cookieName = ssoBaseUrl ? "auth" : (process.env.AUTH_COOKIE_NAME || undefined);
   const auth: ServerConfig["auth"] = {
     mockJwtSecret: process.env.MOCK_JWT_SECRET || undefined,
     maxBranchTtlMs: process.env.MAX_BRANCH_TTL_MS
@@ -95,7 +97,6 @@ export function loadConfig(): ServerConfig {
         ? process.env.AUTH_COOKIE_SECURE === "true"
         : baseUrl.startsWith("https://"),
   };
-  const ssoBaseUrl = process.env.SSO_BASE_URL?.replace(/\/$/, "");
   return {
     port,
     baseUrl,

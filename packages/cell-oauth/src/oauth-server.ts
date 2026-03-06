@@ -384,7 +384,14 @@ export function createOAuthServer(config: OAuthServerConfig): OAuthServer {
               permissions: grant.permissions,
             };
           }
-          return { type: "user", userId: verified.userId };
+          const picture = typeof verified.rawClaims?.picture === "string" ? verified.rawClaims.picture : undefined;
+          return {
+            type: "user",
+            userId: verified.userId,
+            email: verified.email,
+            name: verified.name,
+            picture,
+          };
         } catch {
           return null;
         }
