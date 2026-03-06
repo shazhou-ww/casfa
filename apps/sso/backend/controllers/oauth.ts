@@ -8,10 +8,10 @@ import {
   buildClearRefreshCookieHeader,
   buildRefreshCookieHeader,
   getCookieFromRequest,
-} from "@casfa/cell-oauth";
-import type { OAuthServer } from "@casfa/cell-oauth";
-import { exchangeCodeForTokens, refreshCognitoTokens } from "@casfa/cell-cognito";
-import type { CognitoConfig } from "@casfa/cell-cognito";
+} from "@casfa/cell-auth-server";
+import type { OAuthServer } from "@casfa/cell-cognito-server";
+import { exchangeCodeForTokens, refreshCognitoTokens } from "@casfa/cell-cognito-server";
+import type { CognitoConfig } from "@casfa/cell-cognito-server";
 import { Hono } from "hono";
 import type { SsoConfig } from "../config.ts";
 

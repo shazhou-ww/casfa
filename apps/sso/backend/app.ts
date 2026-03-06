@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { SsoConfig } from "./config.ts";
 import { createSsoOAuthRoutes } from "./controllers/oauth.ts";
-import type { OAuthServer } from "@casfa/cell-oauth";
+import type { OAuthServer } from "@casfa/cell-cognito-server";
 
 export function createApp(deps: { config: SsoConfig; oauthServer: OAuthServer }) {
   const app = new Hono();

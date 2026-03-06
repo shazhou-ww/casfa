@@ -5,8 +5,9 @@ import {
   type CognitoConfig,
   createCognitoJwtVerifier,
   createMockJwtVerifier,
-} from "@casfa/cell-cognito";
-import { createDynamoGrantStore, createOAuthServer } from "@casfa/cell-oauth";
+} from "@casfa/cell-cognito-server";
+import { createOAuthServer } from "@casfa/cell-cognito-server";
+import { createDynamoGrantStore } from "@casfa/cell-delegates-server";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { handle } from "hono/aws-lambda";
