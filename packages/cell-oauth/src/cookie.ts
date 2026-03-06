@@ -78,3 +78,46 @@ export function buildClearAuthCookieHeader(options: BuildClearAuthCookieOptions)
   if (options.cookieDomain) parts.push(`Domain=${options.cookieDomain}`);
   return parts.join("; ");
 }
+
+export type BuildRefreshCookieOptions = {
+  cookieName: string;
+  cookieDomain?: string;
+  /** Default "/oauth/refresh" so cookie is only sent to refresh endpoint. */
+  cookiePath?: string;
+  cookieMaxAgeSeconds?: number;
+  secure?: boolean;
+  sameSite?: "Strict" | "Lax";
+};
+
+/**
+ * Build Set-Cookie value for refresh token (HttpOnly, Path=/oauth/refresh by default).
+ */
+export function buildRefreshCookieHeader(token: string, options: BuildRefreshCookieOptions): string {
+  const path = options.cookiePath ?? "/oauth/refresh";
+  const sameSite = options.sameSite ?? "Strict";
+  const parts = [`${options.cookieName}=${token}`, `Path=${path}`, "HttpOnly", `SameSite=${sameSite}`];
+  if (options.cookieDomain) parts.push(`Domain=${options.cookieDomain}`);
+  if (options.cookieMaxAgeSeconds != null) parts.push(`Max-Age=${options.cookieMaxAgeSeconds}`);
+  if (options.secure === true) parts.push("Secure");
+  return parts.join("; ");
+}
+
+export type BuildClearRefreshCookieOptions = {
+  cookieName: string;
+  cookiePath?: string;
+  cookieDomain?: string;
+  sameSite?: "Strict" | "Lax";
+};
+
+/**
+ * Build Set-Cookie value that clears the refresh cookie. Path/Domain must match when set.
+ */
+export function buildClearRefreshCookieHeader(
+  options: BuildClearRefreshCookieOptions
+): string {
+  const path = options.cookiePath ?? "/oauth/refresh";
+  const sameSite = options.sameSite ?? "Strict";
+  const parts = [`${options.cookieName}=`, `Path=${path}`, "Max-Age=0", "HttpOnly", `SameSite=${sameSite}`];
+  if (options.cookieDomain) parts.push(`Domain=${options.cookieDomain}`);
+  return parts.join("; ");
+}

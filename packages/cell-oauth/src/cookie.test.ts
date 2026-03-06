@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import {
   buildAuthCookieHeader,
   buildClearAuthCookieHeader,
+  buildRefreshCookieHeader,
+  buildClearRefreshCookieHeader,
   getTokenFromRequest,
 } from "./cookie.ts";
 
@@ -109,5 +111,35 @@ describe("buildClearAuthCookieHeader", () => {
     });
     expect(h).toContain("Path=/");
     expect(h).toContain("Domain=.example.com");
+  });
+});
+
+describe("buildRefreshCookieHeader", () => {
+  it("uses Path=/oauth/refresh, HttpOnly, SameSite=Strict by default", () => {
+    const h = buildRefreshCookieHeader("rt1", { cookieName: "auth_refresh" });
+    expect(h).toContain("auth_refresh=rt1");
+    expect(h).toContain("Path=/oauth/refresh");
+    expect(h).toContain("HttpOnly");
+    expect(h).toContain("SameSite=Strict");
+  });
+
+  it("includes Domain and Secure when provided", () => {
+    const h = buildRefreshCookieHeader("rt1", {
+      cookieName: "auth_refresh",
+      cookieDomain: ".example.com",
+      secure: true,
+    });
+    expect(h).toContain("Domain=.example.com");
+    expect(h).toContain("Secure");
+  });
+});
+
+describe("buildClearRefreshCookieHeader", () => {
+  it("clears with Path=/oauth/refresh and SameSite=Strict by default", () => {
+    const h = buildClearRefreshCookieHeader({ cookieName: "auth_refresh" });
+    expect(h).toContain("auth_refresh=");
+    expect(h).toContain("Path=/oauth/refresh");
+    expect(h).toContain("Max-Age=0");
+    expect(h).toContain("SameSite=Strict");
   });
 });
