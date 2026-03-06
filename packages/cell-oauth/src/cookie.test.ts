@@ -57,10 +57,10 @@ describe("getTokenFromRequest", () => {
 });
 
 describe("buildAuthCookieHeader", () => {
-  it("includes HttpOnly and SameSite=Lax", () => {
+  it("includes HttpOnly and SameSite=Strict by default", () => {
     const h = buildAuthCookieHeader("t1", { cookieName: "auth" });
     expect(h).toContain("HttpOnly");
-    expect(h).toContain("SameSite=Lax");
+    expect(h).toContain("SameSite=Strict");
     expect(h).toContain("auth=t1");
     expect(h).toContain("Path=/");
   });
@@ -93,12 +93,12 @@ describe("buildAuthCookieHeader", () => {
 });
 
 describe("buildClearAuthCookieHeader", () => {
-  it("value is empty and Max-Age=0", () => {
+  it("value is empty, Max-Age=0, and SameSite=Strict by default", () => {
     const h = buildClearAuthCookieHeader({ cookieName: "auth" });
     expect(h).toContain("auth=");
     expect(h).toContain("Max-Age=0");
     expect(h).toContain("HttpOnly");
-    expect(h).toContain("SameSite=Lax");
+    expect(h).toContain("SameSite=Strict");
   });
 
   it("includes Path and Domain when provided", () => {

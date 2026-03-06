@@ -41,15 +41,18 @@ export type BuildAuthCookieOptions = {
   cookiePath?: string;
   cookieMaxAgeSeconds?: number;
   secure?: boolean;
+  /** Default "Strict". Use "Lax" only if needed for cross-site redirects. */
+  sameSite?: "Strict" | "Lax";
 };
 
 /**
- * Build a single Set-Cookie header value for the auth token (HttpOnly, SameSite=Lax).
+ * Build a single Set-Cookie header value for the auth token (HttpOnly, SameSite default Strict).
  * Does not include the "Set-Cookie:" prefix. Use for POST /oauth/token response.
  */
 export function buildAuthCookieHeader(token: string, options: BuildAuthCookieOptions): string {
   const path = options.cookiePath ?? "/";
-  const parts = [`${options.cookieName}=${token}`, `Path=${path}`, "HttpOnly", "SameSite=Lax"];
+  const sameSite = options.sameSite ?? "Strict";
+  const parts = [`${options.cookieName}=${token}`, `Path=${path}`, "HttpOnly", `SameSite=${sameSite}`];
   if (options.cookieDomain) parts.push(`Domain=${options.cookieDomain}`);
   if (options.cookieMaxAgeSeconds != null) parts.push(`Max-Age=${options.cookieMaxAgeSeconds}`);
   if (options.secure === true) parts.push("Secure");
@@ -60,6 +63,8 @@ export type BuildClearAuthCookieOptions = {
   cookieName: string;
   cookiePath?: string;
   cookieDomain?: string;
+  /** Must match the cookie that was set. Default "Strict". */
+  sameSite?: "Strict" | "Lax";
 };
 
 /**
@@ -68,7 +73,8 @@ export type BuildClearAuthCookieOptions = {
  */
 export function buildClearAuthCookieHeader(options: BuildClearAuthCookieOptions): string {
   const path = options.cookiePath ?? "/";
-  const parts = [`${options.cookieName}=`, `Path=${path}`, "Max-Age=0", "HttpOnly", "SameSite=Lax"];
+  const sameSite = options.sameSite ?? "Strict";
+  const parts = [`${options.cookieName}=`, `Path=${path}`, "Max-Age=0", "HttpOnly", `SameSite=${sameSite}`];
   if (options.cookieDomain) parts.push(`Domain=${options.cookieDomain}`);
   return parts.join("; ");
 }
