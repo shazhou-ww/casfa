@@ -4,17 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "aws:login": "bun ../cell-cli/src/cli.ts aws login",
-    "aws:logout": "bun ../cell-cli/src/cli.ts aws logout",
-    "clean": "bun ../cell-cli/src/cli.ts clean",
-    "dev": "bun ../cell-cli/src/cli.ts dev",
-    "build": "bun ../cell-cli/src/cli.ts build",
-    "deploy": "bun ../cell-cli/src/cli.ts deploy",
-    "typecheck": "bun ../cell-cli/src/cli.ts typecheck",
-    "test": "bun ../cell-cli/src/cli.ts test",
-    "test:unit": "bun ../cell-cli/src/cli.ts test:unit",
-    "test:e2e": "bun ../cell-cli/src/cli.ts test:e2e",
-    "lint": "bun ../cell-cli/src/cli.ts lint"
+    "aws:login": "cell aws login",
+    "aws:logout": "cell aws logout",
+    "clean": "cell clean",
+    "dev": "cell dev",
+    "build": "cell build",
+    "deploy": "cell deploy",
+    "typecheck": "cell typecheck",
+    "test": "cell test",
+    "test:unit": "cell test:unit",
+    "test:e2e": "cell test:e2e",
+    "lint": "cell lint"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.700.0",

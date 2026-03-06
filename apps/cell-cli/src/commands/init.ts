@@ -4,10 +4,11 @@ import { basename, resolve } from "node:path";
 const CELL_YAML_SKELETON = (name: string) => `name: ${name}
 
 backend:
+  dir: backend
   runtime: nodejs20.x
   entries:
     api:
-      handler: backend/lambda.ts
+      handler: lambda.ts
       timeout: 30
       memory: 1024
       routes: ["*"]
@@ -16,7 +17,8 @@ frontend:
   dir: frontend
   entries:
     main:
-      src: src/main.tsx
+      entry: index.html
+      routes: ["/*"]
 
 static: []
 

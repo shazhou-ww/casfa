@@ -14,8 +14,9 @@ export async function buildCommand(options?: { cellDir?: string }): Promise<void
   const outputs: string[] = [];
 
   if (config.backend) {
+    const backendDir = resolve(cellDir, config.backend.dir ?? ".");
     for (const [name, entry] of Object.entries(config.backend.entries)) {
-      const handlerPath = resolve(cellDir, entry.handler);
+      const handlerPath = resolve(backendDir, entry.handler);
       const outfile = resolve(buildDir, name, "index.cjs");
       mkdirSync(dirname(outfile), { recursive: true });
 
@@ -38,6 +39,20 @@ export async function buildCommand(options?: { cellDir?: string }): Promise<void
 
   if (config.frontend) {
     const frontendDir = resolve(cellDir, config.frontend.dir);
+    const entries = config.frontend.entries;
+
+    const rollupInput: Record<string, string> = {};
+    for (const [name, fe] of Object.entries(entries)) {
+      rollupInput[name] = resolve(frontendDir, fe.entry);
+    }
+
+    const entryFileNamesForRoutes = (chunkInfo: { name: string }): string => {
+      const ent = entries[chunkInfo.name];
+      if (ent?.routes[0] && !ent.entry.toLowerCase().endsWith(".html")) {
+        return ent.routes[0].replace(/^\//, "");
+      }
+      return "assets/[name]-[hash].js";
+    };
 
     const userConfigPath = resolve(frontendDir, "vite.config.ts");
     const baseConfig: UserConfig = existsSync(userConfigPath)
@@ -51,7 +66,14 @@ export async function buildCommand(options?: { cellDir?: string }): Promise<void
               conditions: ["bun"],
             };
           })(),
-          build: { outDir: "dist", emptyOutDir: true },
+          build: {
+            outDir: "dist",
+            emptyOutDir: true,
+            rollupOptions: {
+              input: rollupInput,
+              output: { entryFileNames: entryFileNamesForRoutes },
+            },
+          },
         });
 
     let finalConfig: UserConfig;
@@ -59,6 +81,14 @@ export async function buildCommand(options?: { cellDir?: string }): Promise<void
       const userMod = await import(userConfigPath);
       const userConfig = userMod.default ?? userMod;
       finalConfig = mergeConfig(userConfig, baseConfig);
+      finalConfig = mergeConfig(finalConfig, {
+        build: {
+          rollupOptions: {
+            input: rollupInput,
+            output: { entryFileNames: entryFileNamesForRoutes },
+          },
+        },
+      });
     } else {
       finalConfig = baseConfig;
     }

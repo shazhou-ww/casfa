@@ -1,10 +1,11 @@
 name: image-workshop
 
 backend:
+  dir: backend
   runtime: nodejs20.x
   entries:
     mcp:
-      handler: backend/lambda.ts
+      handler: lambda.ts
       timeout: 90
       memory: 1024
       routes:
@@ -24,7 +25,8 @@ frontend:
   dir: frontend
   entries:
     main:
-      src: main.tsx
+      entry: index.html
+      routes: ["/*"]
 
 params:
   COGNITO_REGION: !Env
