@@ -224,7 +224,7 @@ async function fetchNewEvents(
 export async function deployCommand(options?: { cellDir?: string; yes?: boolean }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
-  const envMap = loadEnvFiles(cellDir);
+  const envMap = loadEnvFiles(cellDir, { stage: "cloud" });
   const resolved = resolveConfig(config, envMap, "cloud");
 
   // Validate: MOCK_JWT_SECRET should NOT be set for cloud
@@ -240,6 +240,29 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
   }
   if (envMap.AWS_REGION) {
     awsEnv.AWS_REGION = envMap.AWS_REGION;
+  }
+
+  // 0. Verify AWS credentials early so auth issues surface before build
+  {
+    const { exitCode, stdout } = await awsCli(
+      ["sts", "get-caller-identity", "--output", "json"],
+      awsEnv,
+      { pipeStderr: true }
+    );
+    if (exitCode !== 0) {
+      const profile = awsEnv.AWS_PROFILE;
+      const profileHint = profile ? ` (profile: ${profile})` : "";
+      const loginCmd = profile ? `aws sso login --profile ${profile}` : "aws sso login";
+      throw new Error(
+        `AWS credentials are not valid${profileHint}.\n` +
+          `  This usually means your SSO session has expired.\n` +
+          `  → Run: ${loginCmd}`
+      );
+    }
+    try {
+      const identity = JSON.parse(stdout) as { Account?: string; Arn?: string };
+      console.log(`AWS account: ${identity.Account ?? "unknown"} (${identity.Arn ?? "unknown"})`);
+    } catch {}
   }
 
   // 1. Build

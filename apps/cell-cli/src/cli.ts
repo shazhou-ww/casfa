@@ -14,13 +14,12 @@ import { testCommand, testE2eCommand, testUnitCommand } from "./commands/test.js
 import { typecheckCommand } from "./commands/typecheck.js";
 import { MissingParamsError } from "./config/resolve-config.js";
 
-/** Run async command; on MissingParamsError print message and exit 1 without stack trace */
 async function run(fn: () => Promise<void>): Promise<void> {
   try {
     await fn();
   } catch (e) {
-    if (e instanceof MissingParamsError) {
-      console.error(e.message);
+    if (e instanceof Error) {
+      console.error(`\n  Error: ${e.message}\n`);
       process.exit(1);
     }
     throw e;
