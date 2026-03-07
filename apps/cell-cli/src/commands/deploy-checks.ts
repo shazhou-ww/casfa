@@ -413,112 +413,19 @@ async function runPreDeployChecks(
     });
   }
 
-  // 4. Route53 DNS record conflict (stale records from previous failed deploys)
+  // 4. DNS record conflict checks (delegated to provider)
   if (resolved.domain?.host) {
     checks.push({
-      name: "Route53 DNS records available",
+      name: "DNS records available",
       run: async () => {
         if (!needsResourceChecks()) return;
-        const host = resolved.domain!.host;
-        const zone = resolved.domain!.zone;
+        // Only Route53 needs conflict checks — Cloudflare uses upsert (idempotent)
+        const dnsType = resolved.domain!.dns ?? "route53";
+        if (dnsType !== "route53") return;
 
-        const { exitCode: hzCode, stdout: hzOut } = await awsCli(
-          [
-            "route53",
-            "list-hosted-zones-by-name",
-            "--dns-name",
-            zone,
-            "--max-items",
-            "1",
-            "--query",
-            "HostedZones[0].[Id,Name]",
-            "--output",
-            "json",
-          ],
-          awsEnv,
-          { pipeStderr: true }
-        );
-        if (hzCode !== 0 || !hzOut) return;
-        const parsed = JSON.parse(hzOut) as string[];
-        if (!parsed[1]?.startsWith(zone)) return;
-        const hostedZoneId = parsed[0].replace("/hostedzone/", "");
-
-        const { exitCode: rrCode, stdout: rrOut } = await awsCli(
-          [
-            "route53",
-            "list-resource-record-sets",
-            "--hosted-zone-id",
-            hostedZoneId,
-            "--query",
-            `ResourceRecordSets[?Name=='${host}.']`,
-            "--output",
-            "json",
-          ],
-          awsEnv,
-          { pipeStderr: true }
-        );
-        if (rrCode !== 0 || !rrOut) return;
-        type R53Record = {
-          Name: string;
-          Type: string;
-          AliasTarget?: {
-            DNSName: string;
-            HostedZoneId: string;
-            EvaluateTargetHealth: boolean;
-          };
-          TTL?: number;
-          ResourceRecords?: Array<{ Value: string }>;
-        };
-        const records = JSON.parse(rrOut) as R53Record[];
-        const conflicting = records.filter(
-          (r) => r.Type === "A" || r.Type === "AAAA"
-        );
-        if (conflicting.length === 0) return;
-
-        const types = conflicting.map((r) => r.Type).join(", ");
-        throw new PreDeployCheckError(
-          `DNS record(s) for "${host}" already exist (${types}) and would block stack creation.\n` +
-            `  → This often happens after a failed deploy: the stack was deleted but DNS records were retained.`,
-          {
-            description: `Delete the existing DNS record(s) for "${host}" (${types}) so this stack can create them.`,
-            apply: async () => {
-              const changeBatch = JSON.stringify({
-                Changes: conflicting.map((r) => ({
-                  Action: "DELETE",
-                  ResourceRecordSet: r,
-                })),
-              });
-              mkdirSync(resolve(cellDir, ".cell"), { recursive: true });
-              const tmpPath = resolve(
-                cellDir,
-                ".cell/dns-delete-batch.json"
-              );
-              writeFileSync(tmpPath, changeBatch);
-              try {
-                const { exitCode: delCode } = await awsCli(
-                  [
-                    "route53",
-                    "change-resource-record-sets",
-                    "--hosted-zone-id",
-                    hostedZoneId,
-                    "--change-batch",
-                    `file://${tmpPath}`,
-                  ],
-                  awsEnv
-                );
-                if (delCode !== 0)
-                  throw new Error(
-                    `Failed to delete DNS records for ${host}`
-                  );
-                console.log(
-                  `  Deleted ${conflicting.length} DNS record(s) for ${host}`
-                );
-              } finally {
-                if (existsSync(tmpPath)) unlinkSync(tmpPath);
-              }
-            },
-          }
-        );
+        const { Route53Provider } = await import("../dns/route53-provider.js");
+        const provider = new Route53Provider();
+        await provider.preDeployChecks(resolved, awsCli, awsEnv, stackExists, cellDir);
       },
     });
   }

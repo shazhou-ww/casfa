@@ -1,5 +1,7 @@
 import type { ResolvedConfig } from "../config/resolve-config.js";
 import type { CfnFragment } from "../generators/types.js";
+import { Route53Provider } from "./route53-provider.js";
+import { CloudflareProvider } from "./cloudflare-provider.js";
 
 export type AwsCliFn = (
   args: string[],
@@ -32,4 +34,28 @@ export interface DnsProvider {
     stackExists: boolean,
     cellDir: string
   ): Promise<void>;
+}
+
+export function createDnsProvider(
+  config: ResolvedConfig,
+  envMap: Record<string, string>
+): DnsProvider {
+  const dnsType = config.domain?.dns ?? "route53";
+  if (dnsType === "cloudflare") {
+    const cf = config.domain!.cloudflare;
+    if (!cf) {
+      throw new Error(
+        "domain.dns is 'cloudflare' but domain.cloudflare config is missing.\n" +
+          "  Add cloudflare.zoneId and cloudflare.apiToken to your cell.yaml domain section."
+      );
+    }
+    const apiToken = envMap[cf.apiToken.secret];
+    if (!apiToken) {
+      throw new Error(
+        `Cloudflare API token not found: secret "${cf.apiToken.secret}" is not set in .env`
+      );
+    }
+    return new CloudflareProvider(cf.zoneId, apiToken);
+  }
+  return new Route53Provider();
 }
