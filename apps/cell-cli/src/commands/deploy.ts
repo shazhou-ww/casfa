@@ -7,6 +7,7 @@ import { generateTemplate } from "../generators/merge.js";
 import { loadEnvFiles } from "../utils/env.js";
 import { PreDeployCheckError, runPreDeployChecksFromDeploy } from "./deploy-checks.js";
 import { buildCommand } from "./build.js";
+import { createDnsProvider } from "../dns/dns-provider.js";
 
 interface AwsCliResult {
   exitCode: number;
@@ -33,10 +34,12 @@ async function ensureS3Bucket(
   bucketName: string,
   env: Record<string, string | undefined>
 ): Promise<void> {
-  const { exitCode } = await awsCli(["s3api", "head-bucket", "--bucket", bucketName], env);
+  const region = env.AWS_REGION ?? env.AWS_DEFAULT_REGION;
+  const regionArgs = region ? ["--region", region] : [];
+  const { exitCode } = await awsCli(["s3api", "head-bucket", "--bucket", bucketName, ...regionArgs], env);
   if (exitCode !== 0) {
     console.log(`Creating deploy artifacts bucket: ${bucketName}`);
-    const { exitCode: createCode } = await awsCli(["s3", "mb", `s3://${bucketName}`], env);
+    const { exitCode: createCode } = await awsCli(["s3", "mb", `s3://${bucketName}`, ...regionArgs], env);
     if (createCode !== 0) {
       throw new Error(`Failed to create S3 bucket: ${bucketName}`);
     }
@@ -242,6 +245,11 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
     awsEnv.AWS_REGION = envMap.AWS_REGION;
   }
 
+  // Create DNS provider (Route53 or Cloudflare based on config)
+  const dnsProvider = resolved.domain
+    ? createDnsProvider(resolved)
+    : null;
+
   // 0. Verify AWS credentials early so auth issues surface before build
   {
     const { exitCode, stdout } = await awsCli(
@@ -269,34 +277,43 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
   console.log("\n=== Building ===");
   await buildCommand({ cellDir });
 
-  // 2. Resolve hosted zone ID for auto-certificate
-  if (resolved.domain && !resolved.domain.certificate) {
-    const { exitCode: hzCode, stdout: hzOut } = await awsCli(
-      [
-        "route53",
-        "list-hosted-zones-by-name",
-        "--dns-name",
-        resolved.domain.zone,
-        "--max-items",
-        "1",
-        "--query",
-        "HostedZones[0].[Id,Name]",
-        "--output",
-        "json",
-      ],
-      awsEnv
-    );
-    if (hzCode !== 0) {
-      throw new Error(`Failed to look up Route53 hosted zone for "${resolved.domain.zone}"`);
-    }
-    const [zoneId, zoneName] = JSON.parse(hzOut || "[]") as string[];
-    if (!zoneName || !zoneName.startsWith(resolved.domain.zone)) {
-      throw new Error(
-        `Route53 hosted zone "${resolved.domain.zone}" not found. Create it or provide a certificate ARN.`
+  // 2. Ensure certificate (provider-specific)
+  if (dnsProvider && resolved.domain && !resolved.domain.certificate) {
+    console.log("\n=== Ensuring SSL certificate ===");
+    const dnsType = resolved.domain.dns ?? "route53";
+
+    if (dnsType === "route53") {
+      // Route53: look up hosted zone ID for CloudFormation auto-cert
+      const { exitCode: hzCode, stdout: hzOut } = await awsCli(
+        [
+          "route53", "list-hosted-zones-by-name",
+          "--dns-name", resolved.domain.zone,
+          "--max-items", "1",
+          "--query", "HostedZones[0].[Id,Name]",
+          "--output", "json",
+        ],
+        awsEnv
       );
+      if (hzCode !== 0) {
+        throw new Error(`Failed to look up Route53 hosted zone for "${resolved.domain.zone}"`);
+      }
+      const [zoneId, zoneName] = JSON.parse(hzOut || "[]") as string[];
+      if (!zoneName || !zoneName.startsWith(resolved.domain.zone)) {
+        throw new Error(
+          `Route53 hosted zone "${resolved.domain.zone}" not found. Create it or provide a certificate ARN.`
+        );
+      }
+      resolved.domain.hostedZoneId = zoneId.replace("/hostedzone/", "");
+      console.log(`  Route53 zone: ${resolved.domain.zone} → ${resolved.domain.hostedZoneId}`);
+    } else {
+      // Cloudflare: create cert externally + validate via Cloudflare API
+      const certArn = await dnsProvider.ensureCertificate(
+        resolved.domain.host, awsCli, awsEnv
+      );
+      if (certArn) {
+        resolved.domain.certificate = certArn;
+      }
     }
-    resolved.domain.hostedZoneId = zoneId.replace("/hostedzone/", "");
-    console.log(`  Route53 zone: ${resolved.domain.zone} → ${resolved.domain.hostedZoneId}`);
   }
 
   // 3. Generate CloudFormation template
@@ -309,7 +326,9 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
   console.log(`  → .cell/cfn.yaml`);
 
   // 4. Package Lambda code and upload to S3
-  const artifactBucket = `${resolved.name}-deploy-artifacts`;
+  const artifactBucket = config.bucketNameSuffix
+    ? `${config.bucketNameSuffix}-${resolved.name}-deploy-artifacts`
+    : `${resolved.name}-deploy-artifacts`;
   await ensureS3Bucket(artifactBucket, awsEnv);
 
   let template = cfnTemplate;
@@ -845,6 +864,38 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
       console.log(`  Invalidation ${id} created (${status})`);
     } catch {
       console.log("  Invalidation created");
+    }
+  }
+
+  // 12b. Ensure DNS records (Cloudflare only — Route53 is handled by CloudFormation)
+  if (dnsProvider && resolved.domain) {
+    const { exitCode: cfDescCode, stdout: cfDescOut } = await awsCli(
+      [
+        "cloudformation", "describe-stack-resources",
+        "--stack-name", stackName,
+        "--logical-resource-id", "FrontendCloudFront",
+        "--query", "StackResources[0].PhysicalResourceId",
+        "--output", "text",
+      ],
+      awsEnv,
+      { pipeStderr: true }
+    );
+    if (cfDescCode === 0 && cfDescOut?.trim()) {
+      const distId = cfDescOut.trim();
+      const { exitCode: distCode, stdout: distOut } = await awsCli(
+        [
+          "cloudfront", "get-distribution",
+          "--id", distId,
+          "--query", "Distribution.DomainName",
+          "--output", "text",
+        ],
+        awsEnv,
+        { pipeStderr: true }
+      );
+      if (distCode === 0 && distOut?.trim()) {
+        const cloudfrontDomain = distOut.trim();
+        await dnsProvider.ensureDnsRecords(resolved.domain.host, cloudfrontDomain);
+      }
     }
   }
 
