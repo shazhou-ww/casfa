@@ -76,13 +76,22 @@ export interface CognitoConfig {
   clientSecret?: ResolvedValue;
 }
 
+export interface CloudflareConfig {
+  zoneId: string;
+  apiToken: SecretRef;
+}
+
 export interface DomainConfig {
   zone: ResolvedValue;
   host: ResolvedValue;
-  /** ACM certificate ARN. If omitted, cell-cli auto-creates one via DNS validation. */
+  /** "route53" (default) or "cloudflare" */
+  dns?: "route53" | "cloudflare";
+  /** ACM certificate ARN. If omitted, auto-created via DNS validation. */
   certificate?: ResolvedValue;
-  /** Populated at deploy time by looking up Route53 hosted zone. */
+  /** Route53 only: populated at deploy time by looking up hosted zone. */
   hostedZoneId?: string;
+  /** Required when dns is "cloudflare" */
+  cloudflare?: CloudflareConfig;
 }
 
 /** Domain config after resolving all EnvRef / SecretRef values to strings. */
