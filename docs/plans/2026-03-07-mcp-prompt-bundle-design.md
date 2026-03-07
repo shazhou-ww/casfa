@@ -38,7 +38,8 @@ declare module "*.md" {
 - 代码：
   - 移除 `node:fs`、`node:path`、`fileURLToPath` 导入
   - 改为 `import fluxImageGenPrompt from "./prompts/flux-image-gen.md"`
-  - 移除 `server.registerResource()`，改为 `server.registerPrompt()` + Mustache 渲染
+  - 保留 `server.registerResource()`，数据源从 `readFileSync` 切换为 import 的字符串
+  - 新增 `server.registerPrompt()` + Mustache 渲染
   - prompt 接受参数（如 `casfaBaseUrl` 等），渲染模板后返回
 
 ### 4. 注册示例
@@ -47,6 +48,17 @@ declare module "*.md" {
 import Mustache from "mustache";
 import fluxImageGenPrompt from "./prompts/flux-image-gen.md";
 
+// Resource — 原始模板可下载
+server.registerResource(
+  "FLUX Image Generation",
+  "prompt://flux-image-gen",
+  { description: "Prompt template for FLUX image generation", mimeType: "text/markdown" },
+  async () => ({
+    contents: [{ uri: "prompt://flux-image-gen", mimeType: "text/markdown", text: fluxImageGenPrompt }],
+  })
+);
+
+// Prompt — 参数化渲染
 server.registerPrompt("flux-image-gen", {
   description: "Generate images from text prompts using BFL FLUX",
   argsSchema: {
