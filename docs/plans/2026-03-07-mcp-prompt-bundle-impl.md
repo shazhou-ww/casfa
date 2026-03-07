@@ -131,11 +131,11 @@ git commit -m "refactor(image-workshop): rename skills/ to prompts/"
 
 ---
 
-### Task 5: Migrate index.ts — resource → prompt with Mustache
+### Task 5: Migrate index.ts — import + resource + prompt with Mustache
 
 **Files:**
 - Modify: `apps/image-workshop/backend/index.ts:1-18` (imports)
-- Modify: `apps/image-workshop/backend/index.ts:104-121` (resource → prompt registration)
+- Modify: `apps/image-workshop/backend/index.ts:104-121` (resource data source + add prompt)
 
 **Step 1: Update imports**
 
@@ -162,11 +162,33 @@ import Mustache from "mustache";
 import fluxImageGenPrompt from "./prompts/flux-image-gen.md";
 ```
 
-**Step 2: Replace registerResource with registerPrompt**
+**Step 2: Update registerResource data source**
 
-Remove the `server.registerResource(...)` block (lines 104-121).
+Keep `server.registerResource(...)` but change URI from `skill://` to `prompt://` and switch data source from `skillContent` to `fluxImageGenPrompt`:
 
-Add `server.registerPrompt(...)`:
+```typescript
+server.registerResource(
+  "FLUX Image Generation",
+  "prompt://flux-image-gen",
+  {
+    description: "Prompt template for FLUX image generation",
+    mimeType: "text/markdown",
+    annotations: { audience: ["assistant"], priority: 1 },
+  },
+  async () => ({
+    contents: [{
+      uri: "prompt://flux-image-gen",
+      mimeType: "text/markdown",
+      text: fluxImageGenPrompt,
+    }],
+  })
+);
+```
+
+**Step 3: Add registerPrompt**
+
+Add prompt registration after the resource:
+
 ```typescript
 server.registerPrompt("flux-image-gen", {
   description: "Generate images from text prompts using BFL FLUX",
@@ -183,21 +205,21 @@ server.registerPrompt("flux-image-gen", {
 
 The exact `argsSchema` and template content should be designed together — they must match.
 
-**Step 3: Verify typecheck**
+**Step 4: Verify typecheck**
 
 Run: `cd apps/image-workshop && bun run typecheck`
 Expected: PASS.
 
-**Step 4: Verify build**
+**Step 5: Verify build**
 
 Run: `cd apps/image-workshop && bun run build`
 Expected: Build succeeds with `.md` inlined.
 
-**Step 5: Commit**
+**Step 6: Commit**
 
 ```bash
 git add apps/image-workshop/backend/index.ts
-git commit -m "feat(image-workshop): migrate MCP resource to prompt with Mustache template"
+git commit -m "feat(image-workshop): add MCP prompt with Mustache, keep resource for download"
 ```
 
 ---
