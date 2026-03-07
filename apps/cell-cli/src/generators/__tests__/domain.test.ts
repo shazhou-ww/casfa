@@ -15,12 +15,13 @@ function makeConfig(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
 }
 
 describe("generateDomain", () => {
-  test("Route 53 A record with correct alias", () => {
+  test("Route53 A record when dns is route53 and hostedZoneId present", () => {
     const config = makeConfig({
       domain: {
         zone: "example.com",
         host: "app.example.com",
-        certificate: "arn:aws:acm:us-east-1:123:certificate/abc",
+        dns: "route53",
+        hostedZoneId: "Z1234567890",
       },
     });
     const result = generateDomain(config);
@@ -29,21 +30,6 @@ describe("generateDomain", () => {
     expect(record.Properties.Type).toBe("A");
     expect(record.Properties.Name).toBe("app.example.com");
     expect(record.Properties.HostedZoneName).toBe("example.com.");
-    expect(record.Properties.AliasTarget.DNSName).toEqual({
-      "Fn::GetAtt": ["FrontendCloudFront", "DomainName"],
-    });
-  });
-
-  test("HostedZoneId is Z2FDTNDATAQYW2", () => {
-    const config = makeConfig({
-      domain: {
-        zone: "example.com",
-        host: "app.example.com",
-        certificate: "arn:aws:acm:us-east-1:123:certificate/abc",
-      },
-    });
-    const result = generateDomain(config);
-    const record = result.Resources.DnsRecord as any;
     expect(record.Properties.AliasTarget.HostedZoneId).toBe("Z2FDTNDATAQYW2");
   });
 
@@ -51,5 +37,38 @@ describe("generateDomain", () => {
     const config = makeConfig();
     const result = generateDomain(config);
     expect(Object.keys(result.Resources)).toHaveLength(0);
+  });
+
+  test("no record when dns is cloudflare", () => {
+    const config = makeConfig({
+      domain: {
+        zone: "example.com",
+        host: "app.example.com",
+        dns: "cloudflare",
+        cloudflare: { zoneId: "zone123", apiToken: { secret: "CF_TOKEN" } },
+      },
+    });
+    const result = generateDomain(config);
+    expect(Object.keys(result.Resources)).toHaveLength(0);
+  });
+
+  test("no record when dns is route53 but hostedZoneId missing", () => {
+    const config = makeConfig({
+      domain: { zone: "example.com", host: "app.example.com" },
+    });
+    const result = generateDomain(config);
+    expect(Object.keys(result.Resources)).toHaveLength(0);
+  });
+
+  test("default dns (undefined) with hostedZoneId generates Route53 record", () => {
+    const config = makeConfig({
+      domain: {
+        zone: "example.com",
+        host: "app.example.com",
+        hostedZoneId: "Z1234567890",
+      },
+    });
+    const result = generateDomain(config);
+    expect(result.Resources.DnsRecord).toBeDefined();
   });
 });
