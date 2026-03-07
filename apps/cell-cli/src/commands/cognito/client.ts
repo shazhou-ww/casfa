@@ -6,6 +6,8 @@ import {
   UpdateUserPoolClientCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { loadCellYaml } from "../../config/load-cell-yaml.js";
+import { resolveConfig } from "../../config/resolve-config.js";
+import { loadEnvFiles } from "../../utils/env.js";
 import {
   createCognitoClient,
   promptYesNo,
@@ -109,8 +111,10 @@ export async function clientSyncUrlsCommand(opts: ClientSyncUrlsOptions): Promis
   if (existsSync(cellYamlPath)) {
     try {
       const config = loadCellYaml(cellYamlPath);
-      if (config.domain && typeof config.domain.host === "string") {
-        const host = config.domain.host;
+      const cellEnvMap = loadEnvFiles(process.cwd());
+      const resolved = resolveConfig(config, cellEnvMap, "cloud");
+      if (resolved.domain?.host) {
+        const host = resolved.domain.host;
         callbacksToAdd.add(`https://${host}/oauth/callback`);
         logoutsToAdd.add(`https://${host}`);
         console.log(`  Auto-derived from cell.yaml domain: ${host}`);

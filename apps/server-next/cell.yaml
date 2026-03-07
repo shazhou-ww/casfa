@@ -51,17 +51,19 @@ buckets:
   blob: {}
 
 # App reads config from params (env). SSO: only REGION + USER_POOL_ID needed for JWT (rest on SSO cell).
-# Per docs/cell-config-rules: literal = non-secret & same local/prod; !Env = secret or env-specific.
+# Cognito and domain config come from .env (root or cell-level) for easy instance switching.
 params:
-  COGNITO_REGION: "us-east-1"
-  COGNITO_USER_POOL_ID: "us-east-1_gMTKxXOKo"
+  COGNITO_REGION: !Env
+  COGNITO_USER_POOL_ID: !Env
   MAX_BRANCH_TTL_MS: "86400000"
+  DOMAIN_ZONE: !Env
+  DOMAIN_HOST: !Env
   LOG_LEVEL: !Env
   SSO_BASE_URL: !Env
 
 domain:
-  zone: shazhou.me
-  host: beta.casfa.shazhou.me
+  zone: !Param DOMAIN_ZONE
+  host: !Param DOMAIN_HOST
 
 testing:
   unit: backend/

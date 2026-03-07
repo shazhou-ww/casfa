@@ -1,9 +1,10 @@
 import type {
   BackendConfig,
   CellConfig,
-  DomainConfig,
   FrontendConfig,
   NetworkConfig,
+  ResolvedDomainConfig,
+  ResolvedValue,
   StaticMapping,
   TableConfig,
   TestingConfig,
@@ -56,7 +57,7 @@ export interface ResolvedConfig {
   backend?: BackendConfig;
   frontend?: FrontendConfig;
   static?: StaticMapping[];
-  domain?: DomainConfig;
+  domain?: ResolvedDomainConfig;
   network?: NetworkConfig;
   testing?: TestingConfig;
 }
@@ -182,10 +183,21 @@ export function resolveConfig(
     envVars.S3_ENDPOINT = `http://localhost:${portBase + offset + 4}`;
   }
 
-  // 6. Standard Cell env vars (CELL_STAGE, CELL_BASE_URL)
+  // 6. Resolve domain config (zone/host may be !Env / !Param → !Env)
+  let domain: ResolvedDomainConfig | undefined;
+  if (config.domain) {
+    const zone = resolveValueToString(config.domain.zone, envVars, envMap);
+    const host = resolveValueToString(config.domain.host, envVars, envMap);
+    domain = { zone, host };
+    if (config.domain.certificate) {
+      domain.certificate = resolveValueToString(config.domain.certificate, envVars, envMap);
+    }
+  }
+
+  // 7. Standard Cell env vars (CELL_STAGE, CELL_BASE_URL)
   envVars.CELL_STAGE = stage;
-  if (stage === "cloud" && config.domain?.host) {
-    envVars.CELL_BASE_URL = `https://${config.domain.host}`;
+  if (stage === "cloud" && domain?.host) {
+    envVars.CELL_BASE_URL = `https://${domain.host}`;
   }
 
   return {
@@ -198,8 +210,20 @@ export function resolveConfig(
     backend: config.backend,
     frontend: config.frontend,
     static: config.static,
-    domain: config.domain,
+    domain,
     network: config.network,
     testing: config.testing,
   };
+}
+
+/** Resolve a ResolvedValue to a string using envVars (for params) and envMap (for !Env). */
+function resolveValueToString(
+  value: ResolvedValue,
+  envVars: Record<string, string>,
+  envMap: Record<string, string>
+): string {
+  if (typeof value === "string") return value;
+  if (isEnvRef(value)) return envMap[value.env] ?? envVars[value.env] ?? "";
+  if (isSecretRef(value)) return envMap[value.secret] ?? envVars[value.secret] ?? "";
+  return "";
 }

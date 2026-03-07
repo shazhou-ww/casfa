@@ -208,4 +208,49 @@ describe("resolveConfig", () => {
     expect(resolved.backend).toEqual(config.backend);
     expect(resolved.testing).toEqual(config.testing);
   });
+
+  test("domain: string zone/host resolve directly", () => {
+    const config = makeConfig({
+      domain: { zone: "example.com", host: "app.example.com" },
+    });
+    const resolved = resolveConfig(config, {}, "cloud");
+    expect(resolved.domain).toEqual({ zone: "example.com", host: "app.example.com" });
+  });
+
+  test("domain: env ref zone/host resolved from env map", () => {
+    const config = makeConfig({
+      params: {
+        DOMAIN_ZONE: { env: "DOMAIN_ZONE" },
+        DOMAIN_HOST: { env: "DOMAIN_HOST" },
+      },
+      domain: {
+        zone: { env: "DOMAIN_ZONE" },
+        host: { env: "DOMAIN_HOST" },
+      },
+    });
+    const envMap = { DOMAIN_ZONE: "example.com", DOMAIN_HOST: "app.example.com" };
+    const resolved = resolveConfig(config, envMap, "cloud");
+    expect(resolved.domain).toEqual({ zone: "example.com", host: "app.example.com" });
+  });
+
+  test("domain: CELL_BASE_URL set from resolved domain host", () => {
+    const config = makeConfig({
+      params: {
+        DOMAIN_HOST: { env: "DOMAIN_HOST" },
+        DOMAIN_ZONE: { env: "DOMAIN_ZONE" },
+      },
+      domain: {
+        zone: { env: "DOMAIN_ZONE" },
+        host: { env: "DOMAIN_HOST" },
+      },
+    });
+    const envMap = { DOMAIN_ZONE: "example.com", DOMAIN_HOST: "app.example.com" };
+    const resolved = resolveConfig(config, envMap, "cloud");
+    expect(resolved.envVars.CELL_BASE_URL).toBe("https://app.example.com");
+  });
+
+  test("domain: no domain config → resolved.domain is undefined", () => {
+    const resolved = resolveConfig(makeConfig(), {}, "cloud");
+    expect(resolved.domain).toBeUndefined();
+  });
 });
