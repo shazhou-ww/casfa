@@ -30,6 +30,7 @@ export async function buildCommand(options?: { cellDir?: string }): Promise<void
         outfile,
         sourcemap: true,
         external: ["@aws-sdk/*"],
+        loader: { ".md": "text" },
       });
       const rel = relative(cellDir, outfile);
       console.log(`  → ${rel}`);
