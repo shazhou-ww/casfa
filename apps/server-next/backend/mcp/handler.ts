@@ -3,6 +3,9 @@
  * POST /api/mcp with Bearer auth; uses same root-resolver, files, branches logic as REST.
  */
 
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { streamFromBytes } from "@casfa/cas";
 import { encodeDictNode, encodeFileNode, hashToKey } from "@casfa/core";
 import type { Context } from "hono";
@@ -19,6 +22,13 @@ import {
 import { addOrReplaceAtPath, removeEntryAtPath } from "../services/tree-mutations.ts";
 import type { Env } from "../types.ts";
 import { prependUtf8BomIfText } from "../utils/utf8-bom.ts";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const skillContent = readFileSync(
+  resolve(__dirname, "skills", "casfa-file-management.md"),
+  "utf-8"
+);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -264,6 +274,34 @@ function handleToolsList(id: string | number): McpResponse {
   return mcpSuccess(id, { tools: MCP_TOOLS });
 }
 
+const MCP_RESOURCES = [
+  {
+    uri: "skill://casfa-file-management",
+    name: "Casfa File Management",
+    description: "Skill definition for branch-based file management",
+    mimeType: "text/markdown",
+  },
+];
+
+function handleResourcesList(id: string | number): McpResponse {
+  return mcpSuccess(id, { resources: MCP_RESOURCES });
+}
+
+function handleResourcesRead(id: string | number, uri: string): McpResponse {
+  if (uri === "skill://casfa-file-management") {
+    return mcpSuccess(id, {
+      contents: [
+        {
+          uri: "skill://casfa-file-management",
+          mimeType: "text/markdown",
+          text: skillContent,
+        },
+      ],
+    });
+  }
+  return mcpError(id, MCP_INVALID_PARAMS, `Resource not found: ${uri}`);
+}
+
 async function handleToolsCall(
   id: string | number,
   name: string,
@@ -353,9 +391,6 @@ async function handleToolsCall(
         const rootRecord = await deps.branchStore.getRealmRootRecord(realmId);
         if (!rootRecord) return mcpError(id, MCP_INVALID_PARAMS, "Realm root not found");
         const childRootKey = await resolvePath(deps.cas, rootKey, mountPath);
-        if (childRootKey === null) {
-          return mcpError(id, MCP_INVALID_PARAMS, "mountPath does not resolve under realm root");
-        }
         const branchId = crypto.randomUUID();
         const now = Date.now();
         const expiresAt = now + ttlMs;
@@ -366,7 +401,9 @@ async function handleToolsCall(
           mountPath,
           expiresAt,
         });
-        await deps.branchStore.setBranchRoot(branchId, childRootKey);
+        if (childRootKey !== null) {
+          await deps.branchStore.setBranchRoot(branchId, childRootKey);
+        }
         return mcpSuccess(id, {
           content: [
             {
@@ -876,6 +913,19 @@ export function createMcpHandler(deps: McpHandlerDeps) {
       case "tools/list":
         response = handleToolsList(request.id);
         break;
+      case "resources/list":
+        response = handleResourcesList(request.id);
+        break;
+      case "resources/read": {
+        const params = request.params as { uri?: string } | undefined;
+        const uri = params?.uri;
+        if (typeof uri !== "string" || !uri) {
+          response = mcpError(request.id, MCP_INVALID_PARAMS, "resources/read requires uri");
+        } else {
+          response = handleResourcesRead(request.id, uri);
+        }
+        break;
+      }
       case "tools/call": {
         const params = request.params as
           | { name?: string; arguments?: Record<string, unknown> }
