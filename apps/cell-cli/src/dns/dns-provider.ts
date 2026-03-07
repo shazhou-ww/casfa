@@ -36,10 +36,7 @@ export interface DnsProvider {
   ): Promise<void>;
 }
 
-export function createDnsProvider(
-  config: ResolvedConfig,
-  envMap: Record<string, string>
-): DnsProvider {
+export function createDnsProvider(config: ResolvedConfig): DnsProvider {
   const dnsType = config.domain?.dns ?? "route53";
   if (dnsType === "cloudflare") {
     const cf = config.domain!.cloudflare;
@@ -49,13 +46,7 @@ export function createDnsProvider(
           "  Add cloudflare.zoneId and cloudflare.apiToken to your cell.yaml domain section."
       );
     }
-    const apiToken = envMap[cf.apiToken.secret];
-    if (!apiToken) {
-      throw new Error(
-        `Cloudflare API token not found: secret "${cf.apiToken.secret}" is not set in .env`
-      );
-    }
-    return new CloudflareProvider(cf.zoneId, apiToken);
+    return new CloudflareProvider(cf.zoneId, cf.apiToken);
   }
   return new Route53Provider();
 }

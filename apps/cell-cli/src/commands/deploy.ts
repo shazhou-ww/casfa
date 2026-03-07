@@ -34,10 +34,12 @@ async function ensureS3Bucket(
   bucketName: string,
   env: Record<string, string | undefined>
 ): Promise<void> {
-  const { exitCode } = await awsCli(["s3api", "head-bucket", "--bucket", bucketName], env);
+  const region = env.AWS_REGION ?? env.AWS_DEFAULT_REGION;
+  const regionArgs = region ? ["--region", region] : [];
+  const { exitCode } = await awsCli(["s3api", "head-bucket", "--bucket", bucketName, ...regionArgs], env);
   if (exitCode !== 0) {
     console.log(`Creating deploy artifacts bucket: ${bucketName}`);
-    const { exitCode: createCode } = await awsCli(["s3", "mb", `s3://${bucketName}`], env);
+    const { exitCode: createCode } = await awsCli(["s3", "mb", `s3://${bucketName}`, ...regionArgs], env);
     if (createCode !== 0) {
       throw new Error(`Failed to create S3 bucket: ${bucketName}`);
     }
@@ -245,7 +247,7 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
 
   // Create DNS provider (Route53 or Cloudflare based on config)
   const dnsProvider = resolved.domain
-    ? createDnsProvider(resolved, envMap)
+    ? createDnsProvider(resolved)
     : null;
 
   // 0. Verify AWS credentials early so auth issues surface before build
@@ -324,7 +326,9 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
   console.log(`  → .cell/cfn.yaml`);
 
   // 4. Package Lambda code and upload to S3
-  const artifactBucket = `${resolved.name}-deploy-artifacts`;
+  const artifactBucket = config.bucketNameSuffix
+    ? `${config.bucketNameSuffix}-${resolved.name}-deploy-artifacts`
+    : `${resolved.name}-deploy-artifacts`;
   await ensureS3Bucket(artifactBucket, awsEnv);
 
   let template = cfnTemplate;

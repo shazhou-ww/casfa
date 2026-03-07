@@ -1,5 +1,5 @@
 name: sso
-bucketNameSuffix: casfa-shazhou-me
+bucketNameSuffix: mitsein
 
 backend:
   dir: backend
@@ -63,6 +63,10 @@ cognito:
 domain:
   zone: !Param DOMAIN_ZONE
   host: !Param DOMAIN_HOST
+  dns: !Env DNS_PROVIDER
+  cloudflare:
+    zoneId: !Env CLOUDFLARE_ZONE_ID
+    apiToken: !Secret CLOUDFLARE_API_TOKEN
 
 testing:
   unit: backend/

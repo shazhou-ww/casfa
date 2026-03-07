@@ -189,8 +189,26 @@ export function resolveConfig(
     const zone = resolveValueToString(config.domain.zone, envVars, envMap);
     const host = resolveValueToString(config.domain.host, envVars, envMap);
     domain = { zone, host };
+    if (config.domain.dns) {
+      const rawDns = isEnvRef(config.domain.dns)
+        ? resolveValueToString(config.domain.dns, envVars, envMap)
+        : config.domain.dns;
+      if (rawDns === "cloudflare" || rawDns === "route53") {
+        domain.dns = rawDns;
+      }
+    }
     if (config.domain.certificate) {
       domain.certificate = resolveValueToString(config.domain.certificate, envVars, envMap);
+    }
+    if (config.domain.cloudflare && domain.dns === "cloudflare") {
+      const zoneId = resolveValueToString(config.domain.cloudflare.zoneId, envVars, envMap);
+      const apiToken = envMap[config.domain.cloudflare.apiToken.secret];
+      if (!apiToken) {
+        throw new MissingParamsError(config.name, stage, [
+          `  cloudflare.apiToken: !Secret "${config.domain.cloudflare.apiToken.secret}" not found in env`,
+        ]);
+      }
+      domain.cloudflare = { zoneId, apiToken };
     }
   }
 

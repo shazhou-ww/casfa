@@ -77,15 +77,20 @@ export interface CognitoConfig {
 }
 
 export interface CloudflareConfig {
-  zoneId: string;
+  zoneId: ResolvedValue;
   apiToken: SecretRef;
+}
+
+export interface ResolvedCloudflareConfig {
+  zoneId: string;
+  apiToken: string;
 }
 
 export interface DomainConfig {
   zone: ResolvedValue;
   host: ResolvedValue;
-  /** "route53" (default) or "cloudflare" */
-  dns?: "route53" | "cloudflare";
+  /** "route53" (default) or "cloudflare". Supports !Env for environment-driven selection. */
+  dns?: "route53" | "cloudflare" | EnvRef;
   /** ACM certificate ARN. If omitted, auto-created via DNS validation. */
   certificate?: ResolvedValue;
   /** Route53 only: populated at deploy time by looking up hosted zone. */
@@ -98,8 +103,10 @@ export interface DomainConfig {
 export type ResolvedDomainConfig = {
   zone: string;
   host: string;
+  dns?: "route53" | "cloudflare";
   certificate?: string;
   hostedZoneId?: string;
+  cloudflare?: ResolvedCloudflareConfig;
 };
 
 export interface TestingConfig {
