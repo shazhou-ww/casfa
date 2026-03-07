@@ -320,19 +320,6 @@ Resources:
               StringEquals:
                 AWS:SourceArn:
                   Fn::Sub: arn:aws:cloudfront::\${AWS::AccountId}:distribution/\${FrontendCloudFront}
-  DnsRecord:
-    Type: AWS::Route53::RecordSet
-    Condition: UseCustomDomain
-    Properties:
-      Type: A
-      Name: beta.casfa.shazhou.me
-      HostedZoneName: shazhou.me.
-      AliasTarget:
-        DNSName:
-          Fn::GetAtt:
-            - FrontendCloudFront
-            - DomainName
-        HostedZoneId: Z2FDTNDATAQYW2
 Outputs:
   DelegatesTableArn:
     Value:

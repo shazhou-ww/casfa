@@ -6,6 +6,13 @@ export function generateDomain(config: ResolvedConfig): CfnFragment {
 
   if (!config.domain) return { Resources: resources };
 
+  // Cloudflare DNS is managed outside CloudFormation
+  const dnsProvider = config.domain.dns ?? "route53";
+  if (dnsProvider === "cloudflare") return { Resources: resources };
+
+  // Route53: only generate if hostedZoneId is available
+  if (!config.domain.hostedZoneId) return { Resources: resources };
+
   resources.DnsRecord = {
     Type: "AWS::Route53::RecordSet",
     Condition: "UseCustomDomain",

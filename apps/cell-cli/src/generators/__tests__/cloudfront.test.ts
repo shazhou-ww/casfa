@@ -109,4 +109,27 @@ describe("generateCloudFront", () => {
       "FrontendCloudFront"
     );
   });
+
+  test("external cert ARN (Cloudflare flow) uses cert directly, no AcmCertificate resource", () => {
+    const config = makeConfig({
+      domain: {
+        zone: "example.com",
+        host: "app.example.com",
+        dns: "cloudflare",
+        certificate: "arn:aws:acm:us-east-1:123:certificate/external",
+        cloudflare: { zoneId: "zone123", apiToken: { secret: "CF_TOKEN" } },
+      },
+    });
+    const result = generateCloudFront(config);
+
+    // Should NOT create AcmCertificate resource
+    expect(result.Resources.AcmCertificate).toBeUndefined();
+
+    // Should use the provided cert ARN
+    const dist = result.Resources.FrontendCloudFront as any;
+    const cert = dist.Properties.DistributionConfig.ViewerCertificate;
+    expect(cert["Fn::If"][1].AcmCertificateArn).toBe(
+      "arn:aws:acm:us-east-1:123:certificate/external"
+    );
+  });
 });
