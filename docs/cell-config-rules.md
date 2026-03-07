@@ -6,8 +6,9 @@
 
 ### 1.1 配置放在哪里
 
-- **`cell.yaml`**：写死所有**非敏感、且本地与线上一致**的配置（如 Cognito 的 region/userPoolId/clientId/hostedUiUrl、cookie 名称与 path/max-age、PORT_BASE 的约定等）。
-- **`.env` / `.env.local`**：只放**敏感信息**或**本地与线上可能不同的值**（如 cookie domain、LOG_LEVEL、密钥等）。
+- **`cell.yaml`**：写死所有**非敏感、且同一实例本地与线上一致、且不随部署实例变化**的配置（如 cookie 名称与 path/max-age、PORT_BASE 的约定等）。
+- **`.env` / `.env.local`**：放**敏感信息**、**本地与线上可能不同的值**、以及**随部署实例变化的值**（如 Cognito 的 region/userPoolId/clientId、域名、LOG_LEVEL、密钥等）。
+- **根目录 `.env`**：放跨 cell 共享的配置（如 Cognito User Pool、DOMAIN_ZONE、IdP 凭据等）。cell-level `.env` 可覆盖。
 
 ### 1.2 没有「可选」env
 

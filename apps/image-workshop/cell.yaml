@@ -27,11 +27,13 @@ frontend:
       entry: index.html
       routes: ["/*"]
 
-# Per docs/cell-config-rules: literal = non-secret & same local/prod; !Env/!Secret = secret or env-specific.
+# Cognito and domain config come from .env (root or cell-level) for easy instance switching.
 # SSO: only REGION + USER_POOL_ID needed for JWT (rest on SSO cell).
 params:
-  COGNITO_REGION: "us-east-1"
-  COGNITO_USER_POOL_ID: "us-east-1_gMTKxXOKo"
+  COGNITO_REGION: !Env
+  COGNITO_USER_POOL_ID: !Env
+  DOMAIN_ZONE: !Env
+  DOMAIN_HOST: !Env
   LOG_LEVEL: !Env
   SSO_BASE_URL: !Env
   BFL_API_KEY: !Secret
@@ -56,8 +58,8 @@ tables:
     keys: { pk: S }
 
 domain:
-  zone: shazhou.me
-  host: image-workshop.casfa.shazhou.me
+  zone: !Param DOMAIN_ZONE
+  host: !Param DOMAIN_HOST
 
 testing:
   unit: backend/

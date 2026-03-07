@@ -713,11 +713,9 @@ export async function deployCommand(options?: { cellDir?: string; yes?: boolean 
 
   // 9. Sync Cognito callback URLs
   if (config.cognito && resolved.domain) {
-    const userPoolId =
-      typeof config.cognito.userPoolId === "string" ? config.cognito.userPoolId : "";
-    const clientId = typeof config.cognito.clientId === "string" ? config.cognito.clientId : "";
-    const cognitoRegion =
-      typeof config.cognito.region === "string" ? config.cognito.region : undefined;
+    const userPoolId = resolved.envVars.COGNITO_USER_POOL_ID ?? "";
+    const clientId = resolved.envVars.COGNITO_CLIENT_ID ?? "";
+    const cognitoRegion = resolved.envVars.COGNITO_REGION ?? undefined;
 
     if (userPoolId && clientId) {
       console.log("\n=== Syncing Cognito callback URLs ===");

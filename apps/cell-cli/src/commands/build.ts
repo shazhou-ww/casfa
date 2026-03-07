@@ -4,11 +4,15 @@ import react from "@vitejs/plugin-react";
 import { build } from "esbuild";
 import { defineConfig, mergeConfig, type UserConfig, build as viteBuild } from "vite";
 import { loadCellYaml } from "../config/load-cell-yaml.js";
+import { resolveConfig } from "../config/resolve-config.js";
+import { loadEnvFiles } from "../utils/env.js";
 import { getWorkspaceAlias } from "../utils/vite-config.js";
 
 export async function buildCommand(options?: { cellDir?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
+  const envMap = loadEnvFiles(cellDir, { stage: "cloud" });
+  const resolved = resolveConfig(config, envMap, "cloud");
   const buildDir = resolve(cellDir, ".cell/build");
 
   const outputs: string[] = [];
@@ -101,8 +105,8 @@ export async function buildCommand(options?: { cellDir?: string }): Promise<void
       configFile: false,
     });
 
-    if (config.cognito && config.domain?.host) {
-      const issuer = `https://${config.domain.host}`;
+    if (config.cognito && resolved.domain?.host) {
+      const issuer = `https://${resolved.domain.host}`;
       const wellKnown = resolve(frontendDir, "dist", ".well-known", "oauth-authorization-server");
       mkdirSync(dirname(wellKnown), { recursive: true });
       writeFileSync(

@@ -77,13 +77,21 @@ export interface CognitoConfig {
 }
 
 export interface DomainConfig {
-  zone: string;
-  host: string;
+  zone: ResolvedValue;
+  host: ResolvedValue;
   /** ACM certificate ARN. If omitted, cell-cli auto-creates one via DNS validation. */
   certificate?: ResolvedValue;
   /** Populated at deploy time by looking up Route53 hosted zone. */
   hostedZoneId?: string;
 }
+
+/** Domain config after resolving all EnvRef / SecretRef values to strings. */
+export type ResolvedDomainConfig = {
+  zone: string;
+  host: string;
+  certificate?: string;
+  hostedZoneId?: string;
+};
 
 export interface TestingConfig {
   unit: string;

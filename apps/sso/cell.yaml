@@ -39,10 +39,10 @@ tables:
         projection: ALL
 
 params:
-  COGNITO_REGION: us-east-1
-  COGNITO_USER_POOL_ID: us-east-1_gMTKxXOKo
-  COGNITO_CLIENT_ID: rrr40170csj0160ptr9lusi3k
-  COGNITO_HOSTED_UI_URL: "https://casfa-auth.auth.us-east-1.amazoncognito.com"
+  COGNITO_REGION: !Env
+  COGNITO_USER_POOL_ID: !Env
+  COGNITO_CLIENT_ID: !Env
+  COGNITO_HOSTED_UI_URL: !Env
   AUTH_COOKIE_NAME: auth
   AUTH_REFRESH_COOKIE_NAME: auth_refresh
   AUTH_COOKIE_DOMAIN: !Env
@@ -50,6 +50,8 @@ params:
   AUTH_COOKIE_MAX_AGE_SECONDS: "3600"
   AUTH_REFRESH_COOKIE_PATH: "/oauth/refresh"
   AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS: "2592000"
+  DOMAIN_ZONE: !Env
+  DOMAIN_HOST: !Env
   LOG_LEVEL: !Env
 
 cognito:
@@ -59,8 +61,8 @@ cognito:
   hostedUiUrl: !Param COGNITO_HOSTED_UI_URL
 
 domain:
-  zone: shazhou.me
-  host: sso.casfa.shazhou.me
+  zone: !Param DOMAIN_ZONE
+  host: !Param DOMAIN_HOST
 
 testing:
   unit: backend/
