@@ -2,20 +2,11 @@
  * Image Workshop MCP Server — tool logic and server creation.
  * Used by both stdio (src/stdio.ts) and Lambda HTTP (src/app.ts).
  */
-import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { createBflClient } from "./bfl";
 import { createCasfaBranchClient } from "./casfa-branch";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const skillContent = readFileSync(
-  resolve(__dirname, "skills", "flux-image-gen.md"),
-  "utf-8"
-);
+import fluxImageGenPrompt from "./prompts/flux-image-gen.md";
 
 export const fluxImageInputSchema = z.object({
   casfaBaseUrl: z
@@ -103,22 +94,33 @@ export function createMcpServer(): McpServer {
 
   server.registerResource(
     "FLUX Image Generation",
-    "skill://flux-image-gen",
+    "prompt://flux-image-gen",
     {
-      description: "Skill definition for FLUX image generation",
+      description: "Prompt template for FLUX image generation",
       mimeType: "text/markdown",
       annotations: { audience: ["assistant"], priority: 1 },
     },
     async () => ({
       contents: [
         {
-          uri: "skill://flux-image-gen",
+          uri: "prompt://flux-image-gen",
           mimeType: "text/markdown",
-          text: skillContent,
+          text: fluxImageGenPrompt,
         },
       ],
     })
   );
+
+  server.registerPrompt("flux-image-gen", {
+    description: "Generate images from text prompts using BFL FLUX",
+  }, async () => ({
+    messages: [
+      {
+        role: "user",
+        content: { type: "text", text: fluxImageGenPrompt },
+      },
+    ],
+  }));
 
   server.registerTool(
     "flux_image",
