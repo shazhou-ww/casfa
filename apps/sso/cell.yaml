@@ -52,6 +52,9 @@ params:
   AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS: "2592000"
   DOMAIN_ZONE: !Env
   DOMAIN_HOST: !Env
+  DNS_PROVIDER: !Env
+  CLOUDFLARE_ZONE_ID: !Env
+  CLOUDFLARE_API_TOKEN: !Secret
   LOG_LEVEL: !Env
 
 cognito:
@@ -60,13 +63,13 @@ cognito:
   clientId: !Param COGNITO_CLIENT_ID
   hostedUiUrl: !Param COGNITO_HOSTED_UI_URL
 
-domain:
-  zone: !Param DOMAIN_ZONE
-  host: !Param DOMAIN_HOST
-  dns: !Env DNS_PROVIDER
-  cloudflare:
-    zoneId: !Env CLOUDFLARE_ZONE_ID
-    apiToken: !Secret CLOUDFLARE_API_TOKEN
+domains:
+  - zone: !Param DOMAIN_ZONE
+    host: !Param DOMAIN_HOST
+    dns: !Param DNS_PROVIDER
+    cloudflare:
+      zoneId: !Param CLOUDFLARE_ZONE_ID
+      apiToken: !Param CLOUDFLARE_API_TOKEN
 
 testing:
   unit: backend/

@@ -57,9 +57,9 @@ tables:
   pending_client_info:
     keys: { pk: S }
 
-domain:
-  zone: !Param DOMAIN_ZONE
-  host: !Param DOMAIN_HOST
+domains:
+  - zone: !Param DOMAIN_ZONE
+    host: !Param DOMAIN_HOST
 
 testing:
   unit: backend/
