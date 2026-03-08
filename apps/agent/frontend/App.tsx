@@ -1,27 +1,10 @@
-import { Box, Typography } from "@mui/material";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthGuard } from "./components/auth-guard.tsx";
 import { Layout } from "./components/layout.tsx";
 import { LoginPage } from "./pages/login-page.tsx";
 import { OAuthCallbackPage } from "./pages/oauth-callback-page.tsx";
-
-function PlaceholderChatPage() {
-  return (
-    <Box p={2}>
-      <Typography variant="h6">Chat</Typography>
-      <Typography color="text.secondary">Select or create a thread. (Task 9 will add full chat UI.)</Typography>
-    </Box>
-  );
-}
-
-function PlaceholderSettingsPage() {
-  return (
-    <Box p={2}>
-      <Typography variant="h6">Settings</Typography>
-      <Typography color="text.secondary">LLM providers and preferences. (Task 8 will add settings UI.)</Typography>
-    </Box>
-  );
-}
+import { ChatPage } from "./pages/chat-page.tsx";
+import { SettingsPage } from "./pages/settings-page.tsx";
 
 export function App() {
   return (
@@ -32,8 +15,8 @@ export function App() {
 
       <Route element={<AuthGuard />}>
         <Route element={<Layout />}>
-          <Route path="/" element={<PlaceholderChatPage />} />
-          <Route path="/settings" element={<PlaceholderSettingsPage />} />
+          <Route path="/" element={<ChatPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>
 
