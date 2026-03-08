@@ -89,3 +89,10 @@ Support multiple custom domains for a single cell deployment: one codebase can b
 - Move any `!Env`/`!Secret` from `domain` into `params` and reference with `!Param` in `domains[0]`.
 - Deploy with explicit target: `cell deploy --domain <current-host>`.
 - Add `cell domain list` to docs and usage so users know which domains are configured.
+
+## 6. Usage
+
+- **List domains:** `cell domain list` — prints configured domain hosts (one per line). Use these with `cell deploy --domain <host>`.
+- **Deploy:** When `domains` is configured, you must pass at least one target: `cell deploy --domain sso.example.com`. You can pass multiple: `cell deploy --domain host1 --domain host2` (the first is used for cert/DNS in the current implementation; Cognito callbacks are synced for all configured domains).
+- **No custom domain:** If `domains` is absent or empty, run `cell deploy` without `--domain`.
+
