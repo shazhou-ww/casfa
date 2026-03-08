@@ -59,8 +59,9 @@ program
   .command("deploy")
   .description("Deploy to cloud")
   .option("--yes", "Skip confirmation")
+  .option("--domain <host>", "Target domain to deploy (required when domains configured; repeat for multiple)", (v: string, prev: string[]) => [...(prev ?? []), v], [] as string[])
   .action(async (opts) => {
-    await run(() => deployCommand({ yes: opts.yes }));
+    await run(() => deployCommand({ yes: opts.yes, domains: opts.domain }));
   });
 
 program

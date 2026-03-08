@@ -224,11 +224,39 @@ async function fetchNewEvents(
   } catch {}
 }
 
-export async function deployCommand(options?: { cellDir?: string; yes?: boolean }): Promise<void> {
+export async function deployCommand(options?: {
+  cellDir?: string;
+  yes?: boolean;
+  /** Target domain(s) for this deploy (required when domains are configured) */
+  domains?: string[];
+}): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
   const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
   const envMap = loadEnvFiles(cellDir, { stage: "cloud" });
   const resolved = resolveConfig(config, envMap, "cloud");
+
+  // Validate --domain when custom domains are configured
+  const hasDomains = (resolved.domains?.length ?? 0) > 0;
+  const deployDomains = options?.domains ?? [];
+  if (hasDomains && deployDomains.length === 0) {
+    throw new Error(
+      "When domains are configured, specify at least one target: --domain <host>.\n" +
+        "  → Run 'cell domain list' to see configured hosts."
+    );
+  }
+  if (!hasDomains && deployDomains.length > 0) {
+    throw new Error("No custom domains configured; remove --domain.");
+  }
+  if (hasDomains && resolved.domains) {
+    const allowedHosts = new Set(resolved.domains.map((d) => d.host));
+    for (const host of deployDomains) {
+      if (!allowedHosts.has(host)) {
+        throw new Error(
+          `Unknown domain "${host}". Run 'cell domain list' to see configured hosts.`
+        );
+      }
+    }
+  }
 
   // Validate: MOCK_JWT_SECRET should NOT be set for cloud
   if (resolved.envVars.MOCK_JWT_SECRET) {
