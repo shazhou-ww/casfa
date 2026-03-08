@@ -761,15 +761,16 @@ export async function deployCommand(options?: {
   const frontendBucket = outputs.FrontendBucketName;
   const distributionId = outputs.FrontendDistributionId;
 
-  // 9. Sync Cognito callback URLs
-  if (config.cognito && resolved.domain) {
+  // 9. Sync Cognito callback URLs (all configured domains)
+  if (config.cognito && resolved.domains?.length) {
     const userPoolId = resolved.envVars.COGNITO_USER_POOL_ID ?? "";
     const clientId = resolved.envVars.COGNITO_CLIENT_ID ?? "";
     const cognitoRegion = resolved.envVars.COGNITO_REGION ?? undefined;
 
     if (userPoolId && clientId) {
       console.log("\n=== Syncing Cognito callback URLs ===");
-      const domainCallback = `https://${resolved.domain.host}/oauth/callback`;
+      const callbacksToAdd = resolved.domains.map((d) => `https://${d.host}/oauth/callback`);
+      const logoutsToAdd = resolved.domains.map((d) => `https://${d.host}`);
       const cognitoEnv = {
         ...awsEnv,
         ...(cognitoRegion ? { AWS_DEFAULT_REGION: cognitoRegion } : {}),
@@ -795,16 +796,23 @@ export async function deployCommand(options?: {
         const client = JSON.parse(clientJson) as Record<string, unknown>;
         const callbacks = (client.CallbackURLs as string[]) ?? [];
         const logouts = (client.LogoutURLs as string[]) ?? [];
-        const domainLogout = `https://${resolved.domain.host}`;
 
         let changed = false;
-        if (!callbacks.includes(domainCallback)) {
-          callbacks.push(domainCallback);
-          changed = true;
+        const addedCallbacks: string[] = [];
+        const addedLogouts: string[] = [];
+        for (const url of callbacksToAdd) {
+          if (!callbacks.includes(url)) {
+            callbacks.push(url);
+            addedCallbacks.push(url);
+            changed = true;
+          }
         }
-        if (!logouts.includes(domainLogout)) {
-          logouts.push(domainLogout);
-          changed = true;
+        for (const url of logoutsToAdd) {
+          if (!logouts.includes(url)) {
+            logouts.push(url);
+            addedLogouts.push(url);
+            changed = true;
+          }
         }
 
         if (changed) {
@@ -823,8 +831,8 @@ export async function deployCommand(options?: {
           if (updateCode !== 0) {
             console.error("  Failed to update Cognito callback URLs");
           } else {
-            console.log(`  Added callback: ${domainCallback}`);
-            console.log(`  Added logout:   ${domainLogout}`);
+            for (const url of addedCallbacks) console.log(`  Added callback: ${url}`);
+            for (const url of addedLogouts) console.log(`  Added logout:   ${url}`);
           }
         } else {
           console.log("  Callback URLs already configured");
