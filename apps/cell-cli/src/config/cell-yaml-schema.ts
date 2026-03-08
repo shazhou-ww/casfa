@@ -89,7 +89,7 @@ export interface ResolvedCloudflareConfig {
 export interface DomainConfig {
   zone: ResolvedValue;
   host: ResolvedValue;
-  /** "route53" (default) or "cloudflare". Supports !Env for environment-driven selection. */
+  /** "route53" (default) or "cloudflare". Use !Param for value from params. */
   dns?: "route53" | "cloudflare" | EnvRef;
   /** ACM certificate ARN. If omitted, auto-created via DNS validation. */
   certificate?: ResolvedValue;
@@ -130,7 +130,8 @@ export interface CellConfig {
   buckets?: Record<string, Record<string, unknown>>;
   params?: Record<string, ResolvedValue>;
   cognito?: CognitoConfig;
-  domain?: DomainConfig;
+  /** Custom domains (no singular domain). Each entry may use !Param for zone/host/dns/cloudflare. */
+  domains?: DomainConfig[];
   network?: NetworkConfig;
   testing?: TestingConfig;
 }

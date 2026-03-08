@@ -57,6 +57,9 @@ export interface ResolvedConfig {
   backend?: BackendConfig;
   frontend?: FrontendConfig;
   static?: StaticMapping[];
+  /** Resolved list of domains from config.domains */
+  domains?: ResolvedDomainConfig[];
+  /** Primary domain (domains[0]) for backward compatibility and CELL_BASE_URL */
   domain?: ResolvedDomainConfig;
   network?: NetworkConfig;
   testing?: TestingConfig;
@@ -183,34 +186,38 @@ export function resolveConfig(
     envVars.S3_ENDPOINT = `http://localhost:${portBase + offset + 4}`;
   }
 
-  // 6. Resolve domain config (zone/host may be !Env / !Param → !Env)
-  let domain: ResolvedDomainConfig | undefined;
-  if (config.domain) {
-    const zone = resolveValueToString(config.domain.zone, envVars, envMap);
-    const host = resolveValueToString(config.domain.host, envVars, envMap);
-    domain = { zone, host };
-    if (config.domain.dns) {
-      const rawDns = isEnvRef(config.domain.dns)
-        ? resolveValueToString(config.domain.dns, envVars, envMap)
-        : config.domain.dns;
-      if (rawDns === "cloudflare" || rawDns === "route53") {
-        domain.dns = rawDns;
+  // 6. Resolve domains config (zone/host etc. from !Param → envVars)
+  const domains: ResolvedDomainConfig[] = [];
+  if (config.domains?.length) {
+    for (const d of config.domains) {
+      const zone = resolveValueToString(d.zone, envVars, envMap);
+      const host = resolveValueToString(d.host, envVars, envMap);
+      const domain: ResolvedDomainConfig = { zone, host };
+      if (d.dns !== undefined) {
+        const rawDns = isEnvRef(d.dns)
+          ? resolveValueToString(d.dns, envVars, envMap)
+          : d.dns;
+        if (rawDns === "cloudflare" || rawDns === "route53") {
+          domain.dns = rawDns;
+        }
       }
-    }
-    if (config.domain.certificate) {
-      domain.certificate = resolveValueToString(config.domain.certificate, envVars, envMap);
-    }
-    if (config.domain.cloudflare && domain.dns === "cloudflare") {
-      const zoneId = resolveValueToString(config.domain.cloudflare.zoneId, envVars, envMap);
-      const apiToken = envMap[config.domain.cloudflare.apiToken.secret];
-      if (!apiToken) {
-        throw new MissingParamsError(config.name, stage, [
-          `  cloudflare.apiToken: !Secret "${config.domain.cloudflare.apiToken.secret}" not found in env`,
-        ]);
+      if (d.certificate) {
+        domain.certificate = resolveValueToString(d.certificate, envVars, envMap);
       }
-      domain.cloudflare = { zoneId, apiToken };
+      if (d.cloudflare && domain.dns === "cloudflare") {
+        const zoneId = resolveValueToString(d.cloudflare.zoneId, envVars, envMap);
+        const apiToken = envMap[d.cloudflare.apiToken.secret];
+        if (!apiToken) {
+          throw new MissingParamsError(config.name, stage, [
+            `  cloudflare.apiToken: !Secret "${d.cloudflare.apiToken.secret}" not found in env`,
+          ]);
+        }
+        domain.cloudflare = { zoneId, apiToken };
+      }
+      domains.push(domain);
     }
   }
+  const domain = domains[0];
 
   // 7. Standard Cell env vars (CELL_STAGE, CELL_BASE_URL)
   envVars.CELL_STAGE = stage;
@@ -228,6 +235,7 @@ export function resolveConfig(
     backend: config.backend,
     frontend: config.frontend,
     static: config.static,
+    domains: domains.length ? domains : undefined,
     domain,
     network: config.network,
     testing: config.testing,
