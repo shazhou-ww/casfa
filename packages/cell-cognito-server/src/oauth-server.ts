@@ -77,12 +77,13 @@ export function createOAuthServer(config: OAuthServerConfig): OAuthServer {
   }
 
   return {
-    getMetadata(): OAuthMetadata {
+    getMetadata(overrideIssuer?: string): OAuthMetadata {
+      const base = overrideIssuer ?? issuerUrl;
       return {
-        issuer: issuerUrl,
-        authorization_endpoint: `${issuerUrl}/oauth/authorize`,
-        token_endpoint: `${issuerUrl}/oauth/token`,
-        registration_endpoint: `${issuerUrl}/oauth/register`,
+        issuer: base,
+        authorization_endpoint: `${base}/oauth/authorize`,
+        token_endpoint: `${base}/oauth/token`,
+        registration_endpoint: `${base}/oauth/register`,
         response_types_supported: ["code"],
         grant_types_supported: ["authorization_code", "refresh_token"],
         code_challenge_methods_supported: ["S256"],
@@ -112,10 +113,11 @@ export function createOAuthServer(config: OAuthServerConfig): OAuthServer {
     },
 
     handleAuthorize(params) {
+      const base = params.issuerUrl ?? issuerUrl;
       const registered = registeredClients.get(params.clientId);
       const clientName = registered?.clientName ?? "MCP Client";
       const scope = params.scope ?? "openid profile email";
-      const serverCallbackUri = `${issuerUrl}/oauth/callback`;
+      const serverCallbackUri = `${base}/oauth/callback`;
 
       const wrappedState = btoa(
         JSON.stringify({
@@ -143,6 +145,7 @@ export function createOAuthServer(config: OAuthServerConfig): OAuthServer {
     },
 
     async handleCallback(params) {
+      const base = params.issuerUrl ?? issuerUrl;
       let clientState = "";
       let clientRedirectUri = "";
       let scope = "openid profile email";
@@ -162,7 +165,7 @@ export function createOAuthServer(config: OAuthServerConfig): OAuthServer {
         /* state not wrapped, treat as frontend flow */
       }
 
-      const serverCallbackUri = `${issuerUrl}/oauth/callback`;
+      const serverCallbackUri = `${base}/oauth/callback`;
       const cognitoTokens = await exchangeCodeForTokens(
         cognitoConfig,
         params.code,
@@ -189,7 +192,7 @@ export function createOAuthServer(config: OAuthServerConfig): OAuthServer {
           createdAt: Date.now(),
         });
 
-        const consentUrl = new URL(`${issuerUrl}/oauth/consent`);
+        const consentUrl = new URL(`${base}/oauth/consent`);
         consentUrl.searchParams.set("session", sessionToken);
         return {
           type: "consent_required" as const,
@@ -210,7 +213,7 @@ export function createOAuthServer(config: OAuthServerConfig): OAuthServer {
         codeChallengeMethod: codeChallengeMethod || null,
       });
 
-      const redirectUrl = new URL(`${issuerUrl}/oauth/callback-complete`);
+      const redirectUrl = new URL(`${base}/oauth/callback-complete`);
       redirectUrl.searchParams.set("code", ourCode);
       return { type: "tokens" as const, redirectUrl: redirectUrl.toString() };
     },
@@ -269,7 +272,7 @@ export function createOAuthServer(config: OAuthServerConfig): OAuthServer {
         return { redirectUrl: redirectUrl.toString() };
       }
 
-      return { redirectUrl: `${issuerUrl}/oauth/callback-complete?code=${ourCode}` };
+      return { redirectUrl: `${params.issuerUrl ?? issuerUrl}/oauth/callback-complete?code=${ourCode}` };
     },
 
     denyConsent(sessionId) {
