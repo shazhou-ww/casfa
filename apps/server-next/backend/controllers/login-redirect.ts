@@ -6,6 +6,7 @@ import type { ServerConfig } from "../config.ts";
 import type { Env } from "../types.ts";
 import type { PendingClientInfoStore } from "@casfa/cell-delegates-server";
 import { Hono } from "hono";
+import { getRequestBaseUrl } from "../request-url.ts";
 
 const PENDING_CLIENT_TTL_SEC = 3600; // 1 hour
 
@@ -22,7 +23,8 @@ export function createLoginRedirectRoutes(
   }
 
   routes.get("/oauth/login", (c) => {
-    const returnUrl = c.req.query("return_url") ?? config.baseUrl;
+    const baseUrl = getRequestBaseUrl(c);
+    const returnUrl = c.req.query("return_url") ?? baseUrl;
     const auth = c.get("auth");
     if (auth) {
       return c.redirect(returnUrl);
@@ -43,13 +45,12 @@ export function createLoginRedirectRoutes(
       });
       c.header("Set-Cookie", clearHeader);
     }
-    const base = config.baseUrl.replace(/\/$/, "");
+    const base = getRequestBaseUrl(c).replace(/\/$/, "");
     return c.redirect(`${base}/oauth/login`);
   });
 
   routes.get("/.well-known/oauth-authorization-server", (c) => {
-    // Resource server (server-next) is the OAuth issuer for delegate flow. Authorize/token on this cell.
-    const base = config.baseUrl.replace(/\/$/, "");
+    const base = getRequestBaseUrl(c).replace(/\/$/, "");
     return c.json({
       issuer: base,
       authorization_endpoint: `${base}/oauth/authorize`,
