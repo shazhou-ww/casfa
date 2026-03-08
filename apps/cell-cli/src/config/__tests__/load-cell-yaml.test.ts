@@ -111,4 +111,29 @@ params:
     expect(config.params?.SOURCE).toEqual({ env: "SHARED_VALUE" });
     expect(config.params?.ALIAS).toEqual({ env: "SHARED_VALUE" });
   });
+
+  test("throws when !Env is used outside params", () => {
+    expect(() =>
+      parseCellYaml(`
+name: test
+params:
+  FOO: bar
+domain:
+  dns: !Env DNS_PROVIDER
+`)
+    ).toThrow(/!Env and !Secret are only allowed under params/i);
+  });
+
+  test("throws when !Secret is used outside params", () => {
+    expect(() =>
+      parseCellYaml(`
+name: test
+params:
+  FOO: bar
+domain:
+  cloudflare:
+    apiToken: !Secret CF_TOKEN
+`)
+    ).toThrow(/!Env and !Secret are only allowed under params/i);
+  });
 });

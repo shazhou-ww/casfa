@@ -55,6 +55,41 @@ function isTerminalEnvRef(node: unknown): node is EnvRef {
 }
 
 /**
+ * Walk the raw parsed tree and throw if any value outside "params" is an EnvRef or SecretRef.
+ * Only keys under params may use !Env / !Secret; other sections must use !Param or literals.
+ */
+function assertEnvAndSecretOnlyInParams(raw: Record<string, unknown>, isUnderParams = false): void {
+  for (const [key, value] of Object.entries(raw)) {
+    const underParams = isUnderParams || key === "params";
+    if (value === null || value === undefined) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (typeof item === "object" && item !== null && !Array.isArray(item)) {
+          assertEnvAndSecretOnlyInParams(item as Record<string, unknown>, underParams);
+        }
+      }
+      continue;
+    }
+    if (typeof value === "object") {
+      const obj = value as Record<string, unknown>;
+      if (!underParams) {
+        if (isTerminalEnvRef(obj)) {
+          throw new Error(
+            "!Env and !Secret are only allowed under params. Move them to params and use !Param in other sections."
+          );
+        }
+        if (isTerminalSecretRef(obj)) {
+          throw new Error(
+            "!Env and !Secret are only allowed under params. Move them to params and use !Param in other sections."
+          );
+        }
+      }
+      assertEnvAndSecretOnlyInParams(obj, underParams);
+    }
+  }
+}
+
+/**
  * Walk a plain JS object/array tree and replace any `{ $ref }` values
  * with their resolved counterparts from the resolved params map.
  */
@@ -103,6 +138,8 @@ export function parseCellYaml(content: string): CellConfig {
   const raw = doc.toJS() as Record<string, unknown>;
 
   const params = (raw.params ?? {}) as Record<string, RawParamValue>;
+
+  assertEnvAndSecretOnlyInParams(raw);
 
   for (const [key, value] of Object.entries(params)) {
     if (isSecretRef(value) && value.secret === null) {
