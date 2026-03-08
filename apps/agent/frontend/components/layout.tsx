@@ -3,14 +3,32 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import SettingsIcon from "@mui/icons-material/Settings";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import { Box, Button, Menu, MenuItem, Typography } from "@mui/material";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useCurrentUser } from "../lib/auth.ts";
+import { useAgentStore } from "../stores/agent-store.ts";
+import { ThreadList } from "./chat/thread-list.tsx";
 
 export function Layout() {
   const user = useCurrentUser();
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const fetchSettings = useAgentStore((s) => s.fetchSettings);
+  const fetchThreads = useAgentStore((s) => s.fetchThreads);
+
+  useEffect(() => {
+    fetchSettings();
+    fetchThreads();
+  }, [fetchSettings, fetchThreads]);
+
+  useEffect(() => {
+    const onFocus = () => {
+      fetchSettings();
+      fetchThreads();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [fetchSettings, fetchThreads]);
 
   const handleOpenMenu = useCallback((e: React.MouseEvent<HTMLElement>) => setAnchorEl(e.currentTarget), []);
   const handleCloseMenu = useCallback(() => setAnchorEl(null), []);
@@ -58,7 +76,9 @@ export function Layout() {
           </Typography>
         </Box>
 
-        <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }} />
+        <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+          <ThreadList />
+        </Box>
 
         <Box sx={{ flexShrink: 0, p: 1, borderTop: 1, borderColor: "divider" }}>
           {user && (
