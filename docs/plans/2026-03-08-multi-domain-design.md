@@ -96,3 +96,44 @@ Support multiple custom domains for a single cell deployment: one codebase can b
 - **Deploy:** When `domains` is configured, you must pass at least one target: `cell deploy --domain sso.example.com`. You can pass multiple: `cell deploy --domain host1 --domain host2` (the first is used for cert/DNS in the current implementation; Cognito callbacks are synced for all configured domains).
 - **No custom domain:** If `domains` is absent or empty, run `cell deploy` without `--domain`.
 
+## 7. Instance files (multi-instance)
+
+One `cell.yaml` describes the app; multiple **instances** (e.g. staging vs prod, or different Cognito/domain per env) are described by **instance override files**: `cell.<instance-name>.yaml`.
+
+### 7.1 Format
+
+- **File name**: `cell.<instance-name>.yaml` (e.g. `cell.staging.yaml`, `cell.sso-prod.yaml`). Instance name: letters, digits, hyphen, underscore only.
+- **Content**: Only a top-level `params` key. Each value overrides the same param from `cell.yaml`. Values may be:
+  - Literal string (e.g. `DOMAIN_HOST: "staging.example.com"`)
+  - `!Env VAR_NAME` (read from .env at runtime)
+  - `!Secret SECRET_NAME`
+- No other keys; no `!Param` (no cross-reference between params in the instance file).
+
+### 7.2 Merging
+
+- Base config: `loadCellYaml(cell.yaml)`.
+- With `-i <name>`: load `cell.<name>.yaml` and set `config.params = { ...base.params, ...instance.params }` (instance wins).
+- Use this to override domain, Cognito pool/client, or any param per instance without duplicating the rest of the config.
+
+### 7.3 CLI
+
+- **Option**: `-i, --instance <name>` on: `dev`, `build`, `test`, `test:unit`, `test:e2e`, `deploy`, `domain list`, `logs`, `status`.
+- **Example**: `cell deploy -i sso-prod --domain sso` uses `cell.yaml` + `cell.sso-prod.yaml` params, then deploys to the domain alias `sso`.
+- **Stack / resources**: When `-i` is set, the effective name becomes `<config.name>-<instance>` (e.g. stack `sso-sso-prod`) so multiple instances do not share one stack.
+
+### 7.4 Example
+
+```yaml
+# cell.staging.yaml
+params:
+  DOMAIN_HOST: "staging.myapp.com"
+  COGNITO_USER_POOL_ID: "us-east-1_staging"
+  COGNITO_CLIENT_ID: "client-staging"
+```
+
+```bash
+cell deploy -i staging --domain app
+cell domain list -i staging
+cell dev -i staging
+```
+

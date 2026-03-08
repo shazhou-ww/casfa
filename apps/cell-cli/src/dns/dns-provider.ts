@@ -43,7 +43,7 @@ export function createDnsProvider(config: ResolvedConfig): DnsProvider {
     if (!cf) {
       throw new Error(
         "domain.dns is 'cloudflare' but domain.cloudflare config is missing.\n" +
-          "  Add cloudflare.zoneId and cloudflare.apiToken to your cell.yaml domain section."
+          "  Add domain.cloudflare.zoneId and either domain.cloudflare.apiToken or top-level cloudflare.apiToken in cell.yaml."
       );
     }
     return new CloudflareProvider(cf.zoneId, cf.apiToken);

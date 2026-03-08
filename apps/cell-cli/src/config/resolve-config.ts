@@ -1,10 +1,12 @@
 import type {
   BackendConfig,
   CellConfig,
+  DomainConfig,
   FrontendConfig,
   NetworkConfig,
   ResolvedDomainConfig,
   ResolvedValue,
+  SecretRef,
   StaticMapping,
   TableConfig,
   TestingConfig,
@@ -100,8 +102,10 @@ function bucketResourceName(
 export function resolveConfig(
   config: CellConfig,
   envMap: Record<string, string>,
-  stage: Stage
+  stage: Stage,
+  options?: { onMissingParam?: "throw" | "placeholder" }
 ): ResolvedConfig {
+  const onMissing = options?.onMissingParam ?? "throw";
   const envVars: Record<string, string> = {};
   const secretRefs: Record<string, string> = {};
 
@@ -126,14 +130,22 @@ export function resolveConfig(
         secretRefs[key] = value.secret;
         const envValue = envMap[value.secret];
         if (envValue === undefined) {
-          missingParams.push(`  ${key}: !Secret "${value.secret}" not found in env`);
+          if (onMissing === "placeholder") {
+            envVars[key] = `<${key}>`;
+          } else {
+            missingParams.push(`  ${key}: !Secret "${value.secret}" not found in env`);
+          }
         } else {
           envVars[key] = envValue;
         }
       } else if (isEnvRef(value)) {
         const envValue = envMap[value.env];
         if (envValue === undefined) {
-          missingParams.push(`  ${key}: !Env "${value.env}" not found in env`);
+          if (onMissing === "placeholder") {
+            envVars[key] = `<${key}>`;
+          } else {
+            missingParams.push(`  ${key}: !Env "${value.env}" not found in env`);
+          }
         } else {
           envVars[key] = envValue;
         }
@@ -186,35 +198,111 @@ export function resolveConfig(
     envVars.S3_ENDPOINT = `http://localhost:${portBase + offset + 4}`;
   }
 
-  // 6. Resolve domains config (zone/host etc. from !Param → envVars)
+  // Resolve top-level Cloudflare API token (shared by domains that omit domain.cloudflare.apiToken)
+  const topLevelCloudflareToken =
+    config.cloudflare?.apiToken != null
+      ? envMap[config.cloudflare.apiToken.secret] ??
+        (onMissing === "placeholder" ? `<${config.cloudflare.apiToken.secret}>` : "")
+      : undefined;
+
+  // 6. Resolve domains config (single domain or multiple)
   const domains: ResolvedDomainConfig[] = [];
-  if (config.domains?.length) {
-    for (const d of config.domains) {
-      const zone = resolveValueToString(d.zone, envVars, envMap);
-      const host = resolveValueToString(d.host, envVars, envMap);
-      const domain: ResolvedDomainConfig = { zone, host };
-      if (d.dns !== undefined) {
+  const deriveZoneFromHost = (host: string): string =>
+    host.includes(".") ? host.split(".").slice(1).join(".") : host;
+  const pushResolvedDomain = (d: DomainConfig, alias: string) => {
+    const host = resolveValueToString(d.host, envVars, envMap);
+    let zone: string;
+    if (d.dns !== undefined && typeof d.dns === "object" && d.dns !== null && "provider" in d.dns) {
+      const dnsObj = d.dns as {
+        provider: string;
+        zone?: ResolvedValue;
+        zoneId?: ResolvedValue;
+        apiToken?: SecretRef;
+      };
+      if (dnsObj.provider === "route53") {
+        if (dnsObj.zone == null) {
+          throw new Error(
+            'When DNS provider is route53, DNS.zone (root domain) is required. Example: DNS: { provider: route53, zone: "example.com" }'
+          );
+        }
+        zone = resolveValueToString(dnsObj.zone, envVars, envMap);
+      } else if (dnsObj.provider === "cloudflare") {
+        zone = deriveZoneFromHost(host);
+      } else {
+        zone = d.zone != null ? resolveValueToString(d.zone, envVars, envMap) : deriveZoneFromHost(host);
+      }
+    } else {
+      zone = d.zone != null ? resolveValueToString(d.zone, envVars, envMap) : deriveZoneFromHost(host);
+    }
+    const domain: ResolvedDomainConfig = { alias, zone, host };
+    let dnsProvider: "route53" | "cloudflare" | undefined;
+    let cloudflareZoneId: ResolvedValue | undefined;
+    let cloudflareApiToken: SecretRef | undefined;
+
+    if (d.dns !== undefined) {
+      if (typeof d.dns === "object" && d.dns !== null && "provider" in d.dns) {
+        const dnsObj = d.dns as { provider: string; zoneId?: ResolvedValue; apiToken?: SecretRef };
+        if (dnsObj.provider === "route53" || dnsObj.provider === "cloudflare") {
+          dnsProvider = dnsObj.provider;
+          if (dnsObj.provider === "cloudflare") {
+            cloudflareZoneId = dnsObj.zoneId;
+            cloudflareApiToken = dnsObj.apiToken;
+          }
+        }
+      } else {
         const rawDns = isEnvRef(d.dns)
           ? resolveValueToString(d.dns, envVars, envMap)
-          : d.dns;
+          : (d.dns as string);
         if (rawDns === "cloudflare" || rawDns === "route53") {
-          domain.dns = rawDns;
+          dnsProvider = rawDns;
+          if (rawDns === "cloudflare" && d.cloudflare) {
+            cloudflareZoneId = d.cloudflare.zoneId;
+            cloudflareApiToken = d.cloudflare.apiToken;
+          }
         }
       }
-      if (d.certificate) {
-        domain.certificate = resolveValueToString(d.certificate, envVars, envMap);
+    }
+    if (dnsProvider) domain.dns = dnsProvider;
+    if (d.certificate) {
+      domain.certificate = resolveValueToString(d.certificate, envVars, envMap);
+    }
+    if (domain.dns === "cloudflare") {
+      const zoneId =
+        cloudflareZoneId != null
+          ? resolveValueToString(cloudflareZoneId, envVars, envMap)
+          : "";
+      const apiTokenFromDomain =
+        cloudflareApiToken != null
+          ? envMap[cloudflareApiToken.secret] ??
+            (onMissing === "placeholder" ? `<${cloudflareApiToken.secret}>` : "")
+          : undefined;
+      const apiToken =
+        apiTokenFromDomain ??
+        topLevelCloudflareToken ??
+        (onMissing === "placeholder" ? "<cloudflare.apiToken>" : "");
+      if (!apiToken) {
+        throw new MissingParamsError(config.name, stage, [
+          "  cloudflare.apiToken: set dns.apiToken or top-level cloudflare.apiToken (!Secret) and add to env",
+        ]);
       }
-      if (d.cloudflare && domain.dns === "cloudflare") {
-        const zoneId = resolveValueToString(d.cloudflare.zoneId, envVars, envMap);
-        const apiToken = envMap[d.cloudflare.apiToken.secret];
-        if (!apiToken) {
-          throw new MissingParamsError(config.name, stage, [
-            `  cloudflare.apiToken: !Secret "${d.cloudflare.apiToken.secret}" not found in env`,
-          ]);
-        }
-        domain.cloudflare = { zoneId, apiToken };
-      }
-      domains.push(domain);
+      domain.cloudflare = { zoneId, apiToken };
+    }
+    domains.push(domain);
+  };
+
+  if (config.domain) {
+    // Single domain: one entry with alias "default" (no --domain needed for deploy)
+    pushResolvedDomain(config.domain, "default");
+  } else {
+    const domainsEntries: [string, DomainConfig][] = Array.isArray(config.domains)
+      ? config.domains.map((d, i) => [String(i), d] as [string, DomainConfig])
+      : config.domains && typeof config.domains === "object"
+        ? Object.entries(config.domains)
+        : [];
+    const isLegacyArray = Array.isArray(config.domains);
+    for (const [aliasKey, d] of domainsEntries) {
+      const alias = isLegacyArray ? resolveValueToString(d.host, envVars, envMap) : aliasKey;
+      pushResolvedDomain(d, alias);
     }
   }
   const domain = domains[0];
@@ -242,14 +330,14 @@ export function resolveConfig(
   };
 }
 
-/** Resolve a ResolvedValue to a string using envVars (for params) and envMap (for !Env). */
+/** Resolve a ResolvedValue to a string using envVars (merged params, including instance overrides) and envMap (.env). */
 function resolveValueToString(
   value: ResolvedValue,
   envVars: Record<string, string>,
   envMap: Record<string, string>
 ): string {
   if (typeof value === "string") return value;
-  if (isEnvRef(value)) return envMap[value.env] ?? envVars[value.env] ?? "";
-  if (isSecretRef(value)) return envMap[value.secret] ?? envVars[value.secret] ?? "";
+  if (isEnvRef(value)) return envVars[value.env] ?? envMap[value.env] ?? "";
+  if (isSecretRef(value)) return envVars[value.secret] ?? envMap[value.secret] ?? "";
   return "";
 }

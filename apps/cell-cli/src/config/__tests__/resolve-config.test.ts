@@ -209,33 +209,49 @@ describe("resolveConfig", () => {
     expect(resolved.testing).toEqual(config.testing);
   });
 
-  test("domain: string zone/host resolve directly", () => {
+  test("domain: object alias → zone/host resolve directly", () => {
     const config = makeConfig({
-      domains: [{ zone: "example.com", host: "app.example.com" }],
+      domains: { app: { zone: "example.com", host: "app.example.com" } },
     });
     const resolved = resolveConfig(config, {}, "cloud");
     expect(resolved.domains).toHaveLength(1);
-    expect(resolved.domains![0]).toEqual({ zone: "example.com", host: "app.example.com" });
-    expect(resolved.domain).toEqual({ zone: "example.com", host: "app.example.com" });
+    expect(resolved.domains![0]).toEqual({
+      alias: "app",
+      zone: "example.com",
+      host: "app.example.com",
+    });
+    expect(resolved.domain).toEqual({
+      alias: "app",
+      zone: "example.com",
+      host: "app.example.com",
+    });
   });
 
-  test("domain: env ref zone/host resolved from env map", () => {
+  test("domain: env ref zone/host resolved from env map (object form)", () => {
     const config = makeConfig({
       params: {
         DOMAIN_ZONE: { env: "DOMAIN_ZONE" },
         DOMAIN_HOST: { env: "DOMAIN_HOST" },
       },
-      domains: [
-        {
+      domains: {
+        app: {
           zone: { env: "DOMAIN_ZONE" },
           host: { env: "DOMAIN_HOST" },
         },
-      ],
+      },
     });
     const envMap = { DOMAIN_ZONE: "example.com", DOMAIN_HOST: "app.example.com" };
     const resolved = resolveConfig(config, envMap, "cloud");
-    expect(resolved.domain).toEqual({ zone: "example.com", host: "app.example.com" });
-    expect(resolved.domains![0]).toEqual({ zone: "example.com", host: "app.example.com" });
+    expect(resolved.domain).toEqual({
+      alias: "app",
+      zone: "example.com",
+      host: "app.example.com",
+    });
+    expect(resolved.domains![0]).toEqual({
+      alias: "app",
+      zone: "example.com",
+      host: "app.example.com",
+    });
   });
 
   test("domain: CELL_BASE_URL set from resolved domain host", () => {
@@ -244,21 +260,87 @@ describe("resolveConfig", () => {
         DOMAIN_HOST: { env: "DOMAIN_HOST" },
         DOMAIN_ZONE: { env: "DOMAIN_ZONE" },
       },
-      domains: [
-        {
+      domains: {
+        app: {
           zone: { env: "DOMAIN_ZONE" },
           host: { env: "DOMAIN_HOST" },
         },
-      ],
+      },
     });
     const envMap = { DOMAIN_ZONE: "example.com", DOMAIN_HOST: "app.example.com" };
     const resolved = resolveConfig(config, envMap, "cloud");
     expect(resolved.envVars.CELL_BASE_URL).toBe("https://app.example.com");
   });
 
+  test("domain: legacy array form uses host as alias", () => {
+    const config = makeConfig({
+      domains: [{ zone: "example.com", host: "app.example.com" }],
+    } as Partial<CellConfig> as CellConfig);
+    const resolved = resolveConfig(config, {}, "cloud");
+    expect(resolved.domains).toHaveLength(1);
+    expect(resolved.domains![0].alias).toBe("app.example.com");
+    expect(resolved.domains![0].host).toBe("app.example.com");
+  });
+
   test("domain: no domain config → resolved.domain and resolved.domains undefined", () => {
     const resolved = resolveConfig(makeConfig(), {}, "cloud");
     expect(resolved.domain).toBeUndefined();
     expect(resolved.domains).toBeUndefined();
+  });
+
+  test("domain: single domain (config.domain) → one entry with alias default, no --domain required", () => {
+    const config = makeConfig({
+      domain: { zone: "example.com", host: "app.example.com" },
+    });
+    const resolved = resolveConfig(config, {}, "cloud");
+    expect(resolved.domains).toHaveLength(1);
+    expect(resolved.domains![0]).toEqual({
+      alias: "default",
+      zone: "example.com",
+      host: "app.example.com",
+    });
+    expect(resolved.domain).toEqual(resolved.domains![0]);
+  });
+
+  test("domain: DNS object route53 with zone → zone from DNS.zone", () => {
+    const config = makeConfig({
+      params: { DOMAIN_HOST: "sso.casfa.shazhou.me" },
+      domain: {
+        host: "sso.casfa.shazhou.me",
+        dns: { provider: "route53", zone: "casfa.shazhou.me" },
+      },
+    } as Partial<CellConfig> as CellConfig);
+    const resolved = resolveConfig(config, {}, "cloud");
+    expect(resolved.domain?.zone).toBe("casfa.shazhou.me");
+    expect(resolved.domain?.host).toBe("sso.casfa.shazhou.me");
+  });
+
+  test("domain: DNS object cloudflare (no zone) → zone derived from host", () => {
+    const config = makeConfig({
+      params: {
+        DNS: {
+          provider: "cloudflare" as const,
+          zoneId: "abc123",
+          apiToken: { secret: "CF_TOKEN" },
+        },
+      },
+      domain: {
+        host: "auth.symbiontlabs.me",
+        dns: { provider: "cloudflare", zoneId: "abc123", apiToken: { secret: "CF_TOKEN" } },
+      },
+    } as Partial<CellConfig> as CellConfig);
+    const resolved = resolveConfig(config, { CF_TOKEN: "t" }, "cloud");
+    expect(resolved.domain?.zone).toBe("symbiontlabs.me");
+    expect(resolved.domain?.host).toBe("auth.symbiontlabs.me");
+  });
+
+  test("domain: DNS provider route53 without zone throws", () => {
+    const config = makeConfig({
+      domain: {
+        host: "sso.example.com",
+        dns: { provider: "route53" },
+      },
+    } as Partial<CellConfig> as CellConfig);
+    expect(() => resolveConfig(config, {}, "cloud")).toThrow(/DNS.zone.*required/);
   });
 });

@@ -4,14 +4,17 @@ export type SecretRef = { secret: string };
 /** A non-sensitive value resolved from environment variables */
 export type EnvRef = { env: string };
 
-/** After YAML loading, only three value types remain */
+/** After YAML loading, leaf values are string | EnvRef | SecretRef. Params may also have object values (e.g. DNS config). */
 export type ResolvedValue = string | SecretRef | EnvRef;
+
+/** Param value after resolution: leaf or nested object (e.g. DNS: { provider, zoneId?, apiToken? }). */
+export type ResolvedParamValue = ResolvedValue | DnsConfig | Record<string, unknown>;
 
 /** Internal: a reference to another param key, resolved away before returning */
 export type ParamRef = { $ref: string };
 
-/** Value types during parsing, before param resolution */
-export type RawParamValue = string | SecretRef | EnvRef | ParamRef;
+/** Value types during parsing, before param resolution; param values may be objects. */
+export type RawParamValue = string | SecretRef | EnvRef | ParamRef | Record<string, unknown>;
 
 export function isSecretRef(v: unknown): v is SecretRef {
   return typeof v === "object" && v !== null && "secret" in v && !("$ref" in v) && !("env" in v);
@@ -76,9 +79,24 @@ export interface CognitoConfig {
   clientSecret?: ResolvedValue;
 }
 
+/** Top-level Cloudflare config: apiToken shared by all domains using dns: cloudflare */
+export interface CloudflareGlobalConfig {
+  apiToken: SecretRef;
+}
+
+/** DNS config object: provider + optional zone (Route53) or zoneId/apiToken (Cloudflare). Used as domain.dns or param (!Param DNS). */
+export interface DnsConfig {
+  provider: "route53" | "cloudflare";
+  /** Route53: root domain name (e.g. casfa.shazhou.me) used to look up hosted zone. Omit for Cloudflare. */
+  zone?: ResolvedValue;
+  zoneId?: ResolvedValue;
+  apiToken?: SecretRef;
+}
+
+/** Per-domain Cloudflare config; apiToken optional when top-level cloudflare.apiToken is set. @deprecated Prefer domain.dns object. */
 export interface CloudflareConfig {
   zoneId: ResolvedValue;
-  apiToken: SecretRef;
+  apiToken?: SecretRef;
 }
 
 export interface ResolvedCloudflareConfig {
@@ -87,20 +105,26 @@ export interface ResolvedCloudflareConfig {
 }
 
 export interface DomainConfig {
-  zone: ResolvedValue;
+  /** Root domain (e.g. example.com). Optional when domain.dns is object: Route53 uses dns.zone, Cloudflare derives from host. */
+  zone?: ResolvedValue;
   host: ResolvedValue;
-  /** "route53" (default) or "cloudflare". Use !Param for value from params. */
-  dns?: "route53" | "cloudflare" | EnvRef;
+  /**
+   * DNS provider: "route53" (default) or "cloudflare", or an object { provider, zone?, zoneId?, apiToken? }.
+   * Route53: set zone (root domain). Cloudflare: set zoneId + apiToken; zone is derived from host.
+   */
+  dns?: "route53" | "cloudflare" | DnsConfig | EnvRef;
   /** ACM certificate ARN. If omitted, auto-created via DNS validation. */
   certificate?: ResolvedValue;
   /** Route53 only: populated at deploy time by looking up hosted zone. */
   hostedZoneId?: string;
-  /** Required when dns is "cloudflare" */
+  /** When dns is "cloudflare" (string form): zoneId required; apiToken optional if top-level cloudflare set. @deprecated Prefer domain.dns object. */
   cloudflare?: CloudflareConfig;
 }
 
 /** Domain config after resolving all EnvRef / SecretRef values to strings. */
 export type ResolvedDomainConfig = {
+  /** Alias used in CLI: cell deploy --domain <alias>, cell domain list */
+  alias: string;
   zone: string;
   host: string;
   dns?: "route53" | "cloudflare";
@@ -128,10 +152,14 @@ export interface CellConfig {
   static?: StaticMapping[];
   tables?: Record<string, TableConfig>;
   buckets?: Record<string, Record<string, unknown>>;
-  params?: Record<string, ResolvedValue>;
+  params?: Record<string, ResolvedParamValue>;
   cognito?: CognitoConfig;
-  /** Custom domains (no singular domain). Each entry may use !Param for zone/host/dns/cloudflare. */
-  domains?: DomainConfig[];
+  /** Shared Cloudflare API token (used by domains with dns: cloudflare when domain.cloudflare.apiToken is omitted) */
+  cloudflare?: CloudflareGlobalConfig;
+  /** Single domain (simple case: one domain per cell/instance). Mutually exclusive with domains. */
+  domain?: DomainConfig;
+  /** Multiple named domains: map of alias → config. Use with cell deploy --domain <alias>. Mutually exclusive with domain. */
+  domains?: Record<string, DomainConfig>;
   network?: NetworkConfig;
   testing?: TestingConfig;
 }

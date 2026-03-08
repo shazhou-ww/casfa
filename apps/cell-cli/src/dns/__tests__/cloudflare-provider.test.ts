@@ -21,10 +21,11 @@ describe("CloudflareProvider", () => {
     test("returns empty resources (DNS managed outside CloudFormation)", () => {
       const config = makeConfig({
         domain: {
+          alias: "app",
           zone: "example.com",
           host: "app.example.com",
           dns: "cloudflare",
-          cloudflare: { zoneId: "zone-id-123", apiToken: { secret: "CF_TOKEN" } },
+          cloudflare: { zoneId: "zone-id-123", apiToken: "token" },
         },
       });
       const result = provider.generateCfnResources(config);

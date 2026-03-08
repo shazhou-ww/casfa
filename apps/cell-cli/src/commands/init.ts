@@ -34,7 +34,7 @@ cognito:
   clientId: !Param COGNITO_CLIENT_ID
   hostedUiUrl: !Param COGNITO_HOSTED_UI_URL
 
-domains: []
+domains: {}
 
 testing:
   unit: "**/__tests__/*.test.ts"
