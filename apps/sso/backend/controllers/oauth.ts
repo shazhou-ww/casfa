@@ -77,13 +77,14 @@ export function createSsoOAuthRoutes(deps: Deps) {
       const requestHost = new URL(baseUrl).hostname;
       const cookieDomain = cookie.authCookieDomain ?? requestHost;
       const secure = requestHost !== "localhost" && requestHost !== "127.0.0.1";
+      const sameSite = requestHost === "localhost" || requestHost === "127.0.0.1" ? "Lax" : "Strict";
       const authHeader = buildAuthCookieHeader(accessToken, {
         cookieName: cookie.authCookieName,
         cookieDomain,
         cookiePath: cookie.authCookiePath,
         cookieMaxAgeSeconds: cookie.authCookieMaxAgeSeconds,
         secure,
-        sameSite: "Strict",
+        sameSite,
       });
       const refreshHeader = buildRefreshCookieHeader(tokens.refreshToken, {
         cookieName: cookie.refreshCookieName,
@@ -91,7 +92,7 @@ export function createSsoOAuthRoutes(deps: Deps) {
         cookiePath: cookie.refreshCookiePath,
         cookieMaxAgeSeconds: cookie.refreshCookieMaxAgeSeconds,
         secure,
-        sameSite: "Strict",
+        sameSite,
       });
       c.header("Set-Cookie", authHeader);
       c.res.headers.append("Set-Cookie", refreshHeader);
@@ -111,6 +112,7 @@ export function createSsoOAuthRoutes(deps: Deps) {
     const requestHost = new URL(baseUrl).hostname;
     const cookieDomain = cookie.authCookieDomain ?? requestHost;
     const secure = requestHost !== "localhost" && requestHost !== "127.0.0.1";
+    const sameSite = requestHost === "localhost" || requestHost === "127.0.0.1" ? "Lax" : "Strict";
     try {
       const result = await oauthServer.handleToken({
         grantType: "authorization_code",
@@ -125,7 +127,7 @@ export function createSsoOAuthRoutes(deps: Deps) {
         cookiePath: cookie.authCookiePath,
         cookieMaxAgeSeconds: cookie.authCookieMaxAgeSeconds ?? result.expires_in,
         secure,
-        sameSite: "Strict",
+        sameSite,
       });
       const refreshHeader =
         result.refresh_token
@@ -135,7 +137,7 @@ export function createSsoOAuthRoutes(deps: Deps) {
               cookiePath: cookie.refreshCookiePath,
               cookieMaxAgeSeconds: cookie.refreshCookieMaxAgeSeconds,
               secure,
-              sameSite: "Strict",
+              sameSite,
             })
           : null;
       c.header("Set-Cookie", authHeader);
@@ -156,6 +158,7 @@ export function createSsoOAuthRoutes(deps: Deps) {
     const requestHost = new URL(baseUrl).hostname;
     const cookieDomain = cookie.authCookieDomain ?? requestHost;
     const secure = requestHost !== "localhost" && requestHost !== "127.0.0.1";
+    const sameSite = requestHost === "localhost" || requestHost === "127.0.0.1" ? "Lax" : "Strict";
     try {
       const tokens = await refreshCognitoTokens(cognitoConfig, refreshToken);
       const authHeader = buildAuthCookieHeader(tokens.idToken ?? tokens.accessToken, {
@@ -164,7 +167,7 @@ export function createSsoOAuthRoutes(deps: Deps) {
         cookiePath: cookie.authCookiePath,
         cookieMaxAgeSeconds: cookie.authCookieMaxAgeSeconds ?? (tokens.expiresAt - Math.floor(Date.now() / 1000)),
         secure,
-        sameSite: "Strict",
+        sameSite,
       });
       c.header("Set-Cookie", authHeader);
       return c.json({
@@ -183,17 +186,18 @@ export function createSsoOAuthRoutes(deps: Deps) {
     const baseUrl = getRequestBaseUrl(c);
     const requestHost = new URL(baseUrl).hostname;
     const cookieDomain = cookie.authCookieDomain ?? requestHost;
+    const sameSite = requestHost === "localhost" || requestHost === "127.0.0.1" ? "Lax" : "Strict";
     const clearAuth = buildClearAuthCookieHeader({
       cookieName: cookie.authCookieName,
       cookiePath: cookie.authCookiePath,
       cookieDomain,
-      sameSite: "Strict",
+      sameSite,
     });
     const clearRefresh = buildClearRefreshCookieHeader({
       cookieName: cookie.refreshCookieName,
       cookiePath: cookie.refreshCookiePath,
       cookieDomain,
-      sameSite: "Strict",
+      sameSite,
     });
     c.header("Set-Cookie", clearAuth);
     c.res.headers.append("Set-Cookie", clearRefresh);

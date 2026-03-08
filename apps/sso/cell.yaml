@@ -45,7 +45,7 @@ params:
   COGNITO_HOSTED_UI_URL: "https://casfa-auth.auth.us-east-1.amazoncognito.com"
   AUTH_COOKIE_NAME: auth
   AUTH_REFRESH_COOKIE_NAME: auth_refresh
-  AUTH_COOKIE_DOMAIN: ".casfa.shazhou.me"
+  AUTH_COOKIE_DOMAIN: !Env AUTH_COOKIE_DOMAIN
   AUTH_COOKIE_PATH: "/"
   AUTH_COOKIE_MAX_AGE_SECONDS: "3600"
   AUTH_REFRESH_COOKIE_PATH: "/oauth/refresh"
