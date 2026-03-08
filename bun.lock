@@ -21,6 +21,7 @@
         "@aws-sdk/client-dynamodb": "^3.700.0",
         "@aws-sdk/lib-dynamodb": "^3.700.0",
         "@casfa/cell-auth-server": "workspace:*",
+        "@casfa/cell-auth-webui": "workspace:*",
         "@casfa/cell-cognito-server": "workspace:*",
         "@casfa/cell-delegates-server": "workspace:*",
         "@emotion/react": "^11.14.0",
