@@ -256,6 +256,9 @@ export async function deployCommand(options?: {
         );
       }
     }
+    // Use the first deploy target as the domain for this deploy (cert, CloudFront alias, DNS).
+    const target = resolved.domains.find((d) => d.host === deployDomains[0]);
+    if (target) resolved.domain = target;
   }
 
   // Validate: MOCK_JWT_SECRET should NOT be set for cloud
