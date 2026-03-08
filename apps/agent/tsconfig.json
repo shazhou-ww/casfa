@@ -1,0 +1,4 @@
+{
+  "extends": "../../tsconfig.cell-backend.json",
+  "include": ["backend/**/*.ts"]
+}

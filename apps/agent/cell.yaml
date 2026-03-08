@@ -1,0 +1,68 @@
+name: agent
+bucketNameSuffix: casfa-shazhou-me
+
+backend:
+  dir: backend
+  runtime: nodejs20.x
+  entries:
+    api:
+      handler: lambda.ts
+      app: dev-app.ts
+      timeout: 30
+      memory: 1024
+      routes:
+        - /api/*
+        - /oauth/login
+        - /oauth/logout
+        - /oauth/register
+        - /oauth/client-info
+        - /oauth/token
+        - /.well-known/*
+
+frontend:
+  dir: frontend
+  entries:
+    main:
+      entry: index.html
+      routes: ["/*"]
+
+tables:
+  threads:
+    keys: { pk: S, sk: S }
+    gsi:
+      thread-list:
+        keys: { gsi1pk: S, gsi1sk: S }
+        projection: ALL
+  messages:
+    keys: { pk: S, sk: S }
+  settings:
+    keys: { pk: S, sk: S }
+  grants:
+    keys: { pk: S, sk: S }
+    gsi:
+      user-hash-index:
+        keys: { gsi1pk: S, gsi1sk: S }
+        projection: ALL
+      user-refresh-index:
+        keys: { gsi2pk: S, gsi2sk: S }
+        projection: ALL
+  pending_client_info:
+    keys: { pk: S }
+
+# Default instance. Symbiont: cell.symbiont.yaml (optional).
+params:
+  COGNITO_REGION: "us-east-1"
+  COGNITO_USER_POOL_ID: "us-east-1_gMTKxXOKo"
+  DOMAIN_HOST: "agent.casfa.shazhou.me"
+  DNS:
+    provider: route53
+    zone: "casfa.shazhou.me"
+  LOG_LEVEL: "info"
+  SSO_BASE_URL: "https://sso.casfa.shazhou.me"
+
+domain:
+  host: !Param DOMAIN_HOST
+  dns: !Param DNS
+
+testing:
+  unit: backend/
