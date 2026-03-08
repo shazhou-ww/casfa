@@ -39,22 +39,21 @@ tables:
         projection: ALL
 
 params:
-  COGNITO_REGION: !Env
-  COGNITO_USER_POOL_ID: !Env
-  COGNITO_CLIENT_ID: !Env
-  COGNITO_HOSTED_UI_URL: !Env
+  COGNITO_REGION: "us-east-1"
+  COGNITO_USER_POOL_ID: "us-east-1_gMTKxXOKo"
+  COGNITO_CLIENT_ID: "rrr40170csj0160ptr9lusi3k"
+  COGNITO_HOSTED_UI_URL: "https://casfa-auth.auth.us-east-1.amazoncognito.com"
   AUTH_COOKIE_NAME: auth
   AUTH_REFRESH_COOKIE_NAME: auth_refresh
-  AUTH_COOKIE_DOMAIN: !Env
+  AUTH_COOKIE_DOMAIN: ".casfa.shazhou.me"
   AUTH_COOKIE_PATH: "/"
   AUTH_COOKIE_MAX_AGE_SECONDS: "3600"
   AUTH_REFRESH_COOKIE_PATH: "/oauth/refresh"
   AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS: "2592000"
-  DOMAIN_ZONE: !Env
-  DOMAIN_HOST: !Env
-  DNS_PROVIDER: !Env
-  CLOUDFLARE_ZONE_ID: !Env
-  CLOUDFLARE_API_TOKEN: !Secret
+  DOMAIN_HOST: "sso.casfa.shazhou.me"
+  DNS:
+    provider: route53
+    zone: "casfa.shazhou.me"
   LOG_LEVEL: !Env
 
 cognito:
@@ -63,13 +62,9 @@ cognito:
   clientId: !Param COGNITO_CLIENT_ID
   hostedUiUrl: !Param COGNITO_HOSTED_UI_URL
 
-domains:
-  - zone: !Param DOMAIN_ZONE
-    host: !Param DOMAIN_HOST
-    dns: !Param DNS_PROVIDER
-    cloudflare:
-      zoneId: !Param CLOUDFLARE_ZONE_ID
-      apiToken: !Param CLOUDFLARE_API_TOKEN
+domain:
+  host: !Param DOMAIN_HOST
+  dns: !Param DNS
 
 testing:
   unit: backend/

@@ -1,5 +1,11 @@
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { parseCellYaml } from "../load-cell-yaml.js";
+import {
+  loadCellConfig,
+  loadInstanceOverrides,
+  parseCellYaml,
+  parseInstanceYaml,
+} from "../load-cell-yaml.js";
 
 describe("loadCellYaml / parseCellYaml", () => {
   test("parses minimal cell.yaml with name + backend entry", () => {
@@ -124,7 +130,7 @@ domain:
     ).toThrow(/!Env and !Secret are only allowed under params/i);
   });
 
-  test("throws when !Secret is used outside params", () => {
+  test("throws when !Secret is used outside params (e.g. under domain.cloudflare)", () => {
     expect(() =>
       parseCellYaml(`
 name: test
@@ -135,5 +141,71 @@ domain:
     apiToken: !Secret CF_TOKEN
 `)
     ).toThrow(/!Env and !Secret are only allowed under params/i);
+  });
+
+  test("allows !Secret under root-level cloudflare.apiToken", () => {
+    const config = parseCellYaml(`
+name: test
+params: {}
+cloudflare:
+  apiToken: !Secret CLOUDFLARE_API_TOKEN
+`);
+    expect(config.cloudflare).toEqual({ apiToken: { secret: "CLOUDFLARE_API_TOKEN" } });
+  });
+});
+
+describe("parseInstanceYaml / loadInstanceOverrides / loadCellConfig", () => {
+  test("parseInstanceYaml: only params, literals and !Env/!Secret", () => {
+    const out = parseInstanceYaml(`
+params:
+  DOMAIN_HOST: "staging.example.com"
+  COGNITO_USER_POOL_ID: !Env COGNITO_POOL_ID
+  API_KEY: !Secret API_KEY
+`);
+    expect(out.params.DOMAIN_HOST).toBe("staging.example.com");
+    expect(out.params.COGNITO_USER_POOL_ID).toEqual({ env: "COGNITO_POOL_ID" });
+    expect(out.params.API_KEY).toEqual({ secret: "API_KEY" });
+  });
+
+  test("parseInstanceYaml: empty file returns empty params", () => {
+    expect(parseInstanceYaml("")).toEqual({ params: {} });
+    expect(parseInstanceYaml("params: {}")).toEqual({ params: {} });
+  });
+
+  test("parseInstanceYaml: rejects non-params top-level key", () => {
+    expect(() => parseInstanceYaml("name: foo")).toThrow(/only contain a top-level "params" key/);
+    expect(() =>
+      parseInstanceYaml(`
+params: {}
+name: foo
+`)
+    ).toThrow(/only contain a top-level "params" key/);
+  });
+
+  test("loadCellConfig without instance equals loadCellYaml", () => {
+    const fixtureDir = join(import.meta.dir, "fixtures", "instance");
+    const config = loadCellConfig(fixtureDir);
+    expect(config.name).toBe("my-app");
+    expect(config.params?.DOMAIN_HOST).toEqual({ env: "DOMAIN_HOST" });
+  });
+
+  test("loadCellConfig with instance merges param overrides", () => {
+    const fixtureDir = join(import.meta.dir, "fixtures", "instance");
+    const config = loadCellConfig(fixtureDir, "staging");
+    expect(config.name).toBe("my-app");
+    expect(config.params?.DOMAIN_HOST).toBe("staging.myapp.com");
+    expect(config.params?.COGNITO_USER_POOL_ID).toBe("us-east-1_staging123");
+  });
+
+  test("loadInstanceOverrides: invalid instance name throws", () => {
+    expect(() => loadInstanceOverrides("/tmp", "bad.name")).toThrow(/Invalid instance name/);
+    expect(() => loadInstanceOverrides("/tmp", "bad/name")).toThrow(/Invalid instance name/);
+  });
+
+  test("loadInstanceOverrides: missing file throws", () => {
+    const fixtureDir = join(import.meta.dir, "fixtures", "instance");
+    expect(() => loadInstanceOverrides(fixtureDir, "nonexistent")).toThrow(
+      /Instance file not found: cell.nonexistent.yaml/
+    );
   });
 });

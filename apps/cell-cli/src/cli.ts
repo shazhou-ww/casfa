@@ -37,15 +37,17 @@ program.name("cell").description("CLI for casfa Cell services").version("0.0.1")
 program
   .command("dev")
   .description("Start local development environment")
-  .action(async () => {
-    await run(() => devCommand());
+  .option("-i, --instance <name>", "Use cell.<name>.yaml param overrides for this instance")
+  .action(async (opts) => {
+    await run(() => devCommand({ instance: opts.instance }));
   });
 
 program
   .command("build")
   .description("Build frontend and backend artifacts")
-  .action(async () => {
-    await buildCommand();
+  .option("-i, --instance <name>", "Use cell.<name>.yaml param overrides for this instance")
+  .action(async (opts) => {
+    await run(() => buildCommand({ instance: opts.instance }));
   });
 
 program
@@ -58,31 +60,35 @@ program
 program
   .command("deploy")
   .description("Deploy to cloud")
+  .option("-i, --instance <name>", "Use cell.<name>.yaml param overrides for this instance")
   .option("--yes", "Skip confirmation")
-  .option("--domain <host>", "Target domain to deploy (required when domains configured; repeat for multiple)", (v: string, prev: string[]) => [...(prev ?? []), v], [] as string[])
+  .option("--domain <alias>", "Target domain alias to deploy (required when domains configured; repeat for multiple). Run 'cell domain list' for aliases.", (v: string, prev: string[]) => [...(prev ?? []), v], [] as string[])
   .action(async (opts) => {
-    await run(() => deployCommand({ yes: opts.yes, domains: opts.domain }));
+    await run(() => deployCommand({ yes: opts.yes, domains: opts.domain, instance: opts.instance }));
   });
 
 program
   .command("test")
   .description("Run all tests (unit + e2e)")
-  .action(async () => {
-    await run(() => testCommand());
+  .option("-i, --instance <name>", "Use cell.<name>.yaml param overrides for this instance")
+  .action(async (opts) => {
+    await run(() => testCommand({ instance: opts.instance }));
   });
 
 program
   .command("test:unit")
   .description("Run unit tests")
-  .action(async () => {
-    await testUnitCommand();
+  .option("-i, --instance <name>", "Use cell.<name>.yaml param overrides for this instance")
+  .action(async (opts) => {
+    await testUnitCommand({ instance: opts.instance });
   });
 
 program
   .command("test:e2e")
   .description("Run e2e tests")
-  .action(async () => {
-    await run(() => testE2eCommand());
+  .option("-i, --instance <name>", "Use cell.<name>.yaml param overrides for this instance")
+  .action(async (opts) => {
+    await run(() => testE2eCommand({ instance: opts.instance }));
   });
 
 program
@@ -120,16 +126,18 @@ aws
 program
   .command("logs")
   .description("View CloudWatch logs")
+  .option("-i, --instance <name>", "Use cell.<name>.yaml param overrides for this instance")
   .option("--follow", "Follow log output")
   .action(async (opts) => {
-    await logsCommand({ follow: opts.follow });
+    await logsCommand({ follow: opts.follow, instance: opts.instance });
   });
 
 program
   .command("status")
   .description("View CloudFormation stack status")
-  .action(async () => {
-    await statusCommand();
+  .option("-i, --instance <name>", "Use cell.<name>.yaml param overrides for this instance")
+  .action(async (opts) => {
+    await statusCommand({ instance: opts.instance });
   });
 
 const secret = program.command("secret").description("Manage secrets in Secrets Manager");
@@ -167,9 +175,10 @@ const domain = program.command("domain").description("List or inspect domain con
 
 domain
   .command("list")
-  .description("List configured domain hosts (use with cell deploy --domain <host>)")
-  .action(async () => {
-    await run(() => domainListCommand());
+  .description("List configured domain aliases and hosts (use with cell deploy --domain <alias>)")
+  .option("-i, --instance <name>", "Use cell.<name>.yaml param overrides for this instance")
+  .action(async (opts) => {
+    await run(() => domainListCommand({ instance: opts.instance }));
   });
 
 // --- cognito command group ---

@@ -1,17 +1,18 @@
 import { resolve } from "node:path";
-import { loadCellYaml } from "../config/load-cell-yaml.js";
+import { loadCellConfig } from "../config/load-cell-yaml.js";
 import { loadEnvFiles } from "../utils/env.js";
 
-export async function logsCommand(options?: { cellDir?: string; follow?: boolean }): Promise<void> {
+export async function logsCommand(options?: { cellDir?: string; instance?: string; follow?: boolean }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
-  const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
+  const config = loadCellConfig(cellDir, options?.instance);
   const envMap = loadEnvFiles(cellDir);
+  const effectiveName = options?.instance ? `${config.name}-${options.instance}` : config.name;
 
   const awsEnv: Record<string, string | undefined> = { ...process.env };
   if (envMap.AWS_PROFILE) awsEnv.AWS_PROFILE = envMap.AWS_PROFILE;
   if (envMap.AWS_REGION) awsEnv.AWS_REGION = envMap.AWS_REGION;
 
-  const logGroupPrefix = `/aws/lambda/${config.name}`;
+  const logGroupPrefix = `/aws/lambda/${effectiveName}`;
 
   const args = ["logs", "tail", logGroupPrefix, "--since", "1h"];
   if (options?.follow) args.push("--follow");

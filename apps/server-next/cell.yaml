@@ -61,9 +61,9 @@ params:
   LOG_LEVEL: !Env
   SSO_BASE_URL: !Env
 
-domains:
-  - zone: !Param DOMAIN_ZONE
-    host: !Param DOMAIN_HOST
+domain:
+  zone: !Param DOMAIN_ZONE
+  host: !Param DOMAIN_HOST
 
 testing:
   unit: backend/

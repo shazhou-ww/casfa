@@ -74,6 +74,7 @@ describe("generateCloudFront", () => {
   test("custom domain with ACM cert (conditional)", () => {
     const config = makeConfig({
       domain: {
+        alias: "app",
         zone: "example.com",
         host: "app.example.com",
         certificate: "arn:aws:acm:us-east-1:123:certificate/abc",
@@ -113,11 +114,12 @@ describe("generateCloudFront", () => {
   test("external cert ARN (Cloudflare flow) uses cert directly, no AcmCertificate resource", () => {
     const config = makeConfig({
       domain: {
+        alias: "app",
         zone: "example.com",
         host: "app.example.com",
         dns: "cloudflare",
         certificate: "arn:aws:acm:us-east-1:123:certificate/external",
-        cloudflare: { zoneId: "zone123", apiToken: { secret: "CF_TOKEN" } },
+        cloudflare: { zoneId: "zone123", apiToken: "token" },
       },
     });
     const result = generateCloudFront(config);

@@ -3,14 +3,14 @@ import { dirname, relative, resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { build } from "esbuild";
 import { defineConfig, mergeConfig, type UserConfig, build as viteBuild } from "vite";
-import { loadCellYaml } from "../config/load-cell-yaml.js";
+import { loadCellConfig } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import { loadEnvFiles } from "../utils/env.js";
 import { getWorkspaceAlias } from "../utils/vite-config.js";
 
-export async function buildCommand(options?: { cellDir?: string }): Promise<void> {
+export async function buildCommand(options?: { cellDir?: string; instance?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
-  const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
+  const config = loadCellConfig(cellDir, options?.instance);
   const envMap = loadEnvFiles(cellDir, { stage: "cloud" });
   const resolved = resolveConfig(config, envMap, "cloud");
   const buildDir = resolve(cellDir, ".cell/build");

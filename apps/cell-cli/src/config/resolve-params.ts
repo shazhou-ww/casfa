@@ -1,17 +1,29 @@
-import type { RawParamValue, ResolvedValue } from "./cell-yaml-schema.js";
+import type { RawParamValue, ResolvedParamValue, ResolvedValue } from "./cell-yaml-schema.js";
 import { isEnvRef, isParamRef, isSecretRef } from "./cell-yaml-schema.js";
+
+/** True if value is a plain object (e.g. DnsConfig), not EnvRef/SecretRef/ParamRef */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    !Array.isArray(v) &&
+    !isEnvRef(v) &&
+    !isSecretRef(v) &&
+    !isParamRef(v)
+  );
+}
 
 /**
  * Resolve all `{ $ref }` references in a params map via topological sort.
- * After resolution, only `string`, `SecretRef`, and `EnvRef` values remain.
+ * Param values may be objects (e.g. DNS: { provider, zoneId?, apiToken? }); they are kept as-is.
  */
 export function resolveParams(
   params: Record<string, RawParamValue>
-): Record<string, ResolvedValue> {
-  const resolved = new Map<string, ResolvedValue>();
+): Record<string, ResolvedParamValue> {
+  const resolved = new Map<string, ResolvedParamValue>();
   const visiting = new Set<string>();
 
-  function resolve(key: string, chain: string[]): ResolvedValue {
+  function resolve(key: string, chain: string[]): ResolvedParamValue {
     if (resolved.has(key)) return resolved.get(key)!;
 
     if (!(key in params)) {
@@ -29,7 +41,7 @@ export function resolveParams(
     visiting.add(key);
 
     const value = params[key];
-    let result: ResolvedValue;
+    let result: ResolvedParamValue;
 
     if (isParamRef(value)) {
       result = resolve(value.$ref, [...chain, key]);
@@ -37,8 +49,10 @@ export function resolveParams(
       result = value;
     } else if (isEnvRef(value)) {
       result = value;
-    } else {
+    } else if (isPlainObject(value)) {
       result = value;
+    } else {
+      result = value as ResolvedValue;
     }
 
     visiting.delete(key);

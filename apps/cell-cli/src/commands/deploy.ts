@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { loadCellYaml } from "../config/load-cell-yaml.js";
+import { loadCellConfig } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import { generateTemplate } from "../generators/merge.js";
 import { loadEnvFiles } from "../utils/env.js";
@@ -226,38 +226,47 @@ async function fetchNewEvents(
 
 export async function deployCommand(options?: {
   cellDir?: string;
+  /** Instance name: use cell.<instance>.yaml param overrides */
+  instance?: string;
   yes?: boolean;
   /** Target domain(s) for this deploy (required when domains are configured) */
   domains?: string[];
 }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
-  const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
+  const config = loadCellConfig(cellDir, options?.instance);
   const envMap = loadEnvFiles(cellDir, { stage: "cloud" });
   const resolved = resolveConfig(config, envMap, "cloud");
+  if (options?.instance) {
+    (resolved as { name: string }).name = `${resolved.name}-${options.instance}`;
+  }
 
   // Validate --domain when custom domains are configured
   const hasDomains = (resolved.domains?.length ?? 0) > 0;
-  const deployDomains = options?.domains ?? [];
+  let deployDomains = options?.domains ?? [];
   if (hasDomains && deployDomains.length === 0) {
-    throw new Error(
-      "When domains are configured, specify at least one target: --domain <host>.\n" +
-        "  → Run 'cell domain list' to see configured hosts."
-    );
+    if (resolved.domains!.length === 1) {
+      deployDomains = [resolved.domains![0].alias];
+    } else {
+      throw new Error(
+        "When multiple domains are configured, specify at least one target: --domain <alias>.\n" +
+          "  → Run 'cell domain list' to see configured aliases and hosts."
+      );
+    }
   }
   if (!hasDomains && deployDomains.length > 0) {
     throw new Error("No custom domains configured; remove --domain.");
   }
   if (hasDomains && resolved.domains) {
-    const allowedHosts = new Set(resolved.domains.map((d) => d.host));
-    for (const host of deployDomains) {
-      if (!allowedHosts.has(host)) {
+    const allowedAliases = new Set(resolved.domains.map((d) => d.alias));
+    for (const alias of deployDomains) {
+      if (!allowedAliases.has(alias)) {
         throw new Error(
-          `Unknown domain "${host}". Run 'cell domain list' to see configured hosts.`
+          `Unknown domain alias "${alias}". Run 'cell domain list' to see configured aliases.`
         );
       }
     }
     // Use the first deploy target as the domain for this deploy (cert, CloudFront alias, DNS).
-    const target = resolved.domains.find((d) => d.host === deployDomains[0]);
+    const target = resolved.domains.find((d) => d.alias === deployDomains[0]);
     if (target) resolved.domain = target;
   }
 

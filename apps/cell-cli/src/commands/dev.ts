@@ -4,7 +4,7 @@ import { dirname, relative, resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { createServer, defineConfig, mergeConfig, type UserConfig } from "vite";
 import type { BackendEntry } from "../config/cell-yaml-schema.js";
-import { loadCellYaml } from "../config/load-cell-yaml.js";
+import { loadCellConfig } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import { ensureCognitoDevCallbackUrl } from "../local/cognito-dev.js";
 import {
@@ -104,9 +104,9 @@ function confirmBeforeRecreate(
   });
 }
 
-export async function devCommand(options?: { cellDir?: string }): Promise<void> {
+export async function devCommand(options?: { cellDir?: string; instance?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
-  const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
+  const config = loadCellConfig(cellDir, options?.instance);
   const envMap = loadEnvFiles(cellDir);
   const resolved = resolveConfig(config, envMap, "dev");
 

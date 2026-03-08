@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { Glob } from "bun";
-import { loadCellYaml } from "../config/load-cell-yaml.js";
+import { loadCellConfig } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import {
   isDockerRunning,
@@ -44,9 +44,9 @@ async function runBunTest(
   return proc.exited;
 }
 
-export async function testUnitCommand(options?: { cellDir?: string }): Promise<void> {
+export async function testUnitCommand(options?: { cellDir?: string; instance?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
-  const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
+  const config = loadCellConfig(cellDir, options?.instance);
 
   const pattern = config.testing?.unit ?? "**/__tests__/*.test.ts";
   console.log(`Running unit tests: ${pattern}`);
@@ -55,9 +55,9 @@ export async function testUnitCommand(options?: { cellDir?: string }): Promise<v
   process.exit(exitCode);
 }
 
-export async function testE2eCommand(options?: { cellDir?: string }): Promise<void> {
+export async function testE2eCommand(options?: { cellDir?: string; instance?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
-  const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
+  const config = loadCellConfig(cellDir, options?.instance);
 
   const pattern = config.testing?.e2e ?? "tests/*.test.ts";
   if (!(await hasMatchingFiles(cellDir, pattern))) {
@@ -193,9 +193,9 @@ export async function testE2eCommand(options?: { cellDir?: string }): Promise<vo
   }
 }
 
-export async function testCommand(options?: { cellDir?: string }): Promise<void> {
+export async function testCommand(options?: { cellDir?: string; instance?: string }): Promise<void> {
   const cellDir = resolve(options?.cellDir ?? process.cwd());
-  const config = loadCellYaml(resolve(cellDir, "cell.yaml"));
+  const config = loadCellConfig(cellDir, options?.instance);
 
   const unitPattern = config.testing?.unit ?? "**/__tests__/*.test.ts";
   console.log(`Running unit tests: ${unitPattern}`);
@@ -207,5 +207,5 @@ export async function testCommand(options?: { cellDir?: string }): Promise<void>
   }
 
   console.log("\nUnit tests passed, running e2e tests...\n");
-  await testE2eCommand({ cellDir });
+  await testE2eCommand({ cellDir, instance: options?.instance });
 }
