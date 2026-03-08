@@ -44,7 +44,7 @@ export type ServerConfig = {
   logLevel?: string;
 };
 
-const DEFAULT_PORT = 8803;
+const DEFAULT_PORT = 7161; // PORT_BASE+1 when PORT_BASE=7160
 
 export function isMockAuthEnabled(config: ServerConfig): boolean {
   return Boolean(config.auth.mockJwtSecret && process.env.CELL_STAGE === "test");

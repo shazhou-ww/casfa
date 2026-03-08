@@ -36,7 +36,7 @@ params:
     provider: route53
     zone: "casfa.shazhou.me"
   LOG_LEVEL: "info"
-  SSO_BASE_URL: "https://sso.casfa.shazhou.me"
+  SSO_BASE_URL: !Env SSO_BASE_URL
   BFL_API_KEY: !Secret
 
 tables:
