@@ -15,6 +15,7 @@ import { typecheckCommand } from "./commands/typecheck.js";
 import { clientCreateCommand, clientSyncUrlsCommand } from "./commands/cognito/client.js";
 import { idpSetupCommand, idpSyncCommand } from "./commands/cognito/idp.js";
 import { poolCreateCommand, poolDescribeCommand } from "./commands/cognito/pool.js";
+import { domainListCommand } from "./commands/domain.js";
 import { MissingParamsError } from "./config/resolve-config.js";
 
 async function run(fn: () => Promise<void>): Promise<void> {
@@ -159,6 +160,15 @@ program
   .argument("[name]", "Cell name")
   .action(async (name?: string) => {
     await initCommand(name);
+  });
+
+const domain = program.command("domain").description("List or inspect domain configuration");
+
+domain
+  .command("list")
+  .description("List configured domain hosts (use with cell deploy --domain <host>)")
+  .action(async () => {
+    await run(() => domainListCommand());
   });
 
 // --- cognito command group ---
