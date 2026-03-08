@@ -52,7 +52,8 @@ export type OAuthServerConfig = {
 };
 
 export type OAuthServer = {
-  getMetadata(): OAuthMetadata;
+  /** When issuerUrl is provided, use it for metadata (e.g. request-derived base URL). */
+  getMetadata(issuerUrl?: string): OAuthMetadata;
   registerClient(params: { clientName: string; redirectUris: string[] }): RegisteredClient;
   getClientInfo(clientId: string): { clientName: string; redirectUris: string[] } | null;
   handleAuthorize(params: {
@@ -64,12 +65,16 @@ export type OAuthServer = {
     codeChallenge: string | null;
     codeChallengeMethod: string | null;
     identityProvider: string | null;
+    /** Override issuer base URL for this request (e.g. multi-domain). */
+    issuerUrl?: string;
   }): { redirectUrl: string };
-  handleCallback(params: { code: string; state: string }): Promise<CallbackResult>;
+  handleCallback(params: { code: string; state: string; /** Override issuer base URL for this request. */ issuerUrl?: string }): Promise<CallbackResult>;
   getConsentInfo(sessionId: string): ConsentInfo | null;
   approveConsent(params: {
     sessionId: string;
     clientName: string;
+    /** Override issuer base URL for redirect. */
+    issuerUrl?: string;
   }): Promise<{ redirectUrl: string }>;
   denyConsent(sessionId: string): { redirectUrl: string | null };
   handleToken(params: {

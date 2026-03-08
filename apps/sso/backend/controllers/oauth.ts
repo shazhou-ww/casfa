@@ -1,6 +1,7 @@
 /**
  * SSO OAuth routes: authorize → Cognito, callback → set cookies + redirect to return_url,
  * token (code only), refresh (from cookie), logout. Uses cell-cognito-server and cell-auth-server.
+ * Base URL and cookie domain are derived from the request (Host / X-Forwarded-*) for multi-domain.
  */
 import {
   buildAuthCookieHeader,
@@ -14,6 +15,7 @@ import { exchangeCodeForTokens, refreshCognitoTokens } from "@casfa/cell-cognito
 import type { CognitoConfig } from "@casfa/cell-cognito-server";
 import { Hono } from "hono";
 import type { SsoConfig } from "../config.ts";
+import { getRequestBaseUrl } from "../request-url.ts";
 
 type Deps = {
   config: SsoConfig;
@@ -40,12 +42,12 @@ export function createSsoOAuthRoutes(deps: Deps) {
   const routes = new Hono();
   const { config, cognitoConfig, oauthServer } = deps;
   const cookie = config.cookie;
-  const secure = cookie.secure;
 
   routes.get("/oauth/authorize", (c) => {
-    const returnUrl = c.req.query("return_url") ?? c.req.query("state") ?? config.baseUrl;
+    const baseUrl = getRequestBaseUrl(c);
+    const returnUrl = c.req.query("return_url") ?? c.req.query("state") ?? baseUrl;
     const state = btoa(JSON.stringify({ return_url: returnUrl }));
-    const callbackUri = `${config.baseUrl}/oauth/callback`;
+    const callbackUri = `${baseUrl}/oauth/callback`;
     const redirectUrl = buildCognitoAuthorizeUrl(cognitoConfig, {
       redirectUri: callbackUri,
       state,
@@ -55,10 +57,11 @@ export function createSsoOAuthRoutes(deps: Deps) {
   });
 
   routes.get("/oauth/callback", async (c) => {
+    const baseUrl = getRequestBaseUrl(c);
     const code = c.req.query("code");
     const stateRaw = c.req.query("state");
     if (!code) return c.text("Missing code", 400);
-    let returnUrl = config.baseUrl;
+    let returnUrl = baseUrl;
     try {
       if (stateRaw) {
         const parsed = JSON.parse(atob(stateRaw));
@@ -68,12 +71,15 @@ export function createSsoOAuthRoutes(deps: Deps) {
       /* use default return_url */
     }
     try {
-      const callbackUri = `${config.baseUrl}/oauth/callback`;
+      const callbackUri = `${baseUrl}/oauth/callback`;
       const tokens = await exchangeCodeForTokens(cognitoConfig, code, callbackUri);
       const accessToken = tokens.idToken ?? tokens.accessToken;
+      const requestHost = new URL(baseUrl).hostname;
+      const cookieDomain = cookie.authCookieDomain ?? requestHost;
+      const secure = requestHost !== "localhost" && requestHost !== "127.0.0.1";
       const authHeader = buildAuthCookieHeader(accessToken, {
         cookieName: cookie.authCookieName,
-        cookieDomain: cookie.authCookieDomain,
+        cookieDomain,
         cookiePath: cookie.authCookiePath,
         cookieMaxAgeSeconds: cookie.authCookieMaxAgeSeconds,
         secure,
@@ -81,7 +87,7 @@ export function createSsoOAuthRoutes(deps: Deps) {
       });
       const refreshHeader = buildRefreshCookieHeader(tokens.refreshToken, {
         cookieName: cookie.refreshCookieName,
-        cookieDomain: cookie.authCookieDomain,
+        cookieDomain,
         cookiePath: cookie.refreshCookiePath,
         cookieMaxAgeSeconds: cookie.refreshCookieMaxAgeSeconds,
         secure,
@@ -101,6 +107,10 @@ export function createSsoOAuthRoutes(deps: Deps) {
     const code = (body.code as string) ?? null;
     const codeVerifier = (body.code_verifier as string) ?? null;
     if (!code) return c.json({ error: "invalid_request", error_description: "Missing code" }, 400);
+    const baseUrl = getRequestBaseUrl(c);
+    const requestHost = new URL(baseUrl).hostname;
+    const cookieDomain = cookie.authCookieDomain ?? requestHost;
+    const secure = requestHost !== "localhost" && requestHost !== "127.0.0.1";
     try {
       const result = await oauthServer.handleToken({
         grantType: "authorization_code",
@@ -111,7 +121,7 @@ export function createSsoOAuthRoutes(deps: Deps) {
       });
       const authHeader = buildAuthCookieHeader(result.access_token, {
         cookieName: cookie.authCookieName,
-        cookieDomain: cookie.authCookieDomain,
+        cookieDomain,
         cookiePath: cookie.authCookiePath,
         cookieMaxAgeSeconds: cookie.authCookieMaxAgeSeconds ?? result.expires_in,
         secure,
@@ -121,7 +131,7 @@ export function createSsoOAuthRoutes(deps: Deps) {
         result.refresh_token
           ? buildRefreshCookieHeader(result.refresh_token, {
               cookieName: cookie.refreshCookieName,
-              cookieDomain: cookie.authCookieDomain,
+              cookieDomain,
               cookiePath: cookie.refreshCookiePath,
               cookieMaxAgeSeconds: cookie.refreshCookieMaxAgeSeconds,
               secure,
@@ -142,11 +152,15 @@ export function createSsoOAuthRoutes(deps: Deps) {
   routes.post("/oauth/refresh", async (c) => {
     const refreshToken = getCookieFromRequest(c.req.raw, cookie.refreshCookieName);
     if (!refreshToken) return c.json({ error: "invalid_request", error_description: "Missing refresh cookie" }, 401);
+    const baseUrl = getRequestBaseUrl(c);
+    const requestHost = new URL(baseUrl).hostname;
+    const cookieDomain = cookie.authCookieDomain ?? requestHost;
+    const secure = requestHost !== "localhost" && requestHost !== "127.0.0.1";
     try {
       const tokens = await refreshCognitoTokens(cognitoConfig, refreshToken);
       const authHeader = buildAuthCookieHeader(tokens.idToken ?? tokens.accessToken, {
         cookieName: cookie.authCookieName,
-        cookieDomain: cookie.authCookieDomain,
+        cookieDomain,
         cookiePath: cookie.authCookiePath,
         cookieMaxAgeSeconds: cookie.authCookieMaxAgeSeconds ?? (tokens.expiresAt - Math.floor(Date.now() / 1000)),
         secure,
@@ -166,16 +180,19 @@ export function createSsoOAuthRoutes(deps: Deps) {
   });
 
   routes.post("/oauth/logout", (c) => {
+    const baseUrl = getRequestBaseUrl(c);
+    const requestHost = new URL(baseUrl).hostname;
+    const cookieDomain = cookie.authCookieDomain ?? requestHost;
     const clearAuth = buildClearAuthCookieHeader({
       cookieName: cookie.authCookieName,
       cookiePath: cookie.authCookiePath,
-      cookieDomain: cookie.authCookieDomain,
+      cookieDomain,
       sameSite: "Strict",
     });
     const clearRefresh = buildClearRefreshCookieHeader({
       cookieName: cookie.refreshCookieName,
       cookiePath: cookie.refreshCookiePath,
-      cookieDomain: cookie.authCookieDomain,
+      cookieDomain,
       sameSite: "Strict",
     });
     c.header("Set-Cookie", clearAuth);
@@ -184,7 +201,8 @@ export function createSsoOAuthRoutes(deps: Deps) {
   });
 
   routes.get("/.well-known/oauth-authorization-server", (c) => {
-    return c.json(oauthServer.getMetadata());
+    const issuerUrl = getRequestBaseUrl(c);
+    return c.json(oauthServer.getMetadata(issuerUrl));
   });
 
   routes.post("/oauth/register", async (c) => {

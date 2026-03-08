@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import type { SsoConfig } from "./config.ts";
 import { createSsoOAuthRoutes } from "./controllers/oauth.ts";
 import type { OAuthServer } from "@casfa/cell-cognito-server";
+import { getRequestBaseUrl } from "./request-url.ts";
 
 export function createApp(deps: { config: SsoConfig; oauthServer: OAuthServer }) {
   const app = new Hono();
@@ -23,7 +24,7 @@ export function createApp(deps: { config: SsoConfig; oauthServer: OAuthServer })
 
   // Login page is served by frontend; if request hits backend (e.g. wrong port), redirect to frontend.
   app.get("/login", (c) => {
-    const base = config.baseUrl.replace(/\/$/, "");
+    const base = getRequestBaseUrl(c).replace(/\/$/, "");
     const q = c.req.url.includes("?") ? "?" + new URL(c.req.url).searchParams.toString() : "";
     return c.redirect(`${base}/login${q}`, 302);
   });
