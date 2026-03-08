@@ -50,20 +50,21 @@ tables:
 buckets:
   blob: {}
 
-# App reads config from params (env). SSO: only REGION + USER_POOL_ID needed for JWT (rest on SSO cell).
-# Cognito and domain config come from .env (root or cell-level) for easy instance switching.
+# Default instance: casfa.shazhou.me (Route53). Symbiont: cell.symbiont.yaml.
 params:
-  COGNITO_REGION: !Env
-  COGNITO_USER_POOL_ID: !Env
+  COGNITO_REGION: "us-east-1"
+  COGNITO_USER_POOL_ID: "us-east-1_gMTKxXOKo"
   MAX_BRANCH_TTL_MS: "86400000"
-  DOMAIN_ZONE: !Env
-  DOMAIN_HOST: !Env
-  LOG_LEVEL: !Env
-  SSO_BASE_URL: !Env
+  DOMAIN_HOST: "beta.casfa.shazhou.me"
+  DNS:
+    provider: route53
+    zone: "casfa.shazhou.me"
+  LOG_LEVEL: "info"
+  SSO_BASE_URL: "https://sso.casfa.shazhou.me"
 
 domain:
-  zone: !Param DOMAIN_ZONE
   host: !Param DOMAIN_HOST
+  dns: !Param DNS
 
 testing:
   unit: backend/

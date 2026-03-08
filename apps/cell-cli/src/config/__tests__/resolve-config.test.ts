@@ -275,7 +275,7 @@ describe("resolveConfig", () => {
   test("domain: legacy array form uses host as alias", () => {
     const config = makeConfig({
       domains: [{ zone: "example.com", host: "app.example.com" }],
-    } as Partial<CellConfig> as CellConfig);
+    } as unknown as Partial<CellConfig> as CellConfig);
     const resolved = resolveConfig(config, {}, "cloud");
     expect(resolved.domains).toHaveLength(1);
     expect(resolved.domains![0].alias).toBe("app.example.com");
@@ -325,13 +325,13 @@ describe("resolveConfig", () => {
         },
       },
       domain: {
-        host: "auth.symbiontlabs.me",
+        host: "sso.symbiontlabs.me",
         dns: { provider: "cloudflare", zoneId: "abc123", apiToken: { secret: "CF_TOKEN" } },
       },
     } as Partial<CellConfig> as CellConfig);
     const resolved = resolveConfig(config, { CF_TOKEN: "t" }, "cloud");
     expect(resolved.domain?.zone).toBe("symbiontlabs.me");
-    expect(resolved.domain?.host).toBe("auth.symbiontlabs.me");
+    expect(resolved.domain?.host).toBe("sso.symbiontlabs.me");
   });
 
   test("domain: DNS provider route53 without zone throws", () => {

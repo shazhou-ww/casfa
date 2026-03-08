@@ -54,7 +54,7 @@ params:
   DNS:
     provider: route53
     zone: "casfa.shazhou.me"
-  LOG_LEVEL: !Env
+  LOG_LEVEL: "info"
 
 cognito:
   region: !Param COGNITO_REGION

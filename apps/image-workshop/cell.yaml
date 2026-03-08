@@ -27,15 +27,16 @@ frontend:
       entry: index.html
       routes: ["/*"]
 
-# Cognito and domain config come from .env (root or cell-level) for easy instance switching.
-# SSO: only REGION + USER_POOL_ID needed for JWT (rest on SSO cell).
+# Default instance: casfa.shazhou.me (Route53). Symbiont: cell.symbiont.yaml.
 params:
-  COGNITO_REGION: !Env
-  COGNITO_USER_POOL_ID: !Env
-  DOMAIN_ZONE: !Env
-  DOMAIN_HOST: !Env
-  LOG_LEVEL: !Env
-  SSO_BASE_URL: !Env
+  COGNITO_REGION: "us-east-1"
+  COGNITO_USER_POOL_ID: "us-east-1_gMTKxXOKo"
+  DOMAIN_HOST: "image-workshop.casfa.shazhou.me"
+  DNS:
+    provider: route53
+    zone: "casfa.shazhou.me"
+  LOG_LEVEL: "info"
+  SSO_BASE_URL: "https://sso.casfa.shazhou.me"
   BFL_API_KEY: !Secret
 
 tables:
@@ -58,8 +59,8 @@ tables:
     keys: { pk: S }
 
 domain:
-  zone: !Param DOMAIN_ZONE
   host: !Param DOMAIN_HOST
+  dns: !Param DNS
 
 testing:
   unit: backend/
