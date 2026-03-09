@@ -18,6 +18,19 @@ export function createLoginRedirectRoutes(
   const ssoBaseUrl = config.ssoBaseUrl;
   const { pendingClientInfoStore } = deps;
 
+  /** MCP OAuth Client ID Metadata Document (RFC / draft). Served so AS can validate redirect_uri. */
+  routes.get("/oauth/mcp-client-metadata", (c) => {
+    const base = getRequestBaseUrl(c).replace(/\/$/, "");
+    return c.json({
+      client_id: `${base}/oauth/mcp-client-metadata`,
+      client_name: "Agent MCP Client",
+      redirect_uris: [`${base}/oauth/mcp-callback`],
+      token_endpoint_auth_method: "none",
+      grant_types: ["authorization_code"],
+      response_types: ["code"],
+    });
+  });
+
   if (!ssoBaseUrl) {
     return routes;
   }

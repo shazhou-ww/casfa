@@ -13,6 +13,8 @@ import type {
   Thread,
 } from "../lib/model-types.ts";
 import { connectToSW, getCsrfTokenFromCookie, send, subscribeToChangeBroadcast } from "../lib/sw-protocol.ts";
+import { MCP_SERVERS_SETTINGS_KEY, parseMcpServers } from "../lib/mcp-types.ts";
+import type { MCPServerConfig, MCPServerDiscovery } from "../lib/mcp-types.ts";
 
 export type LLMProvider = {
   id: string;
@@ -42,6 +44,8 @@ type AgentState = ModelState & {
   threadsLoading: boolean;
   messagesLoading: Record<string, boolean>;
   swPort: MessagePort | null;
+  /** MCP capabilities discovery result per server (in-memory, not synced). */
+  mcpDiscoveryByServerId: Record<string, MCPServerDiscovery>;
 };
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void };
@@ -51,6 +55,10 @@ type AgentActions = {
   applyChange: (change: Change) => void;
   sendAction: (action: Action, id?: string) => Promise<unknown>;
   getLlmProviders: () => LLMProvider[];
+  getMcpServers: () => MCPServerConfig[];
+  setMcpServers: (configs: MCPServerConfig[]) => Promise<void>;
+  getMcpDiscovery: (serverId: string) => MCPServerDiscovery | undefined;
+  setMcpDiscovery: (serverId: string, discovery: MCPServerDiscovery | null) => void;
   setCurrentThreadId: (id: string | null) => void;
   fetchSettings: () => Promise<void>;
   fetchThreads: () => Promise<void>;
@@ -79,6 +87,7 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
   threadsLoading: false,
   messagesLoading: {},
   swPort: null,
+  mcpDiscoveryByServerId: {},
 
   setSwPort(port) {
     const prev = get().swPort;
@@ -241,6 +250,28 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
   getLlmProviders() {
     const raw = get().settings[LLM_PROVIDERS_KEY];
     return parseLlmProviders(raw);
+  },
+
+  getMcpServers() {
+    const raw = get().settings[MCP_SERVERS_SETTINGS_KEY];
+    return parseMcpServers(raw);
+  },
+
+  setMcpServers: async (configs) => {
+    await get().setSetting(MCP_SERVERS_SETTINGS_KEY, configs);
+  },
+
+  getMcpDiscovery(serverId) {
+    return get().mcpDiscoveryByServerId[serverId];
+  },
+
+  setMcpDiscovery(serverId, discovery) {
+    set((s) => {
+      const next = { ...s.mcpDiscoveryByServerId };
+      if (discovery == null) delete next[serverId];
+      else next[serverId] = discovery;
+      return { mcpDiscoveryByServerId: next };
+    });
   },
 
   setCurrentThreadId: (id) => set({ currentThreadId: id }),
