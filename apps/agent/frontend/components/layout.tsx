@@ -15,20 +15,23 @@ export function Layout() {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const fetchSettings = useAgentStore((s) => s.fetchSettings);
   const fetchThreads = useAgentStore((s) => s.fetchThreads);
+  const swPort = useAgentStore((s) => s.swPort);
 
   useEffect(() => {
+    if (!swPort) return;
     fetchSettings();
     fetchThreads();
-  }, [fetchSettings, fetchThreads]);
+  }, [swPort, fetchSettings, fetchThreads]);
 
   useEffect(() => {
+    if (!swPort) return;
     const onFocus = () => {
       fetchSettings();
       fetchThreads();
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [fetchSettings, fetchThreads]);
+  }, [swPort, fetchSettings, fetchThreads]);
 
   const handleOpenMenu = useCallback((e: React.MouseEvent<HTMLElement>) => setAnchorEl(e.currentTarget), []);
   const handleCloseMenu = useCallback(() => setAnchorEl(null), []);

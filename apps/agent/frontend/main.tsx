@@ -4,6 +4,8 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App.tsx";
 import { initAuth } from "./lib/auth.ts";
+import { connectToSW, getCsrfTokenFromCookie } from "./lib/sw-protocol.ts";
+import { useAgentStore } from "./stores/agent-store.ts";
 
 const theme = createTheme({
   palette: {
@@ -18,13 +20,36 @@ const theme = createTheme({
   },
 });
 
+function registerServiceWorker() {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+  const url = import.meta.env.DEV ? "/sw.ts" : "/sw.js";
+  navigator.serviceWorker.register(url, { scope: "/", type: "module" }).catch(() => {});
+}
+
 function Root() {
   const [ready, setReady] = useState(false);
+  const setSwPort = useAgentStore((s) => s.setSwPort);
+  const fetchThreads = useAgentStore((s) => s.fetchThreads);
+  const fetchSettings = useAgentStore((s) => s.fetchSettings);
+
   useEffect(() => {
+    registerServiceWorker();
     initAuth()
       .then(() => setReady(true))
       .catch(() => setReady(true));
   }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    connectToSW(getCsrfTokenFromCookie())
+      .then((port) => {
+        setSwPort(port);
+        fetchThreads();
+        fetchSettings();
+      })
+      .catch(() => {});
+  }, [ready, setSwPort, fetchThreads, fetchSettings]);
+
   if (!ready) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">

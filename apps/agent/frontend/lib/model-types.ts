@@ -79,7 +79,7 @@ export type ModelState = {
 export type Action =
   | { kind: "threads.create"; payload: { title: string } }
   | { kind: "threads.delete"; payload: { threadId: string } }
-  | { kind: "messages.send"; payload: { threadId: string; content: MessageContent[] } }
+  | { kind: "messages.send"; payload: { threadId: string; content: MessageContent[]; modelId?: string } }
   | { kind: "stream.cancel"; payload: { messageId: string } }
   | { kind: "settings.update"; payload: { key: string; value: unknown } }
   | { kind: "sync.pull"; payload?: { scope?: "threads" | "messages" | "settings" } };

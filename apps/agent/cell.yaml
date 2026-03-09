@@ -25,6 +25,9 @@ frontend:
     main:
       entry: index.html
       routes: ["/*"]
+    sw:
+      entry: sw.ts
+      routes: ["/sw.js"]
 
 tables:
   threads:
