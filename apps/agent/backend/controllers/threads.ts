@@ -29,25 +29,24 @@ export function createThreadsController(deps: ThreadsControllerDeps) {
 
     async create(c: Context<Env>) {
       const realmId = c.req.param("realmId")!;
-      let body: { title?: string; modelId?: string };
+      let body: { title?: string };
       try {
-        body = (await c.req.json()) as { title?: string; modelId?: string };
+        body = (await c.req.json()) as { title?: string };
       } catch {
         return c.json({ error: "VALIDATION_ERROR", message: "Invalid JSON body" }, 400);
       }
-      const thread = await threadStore.create(realmId, {
-        title: body.title,
-        modelId: body.modelId,
-      });
+      const title = typeof body.title === "string" ? body.title.trim() : "";
+      if (!title) return c.json({ error: "VALIDATION_ERROR", message: "title is required" }, 400);
+      const thread = await threadStore.create(realmId, { title });
       return c.json(thread, 201);
     },
 
     async update(c: Context<Env>) {
       const realmId = c.req.param("realmId")!;
       const threadId = c.req.param("threadId")!;
-      let body: { title?: string; modelId?: string };
+      let body: { title?: string };
       try {
-        body = (await c.req.json()) as { title?: string; modelId?: string };
+        body = (await c.req.json()) as { title?: string };
       } catch {
         return c.json({ error: "VALIDATION_ERROR", message: "Invalid JSON body" }, 400);
       }

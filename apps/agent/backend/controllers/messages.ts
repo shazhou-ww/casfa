@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import type { MessageStore } from "../db/message-store.ts";
 import type { ThreadStore } from "../db/thread-store.ts";
 import type { Env } from "../types.ts";
-import type { MessageContentPart } from "../types.ts";
+import type { MessageContentPart, TextContentPart, ToolCallContentPart, ToolResultContentPart } from "../types.ts";
 
 export type MessagesControllerDeps = {
   messageStore: MessageStore;
@@ -11,9 +11,20 @@ export type MessagesControllerDeps = {
 
 function isValidContent(content: unknown): content is MessageContentPart[] {
   if (!Array.isArray(content)) return false;
-  return content.every(
-    (p) => typeof p === "object" && p !== null && p.type === "text" && typeof (p as MessageContentPart).text === "string"
-  );
+  return content.every((p) => {
+    if (typeof p !== "object" || p === null) return false;
+    const part = p as Record<string, unknown>;
+    if (part.type === "text") return typeof (part as TextContentPart).text === "string";
+    if (part.type === "tool-call") {
+      const t = part as unknown as ToolCallContentPart;
+      return typeof t.callId === "string" && typeof t.name === "string" && typeof t.arguments === "string";
+    }
+    if (part.type === "tool-result") {
+      const t = part as unknown as ToolResultContentPart;
+      return typeof t.callId === "string" && typeof t.result === "string";
+    }
+    return false;
+  });
 }
 
 export function createMessagesController(deps: MessagesControllerDeps) {
@@ -46,9 +57,18 @@ export function createMessagesController(deps: MessagesControllerDeps) {
         return c.json({ error: "VALIDATION_ERROR", message: "role must be user, assistant, or system" }, 400);
       }
       if (!isValidContent(body.content)) {
-        return c.json({ error: "VALIDATION_ERROR", message: "content must be array of { type: 'text', text: string }" }, 400);
+        return c.json(
+          { error: "VALIDATION_ERROR", message: "content must be array of { type: 'text'|'tool-call'|'tool-result', ... }" },
+          400
+        );
       }
-      const message = await messageStore.create(threadId, { role: role as "user" | "assistant" | "system", content: body.content });
+      const rawModelId = (body as { modelId?: unknown }).modelId;
+      const modelId = typeof rawModelId === "string" ? rawModelId : undefined;
+      const message = await messageStore.create(threadId, {
+        role: role as "user" | "assistant" | "system",
+        content: body.content,
+        modelId,
+      });
       return c.json(message, 201);
     },
   };

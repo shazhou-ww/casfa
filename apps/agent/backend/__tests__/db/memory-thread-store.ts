@@ -35,8 +35,7 @@ export function createMemoryThreadStore(): ThreadStore {
       const threadId = generateThreadId();
       const thread: Thread = {
         threadId,
-        title: input.title ?? "",
-        modelId: input.modelId,
+        title: input.title,
         createdAt: now,
         updatedAt: now,
       };

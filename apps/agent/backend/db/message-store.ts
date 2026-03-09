@@ -25,6 +25,7 @@ function itemToMessage(item: Record<string, unknown>): Message {
     role: item.role as Message["role"],
     content: (item.content as MessageContentPart[]) ?? [],
     createdAt: item.createdAt as number,
+    modelId: item.modelId as string | undefined,
   };
 }
 
@@ -35,7 +36,7 @@ export type MessageStoreConfig = {
 
 export type MessageStore = {
   list(threadId: string, limit?: number, cursor?: string): Promise<{ items: Message[]; nextCursor?: string }>;
-  create(threadId: string, input: { role: Message["role"]; content: MessageContentPart[] }): Promise<Message>;
+  create(threadId: string, input: { role: Message["role"]; content: MessageContentPart[]; modelId?: string }): Promise<Message>;
   deleteByThread(threadId: string): Promise<void>;
 };
 
@@ -75,6 +76,7 @@ export function createMessageStore(config: MessageStoreConfig): MessageStore {
         role: input.role,
         content: input.content,
         createdAt: now,
+        modelId: input.modelId,
       };
       const item = {
         pk: threadPk(threadId),

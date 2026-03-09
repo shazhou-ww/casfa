@@ -4,18 +4,23 @@ const realmId = () => "me";
 
 export type Thread = {
   threadId: string;
-  title?: string;
-  modelId?: string;
+  title: string;
   createdAt: number;
   updatedAt: number;
 };
+
+export type MessageContentPart =
+  | { type: "text"; text: string }
+  | { type: "tool-call"; callId: string; name: string; arguments: string }
+  | { type: "tool-result"; callId: string; result: string };
 
 export type Message = {
   messageId: string;
   threadId: string;
   role: "user" | "assistant" | "system";
-  content: Array<{ type: "text"; text: string }>;
+  content: MessageContentPart[];
   createdAt: number;
+  modelId?: string;
 };
 
 export type Setting = {
@@ -39,7 +44,7 @@ export async function getThread(threadId: string): Promise<Thread> {
   return res.json();
 }
 
-export async function createThread(body: { title?: string; modelId?: string }): Promise<Thread> {
+export async function createThread(body: { title: string }): Promise<Thread> {
   const res = await apiFetch(`/api/realm/${realmId()}/threads`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -49,7 +54,7 @@ export async function createThread(body: { title?: string; modelId?: string }): 
   return res.json();
 }
 
-export async function patchThread(threadId: string, body: { title?: string; modelId?: string }): Promise<Thread> {
+export async function patchThread(threadId: string, body: { title?: string }): Promise<Thread> {
   const res = await apiFetch(`/api/realm/${realmId()}/threads/${threadId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -73,7 +78,10 @@ export async function getMessages(threadId: string, limit?: number, cursor?: str
   return res.json();
 }
 
-export async function createMessage(threadId: string, body: { role: "user" | "assistant" | "system"; content: Array<{ type: "text"; text: string }> }): Promise<Message> {
+export async function createMessage(
+  threadId: string,
+  body: { role: "user" | "assistant" | "system"; content: MessageContentPart[]; modelId?: string }
+): Promise<Message> {
   const res = await apiFetch(`/api/realm/${realmId()}/threads/${threadId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

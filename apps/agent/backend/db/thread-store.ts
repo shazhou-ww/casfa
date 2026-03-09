@@ -30,8 +30,7 @@ function gsi1Sk(updatedAt: number, threadId: string): string {
 function itemToThread(item: Record<string, unknown>): Thread {
   return {
     threadId: item.threadId as string,
-    title: item.title as string | undefined,
-    modelId: item.modelId as string | undefined,
+    title: (item.title as string) ?? "",
     createdAt: item.createdAt as number,
     updatedAt: item.updatedAt as number,
   };
@@ -45,8 +44,8 @@ export type ThreadStoreConfig = {
 export type ThreadStore = {
   list(realmId: string, limit?: number, cursor?: string): Promise<{ items: Thread[]; nextCursor?: string }>;
   get(realmId: string, threadId: string): Promise<Thread | null>;
-  create(realmId: string, input: { title?: string; modelId?: string }): Promise<Thread>;
-  update(realmId: string, threadId: string, input: Partial<Pick<Thread, "title" | "modelId">>): Promise<Thread | null>;
+  create(realmId: string, input: { title: string }): Promise<Thread>;
+  update(realmId: string, threadId: string, input: Partial<Pick<Thread, "title">>): Promise<Thread | null>;
   delete(realmId: string, threadId: string): Promise<void>;
 };
 
@@ -92,8 +91,7 @@ export function createThreadStore(config: ThreadStoreConfig): ThreadStore {
       const threadId = generateThreadId();
       const thread: Thread = {
         threadId,
-        title: input.title ?? "",
-        modelId: input.modelId,
+        title: input.title,
         createdAt: now,
         updatedAt: now,
       };
