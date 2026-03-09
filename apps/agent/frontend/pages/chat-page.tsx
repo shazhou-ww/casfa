@@ -1,18 +1,41 @@
 import { Box, Typography } from "@mui/material";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useAgentStore } from "../stores/agent-store.ts";
 import { MessageList } from "../components/chat/message-list.tsx";
 import { Compose } from "../components/chat/compose.tsx";
+import type { Message } from "../lib/api.ts";
 
 export function ChatPage() {
   const currentThreadId = useAgentStore((s) => s.currentThreadId);
   const messagesByThread = useAgentStore((s) => s.messagesByThread);
+  const streamByMessageId = useAgentStore((s) => s.streamByMessageId);
   const fetchMessages = useAgentStore((s) => s.fetchMessages);
   const getLlmProviders = useAgentStore((s) => s.getLlmProviders);
   const threads = useAgentStore((s) => s.threads);
   const setCurrentThreadId = useAgentStore((s) => s.setCurrentThreadId);
 
   const messages = currentThreadId ? messagesByThread[currentThreadId] ?? [] : [];
+  const streams = currentThreadId
+    ? Object.values(streamByMessageId).filter((s) => s.threadId === currentThreadId)
+    : [];
+  const displayMessages: Message[] = useMemo(() => {
+    const list = [...messages];
+    for (const s of streams) {
+      const text = s.chunks
+        .filter((c): c is { type: "text"; text: string } => c.type === "text")
+        .map((c) => c.text)
+        .join("");
+      list.push({
+        messageId: s.messageId,
+        threadId: s.threadId,
+        role: "assistant",
+        content: [{ type: "text", text }],
+        createdAt: s.startedAt,
+      });
+    }
+    return list.sort((a, b) => a.createdAt - b.createdAt);
+  }, [messages, streams]);
+
   const providers = getLlmProviders();
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
   const modelId = lastAssistant?.modelId ?? providers[0]?.models[0]?.id ?? null;
@@ -42,10 +65,10 @@ export function ChatPage() {
         </Box>
       ) : (
         <>
-          <MessageList messages={messages} />
+          <MessageList messages={displayMessages} />
           <Compose
             threadId={currentThreadId}
-            messages={messages}
+            messages={displayMessages}
             provider={provider}
             modelId={modelId}
           />

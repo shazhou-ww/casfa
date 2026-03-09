@@ -1,10 +1,12 @@
 import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import { Box, IconButton, List, ListItemButton, Typography } from "@mui/material";
+import { Box, IconButton, List, ListItem, ListItemButton, Typography } from "@mui/material";
 import { useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAgentStore } from "../../stores/agent-store.ts";
 
 export function ThreadList() {
+  const navigate = useNavigate();
   const threads = useAgentStore((s) => s.threads);
   const currentThreadId = useAgentStore((s) => s.currentThreadId);
   const setCurrentThreadId = useAgentStore((s) => s.setCurrentThreadId);
@@ -14,7 +16,8 @@ export function ThreadList() {
 
   const handleNewThread = useCallback(async () => {
     await createThread({ title: "New chat" });
-  }, [createThread]);
+    navigate("/", { replace: false });
+  }, [createThread, navigate]);
 
   const handleDelete = useCallback(
     async (e: React.MouseEvent, threadId: string) => {
@@ -43,11 +46,9 @@ export function ThreadList() {
           </ListItemButton>
         ) : (
           threads.map((t) => (
-            <ListItemButton
+            <ListItem
               key={t.threadId}
-              selected={t.threadId === currentThreadId}
-              onClick={() => setCurrentThreadId(t.threadId)}
-              sx={{ py: 0.75 }}
+              disablePadding
               secondaryAction={
                 <IconButton
                   size="small"
@@ -59,10 +60,16 @@ export function ThreadList() {
                 </IconButton>
               }
             >
-              <Typography variant="body2" noWrap sx={{ flex: 1 }}>
-                {t.title || "Untitled"}
-              </Typography>
-            </ListItemButton>
+              <ListItemButton
+                selected={t.threadId === currentThreadId}
+                onClick={() => setCurrentThreadId(t.threadId)}
+                sx={{ py: 0.75 }}
+              >
+                <Typography variant="body2" noWrap sx={{ flex: 1 }}>
+                  {t.title || "Untitled"}
+                </Typography>
+              </ListItemButton>
+            </ListItem>
           ))
         )}
       </List>

@@ -1,9 +1,9 @@
 import SendIcon from "@mui/icons-material/Send";
-import { Box, Button, CircularProgress, TextField } from "@mui/material";
+import { Box, Button, CircularProgress, TextField, Typography } from "@mui/material";
 import { useCallback, useState } from "react";
+import type { MessageContent } from "../../lib/model-types.ts";
 import type { Message } from "../../lib/api.ts";
 import { useAgentStore } from "../../stores/agent-store.ts";
-import { callChatCompletion } from "../../lib/llm-client.ts";
 import type { LLMProvider } from "../../stores/agent-store.ts";
 
 type Props = {
@@ -17,8 +17,7 @@ export function Compose({ threadId, messages, provider, modelId }: Props) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const appendMessageLocal = useAgentStore((s) => s.appendMessageLocal);
-  const createMessage = useAgentStore((s) => s.createMessage);
+  const sendMessage = useAgentStore((s) => s.sendMessage);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -30,48 +29,15 @@ export function Compose({ threadId, messages, provider, modelId }: Props) {
     setInput("");
     setError(null);
     setSending(true);
-
-    const userContent: Message["content"] = [{ type: "text", text }];
-    const userMessage = {
-      messageId: `local_${Date.now()}`,
-      threadId,
-      role: "user" as const,
-      content: userContent,
-      createdAt: Date.now(),
-    };
-    appendMessageLocal(threadId, userMessage);
     try {
-      await createMessage(threadId, { role: "user", content: userContent });
+      const content: MessageContent[] = [{ type: "text", text }];
+      await sendMessage(threadId, content, modelId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save message");
-      setSending(false);
-      return;
-    }
-
-    const history = messages
-      .concat([userMessage])
-      .map((m) => ({
-        role: m.role as "user" | "assistant" | "system",
-        content: m.content.filter((p): p is { type: "text"; text: string } => p.type === "text").map((p) => p.text).join(""),
-      }));
-
-    try {
-      const assistantText = await callChatCompletion(provider, modelId, history);
-      const assistantContent: Message["content"] = [{ type: "text", text: assistantText }];
-      appendMessageLocal(threadId, {
-        messageId: `local_${Date.now()}_a`,
-        threadId,
-        role: "assistant",
-        content: assistantContent,
-        createdAt: Date.now(),
-      });
-      await createMessage(threadId, { role: "assistant", content: assistantContent });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "LLM request failed");
+      setError(e instanceof Error ? e.message : "Failed to send");
     } finally {
       setSending(false);
     }
-  }, [input, sending, provider, modelId, threadId, messages, appendMessageLocal, createMessage]);
+  }, [input, sending, provider, modelId, threadId, sendMessage]);
 
   return (
     <Box sx={{ p: 1, borderTop: 1, borderColor: "divider", bgcolor: "background.paper" }}>

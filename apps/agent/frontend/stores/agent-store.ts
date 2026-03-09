@@ -1,5 +1,18 @@
+/**
+ * Agent store: ModelState mirror (threads, messagesByThread, streamByMessageId, settings)
+ * updated via applyChange from SW; UI sends Actions via sendAction(port from setSwPort).
+ */
 import { create } from "zustand";
-import * as api from "../lib/api.ts";
+import type {
+  Action,
+  Change,
+  Message,
+  MessageContent,
+  ModelState,
+  StreamState,
+  Thread,
+} from "../lib/model-types.ts";
+import { connectToSW, getCsrfTokenFromCookie, send, subscribeToChangeBroadcast } from "../lib/sw-protocol.ts";
 
 export type LLMProvider = {
   id: string;
@@ -23,183 +36,268 @@ function parseLlmProviders(value: unknown): LLMProvider[] {
   );
 }
 
-type SettingsState = Record<string, { value: unknown; updatedAt: number }>;
-
-type AgentState = {
-  settings: SettingsState;
-  threads: api.Thread[];
+type AgentState = ModelState & {
   currentThreadId: string | null;
-  messagesByThread: Record<string, api.Message[]>;
   settingsLoading: boolean;
   threadsLoading: boolean;
   messagesLoading: Record<string, boolean>;
+  swPort: MessagePort | null;
 };
+
+type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void };
 
 type AgentActions = {
-  fetchSettings: () => Promise<void>;
-  mergeSettings: (items: api.Setting[]) => void;
-  setSetting: (key: string, value: unknown) => Promise<void>;
+  setSwPort: (port: MessagePort | null) => void;
+  applyChange: (change: Change) => void;
+  sendAction: (action: Action, id?: string) => Promise<unknown>;
   getLlmProviders: () => LLMProvider[];
-  fetchThreads: () => Promise<void>;
-  mergeThreads: (threads: api.Thread[]) => void;
   setCurrentThreadId: (id: string | null) => void;
+  fetchSettings: () => Promise<void>;
+  fetchThreads: () => Promise<void>;
   fetchMessages: (threadId: string) => Promise<void>;
-  mergeMessages: (threadId: string, messages: api.Message[]) => void;
-  appendMessageLocal: (threadId: string, message: api.Message) => void;
-  removeMessage: (threadId: string, messageId: string) => void;
-  createThread: (body: { title: string }) => Promise<api.Thread>;
+  createThread: (body: { title: string }) => Promise<Thread>;
   deleteThread: (threadId: string) => Promise<void>;
-  createMessage: (threadId: string, body: { role: api.Message["role"]; content: api.Message["content"] }) => Promise<api.Message>;
+  setSetting: (key: string, value: unknown) => Promise<void>;
+  sendMessage: (threadId: string, content: MessageContent[], modelId?: string) => Promise<void>;
+  cancelStream: (messageId: string) => void;
 };
 
+const pendingById = new Map<string, Pending>();
+const ACTION_RESPONSE_TIMEOUT_MS = 15000;
+
+function clearPending(id: string): void {
+  pendingById.delete(id);
+}
+
 export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
-  settings: {},
   threads: [],
-  currentThreadId: null,
   messagesByThread: {},
+  streamByMessageId: {},
+  settings: {},
+  currentThreadId: null,
   settingsLoading: false,
   threadsLoading: false,
   messagesLoading: {},
+  swPort: null,
+
+  setSwPort(port) {
+    const prev = get().swPort;
+    if (prev === port) return;
+    if (prev) {
+      try {
+        prev.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    set({ swPort: port });
+    if (port) {
+      subscribeToChangeBroadcast((msg) => {
+        for (const change of msg.changes) {
+          get().applyChange(change);
+        }
+      });
+    }
+  },
+
+  applyChange(change) {
+    switch (change.kind) {
+      case "threads.updated":
+        set((s) => {
+          const threadIds = new Set(change.payload.threads.map((t) => t.threadId));
+          const nextMessages: Record<string, Message[]> = {};
+          for (const id of Object.keys(s.messagesByThread)) {
+            if (threadIds.has(id)) nextMessages[id] = s.messagesByThread[id];
+          }
+          return {
+            threads: change.payload.threads,
+            messagesByThread: nextMessages,
+            currentThreadId: s.currentThreadId && threadIds.has(s.currentThreadId) ? s.currentThreadId : change.payload.threads[0]?.threadId ?? null,
+          };
+        });
+        break;
+      case "messages.append": {
+        const { threadId, message } = change.payload;
+        set((s) => {
+          const list = s.messagesByThread[threadId] ?? [];
+          return {
+            messagesByThread: { ...s.messagesByThread, [threadId]: [...list, message] },
+          };
+        });
+        break;
+      }
+      case "messages.patch": {
+        const { threadId, messageId, patch } = change.payload;
+        set((s) => {
+          const list = s.messagesByThread[threadId] ?? [];
+          const idx = list.findIndex((m) => m.messageId === messageId);
+          if (idx === -1) return s;
+          const next = list.slice(0);
+          next[idx] = { ...next[idx], ...patch };
+          return { messagesByThread: { ...s.messagesByThread, [threadId]: next } };
+        });
+        break;
+      }
+      case "messages.remove": {
+        const { threadId, messageId } = change.payload;
+        set((s) => ({
+          messagesByThread: {
+            ...s.messagesByThread,
+            [threadId]: (s.messagesByThread[threadId] ?? []).filter((m) => m.messageId !== messageId),
+          },
+        }));
+        break;
+      }
+      case "stream.status":
+        set((s) => {
+          const { messageId, threadId, status, error } = change.payload;
+          const prev = s.streamByMessageId[messageId];
+          const stream: StreamState = prev
+            ? { ...prev, status, error }
+            : { messageId, threadId, status, chunks: [], error, startedAt: Date.now() };
+          return { streamByMessageId: { ...s.streamByMessageId, [messageId]: stream } };
+        });
+        break;
+      case "stream.chunk":
+        set((s) => {
+          const { messageId, threadId, chunk } = change.payload;
+          const prev = s.streamByMessageId[messageId];
+          const stream: StreamState = prev
+            ? { ...prev, chunks: [...prev.chunks, chunk] }
+            : { messageId, threadId, status: "streaming", chunks: [chunk], startedAt: Date.now() };
+          return { streamByMessageId: { ...s.streamByMessageId, [messageId]: stream } };
+        });
+        break;
+      case "stream.done": {
+        const { messageId, threadId, message } = change.payload;
+        set((s) => {
+          const list = s.messagesByThread[threadId] ?? [];
+          const nextStreams = { ...s.streamByMessageId };
+          delete nextStreams[messageId];
+          return {
+            messagesByThread: { ...s.messagesByThread, [threadId]: [...list, message] },
+            streamByMessageId: nextStreams,
+          };
+        });
+        break;
+      }
+      case "stream.error":
+        set((s) => {
+          const { messageId, threadId, error } = change.payload;
+          const prev = s.streamByMessageId[messageId];
+          const stream: StreamState = prev
+            ? { ...prev, status: "error", error }
+            : { messageId, threadId, status: "error", chunks: [], error, startedAt: Date.now() };
+          return { streamByMessageId: { ...s.streamByMessageId, [messageId]: stream } };
+        });
+        break;
+      case "settings.updated":
+        set((s) => ({
+          settings: { ...s.settings, [change.payload.key]: change.payload.value },
+        }));
+        break;
+      case "response": {
+        const { id, result, error } = change.payload;
+        const p = pendingById.get(id);
+        if (p) {
+          clearPending(id);
+          if (error) p.reject(new Error(error.message));
+          else p.resolve(result);
+        }
+        break;
+      }
+    }
+  },
+
+  sendAction(action, id) {
+    const port = get().swPort;
+    if (!port) return Promise.reject(new Error("SW not connected"));
+    if (id != null) {
+      return new Promise<unknown>((resolve, reject) => {
+        let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+          timeoutId = null;
+          if (pendingById.has(id)) {
+            clearPending(id);
+            reject(new Error("SW response timeout"));
+          }
+        }, ACTION_RESPONSE_TIMEOUT_MS);
+        pendingById.set(id, {
+          resolve: (v) => {
+            if (timeoutId != null) clearTimeout(timeoutId);
+            resolve(v);
+          },
+          reject: (e) => {
+            if (timeoutId != null) clearTimeout(timeoutId);
+            reject(e);
+          },
+        });
+        send(port, { type: "action", id, action });
+      });
+    }
+    send(port, { type: "action", action });
+    return Promise.resolve();
+  },
+
+  getLlmProviders() {
+    const raw = get().settings[LLM_PROVIDERS_KEY];
+    return parseLlmProviders(raw);
+  },
+
+  setCurrentThreadId: (id) => set({ currentThreadId: id }),
 
   fetchSettings: async () => {
     set({ settingsLoading: true });
     try {
-      const { items } = await api.getSettings();
-      get().mergeSettings(items);
+      await get().sendAction({ kind: "sync.pull", payload: { scope: "settings" } }, crypto.randomUUID());
     } finally {
       set({ settingsLoading: false });
     }
   },
 
-  mergeSettings: (items) => {
-    set((state) => {
-      const next: SettingsState = { ...state.settings };
-      for (const item of items) {
-        const cur = next[item.key];
-        if (!cur || item.updatedAt >= cur.updatedAt) {
-          next[item.key] = { value: item.value, updatedAt: item.updatedAt };
-        }
-      }
-      return { settings: next };
-    });
-  },
-
-  setSetting: async (key, value) => {
-    const result = await api.setSetting(key, value);
-    set((state) => ({
-      settings: {
-        ...state.settings,
-        [key]: { value: result.value, updatedAt: result.updatedAt },
-      },
-    }));
-  },
-
-  getLlmProviders: () => {
-    const s = get().settings[LLM_PROVIDERS_KEY];
-    return s ? parseLlmProviders(s.value) : [];
-  },
-
   fetchThreads: async () => {
     set({ threadsLoading: true });
     try {
-      const { threads } = await api.getThreads(100);
-      get().mergeThreads(threads);
+      await get().sendAction({ kind: "sync.pull", payload: { scope: "threads" } }, crypto.randomUUID());
     } finally {
       set({ threadsLoading: false });
     }
   },
 
-  mergeThreads: (threads) => {
-    set((state) => {
-      const byId = new Map(state.threads.map((t) => [t.threadId, t]));
-      for (const t of threads) {
-        const cur = byId.get(t.threadId);
-        if (!cur || t.updatedAt >= cur.updatedAt) byId.set(t.threadId, t);
-      }
-      return { threads: Array.from(byId.values()).sort((a, b) => b.updatedAt - a.updatedAt) };
-    });
-  },
-
-  setCurrentThreadId: (id) => set({ currentThreadId: id }),
-
   fetchMessages: async (threadId) => {
-    set((state) => ({
-      messagesLoading: { ...state.messagesLoading, [threadId]: true },
-    }));
+    set((s) => ({ messagesLoading: { ...s.messagesLoading, [threadId]: true } }));
     try {
-      const { messages } = await api.getMessages(threadId, 200);
-      get().mergeMessages(threadId, messages);
+      await get().sendAction({ kind: "sync.pull" }, crypto.randomUUID());
     } finally {
-      set((state) => ({
-        messagesLoading: { ...state.messagesLoading, [threadId]: false },
-      }));
+      set((s) => ({ messagesLoading: { ...s.messagesLoading, [threadId]: false } }));
     }
   },
 
-  mergeMessages: (threadId, messages) => {
-    set((state) => {
-      const existing = state.messagesByThread[threadId] ?? [];
-      const byId = new Map(existing.map((m) => [m.messageId, m]));
-      for (const m of messages) {
-        byId.set(m.messageId, m);
-      }
-      const merged = Array.from(byId.values()).sort((a, b) => a.createdAt - b.createdAt);
-      return {
-        messagesByThread: { ...state.messagesByThread, [threadId]: merged },
-      };
-    });
-  },
-
-  appendMessageLocal: (threadId, message) => {
-    set((state) => {
-      const list = state.messagesByThread[threadId] ?? [];
-      return {
-        messagesByThread: {
-          ...state.messagesByThread,
-          [threadId]: [...list, message],
-        },
-      };
-    });
-  },
-
-  /** Remove one message by id (e.g. optimistic local_xxx) after server message is merged. */
-  removeMessage: (threadId, messageId) => {
-    set((state) => {
-      const list = state.messagesByThread[threadId] ?? [];
-      const next = list.filter((m) => m.messageId !== messageId);
-      if (next.length === list.length) return state;
-      return {
-        messagesByThread: { ...state.messagesByThread, [threadId]: next },
-      };
-    });
-  },
-
   createThread: async (body) => {
-    const thread = await api.createThread(body);
-    set((state) => ({
-      threads: [thread, ...state.threads],
-      currentThreadId: thread.threadId,
-    }));
-    return thread;
+    const prevIds = get().threads.map((t) => t.threadId);
+    await get().sendAction({ kind: "threads.create", payload: body }, crypto.randomUUID());
+    const next = get().threads;
+    const added = next.find((t) => !prevIds.includes(t.threadId));
+    if (added) set({ currentThreadId: added.threadId });
+    if (!added) throw new Error("Create thread failed");
+    return added;
   },
 
   deleteThread: async (threadId) => {
-    await api.deleteThread(threadId);
-    set((state) => {
-      const next = state.threads.filter((t) => t.threadId !== threadId);
-      const nextMessages = { ...state.messagesByThread };
-      delete nextMessages[threadId];
-      return {
-        threads: next,
-        messagesByThread: nextMessages,
-        currentThreadId: state.currentThreadId === threadId ? (next[0]?.threadId ?? null) : state.currentThreadId,
-      };
-    });
+    await get().sendAction({ kind: "threads.delete", payload: { threadId } }, crypto.randomUUID());
   },
 
-  createMessage: async (threadId, body) => {
-    const message = await api.createMessage(threadId, body);
-    get().mergeMessages(threadId, [message]);
-    return message;
+  setSetting: async (key, value) => {
+    await get().sendAction({ kind: "settings.update", payload: { key, value } }, crypto.randomUUID());
+  },
+
+  sendMessage: async (threadId, content, modelId) => {
+    await get().sendAction(
+      { kind: "messages.send", payload: { threadId, content, modelId } },
+      crypto.randomUUID()
+    );
+  },
+
+  cancelStream(messageId) {
+    get().sendAction({ kind: "stream.cancel", payload: { messageId } });
   },
 }));
