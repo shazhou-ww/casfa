@@ -41,11 +41,17 @@ export function LLMProvidersEditor({ open, onClose, providers, onSave }: Props) 
   );
   const [saving, setSaving] = useState(false);
   const initialProvidersRef = useRef(providers);
+  const storedApiKeysRef = useRef<Map<string, string>>(new Map());
+  const prevOpenRef = useRef(open);
   if (open && initialProvidersRef.current !== providers) initialProvidersRef.current = providers;
 
   useEffect(() => {
-    if (open) {
-      setList(providers.length ? providers.map((p) => ({ ...p, apiKey: "" })) : [defaultProvider()]);
+    const justOpened = open && !prevOpenRef.current;
+    prevOpenRef.current = open;
+    if (open && justOpened) {
+      const withEmptyKey = providers.length ? providers.map((p) => ({ ...p, apiKey: "" })) : [defaultProvider()];
+      setList(withEmptyKey);
+      storedApiKeysRef.current = new Map(providers.map((p) => [p.id, (p.apiKey ?? "").trim()]).filter(([, v]) => v !== ""));
     }
   }, [open, providers]);
 
@@ -95,11 +101,15 @@ export function LLMProvidersEditor({ open, onClose, providers, onSave }: Props) 
 
   const handleSave = useCallback(async () => {
     const initial = initialProvidersRef.current;
+    const storedApiKeys = storedApiKeysRef.current;
     const toSave = list
       .filter((p) => p.baseUrl.trim())
       .map((p) => {
         const prev = initial.find((i) => i.id === p.id);
-        const apiKey = p.apiKey && p.apiKey.trim() ? p.apiKey : (prev?.apiKey ?? "");
+        const apiKey =
+          (p.apiKey && p.apiKey.trim())
+            ? p.apiKey.trim()
+            : (prev?.apiKey?.trim() ?? storedApiKeys.get(p.id) ?? "");
         return { ...p, apiKey, models: p.models.filter((m) => m.id.trim()) };
       });
     if (!toSave.length) return;
@@ -160,7 +170,8 @@ export function LLMProvidersEditor({ open, onClose, providers, onSave }: Props) 
                 margin="dense"
                 value={provider.apiKey}
                 onChange={(e) => updateProvider(pi, { apiKey: e.target.value })}
-                placeholder="Leave empty to keep existing"
+                placeholder={storedApiKeysRef.current.has(provider.id) ? "•••••••• (stored)" : "Leave empty to keep existing"}
+                helperText={storedApiKeysRef.current.has(provider.id) && !provider.apiKey ? "Stored; leave empty to keep, or enter a new key to replace" : undefined}
               />
               <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
                 Models
