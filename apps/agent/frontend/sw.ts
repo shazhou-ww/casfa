@@ -76,26 +76,37 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
     const action = msg.action;
 
     if (action.kind === "messages.send") {
-      try {
-        await runMessagesSend(
-          action.payload.threadId,
-          action.payload.content,
-          action.payload.modelId,
-          modelState,
-          applyAndBroadcast,
-          (mid, ctrl) => { streamAbortControllers.set(mid, ctrl); },
-          (mid) => { streamAbortControllers.delete(mid); }
-        );
-        if (id != null) broadcast({ type: "change", changes: [{ kind: "response", payload: { id, result: undefined } }] });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (id != null) {
+      let responded = false;
+      const maybeRespond = (
+        opts: { result?: unknown } | { error: { code: string; message: string } }
+      ) => {
+        if (id == null || responded) return;
+        responded = true;
+        if ("error" in opts) {
           broadcast({
             type: "change",
-            changes: [{ kind: "response", payload: { id, error: { code: "ERROR", message } } }],
+            changes: [{ kind: "response", payload: { id, error: opts.error } }],
+          });
+        } else {
+          broadcast({
+            type: "change",
+            changes: [{ kind: "response", payload: { id, result: opts.result } }],
           });
         }
-      }
+      };
+      runMessagesSend(
+        action.payload.threadId,
+        action.payload.content,
+        action.payload.modelId,
+        modelState,
+        applyAndBroadcast,
+        (mid, ctrl) => { streamAbortControllers.set(mid, ctrl); },
+        (mid) => { streamAbortControllers.delete(mid); },
+        () => maybeRespond({ result: undefined })
+      ).catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        maybeRespond({ error: { code: "ERROR", message } });
+      });
       return;
     }
 
