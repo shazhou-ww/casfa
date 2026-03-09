@@ -10,6 +10,7 @@ import { awsLoginCommand, awsLogoutCommand } from "./commands/aws.js";
 import { logsCommand } from "./commands/logs.js";
 import { secretGetCommand, secretListCommand, secretSetCommand } from "./commands/secret.js";
 import { statusCommand } from "./commands/status.js";
+import { setupCommand } from "./commands/setup.js";
 import { testCommand, testE2eCommand, testUnitCommand } from "./commands/test.js";
 import { typecheckCommand } from "./commands/typecheck.js";
 import { clientCreateCommand, clientSyncUrlsCommand } from "./commands/cognito/client.js";
@@ -169,6 +170,13 @@ program
   .argument("[name]", "Cell name")
   .action(async (name?: string) => {
     await initCommand(name);
+  });
+
+program
+  .command("setup")
+  .description("Setup local env for a new clone (copy .env.example → .env, .env.local.example → .env.local)")
+  .action(async () => {
+    await run(() => setupCommand());
   });
 
 const domain = program.command("domain").description("List or inspect domain configuration");
