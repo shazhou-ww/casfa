@@ -13,9 +13,9 @@ export function ChatPage() {
   const setCurrentThreadId = useAgentStore((s) => s.setCurrentThreadId);
 
   const messages = currentThreadId ? messagesByThread[currentThreadId] ?? [] : [];
-  const currentThread = threads.find((t) => t.threadId === currentThreadId);
   const providers = getLlmProviders();
-  const modelId = currentThread?.modelId ?? providers[0]?.models[0]?.id ?? null;
+  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+  const modelId = lastAssistant?.modelId ?? providers[0]?.models[0]?.id ?? null;
   const provider = modelId
     ? providers.find((p) => p.models.some((m) => m.id === modelId)) ?? providers[0] ?? null
     : providers[0] ?? null;

@@ -46,7 +46,8 @@ type AgentActions = {
   fetchMessages: (threadId: string) => Promise<void>;
   mergeMessages: (threadId: string, messages: api.Message[]) => void;
   appendMessageLocal: (threadId: string, message: api.Message) => void;
-  createThread: (body: { title?: string; modelId?: string }) => Promise<api.Thread>;
+  removeMessage: (threadId: string, messageId: string) => void;
+  createThread: (body: { title: string }) => Promise<api.Thread>;
   deleteThread: (threadId: string) => Promise<void>;
   createMessage: (threadId: string, body: { role: api.Message["role"]; content: api.Message["content"] }) => Promise<api.Message>;
 };
@@ -157,6 +158,18 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
           ...state.messagesByThread,
           [threadId]: [...list, message],
         },
+      };
+    });
+  },
+
+  /** Remove one message by id (e.g. optimistic local_xxx) after server message is merged. */
+  removeMessage: (threadId, messageId) => {
+    set((state) => {
+      const list = state.messagesByThread[threadId] ?? [];
+      const next = list.filter((m) => m.messageId !== messageId);
+      if (next.length === list.length) return state;
+      return {
+        messagesByThread: { ...state.messagesByThread, [threadId]: next },
       };
     });
   },
