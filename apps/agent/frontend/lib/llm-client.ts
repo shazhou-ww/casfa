@@ -13,7 +13,8 @@ export async function callChatCompletion(
   modelId: string,
   messages: ChatMessage[]
 ): Promise<string> {
-  const url = `${provider.baseUrl.replace(/\/$/, "")}/v1/chat/completions`;
+  const base = provider.baseUrl.replace(/\/$/, "");
+  const url = `${base}/chat/completions`;
   const body = {
     model: modelId,
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
