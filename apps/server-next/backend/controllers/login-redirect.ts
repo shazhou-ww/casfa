@@ -63,6 +63,16 @@ export function createLoginRedirectRoutes(
     });
   });
 
+  /** RFC 9728 Protected Resource Metadata for MCP OAuth discovery (e.g. agent client). */
+  routes.get("/.well-known/oauth-protected-resource", (c) => {
+    const base = getRequestBaseUrl(c).replace(/\/$/, "");
+    return c.json({
+      authorization_servers: [base],
+      resource: base,
+      scopes_supported: ["use_mcp", "file_read", "file_write", "branch_manage", "manage_delegates"],
+    });
+  });
+
   // Stub for MCP clients that require dynamic client registration; real client_id (delegateId) is issued at first authorize.
   routes.post("/oauth/register", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { client_name?: string; redirect_uris?: string[] };

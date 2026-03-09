@@ -11,7 +11,7 @@
     "dev": "cell dev",
     "build": "cell build",
     "deploy": "cell deploy",
-    "typecheck": "cell typecheck",
+    "typecheck": "cell typecheck && tsc --noEmit -p frontend",
     "test": "cell test",
     "test:unit": "cell test:unit",
     "test:e2e": "cell test:e2e",
