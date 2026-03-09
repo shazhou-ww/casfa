@@ -44,7 +44,9 @@ function generateDevServer(
   const cellBuildDir = resolve(cellDir, ".cell");
   mkdirSync(cellBuildDir, { recursive: true });
   const devServerPath = resolve(cellBuildDir, `dev-${entryName}.ts`);
-  const relPath = relative(dirname(devServerPath), appPath).replace(/\.ts$/, "");
+  const relPath = relative(dirname(devServerPath), appPath)
+    .replace(/\.ts$/, "")
+    .replace(/\\/g, "/");
   const importPath = relPath.startsWith(".") ? relPath : `./${relPath}`;
   writeFileSync(
     devServerPath,
