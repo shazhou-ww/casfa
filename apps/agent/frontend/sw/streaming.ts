@@ -145,8 +145,15 @@ export type RegisterAbort = (messageId: string, controller: AbortController) => 
 export type UnregisterAbort = (messageId: string) => void;
 
 /**
+ * Called once the stream has been accepted and streaming has started (before LLM bytes arrive).
+ * Used so the frontend can resolve the sendMessage promise quickly and avoid fake "SW response timeout".
+ */
+export type OnStreamStarted = () => void;
+
+/**
  * Run messages.send: save user message, call LLM (streaming), save assistant message, emit Changes.
  * Uses tempMessageId for the stream; stream.done carries the final message from the backend.
+ * Calls onStreamStarted (if provided) after emitting stream.status "streaming", so the client can ack the request without waiting for the full reply.
  */
 export async function runMessagesSend(
   threadId: string,
@@ -155,7 +162,8 @@ export async function runMessagesSend(
   state: ModelState,
   applyAndBroadcast: ApplyAndBroadcast,
   registerAbort: RegisterAbort,
-  unregisterAbort: UnregisterAbort
+  unregisterAbort: UnregisterAbort,
+  onStreamStarted?: OnStreamStarted
 ): Promise<void> {
   const pm = getProviderAndModel(state, threadId, modelId);
   if (!pm) throw new Error("No LLM provider/model configured");
@@ -185,6 +193,8 @@ export async function runMessagesSend(
     kind: "stream.status",
     payload: { messageId: tempMessageId, threadId, status: "streaming" },
   });
+
+  onStreamStarted?.();
 
   const chunks: StreamChunk[] = [];
   try {
