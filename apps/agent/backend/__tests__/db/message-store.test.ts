@@ -20,7 +20,7 @@ describe("message store", () => {
       {
         type: "tool-call" as const,
         callId: "call-1",
-        name: "load_scenario",
+        name: "list_mcp_servers",
         arguments: "{}",
       },
     ];
@@ -39,7 +39,7 @@ describe("message store", () => {
     expect(items[0].content[0]).toMatchObject({
       type: "tool-call",
       callId: "call-1",
-      name: "load_scenario",
+      name: "list_mcp_servers",
       arguments: "{}",
     });
   });
@@ -51,7 +51,7 @@ describe("message store", () => {
     const thread = await threadStore.create(realmId, { title: "Test" });
 
     const content = [
-      { type: "tool-call" as const, callId: "c1", name: "load_scenario", arguments: '{"serverId":"s1","scenarioId":"sc1"}' },
+      { type: "tool-call" as const, callId: "c1", name: "run_mcp_tool", arguments: '{"serverId":"s1","toolName":"flux_image"}' },
       { type: "tool-result" as const, callId: "c1", result: "ok" },
     ];
     await messageStore.create(thread.threadId, { role: "user", content });
@@ -62,8 +62,8 @@ describe("message store", () => {
     expect(items[0].content[0]).toEqual({
       type: "tool-call",
       callId: "c1",
-      name: "load_scenario",
-      arguments: '{"serverId":"s1","scenarioId":"sc1"}',
+      name: "run_mcp_tool",
+      arguments: '{"serverId":"s1","toolName":"flux_image"}',
     });
     expect(items[0].content[1]).toEqual({ type: "tool-result", callId: "c1", result: "ok" });
   });
@@ -92,7 +92,7 @@ describe("messages controller", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           role: "user",
-          content: [{ type: "tool-call", callId: "x1", name: "load_scenario", arguments: "{}" }],
+          content: [{ type: "tool-call", callId: "x1", name: "list_mcp_servers", arguments: "{}" }],
         }),
       }
     );
@@ -106,7 +106,7 @@ describe("messages controller", () => {
     expect(listBody.messages.length).toBe(1);
     expect(listBody.messages[0].role).toBe("user");
     expect(listBody.messages[0].content).toEqual([
-      { type: "tool-call", callId: "x1", name: "load_scenario", arguments: "{}" },
+      { type: "tool-call", callId: "x1", name: "list_mcp_servers", arguments: "{}" },
     ]);
   });
 });
