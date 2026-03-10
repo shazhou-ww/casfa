@@ -32,6 +32,8 @@ export type MCPPrompt = {
   title?: string;
   description?: string;
   arguments?: Array<{ name: string; description?: string; required?: boolean }>;
+  /** When present (e.g. from prompts/list or prompts/get), restricts tools for this scenario to these names. */
+  allowedTools?: string[];
 };
 
 export type MCPResource = {
