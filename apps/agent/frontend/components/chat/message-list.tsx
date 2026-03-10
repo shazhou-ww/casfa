@@ -1,11 +1,47 @@
 import { Box, Paper, Typography } from "@mui/material";
-import type { Message } from "../../lib/api.ts";
+import type { Message, MessageContentPart } from "../../lib/api.ts";
 
-function contentToText(content: Message["content"]): string {
-  return content
-    .filter((p): p is { type: "text"; text: string } => p.type === "text")
-    .map((p) => p.text)
-    .join("");
+function ContentBlock({ part }: { part: MessageContentPart }) {
+  if (part.type === "text") {
+    if (!part.text.trim()) return null;
+    return (
+      <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+        {part.text}
+      </Typography>
+    );
+  }
+  if (part.type === "tool-call") {
+    const argsPreview =
+      part.arguments.length > 60 ? part.arguments.slice(0, 60) + "…" : part.arguments;
+    return (
+      <Typography variant="caption" component="div" sx={{ mt: 0.5, opacity: 0.85 }}>
+        <strong>Tool:</strong> {part.name}({argsPreview})
+      </Typography>
+    );
+  }
+  if (part.type === "tool-result") {
+    const preview =
+      part.result.length > 500 ? part.result.slice(0, 500) + "…" : part.result;
+    return (
+      <Box
+        component="pre"
+        sx={{
+          mt: 0.5,
+          p: 1,
+          bgcolor: "action.hover",
+          borderRadius: 1,
+          fontSize: "0.75rem",
+          overflow: "auto",
+          maxHeight: 200,
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+        }}
+      >
+        {preview}
+      </Box>
+    );
+  }
+  return null;
 }
 
 export function MessageList({ messages }: { messages: Message[] }) {
@@ -33,9 +69,9 @@ export function MessageList({ messages }: { messages: Message[] }) {
           <Typography variant="caption" sx={{ opacity: 0.8, display: "block", mb: 0.5 }}>
             {m.role}
           </Typography>
-          <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
-            {contentToText(m.content)}
-          </Typography>
+          {m.content.map((part, i) => (
+            <ContentBlock key={i} part={part} />
+          ))}
         </Paper>
       ))}
     </Box>
