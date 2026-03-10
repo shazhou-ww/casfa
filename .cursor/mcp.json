@@ -1,5 +1,9 @@
 {
   "mcpServers": {
+    "cell-cli": {
+      "command": "bun",
+      "args": ["apps/cell-cli/src/mcp-server.ts"]
+    },
     "casfa-next-local": {
       "url": "http://localhost:7120/mcp"
     },
