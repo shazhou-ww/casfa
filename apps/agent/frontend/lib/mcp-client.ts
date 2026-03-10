@@ -83,6 +83,16 @@ export type ToolsListResult = { tools: MCPTool[]; nextCursor?: string };
 export type PromptsListResult = { prompts: MCPPrompt[]; nextCursor?: string };
 export type ResourcesListResult = { resources: MCPResource[]; nextCursor?: string };
 
+/** Result of MCP prompts/get. messages are used for prompt injection; allowedTools for tool filtering when present. */
+export type GetPromptResult = {
+  messages: Array<{
+    role: string;
+    content: { type: "text"; text: string } | { type: string; [key: string]: unknown };
+  }>;
+  description?: string;
+  allowedTools?: string[];
+};
+
 export async function listTools(config: MCPServerConfig, cursor?: string): Promise<ToolsListResult> {
   const result = await mcpCall<{ tools?: MCPTool[]; nextCursor?: string }>(config, "tools/list", cursor ? { cursor } : undefined);
   return { tools: result.tools ?? [], nextCursor: result.nextCursor };
@@ -91,6 +101,23 @@ export async function listTools(config: MCPServerConfig, cursor?: string): Promi
 export async function listPrompts(config: MCPServerConfig, cursor?: string): Promise<PromptsListResult> {
   const result = await mcpCall<{ prompts?: MCPPrompt[]; nextCursor?: string }>(config, "prompts/list", cursor ? { cursor } : undefined);
   return { prompts: result.prompts ?? [], nextCursor: result.nextCursor };
+}
+
+/** Call MCP prompts/get. Returns prompt messages for injection and optional allowedTools for tool filtering. */
+export async function getPrompt(
+  config: MCPServerConfig,
+  name: string,
+  args?: Record<string, unknown>
+): Promise<GetPromptResult> {
+  const result = await mcpCall<GetPromptResult>(config, "prompts/get", {
+    name,
+    arguments: args,
+  });
+  return {
+    messages: result.messages ?? [],
+    description: result.description,
+    allowedTools: result.allowedTools,
+  };
 }
 
 export async function listResources(config: MCPServerConfig, cursor?: string): Promise<ResourcesListResult> {
