@@ -105,11 +105,17 @@ export type ChangeMessagesRemove = {
   payload: { threadId: string; messageId: string };
 };
 
+export type ChangeMessagesReplaced = {
+  kind: "messages.replaced";
+  payload: { threadId: string; messages: Message[] };
+};
+
 export type Change =
   | { kind: "threads.updated"; payload: { threads: Thread[] } }
   | ChangeMessagesAppend
   | ChangeMessagesPatch
   | ChangeMessagesRemove
+  | ChangeMessagesReplaced
   | {
       kind: "stream.status";
       payload: {

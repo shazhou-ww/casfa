@@ -50,9 +50,8 @@ export async function handleAction(action: Action, state: ModelState): Promise<C
       if (scope === "messages" || scope === undefined) {
         for (const t of threads) {
           const { messages } = await api.listMessages(t.threadId);
-          for (const m of messages as Message[]) {
-            changes.push({ kind: "messages.append", payload: { threadId: t.threadId, message: m } });
-          }
+          const list = messages as Message[];
+          changes.push({ kind: "messages.replaced", payload: { threadId: t.threadId, messages: list } });
         }
       }
 

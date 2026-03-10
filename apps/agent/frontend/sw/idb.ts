@@ -106,6 +106,34 @@ export async function putMessage(message: Message): Promise<void> {
   });
 }
 
+/** Replace all messages for a thread (used by sync.pull to avoid duplicate appends). */
+export async function replaceMessagesForThread(threadId: string, messages: Message[]): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_MESSAGES, "readwrite");
+    const store = tx.objectStore(STORE_MESSAGES);
+    const index = store.index("threadId");
+    const req = index.getAllKeys(IDBKeyRange.only(threadId));
+    req.onsuccess = () => {
+      const keysToDelete = req.result as string[];
+      for (const k of keysToDelete) store.delete(k);
+      for (const m of messages) store.put(m);
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
+    req.onerror = () => {
+      db.close();
+      reject(req.error);
+    };
+  });
+}
+
 export async function deleteMessage(messageId: string): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
