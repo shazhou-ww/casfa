@@ -196,7 +196,7 @@ export async function runMessagesSend(
 
   onStreamStarted?.();
 
-  // Task 8: tools = [...metaToolSchemas, ...scenarioTools] from ./mcp-scenario-tools.ts
+  // Task 8: tools = [...metaToolSchemas, ...scenarioTools] from ./mcp-scenario-tools.ts; dispatch tool_calls via executeMetaTool(name, args, state, threadId).
   const chunks: StreamChunk[] = [];
   try {
     await callLlmStream(pm.provider, pm.modelId, turns, {
