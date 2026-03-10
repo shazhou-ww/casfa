@@ -9,5 +9,5 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@casfa/server"]
+  "ignore": ["@casfa/server", "@casfa/cli"]
 }
