@@ -102,4 +102,44 @@ describe("deriveLoadedScenarios", () => {
     expect(result.size).toBe(1);
     expect(result.has("s1#sc1")).toBe(true);
   });
+
+  it("does not add to loaded when load_scenario arguments are invalid JSON", () => {
+    const messages: Message[] = [
+      {
+        messageId: "m1",
+        threadId,
+        role: "assistant",
+        content: [
+          { type: "tool-call", callId: "c1", name: "load_scenario", arguments: "not json" },
+        ],
+        createdAt: 1000,
+      },
+    ];
+    const mcpServers: MCPServerConfig[] = [makeServer("s1")];
+    const result = deriveLoadedScenarios(threadId, messages, mcpServers);
+    expect(result.size).toBe(0);
+  });
+
+  it("does not add when serverId is not in mcpServers", () => {
+    const messages: Message[] = [
+      {
+        messageId: "m1",
+        threadId,
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            callId: "c1",
+            name: "load_scenario",
+            arguments: '{"serverId":"unknown","scenarioId":"sc1"}',
+          },
+        ],
+        createdAt: 1000,
+      },
+    ];
+    const mcpServers: MCPServerConfig[] = [makeServer("s1")];
+    const result = deriveLoadedScenarios(threadId, messages, mcpServers);
+    expect(result.size).toBe(0);
+    expect(result.has("unknown#sc1")).toBe(false);
+  });
 });

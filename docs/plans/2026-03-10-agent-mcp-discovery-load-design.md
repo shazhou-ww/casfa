@@ -122,3 +122,12 @@
 
 - 本文档记录「以 scenario 为粒度的 MCP 发现、加载、卸载」及「从历史推导 + user tool-call + LRU 自动卸载」的约定。
 - 实现时需：扩展 user 消息 content 支持；实现 list_mcp_scenarios、load_scenario、unload_scenario 及推导函数；LLM 请求带 tools 与 tool_calls 处理；prompts/get 与 prompt 注入；MCP prompt 元数据（allowed-tools）的解析与退化策略。
+
+---
+
+## 7. 实现说明（参考 impl 计划 2026-03-10）
+
+- **推导已加载 scenarios**：`apps/agent/frontend/lib/derive-loaded-scenarios.ts` 中 `deriveLoadedScenarios(threadId, messages, mcpServers)`，scenarioKey 格式 `serverId#scenarioId`；仅根据历史中 load_scenario / unload_scenario 的 tool-call 推导。
+- **LRU 与上限**：`apps/agent/frontend/lib/derive-loaded-scenarios-lru.ts` 中 `getLastUsedByScenario`、`applyAutoUnload`；常量 `MAX_LOADED_SCENARIOS = 10` 在该文件定义，由 `apps/agent/frontend/sw/mcp-scenario-tools.ts` 引入并 re-export；每轮构建 tools 前调用 `getLoadedScenariosAfterLru(state, threadId, scenarioToToolNames)` 得到本轮的 `kept` 集合。
+- **元 tools**：`list_mcp_scenarios`、`load_scenario`、`unload_scenario` 的 schema 与执行在 `apps/agent/frontend/sw/mcp-scenario-tools.ts`（`metaToolSchemas`、`executeMetaTool`、`executeTool`）；MCP 场景 tool 执行通过 `executeTool(name, argsJson, state, threadId)` 路由到 `mcpCall(config, "tools/call", ...)`。
+- **User message tool-call 约定**：后端与前端允许 `role: "user"` 的 message 的 `content` 包含 `type: "tool-call"` 与 `type: "tool-result"`；推导时与 assistant 一视同仁。UI 占位：`apps/agent/frontend/components/chat/thread-loaded-scenarios.tsx` 展示已加载 scenarios 并可通过 Load/Unload 发送带 tool-call + tool-result 的 user 消息。
