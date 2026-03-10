@@ -108,3 +108,18 @@ CLI 会加载 `cell.yaml` 再合并 `cell.<instance>.yaml` 的 `params`。
 - 设计文档：`docs/plans/2026-03-04-cell-cli-design.md`。
 - 实现与 schema：`apps/cell-cli/src/config/`（load-cell-yaml、resolve-config、cell-yaml-schema）。
 - 示例 cell：`apps/sso`、`apps/server-next`、`apps/agent`、`apps/image-workshop`。
+
+## Cell CLI MCP（可选）
+
+`cell` 命令已封装为 stdio MCP 服务，便于在 Cursor 中通过 Agent 调用。
+
+- **入口**：`apps/cell-cli/src/mcp-server.ts`，运行 `bun apps/cell-cli/src/mcp-server.ts`（需在仓库根目录）。
+- **工具**：`cell_run` — 参数：`command`（dev/build/deploy/test/status/logs/domain list/secret list 等）、`cellDir`（可选）、`instance`（可选）、`deployYes`、`domains`、`extraArgs`。
+- **配置**：在 `.cursor/mcp.json` 的 `mcpServers` 中添加：
+  ```json
+  "cell-cli": {
+    "command": "bun",
+    "args": ["apps/cell-cli/src/mcp-server.ts"]
+  }
+  ```
+  保存后重启 Cursor 或重新加载 MCP，即可在对话中让 Agent 执行 cell 命令（如「在 apps/sso 跑 cell dev」）。
