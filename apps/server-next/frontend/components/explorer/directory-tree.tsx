@@ -355,10 +355,11 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
       e.preventDefault();
       setDragOver(false);
       dragCountRef.current = 0;
+      if (uploading) return;
       const files = e.dataTransfer?.files;
       if (files?.length) await doUploadFiles(files);
     },
-    [doUploadFiles]
+    [doUploadFiles, uploading]
   );
 
   return (
@@ -615,7 +616,7 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        {dragOver && (
+        {dragOver && !uploading && (
           <Box
             sx={{
               position: "absolute",
