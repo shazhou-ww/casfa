@@ -196,6 +196,7 @@ export async function runMessagesSend(
 
   onStreamStarted?.();
 
+  // Task 8: tools = [...metaToolSchemas, ...scenarioTools] from ./mcp-scenario-tools.ts
   const chunks: StreamChunk[] = [];
   try {
     await callLlmStream(pm.provider, pm.modelId, turns, {
