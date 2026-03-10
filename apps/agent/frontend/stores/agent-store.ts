@@ -157,6 +157,14 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
         }));
         break;
       }
+      case "messages.replaced": {
+        const { threadId, messages } = change.payload;
+        const sorted = [...messages].sort((a, b) => a.createdAt - b.createdAt);
+        set((s) => ({
+          messagesByThread: { ...s.messagesByThread, [threadId]: sorted },
+        }));
+        break;
+      }
       case "stream.status":
         set((s) => {
           const { messageId, threadId, status, error } = change.payload;

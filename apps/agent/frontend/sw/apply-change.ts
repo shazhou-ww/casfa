@@ -43,6 +43,17 @@ export async function applyChange(state: ModelState, change: Change): Promise<Mo
       return next;
     }
 
+    case "messages.replaced": {
+      const { threadId, messages } = change.payload;
+      const sorted = [...messages].sort((a, b) => a.createdAt - b.createdAt);
+      const next = {
+        ...state,
+        messagesByThread: { ...state.messagesByThread, [threadId]: sorted },
+      };
+      await idb.replaceMessagesForThread(threadId, sorted);
+      return next;
+    }
+
     case "stream.status": {
       const { messageId, threadId, status, error } = change.payload;
       const prev = state.streamByMessageId[messageId];
