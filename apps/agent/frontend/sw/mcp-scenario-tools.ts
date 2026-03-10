@@ -3,6 +3,7 @@
  * Aggregates prompts from each MCP server and marks which scenarios are loaded per thread.
  */
 
+import { applyAutoUnload, getLastUsedByScenario, MAX_LOADED_SCENARIOS } from "../lib/derive-loaded-scenarios-lru.ts";
 import { deriveLoadedScenarios } from "../lib/derive-loaded-scenarios.ts";
 import { listPrompts } from "../lib/mcp-client.ts";
 import { MCP_SERVERS_SETTINGS_KEY, parseMcpServers } from "../lib/mcp-types.ts";
@@ -55,6 +56,23 @@ export async function listMcpScenarios(
   return { scenarios };
 }
 
+/**
+ * Get the effective loaded scenarios for this round after LRU auto-unload.
+ * If loaded count > MAX_LOADED_SCENARIOS, evicts by last-used (no unload tool-calls written).
+ * Task 7 will call this before buildToolsForThread and use "kept" as the loaded set.
+ */
+export async function getLoadedScenariosAfterLru(
+  state: ModelState,
+  threadId: string,
+  scenarioToToolNames?: Map<string, Set<string>>
+): Promise<{ kept: Set<string>; evicted: Set<string> }> {
+  const mcpServers = parseMcpServers(state.settings[MCP_SERVERS_SETTINGS_KEY]);
+  const messages = state.messagesByThread[threadId] ?? [];
+  const loaded = deriveLoadedScenarios(threadId, messages, mcpServers);
+  const lastUsed = getLastUsedByScenario(messages, loaded, scenarioToToolNames);
+  return applyAutoUnload(loaded, lastUsed, MAX_LOADED_SCENARIOS);
+}
+
 /** OpenAI-format tool schema for list_mcp_scenarios (no parameters). */
 export const LIST_MCP_SCENARIOS_TOOL_SCHEMA = {
   type: "function" as const,
@@ -66,8 +84,8 @@ export const LIST_MCP_SCENARIOS_TOOL_SCHEMA = {
   },
 };
 
-/** Max number of loaded scenarios per thread before returning error (Task 6 will add LRU auto-unload). */
-const MAX_LOADED_SCENARIOS = 10;
+/** Re-export for callers that need the cap (e.g. executeLoadScenario, buildToolsForThread). */
+export { MAX_LOADED_SCENARIOS };
 
 /** OpenAI-format tool schema for load_scenario (parameters: serverId, scenarioId). */
 export const LOAD_SCENARIO_TOOL_SCHEMA = {
