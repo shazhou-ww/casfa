@@ -1,9 +1,11 @@
 /**
- * MCP JSON-RPC client over HTTP. Handles Bearer token; on 401 throws so caller can run OAuth discovery and retry.
+ * MCP JSON-RPC client over HTTP. Handles Bearer token; on 401 clears token, marks server for re-login, then throws.
  */
 
+import { removeMCPToken } from "./mcp-oauth-tokens.ts";
 import { getMCPToken } from "./mcp-oauth-tokens.ts";
 import type { MCPServerConfig, MCPPrompt, MCPResource, MCPTool } from "./mcp-types.ts";
+import { useAgentStore } from "../stores/agent-store.ts";
 
 export { discoverFrom401Response } from "./mcp-oauth-flow.ts";
 
@@ -46,6 +48,8 @@ async function mcpRequest<T>(
   });
 
   if (res.status === 401) {
+    await removeMCPToken(serverId);
+    useAgentStore.getState().addMcpServerNeedingLogin(serverId);
     throw new MCPAuthRequiredError("MCP server returned 401", res, serverUrl, serverId);
   }
   if (!res.ok) {
@@ -57,7 +61,8 @@ async function mcpRequest<T>(
   return (json.result ?? {}) as T;
 }
 
-/** Call MCP with optional token (for oauth2 servers). On 401 throws MCPAuthRequiredError. */
+/** Call MCP with optional token (for oauth2 servers). On 401 throws MCPAuthRequiredError.
+ * Uses token whenever one exists for this server (auto-detect OAuth from 401, no need to set auth in config). */
 export async function mcpCall<T>(
   config: MCPServerConfig,
   method: string,
@@ -66,10 +71,10 @@ export async function mcpCall<T>(
   const url = config.url ?? "";
   if (!url) throw new Error("MCP server URL required");
   let token: string | null = null;
-  if (config.auth === "oauth2") {
+  if (config.transport === "http") {
     const entry = await getMCPToken(config.id);
     token = entry?.access_token ?? null;
-    console.log("[MCP OAuth] mcpCall: serverId=%s method=%s token=%s", config.id, method, token ? "yes" : "no");
+    if (token) console.log("[MCP OAuth] mcpCall: serverId=%s method=%s token=yes", config.id, method);
   }
   return await mcpRequest<T>(url, method, params, token, config.id);
 }
@@ -100,21 +105,42 @@ export type MCPServerCapabilities = {
   error?: string;
 };
 
-/** Call tools/list, prompts/list, resources/list. On 401 throws MCPAuthRequiredError. */
+/** Call tools/list, prompts/list, resources/list. On 401 throws MCPAuthRequiredError.
+ * If a list method returns "Method not found", that capability is treated as empty (no error). */
 export async function discoverCapabilities(config: MCPServerConfig): Promise<MCPServerCapabilities> {
   const out: MCPServerCapabilities = { tools: [], prompts: [], resources: [] };
-  try {
-    const [toolsRes, promptsRes, resourcesRes] = await Promise.all([
-      listTools(config),
-      listPrompts(config),
-      listResources(config),
-    ]);
-    out.tools = toolsRes.tools;
-    out.prompts = promptsRes.prompts;
-    out.resources = resourcesRes.resources;
-  } catch (e) {
-    out.error = e instanceof Error ? e.message : String(e);
-    throw e;
+
+  function isMethodNotFound(e: unknown): boolean {
+    const msg = e instanceof Error ? e.message : String(e);
+    return msg.includes("Method not found");
   }
+
+  const [toolsRes, promptsRes, resourcesRes] = await Promise.allSettled([
+    listTools(config),
+    listPrompts(config),
+    listResources(config),
+  ]);
+
+  if (toolsRes.status === "fulfilled") {
+    out.tools = toolsRes.value.tools;
+  } else if (!isMethodNotFound(toolsRes.reason)) {
+    out.error = toolsRes.reason instanceof Error ? toolsRes.reason.message : String(toolsRes.reason);
+    throw toolsRes.reason;
+  }
+
+  if (promptsRes.status === "fulfilled") {
+    out.prompts = promptsRes.value.prompts;
+  } else if (!isMethodNotFound(promptsRes.reason)) {
+    out.error = promptsRes.reason instanceof Error ? promptsRes.reason.message : String(promptsRes.reason);
+    throw promptsRes.reason;
+  }
+
+  if (resourcesRes.status === "fulfilled") {
+    out.resources = resourcesRes.value.resources;
+  } else if (!isMethodNotFound(resourcesRes.reason)) {
+    out.error = resourcesRes.reason instanceof Error ? resourcesRes.reason.message : String(resourcesRes.reason);
+    throw resourcesRes.reason;
+  }
+
   return out;
 }
