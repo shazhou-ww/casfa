@@ -4,7 +4,7 @@
  */
 import type { Change, Message, MessageContent, ModelState, StreamChunk, TextContent } from "../lib/model-types.ts";
 import type { OpenAIFormatTool } from "./mcp-scenario-tools.ts";
-import { buildToolsAndPromptForThread } from "./mcp-scenario-tools.ts";
+import { buildToolsAndPromptForThread, executeTool } from "./mcp-scenario-tools.ts";
 import * as api from "./api.ts";
 
 const LLM_PROVIDERS_KEY = "llm.providers";
@@ -49,8 +49,19 @@ export function getProviderAndModel(
   return { provider, modelId };
 }
 
-/** Chat history for OpenAI-style API: role + single content string (text only). */
+/** Chat history for OpenAI-style API: role + content (string). For tool round: assistant has content + tool_calls, then role "tool" messages. */
 type ChatTurn = { role: "user" | "assistant" | "system"; content: string };
+type AssistantTurnWithTools = {
+  role: "assistant";
+  content: string | null;
+  tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }>;
+};
+type ToolTurn = { role: "tool"; tool_call_id: string; content: string };
+type LlmMessage = ChatTurn | AssistantTurnWithTools | ToolTurn;
+
+function isAssistantWithTools(m: LlmMessage): m is AssistantTurnWithTools {
+  return m.role === "assistant" && "tool_calls" in m && Array.isArray((m as AssistantTurnWithTools).tool_calls);
+}
 
 function messageToTurn(m: Message): ChatTurn | null {
   const text = m.content
@@ -89,13 +100,23 @@ export async function callLlm(
   return typeof content === "string" ? content : "";
 }
 
-/** Streaming: POST with stream: true, invoke onChunk for each text delta. Optional tools added to request when provided. */
+/** Result of streaming call when tools are used: accumulated content and tool_calls from stream. */
+export type CallLlmStreamResult = {
+  content: string;
+  toolCalls: Array<{ id: string; name: string; arguments: string }>;
+};
+
+/** Streaming: POST with stream: true, invoke onChunk for each text delta, accumulate tool_calls, return full result. */
 export async function callLlmStream(
   provider: LLMProvider,
   modelId: string,
-  turns: ChatTurn[],
-  opts: { signal?: AbortSignal; onChunk: (text: string) => void; tools?: OpenAIFormatTool[] }
-): Promise<void> {
+  turns: LlmMessage[],
+  opts: {
+    signal?: AbortSignal;
+    onChunk: (text: string) => void;
+    tools?: OpenAIFormatTool[];
+  }
+): Promise<CallLlmStreamResult> {
   const base = provider.baseUrl.replace(/\/$/, "");
   const url = `${base}/chat/completions`;
   const body: Record<string, unknown> = {
@@ -123,6 +144,10 @@ export async function callLlmStream(
   if (!reader) throw new Error("No response body");
   const dec = new TextDecoder();
   let buf = "";
+  const contentParts: string[] = [];
+  const toolCallsAccum: Array<{ id: string; name: string; arguments: string }> = [];
+  const toolCallByIndex = new Map<number, { id: string; name: string; arguments: string }>();
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -134,15 +159,45 @@ export async function callLlmStream(
         const raw = line.slice(6);
         if (raw === "[DONE]") continue;
         try {
-          const j = JSON.parse(raw) as { choices?: Array<{ delta?: { content?: string } }> };
-          const content = j.choices?.[0]?.delta?.content;
-          if (typeof content === "string" && content) opts.onChunk(content);
+          const j = JSON.parse(raw) as {
+            choices?: Array<{
+              delta?: { content?: string; tool_calls?: Array<{ index?: number; id?: string; name?: string; arguments?: string }> };
+            }>;
+          };
+          const delta = j.choices?.[0]?.delta;
+          if (!delta) continue;
+          if (typeof delta.content === "string" && delta.content) {
+            contentParts.push(delta.content);
+            opts.onChunk(delta.content);
+          }
+          const tcs = delta.tool_calls;
+          if (Array.isArray(tcs)) {
+            for (const tc of tcs) {
+              const idx = tc.index ?? 0;
+              const cur = toolCallByIndex.get(idx) ?? { id: "", name: "", arguments: "" };
+              if (tc.id != null) cur.id = tc.id;
+              if (tc.name != null) cur.name = tc.name;
+              if (tc.arguments != null) cur.arguments += tc.arguments;
+              toolCallByIndex.set(idx, cur);
+            }
+          }
         } catch {
           /* skip invalid JSON */
         }
       }
     }
   }
+
+  const indices = [...toolCallByIndex.keys()].sort((a, b) => a - b);
+  for (const i of indices) {
+    const cur = toolCallByIndex.get(i)!;
+    if (cur.id && cur.name) toolCallsAccum.push({ id: cur.id, name: cur.name, arguments: cur.arguments });
+  }
+
+  return {
+    content: contentParts.join(""),
+    toolCalls: toolCallsAccum,
+  };
 }
 
 export type ApplyAndBroadcast = (change: Change) => Promise<void>;
@@ -156,8 +211,10 @@ export type UnregisterAbort = (messageId: string) => void;
  */
 export type OnStreamStarted = () => void;
 
+const MAX_TOOL_ROUNDS = 5;
+
 /**
- * Run messages.send: save user message, call LLM (streaming), save assistant message, emit Changes.
+ * Run messages.send: save user message, call LLM (streaming), handle tool_calls loop, save assistant message, emit Changes.
  * Uses tempMessageId for the stream; stream.done carries the final message from the backend.
  * Calls onStreamStarted (if provided) after emitting stream.status "streaming", so the client can ack the request without waiting for the full reply.
  */
@@ -188,9 +245,9 @@ export async function runMessagesSend(
   const threadTurns: ChatTurn[] = threadMessages.map((m) => messageToTurn(m)).filter(Boolean) as ChatTurn[];
 
   const { systemPromptText, tools } = await buildToolsAndPromptForThread(state, threadId);
-  const turns: ChatTurn[] = systemPromptText
+  let messagesForApi: LlmMessage[] = systemPromptText
     ? [{ role: "system", content: systemPromptText }, ...threadTurns]
-    : threadTurns;
+    : [...threadTurns];
 
   const tempMessageId = `stream_${threadId}_${Date.now()}`;
   const controller = new AbortController();
@@ -207,18 +264,61 @@ export async function runMessagesSend(
 
   onStreamStarted?.();
 
-  // Task 8: dispatch tool_calls via executeMetaTool(name, args, state, threadId).
-  const chunks: StreamChunk[] = [];
+  const assistantContent: MessageContent[] = [];
+  let round = 0;
+
   try {
-    await callLlmStream(pm.provider, pm.modelId, turns, {
-      signal: controller.signal,
-      onChunk(text) {
-        const chunk: StreamChunk = { type: "text", text };
-        chunks.push(chunk);
-        applyAndBroadcast({ kind: "stream.chunk", payload: { messageId: tempMessageId, threadId, chunk } });
-      },
-      tools,
-    });
+    while (round < MAX_TOOL_ROUNDS) {
+      const result = await callLlmStream(pm.provider, pm.modelId, messagesForApi, {
+        signal: controller.signal,
+        onChunk(text) {
+          const chunk: StreamChunk = { type: "text", text };
+          applyAndBroadcast({ kind: "stream.chunk", payload: { messageId: tempMessageId, threadId, chunk } });
+        },
+        tools,
+      });
+
+      if (result.content) {
+        assistantContent.push({ type: "text", text: result.content });
+      }
+
+      if (result.toolCalls.length === 0) break;
+
+      const toolResults: string[] = [];
+      for (const tc of result.toolCalls) {
+        assistantContent.push({
+          type: "tool-call",
+          callId: tc.id,
+          name: tc.name,
+          arguments: tc.arguments,
+        });
+        const toolResult = await executeTool(tc.name, tc.arguments, state, threadId);
+        toolResults.push(toolResult);
+        assistantContent.push({
+          type: "tool-result",
+          callId: tc.id,
+          result: toolResult,
+        });
+      }
+
+      const assistantTurn: AssistantTurnWithTools = {
+        role: "assistant",
+        content: result.content || null,
+        tool_calls: result.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: "function" as const,
+          function: { name: tc.name, arguments: tc.arguments },
+        })),
+      };
+      const toolTurns: ToolTurn[] = result.toolCalls.map((tc, i) => ({
+        role: "tool" as const,
+        tool_call_id: tc.id,
+        content: toolResults[i],
+      }));
+
+      messagesForApi = [...messagesForApi, assistantTurn, ...toolTurns];
+      round++;
+    }
   } catch (err) {
     unregisterAbort(tempMessageId);
     const message = err instanceof Error ? err.message : String(err);
@@ -230,11 +330,11 @@ export async function runMessagesSend(
   }
 
   unregisterAbort(tempMessageId);
-  const fullText = chunks
-    .filter((c): c is TextContent => c.type === "text")
-    .map((c) => c.text)
-    .join("");
-  const assistantContent: MessageContent[] = [{ type: "text", text: fullText }];
+
+  if (assistantContent.length === 0) {
+    assistantContent.push({ type: "text", text: "" });
+  }
+
   const assistantMessage = await api.createMessage(threadId, {
     role: "assistant",
     content: assistantContent,
