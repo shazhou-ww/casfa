@@ -15,6 +15,7 @@ import {
   resolvePath,
 } from "../services/root-resolver.ts";
 import { addOrReplaceAtPath } from "../services/tree-mutations.ts";
+import { withMutex } from "../services/upload-mutex.ts";
 import type { Env } from "../types.ts";
 
 function hasFileRead(auth: NonNullable<Env["Variables"]["auth"]>): boolean {
@@ -300,36 +301,44 @@ export function createFilesController(deps: FilesControllerDeps) {
         if (pathSegments.length === 0) {
           return c.json({ error: "BAD_REQUEST", message: "Path must include file name" }, 400);
         }
-        const rootResult = await getRootForWrite(auth, deps);
-        if ("status" in rootResult) {
-          return c.json({ error: "NOT_FOUND", message: rootResult.message }, rootResult.status);
+        const lockKey =
+          auth.type === "worker" ? auth.branchId : (auth.type === "user" ? auth.userId : auth.realmId);
+        const result = await withMutex(lockKey, async () => {
+          const rootResult = await getRootForWrite(auth, deps);
+          if ("status" in rootResult) {
+            return rootResult;
+          }
+          const rootKey = rootResult.rootKey;
+          const data = new Uint8Array(raw);
+          const contentType =
+            c.req.header("Content-Type")?.split(";")[0]?.trim() || "application/octet-stream";
+          const encoded = await encodeFileNode(
+            { data, fileSize: data.length, contentType },
+            deps.key
+          );
+          const fileNodeKey = hashToKey(encoded.hash);
+          await deps.cas.putNode(fileNodeKey, streamFromBytes(encoded.bytes));
+          const realmId = getRealmId(auth);
+          deps.recordNewKey?.(realmId, fileNodeKey);
+          const onNodePut = deps.recordNewKey
+            ? (k: string) => deps.recordNewKey!(realmId, k)
+            : undefined;
+          const newRootKey = await addOrReplaceAtPath(
+            deps.cas,
+            deps.key,
+            rootKey,
+            pathStr,
+            fileNodeKey,
+            onNodePut
+          );
+          const delegateId = await getEffectiveDelegateId(auth, deps);
+          await deps.branchStore.setBranchRoot(delegateId, newRootKey);
+          return { path: pathStr, key: fileNodeKey } as const;
+        });
+        if ("status" in result) {
+          return c.json({ error: "NOT_FOUND", message: result.message }, result.status);
         }
-        const rootKey = rootResult.rootKey;
-        const data = new Uint8Array(raw);
-        const contentType =
-          c.req.header("Content-Type")?.split(";")[0]?.trim() || "application/octet-stream";
-        const encoded = await encodeFileNode(
-          { data, fileSize: data.length, contentType },
-          deps.key
-        );
-        const fileNodeKey = hashToKey(encoded.hash);
-        await deps.cas.putNode(fileNodeKey, streamFromBytes(encoded.bytes));
-        const realmId = getRealmId(auth);
-        deps.recordNewKey?.(realmId, fileNodeKey);
-        const onNodePut = deps.recordNewKey
-          ? (k: string) => deps.recordNewKey!(realmId, k)
-          : undefined;
-        const newRootKey = await addOrReplaceAtPath(
-          deps.cas,
-          deps.key,
-          rootKey,
-          pathStr,
-          fileNodeKey,
-          onNodePut
-        );
-        const delegateId = await getEffectiveDelegateId(auth, deps);
-        await deps.branchStore.setBranchRoot(delegateId, newRootKey);
-        return c.json({ path: pathStr, key: fileNodeKey }, 201);
+        return c.json(result, 201);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Upload failed";
         if (
