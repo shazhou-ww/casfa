@@ -5,8 +5,10 @@
 
 import { applyAutoUnload, getLastUsedByScenario, MAX_LOADED_SCENARIOS } from "../lib/derive-loaded-scenarios-lru.ts";
 import { deriveLoadedScenarios } from "../lib/derive-loaded-scenarios.ts";
-import { listPrompts } from "../lib/mcp-client.ts";
+import { getPrompt, listPrompts, listTools } from "../lib/mcp-client.ts";
+import type { GetPromptResult } from "../lib/mcp-client.ts";
 import { MCP_SERVERS_SETTINGS_KEY, parseMcpServers } from "../lib/mcp-types.ts";
+import type { MCPServerConfig, MCPTool } from "../lib/mcp-types.ts";
 import type { ModelState } from "../lib/model-types.ts";
 
 export type McpScenarioItem = {
@@ -71,6 +73,115 @@ export async function getLoadedScenariosAfterLru(
   const loaded = deriveLoadedScenarios(threadId, messages, mcpServers);
   const lastUsed = getLastUsedByScenario(messages, loaded, scenarioToToolNames);
   return applyAutoUnload(loaded, lastUsed, MAX_LOADED_SCENARIOS);
+}
+
+/** OpenAI-format tool for request body (type + function with name, description, parameters). */
+export type OpenAIFormatTool = {
+  type: "function";
+  function: { name: string; description: string; parameters: unknown };
+};
+
+/**
+ * Build OpenAI-format tools for one scenario: filter by allowedTools when present, else full list.
+ * Tool name in API is serverId__tool.name.
+ */
+export function getScenarioTools(
+  serverId: string,
+  toolsList: MCPTool[],
+  promptMetadata?: { allowedTools?: string[] }
+): OpenAIFormatTool[] {
+  const allowed = promptMetadata?.allowedTools;
+  const list = allowed && allowed.length > 0 ? toolsList.filter((t) => allowed.includes(t.name)) : toolsList;
+  return list.map((t) => ({
+    type: "function" as const,
+    function: {
+      name: `${serverId}__${t.name}`,
+      description: t.description ?? "",
+      parameters: t.inputSchema ?? { type: "object" as const, properties: {} as Record<string, unknown> },
+    },
+  }));
+}
+
+/** Extract concatenated text from getPrompt result messages (content.type === "text"). */
+function extractPromptTextFromMessages(messages: GetPromptResult["messages"]): string {
+  const parts: string[] = [];
+  for (const msg of messages) {
+    if (msg.content && typeof msg.content === "object" && "type" in msg.content && msg.content.type === "text" && "text" in msg.content) {
+      parts.push((msg.content as { text: string }).text);
+    }
+  }
+  return parts.join("\n\n");
+}
+
+/**
+ * Fetch prompt content for a scenario (prompts/get) and return concatenated text from messages.
+ */
+export async function getScenarioPromptContent(config: MCPServerConfig, scenarioId: string): Promise<string> {
+  const result = await getPrompt(config, scenarioId);
+  return extractPromptTextFromMessages(result.messages);
+}
+
+export type BuildToolsAndPromptResult = {
+  systemPromptText?: string;
+  tools: OpenAIFormatTool[];
+  scenarioToToolNames: Map<string, Set<string>>;
+};
+
+/**
+ * Build tools array and optional system prompt for the current thread from loaded scenarios.
+ * Uses getLoadedScenariosAfterLru (no scenarioToToolNames on first pass); for each kept scenario
+ * fetches listTools + getPrompt, builds scenarioToToolNames, collects scenario tools and prompt text.
+ * Returns systemPromptText (concatenated scenario prompts), tools (meta + scenario, deduped by name), scenarioToToolNames.
+ */
+export async function buildToolsAndPromptForThread(
+  state: ModelState,
+  threadId: string
+): Promise<BuildToolsAndPromptResult> {
+  const mcpServers = parseMcpServers(state.settings[MCP_SERVERS_SETTINGS_KEY]);
+  const { kept } = await getLoadedScenariosAfterLru(state, threadId);
+
+  const scenarioToToolNames = new Map<string, Set<string>>();
+  const toolsByName = new Map<string, OpenAIFormatTool>();
+  const systemPromptParts: string[] = [];
+
+  for (const metaTool of metaToolSchemas) {
+    toolsByName.set(metaTool.function.name, metaTool);
+  }
+
+  for (const scenarioKey of kept) {
+    const idx = scenarioKey.indexOf("#");
+    const serverId = idx >= 0 ? scenarioKey.slice(0, idx) : scenarioKey;
+    const scenarioId = idx >= 0 ? scenarioKey.slice(idx + 1) : "";
+    const config = mcpServers.find((s) => s.id === serverId);
+    if (!config?.url) continue;
+
+    let toolsList: MCPTool[] = [];
+    let promptMessages: GetPromptResult["messages"] = [];
+    let allowedTools: string[] | undefined;
+    try {
+      const [toolsResult, promptResult] = await Promise.all([listTools(config), getPrompt(config, scenarioId)]);
+      toolsList = toolsResult.tools;
+      promptMessages = promptResult.messages;
+      allowedTools = promptResult.allowedTools;
+    } catch {
+      continue;
+    }
+
+    const scenarioTools = getScenarioTools(serverId, toolsList, { allowedTools });
+    const names = new Set<string>();
+    for (const t of scenarioTools) {
+      names.add(t.function.name);
+      if (!toolsByName.has(t.function.name)) toolsByName.set(t.function.name, t);
+    }
+    scenarioToToolNames.set(scenarioKey, names);
+
+    const text = extractPromptTextFromMessages(promptMessages);
+    if (text.trim()) systemPromptParts.push(text);
+  }
+
+  const tools = Array.from(toolsByName.values());
+  const systemPromptText = systemPromptParts.length > 0 ? systemPromptParts.join("\n\n") : undefined;
+  return { systemPromptText, tools, scenarioToToolNames };
 }
 
 /** OpenAI-format tool schema for list_mcp_scenarios (no parameters). */

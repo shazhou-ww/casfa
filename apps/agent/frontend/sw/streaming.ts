@@ -3,6 +3,8 @@
  * stream.cancel: abort in-flight request and emit stream.error.
  */
 import type { Change, Message, MessageContent, ModelState, StreamChunk, TextContent } from "../lib/model-types.ts";
+import type { OpenAIFormatTool } from "./mcp-scenario-tools.ts";
+import { buildToolsAndPromptForThread } from "./mcp-scenario-tools.ts";
 import * as api from "./api.ts";
 
 const LLM_PROVIDERS_KEY = "llm.providers";
@@ -87,15 +89,23 @@ export async function callLlm(
   return typeof content === "string" ? content : "";
 }
 
-/** Streaming: POST with stream: true, invoke onChunk for each text delta. */
+/** Streaming: POST with stream: true, invoke onChunk for each text delta. Optional tools added to request when provided. */
 export async function callLlmStream(
   provider: LLMProvider,
   modelId: string,
   turns: ChatTurn[],
-  opts: { signal?: AbortSignal; onChunk: (text: string) => void }
+  opts: { signal?: AbortSignal; onChunk: (text: string) => void; tools?: OpenAIFormatTool[] }
 ): Promise<void> {
   const base = provider.baseUrl.replace(/\/$/, "");
   const url = `${base}/chat/completions`;
+  const body: Record<string, unknown> = {
+    model: modelId,
+    messages: turns,
+    stream: true,
+  };
+  if (opts.tools != null && opts.tools.length > 0) {
+    body.tools = opts.tools;
+  }
   const res = await fetch(url, {
     method: "POST",
     signal: opts.signal,
@@ -103,11 +113,7 @@ export async function callLlmStream(
       "Content-Type": "application/json",
       ...(provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {}),
     },
-    body: JSON.stringify({
-      model: modelId,
-      messages: turns,
-      stream: true,
-    }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const t = await res.text();
@@ -179,7 +185,12 @@ export async function runMessagesSend(
   await applyAndBroadcast({ kind: "messages.append", payload: { threadId, message: userMsg } });
 
   const threadMessages = (state.messagesByThread[threadId] ?? []).concat([userMsg]);
-  const turns: ChatTurn[] = threadMessages.map((m) => messageToTurn(m)).filter(Boolean) as ChatTurn[];
+  const threadTurns: ChatTurn[] = threadMessages.map((m) => messageToTurn(m)).filter(Boolean) as ChatTurn[];
+
+  const { systemPromptText, tools } = await buildToolsAndPromptForThread(state, threadId);
+  const turns: ChatTurn[] = systemPromptText
+    ? [{ role: "system", content: systemPromptText }, ...threadTurns]
+    : threadTurns;
 
   const tempMessageId = `stream_${threadId}_${Date.now()}`;
   const controller = new AbortController();
@@ -196,7 +207,7 @@ export async function runMessagesSend(
 
   onStreamStarted?.();
 
-  // Task 8: tools = [...metaToolSchemas, ...scenarioTools] from ./mcp-scenario-tools.ts; dispatch tool_calls via executeMetaTool(name, args, state, threadId).
+  // Task 8: dispatch tool_calls via executeMetaTool(name, args, state, threadId).
   const chunks: StreamChunk[] = [];
   try {
     await callLlmStream(pm.provider, pm.modelId, turns, {
@@ -206,6 +217,7 @@ export async function runMessagesSend(
         chunks.push(chunk);
         applyAndBroadcast({ kind: "stream.chunk", payload: { messageId: tempMessageId, threadId, chunk } });
       },
+      tools,
     });
   } catch (err) {
     unregisterAbort(tempMessageId);
