@@ -5,7 +5,7 @@
 
 import { applyAutoUnload, getLastUsedByScenario, MAX_LOADED_SCENARIOS } from "../lib/derive-loaded-scenarios-lru.ts";
 import { deriveLoadedScenarios } from "../lib/derive-loaded-scenarios.ts";
-import { getPrompt, listPrompts, listTools } from "../lib/mcp-client.ts";
+import { getPrompt, listPrompts, listTools, mcpCall } from "../lib/mcp-client.ts";
 import type { GetPromptResult } from "../lib/mcp-client.ts";
 import { MCP_SERVERS_SETTINGS_KEY, parseMcpServers } from "../lib/mcp-types.ts";
 import type { MCPServerConfig, MCPTool } from "../lib/mcp-types.ts";
@@ -347,5 +347,55 @@ export async function executeMetaTool(
     }
     default:
       return JSON.stringify({ error: `unknown meta-tool: ${name}` });
+  }
+}
+
+/**
+ * Execute any tool (meta-tool or MCP scenario tool). For serverId__toolName calls MCP tools/call.
+ * Returns result string for LLM tool result.
+ */
+export async function executeTool(
+  name: string,
+  argsJson: string,
+  state: ModelState,
+  threadId: string
+): Promise<string> {
+  const metaNames = ["list_mcp_scenarios", "load_scenario", "unload_scenario"];
+  if (metaNames.includes(name)) {
+    let args: Record<string, unknown> = {};
+    try {
+      args = argsJson ? (JSON.parse(argsJson) as Record<string, unknown>) : {};
+    } catch {
+      return JSON.stringify({ error: "invalid arguments JSON" });
+    }
+    return executeMetaTool(name, args, state, threadId);
+  }
+  const idx = name.indexOf("__");
+  if (idx <= 0 || idx === name.length - 1) {
+    return JSON.stringify({ error: `unknown tool: ${name}` });
+  }
+  const serverId = name.slice(0, idx);
+  const toolName = name.slice(idx + 1);
+  const mcpServers = parseMcpServers(state.settings[MCP_SERVERS_SETTINGS_KEY]);
+  const config = mcpServers.find((s) => s.id === serverId);
+  if (!config?.url) {
+    return JSON.stringify({ error: `server not found: ${serverId}` });
+  }
+  let argumentsObj: Record<string, unknown> = {};
+  try {
+    argumentsObj = argsJson ? (JSON.parse(argsJson) as Record<string, unknown>) : {};
+  } catch {
+    return JSON.stringify({ error: "invalid arguments JSON" });
+  }
+  try {
+    const result = await mcpCall<{ content?: Array<{ type: string; text?: string }> }>(config, "tools/call", {
+      name: toolName,
+      arguments: argumentsObj,
+    });
+    const text = result.content?.map((c) => (c.type === "text" && c.text ? c.text : "")).join("") ?? "";
+    return text || JSON.stringify(result);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return JSON.stringify({ error: msg });
   }
 }
