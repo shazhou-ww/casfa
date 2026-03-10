@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useAgentStore } from "../stores/agent-store.ts";
 import { MessageList } from "../components/chat/message-list.tsx";
 import { Compose } from "../components/chat/compose.tsx";
+import { ThreadLoadedScenarios } from "../components/chat/thread-loaded-scenarios.tsx";
 import type { Message } from "../lib/api.ts";
 
 export function ChatPage() {
@@ -65,6 +66,7 @@ export function ChatPage() {
         </Box>
       ) : (
         <>
+          <ThreadLoadedScenarios threadId={currentThreadId} messages={messages} />
           <MessageList messages={displayMessages} />
           <Compose
             threadId={currentThreadId}
