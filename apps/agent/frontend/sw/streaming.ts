@@ -126,6 +126,7 @@ export async function callLlmStream(
   };
   if (opts.tools != null && opts.tools.length > 0) {
     body.tools = opts.tools;
+    body.tool_choice = "auto";
   }
   const res = await fetch(url, {
     method: "POST",
@@ -161,7 +162,17 @@ export async function callLlmStream(
         try {
           const j = JSON.parse(raw) as {
             choices?: Array<{
-              delta?: { content?: string; tool_calls?: Array<{ index?: number; id?: string; name?: string; arguments?: string }> };
+              delta?: {
+                content?: string;
+                tool_calls?: Array<{
+                  index?: number;
+                  id?: string | null;
+                  type?: string | null;
+                  name?: string | null;
+                  arguments?: string | null;
+                  function?: { name?: string; arguments?: string };
+                }>;
+              };
             }>;
           };
           const delta = j.choices?.[0]?.delta;
@@ -175,9 +186,12 @@ export async function callLlmStream(
             for (const tc of tcs) {
               const idx = tc.index ?? 0;
               const cur = toolCallByIndex.get(idx) ?? { id: "", name: "", arguments: "" };
-              if (tc.id != null) cur.id = tc.id;
-              if (tc.name != null) cur.name = tc.name;
-              if (tc.arguments != null) cur.arguments += tc.arguments;
+              if (tc.id != null && tc.id !== "") cur.id = tc.id;
+              const fn = tc.function;
+              if (fn?.name != null && fn.name !== "") cur.name = fn.name;
+              else if (tc.name != null && tc.name !== "") cur.name = tc.name;
+              const arg = fn?.arguments ?? tc.arguments;
+              if (arg != null) cur.arguments += arg;
               toolCallByIndex.set(idx, cur);
             }
           }
