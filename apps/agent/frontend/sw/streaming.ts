@@ -3,8 +3,8 @@
  * stream.cancel: abort in-flight request and emit stream.error.
  */
 import type { Change, Message, MessageContent, ModelState, StreamChunk, TextContent } from "../lib/model-types.ts";
-import type { OpenAIFormatTool } from "./mcp-scenario-tools.ts";
-import { buildToolsAndPromptForThread, executeTool } from "./mcp-scenario-tools.ts";
+import type { OpenAIFormatTool } from "./mcp-meta-tools.ts";
+import { buildToolsAndPromptForThread, executeTool } from "./mcp-meta-tools.ts";
 import * as api from "./api.ts";
 
 const LLM_PROVIDERS_KEY = "llm.providers";
