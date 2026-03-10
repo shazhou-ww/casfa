@@ -287,6 +287,11 @@ function handleResourcesList(id: string | number): McpResponse {
   return mcpSuccess(id, { resources: MCP_RESOURCES });
 }
 
+/** Server-next does not expose prompts; return empty list so discovery does not get Method not found. */
+function handlePromptsList(id: string | number): McpResponse {
+  return mcpSuccess(id, { prompts: [] });
+}
+
 function handleResourcesRead(id: string | number, uri: string): McpResponse {
   if (uri === "skill://casfa-file-management") {
     return mcpSuccess(id, {
@@ -915,6 +920,9 @@ export function createMcpHandler(deps: McpHandlerDeps) {
         break;
       case "resources/list":
         response = handleResourcesList(request.id);
+        break;
+      case "prompts/list":
+        response = handlePromptsList(request.id);
         break;
       case "resources/read": {
         const params = request.params as { uri?: string } | undefined;
