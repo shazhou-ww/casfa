@@ -85,7 +85,7 @@ export function loadConfig(): ServerConfig {
     mockJwtSecret: process.env.MOCK_JWT_SECRET || undefined,
     maxBranchTtlMs: process.env.MAX_BRANCH_TTL_MS
       ? Number(process.env.MAX_BRANCH_TTL_MS)
-      : undefined,
+      : 600_000,
     cognitoRegion: process.env.COGNITO_REGION,
     cognitoUserPoolId: process.env.COGNITO_USER_POOL_ID,
     cognitoClientId: process.env.COGNITO_CLIENT_ID,
