@@ -10,13 +10,12 @@ import { createCasfaBranchClient } from "./casfa-branch";
 import fluxImageGenPrompt from "./prompts/flux-image-gen.md";
 
 export const fluxImageInputSchema = z.object({
-  casfaBaseUrl: z
+  casfaBranchUrl: z
     .string()
     .url()
-    .describe("Casfa server base URL (e.g. https://api.example.com or http://localhost:7100)."),
-  branchAccessToken: z
-    .string()
-    .describe("Casfa branch access token (Bearer) for the target branch."),
+    .describe(
+      "Casfa branch root URL (accessUrlPrefix from branch_create). Single URL for branch-scoped requests; no token needed."
+    ),
   prompt: z.string().describe("Text prompt for FLUX image generation."),
   width: z
     .number()
@@ -53,7 +52,7 @@ export async function handleFluxImage(
   args: FluxImageArgs
 ): Promise<{ key: string; completed: string }> {
   const bfl = createBflClient();
-  const casfa = createCasfaBranchClient({ baseUrl: args.casfaBaseUrl });
+  const casfa = createCasfaBranchClient({ branchRootUrl: args.casfaBranchUrl });
 
   const imageBytes = await bfl.generateImage({
     prompt: args.prompt,
@@ -66,12 +65,11 @@ export async function handleFluxImage(
 
   const format = args.output_format ?? "jpeg";
   const setRootResult = await casfa.setRootToFile(
-    args.branchAccessToken,
     imageBytes,
     contentTypeForFormat(format)
   );
 
-  const completeResult = await casfa.completeBranch(args.branchAccessToken);
+  const completeResult = await casfa.completeBranch();
 
   return {
     key: setRootResult.key,
@@ -130,7 +128,7 @@ export function createImageWorkshopMcpRoute(options: {
     "flux_image",
     {
       description:
-        "Generate an image from a text prompt using BFL FLUX, set it as the Casfa branch root (single file), then complete the branch (merge into parent at the branch's mountPath). Branch must be created with a non-existent mountPath (null root). Input: casfaBaseUrl (from branch_create.baseUrl), branchAccessToken (from branch_create.accessToken), prompt; optional width, height, seed, safety_tolerance, output_format. Output: success, completed (branchId merged), key (CAS node key of the image).",
+        "Generate an image from a text prompt using BFL FLUX, set it as the Casfa branch root (single file), then complete the branch (merge into parent at the branch's mountPath). Branch must be created with a non-existent mountPath (null root). Input: casfaBranchUrl (use accessUrlPrefix from branch_create; no token needed); prompt; optional width, height, seed, safety_tolerance, output_format. Output: success, completed (branchId merged), key (CAS node key of the image).",
       inputSchema: fluxImageInputSchema,
     },
     async (args: FluxImageArgs) => {

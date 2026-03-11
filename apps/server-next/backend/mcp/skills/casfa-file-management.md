@@ -15,18 +15,18 @@ Branch-based file management for content-addressable storage (CAS).
 
 All file modifications happen through branches:
 
-1. **Create branch**: `branch_create(mountPath)` → returns `branchId`, `accessToken`, `baseUrl`
+1. **Create branch**: `branch_create(mountPath)` → returns `branchId`, `accessToken`, `expiresAt`, and **accessUrlPrefix** (single URL for branch-scoped requests; no token needed)
 2. **Operate on files**: Use `fs_write`, `fs_mkdir`, etc. with branch worker token
 3. **Complete branch**: `branch_complete()` merges changes back to parent
 
 ## Cross-MCP Server Usage
 
-The `accessToken` and `baseUrl` returned by `branch_create` can be passed to other MCP tools that need Casfa storage access. For example, image-workshop's `flux_image` tool accepts `branchAccessToken` and `casfaBaseUrl` parameters.
+Use **accessUrlPrefix** from `branch_create` as the single branch root URL for other MCP tools. For example, image-workshop's `flux_image` tool accepts **casfaBranchUrl** — pass `accessUrlPrefix` directly; no token needed.
 
 ## Tools
 
 ### Branch Management
-- `branch_create(mountPath, ttl?, parentBranchId?)` — Create a branch, returns accessToken + baseUrl
+- `branch_create(mountPath, ttl?, parentBranchId?)` — Create a branch, returns accessUrlPrefix (use as single branch root URL; no token) + accessToken for legacy
 - `branch_complete()` — Complete current branch (Worker only), merge into parent
 - `branches_list()` — List branches in the realm
 

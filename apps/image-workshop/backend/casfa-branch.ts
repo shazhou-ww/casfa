@@ -1,10 +1,10 @@
 /**
- * Casfa branch client: upload file with branch token, then complete branch.
- * Uses server-next REST: PUT /api/realm/me/files/:path, POST /api/realm/me/branches/me/complete.
+ * Casfa branch client: upload file and complete branch using a single branch root URL.
+ * Uses server-next path-based access: {branchRootUrl}/api/realm/me/... (no Bearer token).
  */
 export type CasfaBranchOptions = {
-  /** Casfa server base URL (e.g. https://api.casfa.example.com or http://localhost:7100). */
-  baseUrl: string;
+  /** Branch root URL (accessUrlPrefix from branch_create), e.g. https://drive.example.com/branch/{branchId}/{verification}. */
+  branchRootUrl: string;
 };
 
 function getEnv(name: string): string | undefined {
@@ -14,24 +14,30 @@ function getEnv(name: string): string | undefined {
 }
 
 export function createCasfaBranchClient(options?: Partial<CasfaBranchOptions>) {
-  const baseUrl = (options?.baseUrl ?? getEnv("CASFA_BASE_URL") ?? "").replace(/\/$/, "");
+  const branchRootUrl = (options?.branchRootUrl ?? getEnv("CASFA_BRANCH_URL") ?? "").replace(
+    /\/$/,
+    ""
+  );
+
+  function apiUrl(path: string): string {
+    const p = path.startsWith("/") ? path : `/${path}`;
+    return `${branchRootUrl}${p}`;
+  }
 
   return {
     /**
      * Set branch root to the given file content (single file node as root). Use for branches
-     * created with a non-existent mountPath (null root). Uses Bearer branchAccessToken.
+     * created with a non-existent mountPath (null root). No token; branch root URL carries auth.
      */
     async setRootToFile(
-      branchAccessToken: string,
       data: Uint8Array,
       contentType: string
     ): Promise<{ path: string; key: string }> {
-      if (!baseUrl) throw new Error("CASFA_BASE_URL is required (env or options.baseUrl)");
-      const url = `${baseUrl}/api/realm/me/root`;
+      if (!branchRootUrl) throw new Error("branchRootUrl is required (options or CASFA_BRANCH_URL)");
+      const url = apiUrl("/api/realm/me/root");
       const res = await fetch(url, {
         method: "PUT",
         headers: {
-          Authorization: `Bearer ${branchAccessToken}`,
           "Content-Type": contentType,
           "Content-Length": String(data.length),
         },
@@ -53,21 +59,19 @@ export function createCasfaBranchClient(options?: Partial<CasfaBranchOptions>) {
     },
 
     /**
-     * Upload file to the branch. Path = full path including filename (e.g. "output.png" or "images/out.png").
-     * Uses Bearer branchAccessToken.
+     * Upload file to the branch. Path = full path including filename (e.g. "output.png").
+     * No token; branch root URL carries auth.
      */
     async uploadFile(
-      branchAccessToken: string,
       path: string,
       data: Uint8Array,
       contentType: string
     ): Promise<{ path: string; key: string }> {
-      if (!baseUrl) throw new Error("CASFA_BASE_URL is required (env or options.baseUrl)");
-      const url = `${baseUrl}/api/realm/me/files/${encodeURIComponent(path)}`;
+      if (!branchRootUrl) throw new Error("branchRootUrl is required (options or CASFA_BRANCH_URL)");
+      const url = apiUrl(`/api/realm/me/files/${encodeURIComponent(path)}`);
       const res = await fetch(url, {
         method: "PUT",
         headers: {
-          Authorization: `Bearer ${branchAccessToken}`,
           "Content-Type": contentType,
           "Content-Length": String(data.length),
         },
@@ -89,15 +93,14 @@ export function createCasfaBranchClient(options?: Partial<CasfaBranchOptions>) {
     },
 
     /**
-     * Complete the branch (merge back to parent). Uses Bearer branchAccessToken.
+     * Complete the branch (merge back to parent). No token; branch root URL carries auth.
      */
-    async completeBranch(branchAccessToken: string): Promise<{ completed: string }> {
-      if (!baseUrl) throw new Error("CASFA_BASE_URL is required (env or options.baseUrl)");
-      const url = `${baseUrl}/api/realm/me/branches/me/complete`;
+    async completeBranch(): Promise<{ completed: string }> {
+      if (!branchRootUrl) throw new Error("branchRootUrl is required (options or CASFA_BRANCH_URL)");
+      const url = apiUrl("/api/realm/me/branches/me/complete");
       const res = await fetch(url, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${branchAccessToken}`,
           "Content-Type": "application/json",
         },
       });
