@@ -1,5 +1,6 @@
 name: sso
 bucketNameSuffix: mitsein
+pathPrefix: "/sso"
 
 backend:
   dir: backend
