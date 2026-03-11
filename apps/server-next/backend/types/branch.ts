@@ -8,4 +8,6 @@ export type Branch = {
   parentId: string | null;
   mountPath: string;
   expiresAt: number;
+  /** When set, path-based access /branch/:branchId/:value is allowed until expiresAt. */
+  accessVerification?: { value: string; expiresAt: number };
 };
