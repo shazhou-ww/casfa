@@ -41,6 +41,21 @@ export type ServerConfig = {
 const DEFAULT_PORT = 8802;
 
 /**
+ * When CELL_BASE_URL is path-based (e.g. http://localhost:8900/image-workshop), return origin + '/sso'.
+ * Otherwise return undefined so subdomain-based derivation can apply.
+ */
+function deriveSsoBaseUrlForPath(baseUrl: string): string | undefined {
+  try {
+    const u = new URL(baseUrl);
+    const path = u.pathname.replace(/\/$/, "").trim();
+    if (path) return `${u.origin}/sso`;
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Dev with tunnel uses same subdomain layout as prod (sso.casfa.*, drive.casfa.*).
  * When CELL_BASE_URL is https and has a multi-part host, derive SSO as https://sso.<rest>.
  * So drive.casfa.mymbp.shazhou.work → https://sso.casfa.mymbp.shazhou.work.
@@ -65,7 +80,7 @@ export function loadConfig(): ServerConfig {
   const baseUrl = (process.env.CELL_BASE_URL || "").replace(/\/$/, "");
   let ssoBaseUrl = process.env.SSO_BASE_URL?.replace(/\/$/, "");
   if (!ssoBaseUrl && stage === "dev" && baseUrl) {
-    ssoBaseUrl = deriveSsoBaseUrlInDev(baseUrl) ?? "";
+    ssoBaseUrl = deriveSsoBaseUrlForPath(baseUrl) ?? deriveSsoBaseUrlInDev(baseUrl) ?? "";
   }
   const cookieName = ssoBaseUrl ? "auth" : undefined;
   const auth: ServerConfig["auth"] = {
