@@ -15,6 +15,8 @@ export interface GatewayCellInfo {
   cellDir: string;
   config: CellConfig;
   resolvedConfig?: ResolvedConfig;
+  /** Set for cells with frontend: Vite dev server port (e.g. 7100, 7120). */
+  vitePort?: number;
 }
 
 /**
@@ -100,6 +102,34 @@ export function discoverCellsFromStack(
 
 const DEFAULT_PORT = 8900;
 
+/** Base port for gateway Vite dev servers; each cell with frontend gets basePort + index * 20. */
+const GATEWAY_VITE_PORT_BASE = 7100;
+
+/** Pipe a readable stream to target with a label prefix (e.g. [vite:sso]). */
+function pipeWithLabel(
+  stream: ReadableStream<Uint8Array>,
+  label: string,
+  target: NodeJS.WriteStream
+): void {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  const prefix = `\x1b[36m[${label}]\x1b[0m `;
+  (async () => {
+    let buffer = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop()!;
+      for (const line of lines) {
+        target.write(`${prefix + line}\n`);
+      }
+    }
+    if (buffer) target.write(`${prefix + buffer}\n`);
+  })();
+}
+
 /** Load cell's gateway app factory from backend/gateway-app.ts (createAppForGateway). */
 async function loadCellGatewayApp(
   cellDir: string
@@ -184,15 +214,90 @@ export async function gatewayDevCommand(options?: {
     console.log(`[gateway-dev] Mounted ${cell.name} at ${cell.pathPrefix}`);
   }
 
+  // Assign Vite ports and start Vite dev server per cell that has frontend
+  const cellsWithFrontend = cells.filter((c) => c.config.frontend && c.resolvedConfig?.frontend);
+  for (let i = 0; i < cellsWithFrontend.length; i++) {
+    const cell = cellsWithFrontend[i];
+    cell.vitePort = cell.config.dev?.portBase ?? GATEWAY_VITE_PORT_BASE + i * 20;
+  }
+  // Detect duplicate ports (e.g. two cells with same portBase) and reassign
+  const usedPorts = new Set<number>();
+  for (const cell of cellsWithFrontend) {
+    if (cell.vitePort != null && usedPorts.has(cell.vitePort)) {
+      cell.vitePort = GATEWAY_VITE_PORT_BASE + cellsWithFrontend.indexOf(cell) * 20;
+    }
+    if (cell.vitePort != null) usedPorts.add(cell.vitePort);
+  }
+
+  const gatewayViteConfigPath = resolve(rootDir, "apps", "cell-cli", "scripts", "gateway-vite.config.ts");
+  const viteChildren: Array<ReturnType<typeof Bun.spawn>> = [];
+
+  for (const cell of cellsWithFrontend) {
+    if (cell.vitePort == null) continue;
+    const basePath = cell.pathPrefix.endsWith("/") ? cell.pathPrefix : cell.pathPrefix + "/";
+    const env = {
+      ...process.env,
+      BASE_PATH: basePath,
+      ROOT_DIR: cell.resolvedConfig!.frontend!.dir,
+      VITE_PORT: String(cell.vitePort),
+    };
+    console.log(`[gateway-dev] Starting Vite for ${cell.name} on port ${cell.vitePort} (base: ${basePath})...`);
+    const proc = Bun.spawn(
+      ["bunx", "vite", "--config", gatewayViteConfigPath],
+      {
+        cwd: cell.cellDir,
+        env,
+        stdout: "pipe",
+        stderr: "pipe",
+      }
+    );
+    viteChildren.push(proc);
+    pipeWithLabel(proc.stdout as ReadableStream<Uint8Array>, `vite:${cell.name}`, process.stdout);
+    pipeWithLabel(proc.stderr as ReadableStream<Uint8Array>, `vite:${cell.name}`, process.stderr);
+  }
+
+  /** Proxy a request to a cell's Vite server: strip pathPrefix from path and forward to localhost:vitePort. */
+  async function proxyToVite(req: Request, pathPrefix: string, vitePort: number): Promise<Response> {
+    const url = new URL(req.url);
+    const pathname = url.pathname;
+    const stripped = pathname.slice(pathPrefix.length) || "/";
+    const upstreamUrl = `http://127.0.0.1:${vitePort}${stripped}${url.search}`;
+    const headers = new Headers(req.headers);
+    headers.set("Host", `127.0.0.1:${vitePort}`);
+    const proxyReq = new Request(upstreamUrl, {
+      method: req.method,
+      headers,
+      body: req.body,
+      duplex: "half",
+    });
+    return fetch(proxyReq);
+  }
+
   const server = Bun.serve({
     port,
     hostname: "0.0.0.0",
-    fetch: gatewayApp.fetch,
+    fetch: async (req, server) => {
+      const res = await gatewayApp.fetch(req, server);
+      if (res.status !== 404) return res;
+      const pathname = new URL(req.url).pathname;
+      const cell = cells
+        .filter(
+          (c) =>
+            c.vitePort != null &&
+            (pathname === c.pathPrefix || pathname.startsWith(c.pathPrefix + "/"))
+        )
+        .sort((a, b) => b.pathPrefix.length - a.pathPrefix.length)[0];
+      if (!cell?.vitePort) return res;
+      return proxyToVite(req, cell.pathPrefix, cell.vitePort);
+    },
   });
 
   console.log(`[gateway-dev] Gateway running at http://localhost:${server.port}`);
 
   const cleanup = () => {
+    for (const child of viteChildren) {
+      child.kill();
+    }
     server.stop();
     process.exit(0);
   };
