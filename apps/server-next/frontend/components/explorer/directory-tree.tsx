@@ -37,6 +37,11 @@ import {
   revokeFileBlobUrl,
   uploadFile,
 } from "../../lib/fs-api";
+import {
+  collectFromFileList,
+  runUploadWithProgress,
+  validateUploadPlan,
+} from "../../lib/folder-upload";
 import type { FsEntry } from "../../types/api";
 
 type DirectoryTreeProps = {
@@ -87,10 +92,15 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [moveCopyLoading, setMoveCopyLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const inputFolderRef = useRef<HTMLInputElement>(null);
+  const cancelUploadRef = useRef(false);
+  const [uploadProgress, setUploadProgress] = useState<{ total: number; done: number } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const dragCountRef = useRef(0);
 
+  const supportsFolder =
+    typeof document !== "undefined" && "webkitdirectory" in document.createElement("input");
   const pathParts = formatPath(currentPath);
 
   const loadEntries = useCallback(() => {
@@ -334,6 +344,63 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
     [doUploadFiles]
   );
 
+  const handleFolderSelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files?.length) return;
+      const entries = collectFromFileList(files);
+      if (entries.some((entry) => entry.relativePath.includes("/"))) {
+        const validation = validateUploadPlan(entries);
+        if (!validation.ok) {
+          setSnackbar({ message: validation.message, severity: "error" });
+          e.target.value = "";
+          return;
+        }
+        cancelUploadRef.current = false;
+        setUploadProgress({ total: entries.length, done: 0 });
+        setUploading(true);
+        const basePath = (currentPath || "/").replace(/^\/+|\/+$/g, "");
+        try {
+          const result = await runUploadWithProgress(
+            entries,
+            basePath,
+            { createFolder, uploadFile },
+            {
+              onProgress: (done, total) => setUploadProgress({ total, done }),
+              getCancelled: () => cancelUploadRef.current,
+            }
+          );
+          setUploadProgress(null);
+          setUploading(false);
+          setRefreshKey((k) => k + 1);
+          if (result.success > 0) {
+            setSnackbar({
+              message:
+                result.failed > 0
+                  ? `已上传 ${result.success} 个，${result.failed} 个失败`
+                  : result.success === 1
+                    ? "已上传"
+                    : `已上传 ${result.success} 个文件`,
+              severity: result.failed > 0 ? "error" : "success",
+            });
+          } else if (result.errors.length) {
+            setSnackbar({
+              message: result.errors[0] ?? "上传失败",
+              severity: "error",
+            });
+          }
+        } finally {
+          setUploadProgress(null);
+          setUploading(false);
+        }
+      } else {
+        await doUploadFiles(Array.from(files));
+      }
+      e.target.value = "";
+    },
+    [currentPath, doUploadFiles]
+  );
+
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     dragCountRef.current += 1;
@@ -410,7 +477,9 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
         <Button
           size="small"
           startIcon={<CloudUploadIcon />}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() =>
+            supportsFolder ? inputFolderRef.current?.click() : fileInputRef.current?.click()
+          }
           disabled={uploading}
           sx={{ ml: 1 }}
           aria-label="上传"
@@ -423,6 +492,15 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
           ref={fileInputRef}
           style={{ display: "none" }}
           onChange={handleFileSelect}
+        />
+        <input
+          type="file"
+          ref={inputFolderRef}
+          // @ts-expect-error webkitdirectory is not in React's HTMLInputElement type
+          webkitdirectory=""
+          multiple
+          style={{ display: "none" }}
+          onChange={handleFolderSelect}
         />
         <Button
           size="small"
