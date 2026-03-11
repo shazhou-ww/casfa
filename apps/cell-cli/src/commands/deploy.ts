@@ -575,6 +575,76 @@ async function deployPlatformCommand(
     }
   }
 
+  // Sync Cognito callback URL for platform (single domain + path: https://domain/sso/oauth/callback)
+  const ssoCell = cells.find((c) => c.name === "sso");
+  if (ssoCell?.resolved && stack.domain?.host) {
+    const ssoResolved = ssoCell.resolved;
+    const userPoolId = ssoResolved.envVars.COGNITO_USER_POOL_ID ?? "";
+    const clientId = ssoResolved.envVars.COGNITO_CLIENT_ID ?? "";
+    const cognitoRegion = ssoResolved.envVars.COGNITO_REGION ?? undefined;
+    const ssoPathPrefix = ssoCell.pathPrefix.replace(/\/+$/, "") || "/sso";
+    const platformCallback = `https://${stack.domain.host}${ssoPathPrefix}/oauth/callback`;
+    const platformLogout = `https://${stack.domain.host}`;
+
+    if (userPoolId && clientId) {
+      console.log("\n=== Syncing Cognito callback URLs (platform) ===");
+      const cognitoEnv = {
+        ...awsEnv,
+        ...(cognitoRegion ? { AWS_DEFAULT_REGION: cognitoRegion } : {}),
+      };
+      const { exitCode: descCode, stdout: clientJson } = await awsCli(
+        [
+          "cognito-idp",
+          "describe-user-pool-client",
+          "--user-pool-id",
+          userPoolId,
+          "--client-id",
+          clientId,
+          "--query",
+          "UserPoolClient",
+          "--output",
+          "json",
+        ],
+        cognitoEnv
+      );
+      if (descCode === 0 && clientJson) {
+        const client = JSON.parse(clientJson) as Record<string, unknown>;
+        const callbacks = (client.CallbackURLs as string[]) ?? [];
+        const logouts = (client.LogoutURLs as string[]) ?? [];
+        let changed = false;
+        if (!callbacks.includes(platformCallback)) {
+          callbacks.push(platformCallback);
+          changed = true;
+        }
+        if (!logouts.includes(platformLogout)) {
+          logouts.push(platformLogout);
+          changed = true;
+        }
+        if (changed) {
+          delete client.ClientSecret;
+          delete client.LastModifiedDate;
+          delete client.CreationDate;
+          client.CallbackURLs = callbacks;
+          client.LogoutURLs = logouts;
+          const tmpFile = resolve(rootDir, ".cell/cognito-client-update.json");
+          writeFileSync(tmpFile, JSON.stringify(client));
+          const { exitCode: updateCode } = await awsCli(
+            ["cognito-idp", "update-user-pool-client", "--cli-input-json", `file://${tmpFile}`],
+            cognitoEnv
+          );
+          if (updateCode !== 0) {
+            console.error("  Failed to update Cognito callback URLs");
+          } else {
+            console.log(`  Added callback: ${platformCallback}`);
+            console.log(`  Added logout:   ${platformLogout}`);
+          }
+        } else {
+          console.log("  Platform callback URL already configured");
+        }
+      }
+    }
+  }
+
   console.log("\n=== Deploy complete! ===");
   if (stack.domain?.host) {
     console.log(`  Domain: https://${stack.domain.host}`);
