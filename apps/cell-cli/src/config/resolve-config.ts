@@ -108,6 +108,8 @@ export function resolveConfig(
     onMissingParam?: "throw" | "placeholder";
     /** When provided (including null), overrides loadDevboxConfig() for dev stage. Use null in tests to force no devbox. */
     devboxConfigOverride?: DevboxConfig | null;
+    /** When set (platform mode), CELL_BASE_URL = origin + pathPrefix, SSO_BASE_URL = origin + ssoPathPrefix (if not set by params). */
+    platformContext?: { origin: string; pathPrefix: string; ssoPathPrefix: string };
   }
 ): ResolvedConfig {
   const onMissing = options?.onMissingParam ?? "throw";
@@ -343,10 +345,21 @@ export function resolveConfig(
 
   // 7. Standard Cell env vars (CELL_STAGE, CELL_BASE_URL)
   envVars.CELL_STAGE = stage;
-  if (domain?.host) {
+  if (domain?.host || options?.platformContext) {
     if (stage === "cloud" || stage === "dev") {
-      envVars.CELL_BASE_URL = `https://${domain.host}`;
+      if (options?.platformContext) {
+        const { origin, pathPrefix } = options.platformContext;
+        const base = origin.replace(/\/+$/, "") + (pathPrefix.startsWith("/") ? pathPrefix : `/${pathPrefix}`);
+        envVars.CELL_BASE_URL = base.replace(/\/+$/, "");
+      } else if (domain?.host) {
+        envVars.CELL_BASE_URL = `https://${domain.host}`;
+      }
     }
+  }
+  if (options?.platformContext && (envVars.SSO_BASE_URL === undefined || envVars.SSO_BASE_URL === "")) {
+    const { origin, ssoPathPrefix } = options.platformContext;
+    const ssoBase = origin.replace(/\/+$/, "") + (ssoPathPrefix.startsWith("/") ? ssoPathPrefix : `/${ssoPathPrefix}`);
+    envVars.SSO_BASE_URL = ssoBase.replace(/\/+$/, "");
   }
 
   return {

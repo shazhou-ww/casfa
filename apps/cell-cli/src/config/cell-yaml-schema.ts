@@ -149,6 +149,8 @@ export interface NetworkConfig {
 
 export interface CellConfig {
   name: string;
+  /** Optional path prefix when served under a single domain (e.g. /sso, /agent). Used with platform mode. */
+  pathPrefix?: string;
   /** Required for cloud deploy when using buckets or frontend. Combined as key-name-suffix for bucket names (e.g. frontend-sso-casfa-shazhou-me) to avoid global S3 collisions. */
   bucketNameSuffix?: string;
   /** Local dev: port base for this cell (e.g. 7100). Used by devbox tunnel routing and cell dev. */

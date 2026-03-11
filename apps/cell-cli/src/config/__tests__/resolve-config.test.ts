@@ -412,4 +412,40 @@ describe("resolveConfig", () => {
     });
     expect(resolved.envVars.SSO_BASE_URL).toBe("");
   });
+
+  test("platformContext: sso-like cell (pathPrefix /sso) sets CELL_BASE_URL and SSO_BASE_URL from origin + pathPrefix/ssoPathPrefix", () => {
+    const config = makeConfig({
+      params: { DOMAIN_ROOT: "example.com" },
+      domain: { subdomain: "sso.casfa", zone: "example.com" },
+    });
+    const platformContext = {
+      origin: "https://platform.example.com",
+      pathPrefix: "/sso",
+      ssoPathPrefix: "/sso",
+    };
+    const resolved = resolveConfig(config, {}, "dev", {
+      devboxConfigOverride: null,
+      platformContext,
+    });
+    expect(resolved.envVars.CELL_BASE_URL).toBe("https://platform.example.com/sso");
+    expect(resolved.envVars.SSO_BASE_URL).toBe("https://platform.example.com/sso");
+  });
+
+  test("platformContext: agent-like cell (pathPrefix /agent) sets CELL_BASE_URL to origin + pathPrefix, SSO_BASE_URL to origin + ssoPathPrefix", () => {
+    const config = makeConfig({
+      params: { DOMAIN_ROOT: "example.com" },
+      domain: { subdomain: "agent.casfa", zone: "example.com" },
+    });
+    const platformContext = {
+      origin: "https://platform.example.com",
+      pathPrefix: "/agent",
+      ssoPathPrefix: "/sso",
+    };
+    const resolved = resolveConfig(config, {}, "dev", {
+      devboxConfigOverride: null,
+      platformContext,
+    });
+    expect(resolved.envVars.CELL_BASE_URL).toBe("https://platform.example.com/agent");
+    expect(resolved.envVars.SSO_BASE_URL).toBe("https://platform.example.com/sso");
+  });
 });
