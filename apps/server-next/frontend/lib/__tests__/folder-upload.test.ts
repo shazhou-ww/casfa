@@ -1,0 +1,40 @@
+import { describe, it, expect } from "bun:test";
+import { validateUploadPlan, getMkdirPaths, type UploadEntry } from "../folder-upload";
+
+describe("validateUploadPlan", () => {
+  it("rejects when over maxFiles", () => {
+    const entries: UploadEntry[] = Array.from({ length: 501 }, (_, i) => ({
+      relativePath: `f/file${i}.txt`,
+      file: new File(["x"], `file${i}.txt`),
+    }));
+    expect(validateUploadPlan(entries)).toEqual({ ok: false, message: "超过 500 个文件" });
+  });
+  it("rejects when path depth > 10", () => {
+    const deep = "a/b/c/d/e/f/g/h/i/j/k/file.txt";
+    expect(validateUploadPlan([{ relativePath: deep, file: new File(["x"], "file.txt") }])).toEqual({
+      ok: false,
+      message: "路径过深",
+    });
+  });
+  it("rejects when single file > 4MB", () => {
+    const big = new File([new ArrayBuffer(5 * 1024 * 1024)], "big.bin");
+    expect(validateUploadPlan([{ relativePath: "big.bin", file: big }])).toEqual({
+      ok: false,
+      message: "big.bin 超过 4MB",
+    });
+  });
+  it("accepts valid plan", () => {
+    expect(validateUploadPlan([{ relativePath: "a/b.txt", file: new File(["x"], "b.txt") }])).toEqual({ ok: true });
+  });
+});
+
+describe("getMkdirPaths", () => {
+  it("returns unique parent dirs sorted", () => {
+    const entries: UploadEntry[] = [
+      { relativePath: "foo/a/b.txt", file: new File([], "b.txt") },
+      { relativePath: "foo/a/c.txt", file: new File([], "c.txt") },
+      { relativePath: "foo/d.txt", file: new File([], "d.txt") },
+    ];
+    expect(getMkdirPaths(entries)).toEqual(["foo", "foo/a"]);
+  });
+});
