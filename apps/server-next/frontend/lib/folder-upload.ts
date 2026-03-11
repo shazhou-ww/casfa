@@ -29,3 +29,60 @@ export function getMkdirPaths(entries: UploadEntry[]): string[] {
   }
   return Array.from(dirs).sort();
 }
+
+export type UploadDeps = {
+  createFolder: (parentPath: string, name: string) => Promise<void>;
+  uploadFile: (path: string, file: File) => Promise<void>;
+};
+
+export type UploadResult = {
+  success: number;
+  failed: number;
+  errors: string[];
+  cancelled?: boolean;
+};
+
+export async function runUploadWithProgress(
+  entries: UploadEntry[],
+  basePath: string,
+  deps: UploadDeps,
+  callbacks: { onProgress: (done: number, total: number) => void; getCancelled?: () => boolean }
+): Promise<UploadResult> {
+  const normalizedBase = basePath.replace(/^\/+|\/+$/g, "") || "";
+  const total = entries.length;
+  const errors: string[] = [];
+  let done = 0;
+  let success = 0;
+
+  const mkdirPaths = getMkdirPaths(entries);
+  for (const rel of mkdirPaths) {
+    if (callbacks.getCancelled?.()) return { success, failed: errors.length, errors, cancelled: true };
+    const parent = rel.includes("/") ? rel.split("/").slice(0, -1).join("/") : "";
+    const name = rel.includes("/") ? rel.split("/").pop()! : rel;
+    const parentFull = normalizedBase ? `${normalizedBase}/${parent}` : parent;
+    await deps.createFolder(parentFull || "/", name);
+  }
+
+  const sorted = [...entries].sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+  const CONCURRENCY = 2;
+  let index = 0;
+
+  async function runNext(): Promise<void> {
+    while (index < sorted.length && !callbacks.getCancelled?.()) {
+      const i = index++;
+      const { relativePath, file } = sorted[i]!;
+      const fullPath = normalizedBase ? `${normalizedBase}/${relativePath}` : relativePath;
+      try {
+        await deps.uploadFile(fullPath, file);
+        success++;
+      } catch (e) {
+        errors.push(`${relativePath}: ${e instanceof Error ? e.message : "上传失败"}`);
+      }
+      done++;
+      callbacks.onProgress(done, total);
+    }
+  }
+
+  await Promise.all(Array.from({ length: CONCURRENCY }, runNext));
+  return { success, failed: errors.length, errors };
+}
