@@ -350,7 +350,7 @@ describe("resolveConfig", () => {
     expect(() => resolveConfig(config, {}, "cloud")).toThrow(/DOMAIN_ROOT/);
   });
 
-  test("dev: with devboxConfigOverride sets domain.host and CELL_BASE_URL from devbox + subdomain", () => {
+  test("dev: with devboxConfigOverride sets resolved domain host and CELL_BASE_URL from devbox + subdomain", () => {
     const config = makeConfig({
       params: { DOMAIN_ROOT: "shazhou.me" },
       domain: { subdomain: "sso.casfa" },
@@ -366,7 +366,7 @@ describe("resolveConfig", () => {
     expect(resolved.envVars.CELL_BASE_URL).toBe("https://sso.casfa.my-mbp.example.com");
   });
 
-  test("dev: without devbox config leaves domain.host empty and no CELL_BASE_URL", () => {
+  test("dev: without devbox config leaves resolved domain host empty and no CELL_BASE_URL", () => {
     const config = makeConfig({
       params: { DOMAIN_ROOT: "shazhou.me" },
       domain: { subdomain: "sso.casfa" },

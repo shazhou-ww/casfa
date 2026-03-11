@@ -357,7 +357,7 @@ async function runPreDeployChecks(
           const distributionId = item.Id ?? "unknown";
           throw new PreDeployCheckError(
             `The CNAME "${host}" is already used by another CloudFront distribution (Id: ${distributionId}).\n` +
-              `  → Use a different domain.host in cell.yaml, or remove this CNAME from the other distribution.`,
+              `  → Use a different domain (subdomain + DOMAIN_ROOT) in cell.yaml, or remove this CNAME from the other distribution.`,
             {
               description: `Remove the CNAME "${host}" from distribution ${distributionId} so this stack can use it.`,
               apply: async () => {
