@@ -60,18 +60,28 @@ function itemToBranch(item: Record<string, unknown>): Branch {
     lifetime === "limited"
       ? ((item.expiresAt as number) ?? 0)
       : ((item.accessExpiresAt as number) ?? 0);
-  return {
+  const branch: Branch = {
     branchId: (item.branchId ?? item.delegateId) as string,
     realmId: item.realmId as string,
     parentId: item.parentId as string | null,
     mountPath: (item.mountPath as string) ?? "",
     expiresAt,
   };
+  if (
+    typeof item.accessVerificationValue === "string" &&
+    typeof item.accessVerificationExpiresAt === "number"
+  ) {
+    branch.accessVerification = {
+      value: item.accessVerificationValue,
+      expiresAt: item.accessVerificationExpiresAt,
+    };
+  }
+  return branch;
 }
 
 /** Write Branch as Dynamo item. */
 function branchToItem(branch: Branch): Record<string, unknown> {
-  return {
+  const item: Record<string, unknown> = {
     branchId: branch.branchId,
     realmId: branch.realmId,
     parentId: branch.parentId,
@@ -80,6 +90,11 @@ function branchToItem(branch: Branch): Record<string, unknown> {
     accessTokenHash: "",
     expiresAt: branch.expiresAt,
   };
+  if (branch.accessVerification) {
+    item.accessVerificationValue = branch.accessVerification.value;
+    item.accessVerificationExpiresAt = branch.accessVerification.expiresAt;
+  }
+  return item;
 }
 
 export function createDynamoBranchStore(config: DynamoBranchStoreConfig): BranchStore {
