@@ -42,7 +42,12 @@ export type TestHelpers = {
     userToken: string,
     realmId: string,
     body: { mountPath: string; ttl?: number; parentBranchId?: string }
-  ): Promise<{ branchId: string; accessToken: string; expiresAt?: number }>;
+  ): Promise<{
+    branchId: string;
+    accessToken: string;
+    expiresAt?: number;
+    accessUrlPrefix?: string;
+  }>;
   mcpRequest(token: string, method: string, params?: unknown): Promise<Response>;
 };
 
@@ -109,12 +114,18 @@ function createHelpers(url: string): TestHelpers {
     userToken: string,
     realmId: string,
     body: { mountPath: string; ttl?: number; parentBranchId?: string }
-  ): Promise<{ branchId: string; accessToken: string; expiresAt?: number }> => {
+  ): Promise<{
+    branchId: string;
+    accessToken: string;
+    expiresAt?: number;
+    accessUrlPrefix?: string;
+  }> => {
     const res = await authRequest(userToken, "POST", `/api/realm/${realmId}/branches`, body);
     const data = (await res.json()) as {
       branchId?: string;
       accessToken?: string;
       expiresAt?: number;
+      accessUrlPrefix?: string;
     };
     if (!res.ok) {
       throw new Error(`createBranch failed: ${res.status} ${JSON.stringify(data)}`);
@@ -126,6 +137,7 @@ function createHelpers(url: string): TestHelpers {
       branchId: data.branchId,
       accessToken: data.accessToken,
       ...(data.expiresAt != null && { expiresAt: data.expiresAt }),
+      ...(data.accessUrlPrefix != null && { accessUrlPrefix: data.accessUrlPrefix }),
     };
   };
 
@@ -229,10 +241,9 @@ export function startTestServer(options?: { port?: number }): TestServer {
     pendingClientInfoStore,
   });
 
-  const port = options?.port ?? 0;
   const server = Bun.serve({
     fetch: app.fetch,
-    port,
+    port: options?.port ?? 0,
   });
 
   const url = `http://localhost:${server.port}`;
