@@ -1,4 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { Hono } from "hono";
 import type { z } from "zod";
 import { formatToolValidationError } from "./validation.js";
 import type { CellMcpServerOptions, ToolResult } from "./types.js";
@@ -82,13 +84,37 @@ export function createCellMcpServer(options: CellMcpServerOptions) {
     prompts.push(args);
   }
 
-  function getRoute(): ReturnType<typeof createRoute> {
+  function getRoute(): Hono<Record<string, unknown>> {
     return createRoute();
   }
 
-  function createRoute(): unknown {
-    // Stub: Task 6 will implement Hono app + transport
-    return undefined;
+  function createRoute(): Hono<Record<string, unknown>> {
+    const app = new Hono<Record<string, unknown>>();
+
+    app.post("/mcp", async (c) => {
+      if (authCheck) {
+        const ok = await authCheck(c);
+        if (!ok) {
+          return onUnauthorized ? onUnauthorized(c) : c.json({ error: "Unauthorized" }, 401);
+        }
+      }
+
+      const transport = new WebStandardStreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true,
+      });
+      const server = buildMcpServer();
+      await server.connect(transport);
+      const res = await transport.handleRequest(c.req.raw);
+      await server.close();
+      return new Response(res.body, {
+        status: res.status,
+        statusText: res.statusText,
+        headers: res.headers,
+      });
+    });
+
+    return app;
   }
 
   return { registerTool, registerResource, registerPrompt, getRoute };
