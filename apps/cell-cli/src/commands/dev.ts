@@ -10,6 +10,8 @@ import {
   fetchCloudflareZonesWithId,
   findZoneForHostname,
   setCnameRecord,
+  waitForEdgeCertificate,
+  orderAdvancedCertificate,
 } from "../local/cloudflare-tunnel-dns.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import { ensureCognitoDevCallbackUrl } from "../local/cognito-dev.js";
@@ -155,6 +157,53 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
           const result = await setCnameRecord(apiToken, zone.id, host, tunnelTarget);
           if (result.ok) {
             console.log(`Tunnel DNS: CNAME ${host} -> ${tunnelTarget} (Cloudflare API)`);
+            const orderResult = await orderAdvancedCertificate(apiToken, zone.id, host);
+            if (orderResult.ok) {
+              console.log("Ordered Advanced Certificate for", host, "(CLI allocation).");
+            } else {
+              console.warn("Advanced Certificate order (CLI) failed:", orderResult.error, "- Total TLS may still issue on first request, or quota may be full.");
+            }
+            const skipCertWait = /^1|true|yes$/i.test(String(envMap.CELL_DEV_SKIP_CERT_WAIT ?? process.env.CELL_DEV_SKIP_CERT_WAIT ?? "").trim());
+            if (skipCertWait) {
+              console.log("Skipping certificate wait (CELL_DEV_SKIP_CERT_WAIT). You may see SSL errors until the edge certificate is ready or quota allows.");
+            } else {
+              console.log(
+                "Waiting for edge certificate (Total TLS); may take 2–3 minutes (up to 5 min). First request can trigger issuance; cert may appear in Dashboard → SSL/TLS → Edge Certificates."
+              );
+              console.log("Waiting 20s for DNS to propagate before probing...");
+              await new Promise((r) => setTimeout(r, 20_000));
+              const ready = await waitForEdgeCertificate(host, {
+                timeoutMs: 300_000,
+                pollIntervalMs: 5000,
+                onPoll: (attempt, elapsedMs) =>
+                  console.log(`  Checking certificate... (attempt ${attempt}, ${Math.round(elapsedMs / 1000)}s)`),
+                onFirstError: (e) => {
+                  const msg = String((e as Error)?.message ?? e);
+                  console.warn("  First probe error (will keep retrying):", msg);
+                  if (/unable to connect|connection|dns|ENOTFOUND|getaddrinfo/i.test(msg)) {
+                    console.warn(
+                      "  Hint: Run 'cell devbox start' in another terminal first. If already running, DNS may need 30–60s; wait and try again."
+                    );
+                    console.warn(
+                      "  If your plan's Advanced Certificate quota is full (Dashboard → SSL/TLS → Edge Certificates), set CELL_DEV_SKIP_CERT_WAIT=1 to skip this wait."
+                    );
+                  }
+                },
+              });
+              if (ready) {
+                console.log("Edge certificate ready.");
+              } else {
+                console.warn(
+                  "Certificate still pending; you may see SSL errors for a few minutes. Try opening the URL again shortly."
+                );
+                console.warn(
+                  "Note: Total TLS may not list this hostname in Dashboard; that is normal. The cert is issued on first request."
+                );
+                console.warn(
+                  "If your plan's Advanced Certificate quota is full, set CELL_DEV_SKIP_CERT_WAIT=1 next time to skip the wait."
+                );
+              }
+            }
           } else {
             console.warn("Tunnel DNS (API) failed:", result.error);
           }
@@ -414,6 +463,10 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
       logLevel: "warn",
     });
     await viteServer.listen();
+    if (cellBaseUrl) {
+      console.log("");
+      console.log("Open:", cellBaseUrl);
+    }
   }
 
   const cleanup = async () => {

@@ -398,4 +398,18 @@ describe("resolveConfig", () => {
     expect(resolved.domain?.host).toBe("sso.casfa.mymbp.shazhou.work");
     expect(resolved.domain?.subdomain).toBe("mymbp.symbiontlabs.me"); // resolved subdomain still has env override for other uses
   });
+
+  test("dev: SSO_BASE_URL !Env missing in env is allowed (empty string); app can derive from CELL_BASE_URL", () => {
+    const config = makeConfig({
+      params: {
+        DOMAIN_ROOT: "shazhou.me",
+        SSO_BASE_URL: { env: "SSO_BASE_URL" },
+      },
+      domain: { subdomain: "agent.casfa" },
+    });
+    const resolved = resolveConfig(config, {}, "dev", {
+      devboxConfigOverride: { devboxName: "mymbp", devRoot: "shazhou.work", tunnelPort: 8443 },
+    });
+    expect(resolved.envVars.SSO_BASE_URL).toBe("");
+  });
 });

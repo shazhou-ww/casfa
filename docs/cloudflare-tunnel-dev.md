@@ -60,6 +60,8 @@ cd apps/server-next && cell dev
 查看/停止：`cell devbox status`、`cell devbox stop`；查看配置：`cell devbox info`。  
 Cognito 需在 App Client 的 Callback URL 中加入 dev 的 callback（如 `https://sso.casfa.mymbp.shazhou.work/oauth/callback`）；多应用共享登录态时设 `AUTH_COOKIE_DOMAIN=.<devboxName>.<devRoot>`（如 `.mymbp.shazhou.work`），与线上 `.casfa.shazhou.me` 行为一致。
 
+**登录跳转**：dev 与线上使用同一套子域（sso.casfa.*、agent.casfa.* 等）。agent、server-next、image-workshop 等依赖 SSO 的 cell 在 **dev 且未设置 `SSO_BASE_URL`** 时，后端会根据 `CELL_BASE_URL` 自动推导 SSO 地址（如 `https://agent.casfa.mymbp.shazhou.work` → `https://sso.casfa.mymbp.shazhou.work`）。因此用 tunnel 时 **无需** 在 `.env` / `.env.local` 里配置 `SSO_BASE_URL`。只有「全部走 localhost、不经过 tunnel」时才需要在 `.env.local` 里写 `SSO_BASE_URL=http://localhost:7100`。
+
 ### 访问不了 / ERR_SSL_VERSION_OR_CIPHER_MISMATCH 时排查
 
 1. **确认已启用 Total TLS**  
@@ -77,6 +79,10 @@ Cognito 需在 App Client 的 Callback URL 中加入 dev 的 callback（如 `htt
 
 4. **确认 proxy 与 tunnel 在跑**  
    `cell devbox status` 应显示 proxy 和 tunnel 都在运行；`~/.config/casfa/devbox-routes.json` 里应有当前要访问的 host → 端口。
+
+**证书 pending 时**：新 host 首次建 CNAME 后，Total TLS 会为该 hostname 签发证书。**证书通常在对该 hostname 的首次 HTTPS 请求时才会触发签发**，因此 Dashboard 里可能要在 `cell dev` 开始轮询（发出首次请求）几秒后，才能在 **SSL/TLS → Edge Certificates**（或 Advanced / Total TLS 证书列表）里看到对应条目或 pending 状态。`cell dev` 会每 5 秒探测一次并打印进度（如 `Checking certificate... (attempt 2, 10s)`），通常 2–3 分钟内会就绪，最多等 5 分钟。启动完成后会打印 **Open: https://...** 方便直接点击打开。
+
+**Advanced Certificate 配额**：Total TLS 使用的证书占用该 zone 的 **Advanced Certificate** 配额（Dashboard → SSL/TLS → Edge Certificates 可看到「X of Y advanced certificates used」）。每个 dev hostname（如 sso.casfa.mymbp、image-workshop.casfa.mymbp）各占一个。若配额已满，新 hostname 不会签发证书，探测会一直失败。可删除不用的 hostname 对应证书或升级计划；若暂时无法解决，可在运行 `cell dev` 前设置 **`CELL_DEV_SKIP_CERT_WAIT=1`**（或在项目 `.env` 里写一行），则跳过证书等待直接启动，此时用浏览器访问该 URL 仍可能遇到 SSL 错误，但本地 localhost 可正常用。
 
 ---
 
