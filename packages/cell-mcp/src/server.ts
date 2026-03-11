@@ -10,11 +10,15 @@ type ToolReg = {
   handler: (args: unknown) => ToolResult | Promise<ToolResult>;
 };
 
+// Passthrough: store args for server.registerResource / server.registerPrompt (SDK types are strict; we pass through)
+type ResourceReg = Parameters<McpServer["registerResource"]>;
+type PromptReg = Parameters<McpServer["registerPrompt"]>;
+
 export function createCellMcpServer(options: CellMcpServerOptions) {
   const { name, version, authCheck, onUnauthorized } = options;
   const tools: ToolReg[] = [];
-  const resources: unknown[] = [];
-  const prompts: unknown[] = [];
+  const resources: ResourceReg[] = [];
+  const prompts: PromptReg[] = [];
 
   function buildMcpServer(): McpServer {
     const server = new McpServer({ name, version }, {});
@@ -43,6 +47,15 @@ export function createCellMcpServer(options: CellMcpServerOptions) {
       server.registerTool(t.name, { description: t.description, inputSchema: t.inputSchema }, wrapper);
     }
 
+    for (const args of resources) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK overloads; passthrough from registerResource
+      (server.registerResource as (...a: any[]) => unknown)(...args);
+    }
+    for (const args of prompts) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK overloads; passthrough from registerPrompt
+      (server.registerPrompt as (...a: any[]) => unknown)(...args);
+    }
+
     return server;
   }
 
@@ -59,6 +72,16 @@ export function createCellMcpServer(options: CellMcpServerOptions) {
     });
   }
 
+  function registerResource(
+    ...args: ResourceReg
+  ): void {
+    resources.push(args);
+  }
+
+  function registerPrompt(...args: PromptReg): void {
+    prompts.push(args);
+  }
+
   function getRoute(): ReturnType<typeof createRoute> {
     return createRoute();
   }
@@ -68,5 +91,5 @@ export function createCellMcpServer(options: CellMcpServerOptions) {
     return undefined;
   }
 
-  return { registerTool, getRoute };
+  return { registerTool, registerResource, registerPrompt, getRoute };
 }
