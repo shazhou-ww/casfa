@@ -22,6 +22,7 @@ import {
 } from "../services/root-resolver.ts";
 import { addOrReplaceAtPath, removeEntryAtPath } from "../services/tree-mutations.ts";
 import type { Env } from "../types.ts";
+import { encodeCrockfordBase32 } from "../utils/crockford-base32.ts";
 import { prependUtf8BomIfText } from "../utils/utf8-bom.ts";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -371,8 +372,8 @@ export async function executeTool(
       const ttlSec = typeof args.ttl === "number" && args.ttl > 0 ? args.ttl : undefined;
       const ttlMs =
         ttlSec != null
-          ? Math.min(ttlSec * 1000, deps.config.auth.maxBranchTtlMs ?? 3600_000)
-          : 3600_000;
+          ? Math.min(ttlSec * 1000, deps.config.auth.maxBranchTtlMs ?? 600_000)
+          : 600_000;
       const parentBranchId =
         typeof args.parentBranchId === "string"
           ? args.parentBranchId.trim() || undefined
@@ -397,16 +398,21 @@ export async function executeTool(
         const branchId = crypto.randomUUID();
         const now = Date.now();
         const expiresAt = now + ttlMs;
+        const verificationBytes = new Uint8Array(16);
+        crypto.getRandomValues(verificationBytes);
+        const verification = encodeCrockfordBase32(verificationBytes);
         await deps.branchStore.insertBranch({
           branchId,
           realmId,
           parentId: rootRecord.branchId,
           mountPath,
           expiresAt,
+          accessVerification: { value: verification, expiresAt },
         });
         if (childRootKey !== null) {
           await deps.branchStore.setBranchRoot(branchId, childRootKey);
         }
+        const base = deps.config.baseUrl?.replace(/\/$/, "");
         return ok([
             {
               type: "text" as const,
@@ -414,7 +420,7 @@ export async function executeTool(
                 branchId,
                 accessToken: base64urlEncode(branchId),
                 expiresAt,
-                ...(deps.config.baseUrl && { baseUrl: deps.config.baseUrl }),
+                ...(base && { baseUrl: deps.config.baseUrl, accessUrlPrefix: `${base}/branch/${branchId}/${verification}` }),
               }),
             },
           ]);
@@ -438,14 +444,19 @@ export async function executeTool(
       const childId = crypto.randomUUID();
       const now = Date.now();
       const expiresAt = now + ttlMs;
+      const verificationBytes = new Uint8Array(16);
+      crypto.getRandomValues(verificationBytes);
+      const verification = encodeCrockfordBase32(verificationBytes);
       await deps.branchStore.insertBranch({
         branchId: childId,
         realmId: parentBranch.realmId,
         parentId: parentBranchId,
         mountPath,
         expiresAt,
+        accessVerification: { value: verification, expiresAt },
       });
       await deps.branchStore.setBranchRoot(childId, childRootKey);
+      const base = deps.config.baseUrl?.replace(/\/$/, "");
       return ok([
           {
             type: "text" as const,
@@ -453,7 +464,7 @@ export async function executeTool(
               branchId: childId,
               accessToken: base64urlEncode(childId),
               expiresAt,
-              ...(deps.config.baseUrl && { baseUrl: deps.config.baseUrl }),
+              ...(base && { baseUrl: deps.config.baseUrl, accessUrlPrefix: `${base}/branch/${childId}/${verification}` }),
             }),
           },
       ]);
