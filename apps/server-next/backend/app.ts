@@ -22,6 +22,7 @@ import type { RealmUsageStore } from "./db/realm-usage-store.ts";
 import type { UserSettingsStore } from "./db/user-settings.ts";
 import { createServerNextMcpRoute } from "./mcp/cell-mcp-route.ts";
 import { createAuthMiddleware } from "./middleware/auth.ts";
+import { createBranchUrlAuthMiddleware } from "./middleware/branch-url-auth.ts";
 import { createCsrfMiddleware } from "./middleware/csrf.ts";
 import { createRealmMiddleware } from "./middleware/realm.ts";
 import { createRealmInfoService } from "./services/realm-info.ts";
@@ -52,6 +53,8 @@ export function createApp(deps: AppDeps) {
     })
   );
 
+  app.use("*", createBranchUrlAuthMiddleware({ branchStore: deps.branchStore, app }));
+
   /** Decode branch token (base64url of branchId) to branchId */
   function decodeBranchToken(token: string): string | null {
     try {
@@ -65,6 +68,26 @@ export function createApp(deps: AppDeps) {
 
   app.use("*", async (c, next) => {
     const cookieName = deps.config.auth.cookieName ?? undefined;
+    // X-Branch-Auth: set by branch-url middleware after validating /branch/:id/:verification
+    const branchAuthHeader = c.req.header("X-Branch-Auth");
+    if (branchAuthHeader) {
+      const branchId = decodeBranchToken(branchAuthHeader);
+      if (branchId) {
+        const branch = await deps.branchStore.getBranch(branchId);
+        if (
+          branch?.accessVerification &&
+          Date.now() <= branch.accessVerification.expiresAt
+        ) {
+          c.set("auth", {
+            type: "worker",
+            realmId: branch.realmId,
+            branchId: branch.branchId,
+            access: "readwrite",
+          } satisfies Env["Variables"]["auth"]);
+          return next();
+        }
+      }
+    }
     // Accept both Cookie (browser after SSO login) and Bearer (MCP / API clients). cookieOnly would block Bearer.
     const token = getTokenFromRequest(c.req.raw, {
       cookieName: cookieName ?? undefined,
