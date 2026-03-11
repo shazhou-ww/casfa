@@ -69,6 +69,20 @@ export type ServerConfig = {
 
 const DEFAULT_PORT = 8802;
 
+/**
+ * Dev with tunnel uses same subdomain layout as prod (sso.casfa.*, drive.casfa.*).
+ * When CELL_BASE_URL is https and has a multi-part host, derive SSO as https://sso.<rest>.
+ * So drive.casfa.mymbp.shazhou.work → https://sso.casfa.mymbp.shazhou.work.
+ * When not set, .env.local can still set SSO_BASE_URL (e.g. http://localhost:7100 for all-localhost dev).
+ */
+function deriveSsoBaseUrlInDev(baseUrl: string): string | undefined {
+  if (!baseUrl.startsWith("https://")) return undefined;
+  const host = baseUrl.replace(/\/$/, "").replace(/^https:\/\//, "").split("/")[0];
+  const parts = host.split(".");
+  if (parts.length < 2) return undefined;
+  return `https://sso.${parts.slice(1).join(".")}`;
+}
+
 /** Mock auth only when CELL_STAGE=test (e2e). Dev/prod always use Cognito. */
 export function isMockAuthEnabled(config: ServerConfig): boolean {
   return Boolean(config.auth.mockJwtSecret && process.env.CELL_STAGE === "test");
@@ -78,7 +92,10 @@ export function loadConfig(): ServerConfig {
   const port = Number(process.env.PORT) || DEFAULT_PORT;
   const stage = process.env.SLS_STAGE ?? process.env.STAGE ?? "dev";
   const baseUrl = (process.env.CELL_BASE_URL || "").replace(/\/$/, "");
-  const ssoBaseUrl = process.env.SSO_BASE_URL?.replace(/\/$/, "");
+  let ssoBaseUrl = process.env.SSO_BASE_URL?.replace(/\/$/, "");
+  if (!ssoBaseUrl && stage === "dev" && baseUrl) {
+    ssoBaseUrl = deriveSsoBaseUrlInDev(baseUrl) ?? "";
+  }
   // When using SSO, cookie name must match what SSO sets ("auth"); ignore AUTH_COOKIE_NAME.
   const cookieName = ssoBaseUrl ? "auth" : (process.env.AUTH_COOKIE_NAME || undefined);
   const auth: ServerConfig["auth"] = {
