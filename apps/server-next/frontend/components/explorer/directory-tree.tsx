@@ -450,9 +450,10 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
       dragCountRef.current = 0;
       if (uploading) return;
 
-      const folderEntries = await collectFromDrop(e.dataTransfer);
+      const dropResult = await collectFromDrop(e.dataTransfer);
 
-      if (folderEntries !== null && folderEntries.length > 0) {
+      if (dropResult !== null && dropResult.entries.length > 0) {
+        const folderEntries = dropResult.entries;
         const validation = validateUploadPlan(folderEntries);
         if (!validation.ok) {
           setSnackbar({ message: validation.message, severity: "error" });
@@ -498,15 +499,37 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
         return;
       }
 
-      if (folderEntries !== null && folderEntries.length === 0) {
-        setSnackbar({ message: "未选择文件", severity: "error" });
+      if (dropResult !== null && dropResult.entries.length === 0) {
+        const dirNames = dropResult.topLevelDirNames;
+        if (dirNames.length > 0) {
+          try {
+            for (const name of dirNames) {
+              await createFolder(currentPath || "/", name);
+            }
+            setRefreshKey((k) => k + 1);
+            setSnackbar({
+              message:
+                dirNames.length === 1
+                  ? `已创建文件夹 ${dirNames[0]}`
+                  : `已创建 ${dirNames.length} 个文件夹`,
+              severity: "success",
+            });
+          } catch (err) {
+            setSnackbar({
+              message: err instanceof Error ? err.message : "创建文件夹失败",
+              severity: "error",
+            });
+          }
+        } else {
+          setSnackbar({ message: "未选择文件", severity: "error" });
+        }
         return;
       }
 
       const files = e.dataTransfer?.files;
       if (files?.length) await doUploadFiles(files);
     },
-    [currentPath, doUploadFiles, uploading]
+    [currentPath, createFolder, doUploadFiles, uploading]
   );
 
   return (

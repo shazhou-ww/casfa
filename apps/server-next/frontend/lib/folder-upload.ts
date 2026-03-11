@@ -37,34 +37,42 @@ function readDirEntries(entry: FileSystemDirectoryEntry, prefix: string): Promis
 }
 
 /**
+ * Result when drop uses folder API: file entries and top-level directory names (for empty folders).
+ */
+export type DropResult = { entries: UploadEntry[]; topLevelDirNames: string[] };
+
+/**
  * Collects files from a drag-drop DataTransfer using the folder API (webkitGetAsEntry).
  * Returns null if there are no items or the browser does not support webkitGetAsEntry
  * (caller should fall back to dataTransfer.files).
+ * When drop contains directories, topLevelDirNames is filled so empty folders can be created.
  */
 export async function collectFromDrop(
   dataTransfer: DataTransfer | null | undefined
-): Promise<UploadEntry[] | null> {
+): Promise<DropResult | null> {
   if (!dataTransfer?.items?.length) return null;
   const firstItem = dataTransfer.items[0];
   const getEntry = (firstItem as DataTransferItemWithEntry).webkitGetAsEntry;
   if (typeof getEntry !== "function") return null;
 
-  const result: UploadEntry[] = [];
+  const entries: UploadEntry[] = [];
+  const topLevelDirNames: string[] = [];
   for (let i = 0; i < dataTransfer.items.length; i++) {
     const item = dataTransfer.items[i]!;
     const entry = (item as DataTransferItemWithEntry).webkitGetAsEntry?.() ?? null;
     if (!entry) continue;
     if (entry.isDirectory) {
+      topLevelDirNames.push(entry.name);
       const dirEntries = await readDirEntries(entry as FileSystemDirectoryEntry, entry.name + "/");
-      result.push(...dirEntries);
+      entries.push(...dirEntries);
     } else {
       const file = await new Promise<File>((res, rej) =>
         (entry as FileSystemFileEntry).file(res, rej)
       );
-      result.push({ relativePath: entry.name, file });
+      entries.push({ relativePath: entry.name, file });
     }
   }
-  return result;
+  return { entries, topLevelDirNames };
 }
 
 export function collectFromFileList(files: FileList | File[]): UploadEntry[] {
