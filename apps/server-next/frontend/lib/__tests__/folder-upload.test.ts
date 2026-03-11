@@ -1,5 +1,11 @@
 import { describe, it, expect } from "bun:test";
-import { validateUploadPlan, getMkdirPaths, type UploadEntry } from "../folder-upload";
+import {
+  validateUploadPlan,
+  getMkdirPaths,
+  runUploadWithProgress,
+  type UploadEntry,
+  type UploadDeps,
+} from "../folder-upload";
 
 describe("validateUploadPlan", () => {
   it("rejects when over maxFiles", () => {
@@ -36,5 +42,33 @@ describe("getMkdirPaths", () => {
       { relativePath: "foo/d.txt", file: new File([], "d.txt") },
     ];
     expect(getMkdirPaths(entries)).toEqual(["foo", "foo/a"]);
+  });
+});
+
+describe("runUploadWithProgress", () => {
+  it("creates dirs, uploads files with concurrency 2, reports progress (1,3),(2,3),(3,3)", async () => {
+    const createFolderCalls: [string, string][] = [];
+    const uploadFileCalls: [string, File][] = [];
+    const deps: UploadDeps = {
+      createFolder: async (parentPath, name) => {
+        createFolderCalls.push([parentPath, name]);
+      },
+      uploadFile: async (path, file) => {
+        uploadFileCalls.push([path, file]);
+      },
+    };
+    const progressCalls: [number, number][] = [];
+    const entries: UploadEntry[] = [
+      { relativePath: "a/1.txt", file: new File(["1"], "1.txt") },
+      { relativePath: "a/2.txt", file: new File(["2"], "2.txt") },
+      { relativePath: "b/3.txt", file: new File(["3"], "3.txt") },
+    ];
+    const result = await runUploadWithProgress(entries, "", deps, {
+      onProgress: (done, total) => progressCalls.push([done, total]),
+    });
+    expect(progressCalls).toEqual([[1, 3], [2, 3], [3, 3]]);
+    expect(result).toEqual({ success: 3, failed: 0, errors: [] });
+    expect(createFolderCalls).toEqual([["/", "a"], ["/", "b"]]);
+    expect(uploadFileCalls.map(([p]) => p)).toEqual(["a/1.txt", "a/2.txt", "b/3.txt"]);
   });
 });
