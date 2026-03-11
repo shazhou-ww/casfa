@@ -20,7 +20,7 @@ import type { BranchStore } from "./db/branch-store.ts";
 import type { DerivedDataStore } from "./db/derived-data.ts";
 import type { RealmUsageStore } from "./db/realm-usage-store.ts";
 import type { UserSettingsStore } from "./db/user-settings.ts";
-import { createMcpHandler } from "./mcp/handler.ts";
+import { createServerNextMcpRoute } from "./mcp/cell-mcp-route.ts";
 import { createAuthMiddleware } from "./middleware/auth.ts";
 import { createCsrfMiddleware } from "./middleware/csrf.ts";
 import { createRealmMiddleware } from "./middleware/realm.ts";
@@ -250,12 +250,9 @@ export function createApp(deps: AppDeps) {
   app.get("/mcp", authMiddleware, mcpGetHandler);
   app.get("/mcp/", authMiddleware, mcpGetHandler);
   // POST to exact path or any subpath (Cursor may POST to e.g. /mcp/sse or /mcp/messages)
-  app.post("/mcp", authMiddleware, createMcpHandler({ ...rootResolverDeps, config: deps.config }));
-  app.post(
-    "/mcp/*",
-    authMiddleware,
-    createMcpHandler({ ...rootResolverDeps, config: deps.config })
-  );
+  const mcpDeps = { ...rootResolverDeps, config: deps.config };
+  app.post("/mcp", authMiddleware, createServerNextMcpRoute(mcpDeps));
+  app.post("/mcp/*", authMiddleware, createServerNextMcpRoute(mcpDeps));
   // Any other method/path under /mcp (e.g. GET /mcp/oauth) → JSON so no empty-body 404
   app.all("/mcp/*", (c) =>
     c.json(
