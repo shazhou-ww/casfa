@@ -73,3 +73,5 @@
 - 总文件数 > 500 或路径深度 > 10 或单文件 > 4MB → 不上传，提示明确。
 - 空文件夹选择/拖入 → 创建同名空目录并提示。
 - 单个 mkdir 或 upload 失败 → 按上文错误处理表现。
+
+**Implemented by:** [2026-03-11-server-next-folder-upload-plan.md](2026-03-11-server-next-folder-upload-plan.md)
