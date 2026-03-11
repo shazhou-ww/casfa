@@ -1,8 +1,9 @@
 /**
  * Image Workshop MCP Server — tool logic and server creation.
- * Used by both stdio (src/stdio.ts) and Lambda HTTP (src/app.ts).
+ * Uses @casfa/cell-mcp for HTTP MCP; stdio (if any) can still use the same handleFluxImage + schema.
  */
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { createCellMcpServer } from "@casfa/cell-mcp";
+import type { Context } from "hono";
 import { z } from "zod";
 import { createBflClient } from "./bfl";
 import { createCasfaBranchClient } from "./casfa-branch";
@@ -78,16 +79,24 @@ export async function handleFluxImage(
   };
 }
 
-export function createMcpServer(): McpServer {
-  const server = new McpServer(
-    {
-      name: "image-workshop",
-      version: "0.1.0",
-    },
-    {}
-  );
+type Env = Record<string, unknown>;
 
-  server.registerResource(
+/**
+ * Create the Image Workshop MCP route (POST /mcp).
+ * Pass authCheck and onUnauthorized from your app so MCP is protected.
+ */
+export function createImageWorkshopMcpRoute(options: {
+  authCheck?: (c: Context<Env>) => boolean | Promise<boolean>;
+  onUnauthorized?: (c: Context<Env>) => Response;
+}) {
+  const cellMcp = createCellMcpServer({
+    name: "image-workshop",
+    version: "0.1.0",
+    authCheck: options.authCheck,
+    onUnauthorized: options.onUnauthorized,
+  });
+
+  cellMcp.registerResource(
     "FLUX Image Generation",
     "prompt://flux-image-gen",
     {
@@ -106,7 +115,7 @@ export function createMcpServer(): McpServer {
     })
   );
 
-  server.registerPrompt("flux-image-gen", {
+  cellMcp.registerPrompt("flux-image-gen", {
     description: "Generate images from text prompts using BFL FLUX",
   }, async () => ({
     messages: [
@@ -117,7 +126,7 @@ export function createMcpServer(): McpServer {
     ],
   }));
 
-  server.registerTool(
+  cellMcp.registerTool(
     "flux_image",
     {
       description:
@@ -155,5 +164,5 @@ export function createMcpServer(): McpServer {
     }
   );
 
-  return server;
+  return cellMcp.getRoute();
 }

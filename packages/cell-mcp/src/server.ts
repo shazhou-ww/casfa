@@ -12,8 +12,9 @@ type ToolReg = {
   handler: (args: unknown) => ToolResult | Promise<ToolResult>;
 };
 
-// Passthrough: store args for server.registerResource / server.registerPrompt (SDK types are strict; we pass through)
-type ResourceReg = Parameters<McpServer["registerResource"]>;
+// Passthrough: store args for server.registerResource / server.registerPrompt.
+// SDK has multiple overloads (uri string vs ResourceTemplate); use loose types so callers can pass (name, uri, options, handler).
+type ResourceReg = [string, string | Record<string, unknown>, Record<string, unknown>, (...a: unknown[]) => unknown];
 type PromptReg = Parameters<McpServer["registerPrompt"]>;
 
 export function createCellMcpServer(options: CellMcpServerOptions) {

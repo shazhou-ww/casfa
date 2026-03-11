@@ -1,37 +1,27 @@
 import type { Auth } from "@casfa/cell-cognito-server";
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";
-import { HTTPException } from "hono/http-exception";
-import { createMcpServer } from "../index";
+import { createImageWorkshopMcpRoute } from "../index";
 
-function requireUseMcp(auth: Auth | null | undefined) {
-  if (!auth) throw new HTTPException(401, { message: "Unauthorized" });
-  if (auth.type === "user") return auth;
-  if (auth.permissions.includes("use_mcp")) return auth;
-  throw new HTTPException(403, { message: "Forbidden: use_mcp required" });
+function authCheck(c: { get: (key: string) => Auth | null | undefined }): boolean {
+  const auth = c.get("auth");
+  if (!auth) return false;
+  if (auth.type === "user") return true;
+  return auth.permissions.includes("use_mcp");
+}
+
+function onUnauthorized(c: { get: (key: string) => Auth | null | undefined; json: (body: unknown, status: number) => Response }): Response {
+  const auth = c.get("auth");
+  if (!auth) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  return c.json({ error: "Forbidden", message: "use_mcp required" }, 403);
 }
 
 export function createMcpRoutes() {
   const routes = new Hono();
 
-  routes.post("/mcp", async (c) => {
-    requireUseMcp(c.get("auth"));
-
-    const req = c.req.raw;
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true,
-    });
-    const mcpServer = createMcpServer();
-    await mcpServer.connect(transport);
-    const res = await transport.handleRequest(req);
-    await mcpServer.close();
-    return new Response(res.body, {
-      status: res.status,
-      statusText: res.statusText,
-      headers: res.headers,
-    });
-  });
+  const mcpRoute = createImageWorkshopMcpRoute({ authCheck, onUnauthorized });
+  routes.route("/", mcpRoute);
 
   routes.get("/mcp", (c) => {
     return c.json(
