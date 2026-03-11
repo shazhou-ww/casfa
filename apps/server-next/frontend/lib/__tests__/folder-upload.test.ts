@@ -1,11 +1,31 @@
 import { describe, it, expect } from "bun:test";
 import {
+  collectFromFileList,
   validateUploadPlan,
   getMkdirPaths,
   runUploadWithProgress,
   type UploadEntry,
   type UploadDeps,
 } from "../folder-upload";
+
+describe("collectFromFileList", () => {
+  it("uses webkitRelativePath when present (e.g. Folder/a.txt)", () => {
+    const file = new File(["content"], "a.txt") as File & { webkitRelativePath?: string };
+    file.webkitRelativePath = "Folder/a.txt";
+    const entries = collectFromFileList([file]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.relativePath).toBe("Folder/a.txt");
+    expect(entries[0]!.file).toBe(file);
+  });
+  it("falls back to file.name when webkitRelativePath is missing or empty (flat)", () => {
+    const f1 = new File(["x"], "flat.txt");
+    const f2 = new File(["y"], "other.pdf") as File & { webkitRelativePath?: string };
+    f2.webkitRelativePath = "";
+    const entries = collectFromFileList([f1, f2]);
+    expect(entries[0]!.relativePath).toBe("flat.txt");
+    expect(entries[1]!.relativePath).toBe("other.pdf");
+  });
+});
 
 describe("validateUploadPlan", () => {
   it("rejects when over maxFiles", () => {

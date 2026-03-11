@@ -1,5 +1,16 @@
 export type UploadEntry = { relativePath: string; file: File };
 
+export function collectFromFileList(files: FileList | File[]): UploadEntry[] {
+  const arr = Array.isArray(files) ? files : Array.from(files);
+  return arr.map((file) => {
+    const webkitRelativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
+    const relativePath = (webkitRelativePath && webkitRelativePath.trim() !== "")
+      ? webkitRelativePath
+      : file.name;
+    return { relativePath, file };
+  });
+}
+
 export const DEFAULT_LIMITS = {
   maxFiles: 500,
   maxDepth: 10,
