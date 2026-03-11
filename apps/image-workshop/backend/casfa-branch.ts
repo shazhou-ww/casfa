@@ -18,6 +18,41 @@ export function createCasfaBranchClient(options?: Partial<CasfaBranchOptions>) {
 
   return {
     /**
+     * Set branch root to the given file content (single file node as root). Use for branches
+     * created with a non-existent mountPath (null root). Uses Bearer branchAccessToken.
+     */
+    async setRootToFile(
+      branchAccessToken: string,
+      data: Uint8Array,
+      contentType: string
+    ): Promise<{ path: string; key: string }> {
+      if (!baseUrl) throw new Error("CASFA_BASE_URL is required (env or options.baseUrl)");
+      const url = `${baseUrl}/api/realm/me/root`;
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${branchAccessToken}`,
+          "Content-Type": contentType,
+          "Content-Length": String(data.length),
+        },
+        body: new Blob([data as BlobPart]),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        let message = res.statusText;
+        try {
+          const json = JSON.parse(text) as { message?: string };
+          if (typeof json.message === "string") message = json.message;
+        } catch {
+          message = text || message;
+        }
+        throw new Error(`Casfa set root failed ${res.status}: ${message}`);
+      }
+      const json = (await res.json()) as { path: string; key: string };
+      return json;
+    },
+
+    /**
      * Upload file to the branch. Path = full path including filename (e.g. "output.png" or "images/out.png").
      * Uses Bearer branchAccessToken.
      */

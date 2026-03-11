@@ -16,9 +16,6 @@ export const fluxImageInputSchema = z.object({
   branchAccessToken: z
     .string()
     .describe("Casfa branch access token (Bearer) for the target branch."),
-  filename: z
-    .string()
-    .describe("Filename to save the generated image (e.g. output.png or images/hero.jpeg)."),
   prompt: z.string().describe("Text prompt for FLUX image generation."),
   width: z
     .number()
@@ -53,7 +50,7 @@ function contentTypeForFormat(format: "jpeg" | "png"): string {
 
 export async function handleFluxImage(
   args: FluxImageArgs
-): Promise<{ path: string; key: string; completed: string }> {
+): Promise<{ key: string; completed: string }> {
   const bfl = createBflClient();
   const casfa = createCasfaBranchClient({ baseUrl: args.casfaBaseUrl });
 
@@ -67,9 +64,8 @@ export async function handleFluxImage(
   });
 
   const format = args.output_format ?? "jpeg";
-  const uploadResult = await casfa.uploadFile(
+  const setRootResult = await casfa.setRootToFile(
     args.branchAccessToken,
-    args.filename,
     imageBytes,
     contentTypeForFormat(format)
   );
@@ -77,8 +73,7 @@ export async function handleFluxImage(
   const completeResult = await casfa.completeBranch(args.branchAccessToken);
 
   return {
-    path: uploadResult.path,
-    key: uploadResult.key,
+    key: setRootResult.key,
     completed: completeResult.completed,
   };
 }
@@ -126,7 +121,7 @@ export function createMcpServer(): McpServer {
     "flux_image",
     {
       description:
-        "Generate an image from a text prompt using BFL FLUX, upload the result to the given Casfa branch as the specified filename, then complete the branch (merge back to parent). Requires BFL_API_KEY in env. casfaBaseUrl is the Casfa server base URL (tool parameter).",
+        "Generate an image from a text prompt using BFL FLUX, set it as the Casfa branch root (single file), then complete the branch (merge into parent at the branch's mountPath). Branch must be created with a non-existent mountPath (null root). Input: casfaBaseUrl (from branch_create.baseUrl), branchAccessToken (from branch_create.accessToken), prompt; optional width, height, seed, safety_tolerance, output_format. Output: success, completed (branchId merged), key (CAS node key of the image).",
       inputSchema: fluxImageInputSchema,
     },
     async (args: FluxImageArgs) => {
@@ -139,9 +134,8 @@ export function createMcpServer(): McpServer {
               text: JSON.stringify(
                 {
                   success: true,
-                  path: result.path,
-                  key: result.key,
                   completed: result.completed,
+                  key: result.key,
                 },
                 null,
                 2
