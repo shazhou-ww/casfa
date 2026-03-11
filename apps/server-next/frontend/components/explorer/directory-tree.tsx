@@ -1,4 +1,5 @@
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import FolderIcon from "@mui/icons-material/Folder";
@@ -97,6 +98,7 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
   const inputFolderRef = useRef<HTMLInputElement>(null);
   const cancelUploadRef = useRef(false);
   const [uploadProgress, setUploadProgress] = useState<{ total: number; done: number } | null>(null);
+  const [uploadMenuAnchor, setUploadMenuAnchor] = useState<HTMLElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const dragCountRef = useRef(0);
@@ -580,8 +582,11 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
         <Button
           size="small"
           startIcon={<CloudUploadIcon />}
-          onClick={() =>
-            supportsFolder ? inputFolderRef.current?.click() : fileInputRef.current?.click()
+          endIcon={supportsFolder ? <ArrowDropDownIcon /> : undefined}
+          onClick={(e) =>
+            supportsFolder
+              ? setUploadMenuAnchor(e.currentTarget)
+              : fileInputRef.current?.click()
           }
           disabled={uploading}
           sx={{ ml: 1 }}
@@ -589,6 +594,32 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
         >
           上传
         </Button>
+        {supportsFolder && (
+          <Menu
+            anchorEl={uploadMenuAnchor}
+            open={Boolean(uploadMenuAnchor)}
+            onClose={() => setUploadMenuAnchor(null)}
+            anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+            transformOrigin={{ vertical: "top", horizontal: "left" }}
+          >
+            <MenuItem
+              onClick={() => {
+                fileInputRef.current?.click();
+                setUploadMenuAnchor(null);
+              }}
+            >
+              选择文件
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                inputFolderRef.current?.click();
+                setUploadMenuAnchor(null);
+              }}
+            >
+              选择文件夹
+            </MenuItem>
+          </Menu>
+        )}
         <input
           type="file"
           multiple
