@@ -349,8 +349,32 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
   const handleFolderSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
-      if (!files?.length) return;
-      const entries = collectFromFileList(files);
+      const entries = collectFromFileList(files ?? []);
+      if (entries.length === 0) {
+        if (files && files.length >= 1) {
+          const first = files[0];
+          const rel = (first as File & { webkitRelativePath?: string }).webkitRelativePath;
+          const folderName = rel ? rel.split("/").filter(Boolean)[0] : undefined;
+          if (folderName) {
+            try {
+              await createFolder(currentPath || "/", folderName);
+              setRefreshKey((k) => k + 1);
+              setSnackbar({ message: `已创建文件夹 ${folderName}`, severity: "success" });
+            } catch (err) {
+              setSnackbar({
+                message: err instanceof Error ? err.message : "创建文件夹失败",
+                severity: "error",
+              });
+            }
+          } else {
+            setSnackbar({ message: "未选择文件", severity: "error" });
+          }
+        } else {
+          setSnackbar({ message: "未选择文件", severity: "error" });
+        }
+        e.target.value = "";
+        return;
+      }
       if (entries.some((entry) => entry.relativePath.includes("/"))) {
         const validation = validateUploadPlan(entries);
         if (!validation.ok) {
