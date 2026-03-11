@@ -88,6 +88,27 @@ describe("Branches / Worker", () => {
     expect(Array.isArray(data.entries)).toBe(true);
   });
 
+  it("path-based access: accessUrlPrefix returns 200 without Bearer, wrong verification returns 401", async () => {
+    const token = await ctx.helpers.createUserToken(realmId);
+    await ctx.helpers.authRequest(token, "POST", `/api/realm/${realmId}/fs/mkdir`, {
+      path: "pathAccess",
+    });
+    const result = await ctx.helpers.createBranch(token, realmId, {
+      mountPath: "pathAccess",
+    });
+    if (!result.accessUrlPrefix) {
+      return; // skip when baseUrl not set (e.g. in-process without CELL_BASE_URL)
+    }
+    const listRes = await fetch(`${result.accessUrlPrefix}/api/realm/me/branches`);
+    expect(listRes.status).toBe(200);
+    const listData = (await listRes.json()) as { branches?: { branchId: string }[] };
+    expect(listData.branches?.some((b) => b.branchId === result.branchId)).toBe(true);
+
+    const wrongUrl = `${ctx.baseUrl}/branch/${result.branchId}/${"0".repeat(26)}/api/realm/me/branches`;
+    const badRes = await fetch(wrongUrl);
+    expect(badRes.status).toBe(401);
+  });
+
   it("revoke branch then branch not in list", async () => {
     const token = await ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(token, "POST", `/api/realm/${realmId}/fs/mkdir`, {
