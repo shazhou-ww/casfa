@@ -4,6 +4,8 @@ import { buildCommand } from "./commands/build.js";
 import { cleanCommand } from "./commands/clean.js";
 import { deployCommand } from "./commands/deploy.js";
 import { devCommand } from "./commands/dev.js";
+import { gatewayDevCommand } from "./commands/gateway-dev.js";
+import { loadStackYaml } from "./config/load-stack-yaml.js";
 import { initCommand } from "./commands/init.js";
 import { lintCommand } from "./commands/lint.js";
 import { awsLoginCommand, awsLogoutCommand } from "./commands/aws.js";
@@ -40,8 +42,19 @@ program
   .command("dev")
   .description("Start local development environment")
   .option("-i, --instance <name>", "Use cell.<name>.yaml param overrides for this instance")
+  .option("--all", "Run platform gateway dev (requires stack.yaml in cwd)")
   .action(async (opts) => {
-    await run(() => devCommand({ instance: opts.instance }));
+    const cwd = process.cwd();
+    const stack = loadStackYaml(cwd);
+    if (stack) {
+      await run(() => gatewayDevCommand({ rootDir: cwd }));
+    } else {
+      if (opts.all) {
+        console.error("Error: --all requires stack.yaml in current directory.");
+        process.exit(1);
+      }
+      await run(() => devCommand({ instance: opts.instance }));
+    }
   });
 
 program
