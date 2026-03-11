@@ -36,12 +36,17 @@ export function isLocalhost(baseUrl: string): boolean {
 }
 
 export function loadConfig(): SsoConfig {
-  const baseUrl = (process.env.CELL_BASE_URL ?? "").replace(/\/$/, "");
+  return loadConfigFromEnv(process.env as Record<string, string>);
+}
+
+/** Build SSO config from an env object (e.g. resolvedConfig.envVars for gateway). */
+export function loadConfigFromEnv(env: Record<string, string>): SsoConfig {
+  const get = (key: string, def: string = "") => (env[key] ?? def).trim();
+  const baseUrl = (get("CELL_BASE_URL") ?? "").replace(/\/$/, "");
   const secure = !isLocalhost(baseUrl);
-  const authCookieName = process.env.AUTH_COOKIE_NAME ?? "auth";
-  const refreshCookieName = process.env.AUTH_REFRESH_COOKIE_NAME ?? "auth_refresh";
-  // When on localhost, default cookie domain to hostname so all ports (7100, 7120, ...) share the cookie.
-  const explicitDomain = process.env.AUTH_COOKIE_DOMAIN?.trim() || undefined;
+  const authCookieName = get("AUTH_COOKIE_NAME", "auth");
+  const refreshCookieName = get("AUTH_REFRESH_COOKIE_NAME", "auth_refresh");
+  const explicitDomain = get("AUTH_COOKIE_DOMAIN") || undefined;
   const authCookieDomain =
     explicitDomain ??
     (isLocalhost(baseUrl)
@@ -56,28 +61,28 @@ export function loadConfig(): SsoConfig {
   return {
     baseUrl,
     cognito: {
-      region: process.env.COGNITO_REGION ?? "us-east-1",
-      userPoolId: process.env.COGNITO_USER_POOL_ID ?? "",
-      clientId: process.env.COGNITO_CLIENT_ID ?? "",
-      hostedUiUrl: process.env.COGNITO_HOSTED_UI_URL ?? "",
+      region: get("COGNITO_REGION", "us-east-1"),
+      userPoolId: get("COGNITO_USER_POOL_ID"),
+      clientId: get("COGNITO_CLIENT_ID"),
+      hostedUiUrl: get("COGNITO_HOSTED_UI_URL"),
     },
     cookie: {
       authCookieName,
       authCookieDomain,
-      authCookiePath: process.env.AUTH_COOKIE_PATH ?? "/",
-      authCookieMaxAgeSeconds: process.env.AUTH_COOKIE_MAX_AGE_SECONDS
-        ? Number(process.env.AUTH_COOKIE_MAX_AGE_SECONDS)
+      authCookiePath: get("AUTH_COOKIE_PATH", "/"),
+      authCookieMaxAgeSeconds: get("AUTH_COOKIE_MAX_AGE_SECONDS")
+        ? Number(get("AUTH_COOKIE_MAX_AGE_SECONDS"))
         : undefined,
       refreshCookieName,
-      refreshCookiePath: process.env.AUTH_REFRESH_COOKIE_PATH ?? "/oauth/refresh",
-      refreshCookieMaxAgeSeconds: process.env.AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS
-        ? Number(process.env.AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS)
+      refreshCookiePath: get("AUTH_REFRESH_COOKIE_PATH", "/oauth/refresh"),
+      refreshCookieMaxAgeSeconds: get("AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS")
+        ? Number(get("AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS"))
         : undefined,
       secure,
     },
-    dynamodbEndpoint: process.env.DYNAMODB_ENDPOINT,
+    dynamodbEndpoint: get("DYNAMODB_ENDPOINT") || undefined,
     dynamodbTableGrants:
-      process.env.DYNAMODB_TABLE_GRANTS ??
-      `sso-${process.env.SLS_STAGE ?? process.env.STAGE ?? "dev"}-grants`,
+      get("DYNAMODB_TABLE_GRANTS") ??
+      `sso-${get("SLS_STAGE", get("STAGE", "dev"))}-grants`,
   };
 }
