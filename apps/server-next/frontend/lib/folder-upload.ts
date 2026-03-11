@@ -1,5 +1,72 @@
 export type UploadEntry = { relativePath: string; file: File };
 
+/** DataTransferItem with WebKit folder API (not in standard TypeScript DOM lib). */
+interface DataTransferItemWithEntry extends DataTransferItem {
+  webkitGetAsEntry?: () => FileSystemEntry | null;
+}
+
+function readDirEntries(entry: FileSystemDirectoryEntry, prefix: string): Promise<UploadEntry[]> {
+  return new Promise((resolve, reject) => {
+    const reader = entry.createReader();
+    const acc: UploadEntry[] = [];
+    function readBatch(): void {
+      reader.readEntries(
+        async (entries: FileSystemEntry[]) => {
+          if (entries.length === 0) {
+            resolve(acc);
+            return;
+          }
+          for (const child of entries) {
+            if (child.isDirectory) {
+              const sub = await readDirEntries(child as FileSystemDirectoryEntry, prefix + child.name + "/");
+              acc.push(...sub);
+            } else {
+              const file = await new Promise<File>((res, rej) =>
+                (child as FileSystemFileEntry).file(res, rej)
+              );
+              acc.push({ relativePath: prefix + child.name, file });
+            }
+          }
+          readBatch();
+        },
+        reject
+      );
+    }
+    readBatch();
+  });
+}
+
+/**
+ * Collects files from a drag-drop DataTransfer using the folder API (webkitGetAsEntry).
+ * Returns null if there are no items or the browser does not support webkitGetAsEntry
+ * (caller should fall back to dataTransfer.files).
+ */
+export async function collectFromDrop(
+  dataTransfer: DataTransfer | null | undefined
+): Promise<UploadEntry[] | null> {
+  if (!dataTransfer?.items?.length) return null;
+  const firstItem = dataTransfer.items[0];
+  const getEntry = (firstItem as DataTransferItemWithEntry).webkitGetAsEntry;
+  if (typeof getEntry !== "function") return null;
+
+  const result: UploadEntry[] = [];
+  for (let i = 0; i < dataTransfer.items.length; i++) {
+    const item = dataTransfer.items[i]!;
+    const entry = (item as DataTransferItemWithEntry).webkitGetAsEntry?.() ?? null;
+    if (!entry) continue;
+    if (entry.isDirectory) {
+      const dirEntries = await readDirEntries(entry as FileSystemDirectoryEntry, entry.name + "/");
+      result.push(...dirEntries);
+    } else {
+      const file = await new Promise<File>((res, rej) =>
+        (entry as FileSystemFileEntry).file(res, rej)
+      );
+      result.push({ relativePath: entry.name, file });
+    }
+  }
+  return result;
+}
+
 export function collectFromFileList(files: FileList | File[]): UploadEntry[] {
   const arr = Array.isArray(files) ? files : Array.from(files);
   return arr.map((file) => {
