@@ -38,6 +38,7 @@ import {
   uploadFile,
 } from "../../lib/fs-api";
 import {
+  collectFromDrop,
   collectFromFileList,
   runUploadWithProgress,
   validateUploadPlan,
@@ -423,10 +424,64 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
       setDragOver(false);
       dragCountRef.current = 0;
       if (uploading) return;
+
+      const folderEntries = await collectFromDrop(e.dataTransfer);
+
+      if (folderEntries !== null && folderEntries.length > 0) {
+        const validation = validateUploadPlan(folderEntries);
+        if (!validation.ok) {
+          setSnackbar({ message: validation.message, severity: "error" });
+          return;
+        }
+        cancelUploadRef.current = false;
+        setUploadProgress({ total: folderEntries.length, done: 0 });
+        setUploading(true);
+        const basePath = (currentPath || "/").replace(/^\/+|\/+$/g, "");
+        try {
+          const result = await runUploadWithProgress(
+            folderEntries,
+            basePath,
+            { createFolder, uploadFile },
+            {
+              onProgress: (done, total) => setUploadProgress({ total, done }),
+              getCancelled: () => cancelUploadRef.current,
+            }
+          );
+          setUploadProgress(null);
+          setUploading(false);
+          setRefreshKey((k) => k + 1);
+          if (result.success > 0) {
+            setSnackbar({
+              message:
+                result.failed > 0
+                  ? `已上传 ${result.success} 个，${result.failed} 个失败`
+                  : result.success === 1
+                    ? "已上传"
+                    : `已上传 ${result.success} 个文件`,
+              severity: result.failed > 0 ? "error" : "success",
+            });
+          } else if (result.errors.length) {
+            setSnackbar({
+              message: result.errors[0] ?? "上传失败",
+              severity: "error",
+            });
+          }
+        } finally {
+          setUploadProgress(null);
+          setUploading(false);
+        }
+        return;
+      }
+
+      if (folderEntries !== null && folderEntries.length === 0) {
+        setSnackbar({ message: "未选择文件", severity: "error" });
+        return;
+      }
+
       const files = e.dataTransfer?.files;
       if (files?.length) await doUploadFiles(files);
     },
-    [doUploadFiles, uploading]
+    [currentPath, doUploadFiles, uploading]
   );
 
   return (
