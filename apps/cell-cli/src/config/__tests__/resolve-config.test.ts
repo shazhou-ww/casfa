@@ -376,4 +376,26 @@ describe("resolveConfig", () => {
     expect(resolved.domain?.subdomain).toBe("sso.casfa");
     expect(resolved.envVars.CELL_BASE_URL).toBeUndefined();
   });
+
+  test("dev: host uses cell domain.subdomain only, not env SUBDOMAIN (avoids wrong host like mymbp.symbiontlabs.me.mymbp.shazhou.work)", () => {
+    const config = makeConfig({
+      params: { DOMAIN_ROOT: "symbiontlabs.me" },
+      domain: { subdomain: "sso.casfa" },
+    });
+    const devbox = {
+      devboxName: "mymbp",
+      devRoot: "shazhou.work",
+      tunnelPort: 8443,
+    };
+    // Instance or .env might set SUBDOMAIN to something else (e.g. sso for symbiont, or mistaken value)
+    const resolved = resolveConfig(
+      config,
+      { SUBDOMAIN: "mymbp.symbiontlabs.me" },
+      "dev",
+      { devboxConfigOverride: devbox }
+    );
+    // Must be from cell's subdomain (sso.casfa), not env SUBDOMAIN
+    expect(resolved.domain?.host).toBe("sso.casfa.mymbp.shazhou.work");
+    expect(resolved.domain?.subdomain).toBe("mymbp.symbiontlabs.me"); // resolved subdomain still has env override for other uses
+  });
 });

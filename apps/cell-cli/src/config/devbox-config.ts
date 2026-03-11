@@ -46,7 +46,7 @@ export function removeDaemonPids(): void {
 export interface DevboxConfig {
   /** Machine identifier used in dev host (e.g. my-mbp). */
   devboxName: string;
-  /** Dev root domain (e.g. example.com). Dev host = <subdomain>.<devboxName>.<devRoot>. */
+  /** Dev root domain (e.g. example.com). Dev host = <subdomain>.<devboxName>.<devRoot> (two-level; requires Total TLS for SSL). */
   devRoot: string;
   /** Local port the tunnel and proxy listen on (e.g. 8443). */
   tunnelPort: number;
@@ -90,8 +90,9 @@ export function loadDevboxConfig(customPath?: string): DevboxConfig | null {
 }
 
 /**
- * Build dev host for a cell: <subdomain>.<devboxName>.<devRoot>
+ * Build dev host for a cell: <subdomain>.<devboxName>.<devRoot> (two-level subdomain).
  * e.g. getDevHost("sso.casfa", devbox) => "sso.casfa.my-mbp.example.com"
+ * Requires Cloudflare Total TLS (or ACM) on the zone so the edge can issue certs for two-level hostnames.
  */
 export function getDevHost(subdomain: string, devbox: DevboxConfig): string {
   return `${subdomain}.${devbox.devboxName}.${devbox.devRoot}`;
@@ -121,4 +122,21 @@ export function getCloudflareApiToken(opts?: {
     }
   }
   return null;
+}
+
+/**
+ * Read tunnel UUID from cloudflared credentials JSON.
+ * CNAME target must be {UUID}.cfargotunnel.com (not tunnel name) for public DNS to resolve.
+ */
+export function getTunnelUuid(devbox: DevboxConfig): string | null {
+  const path = devbox.credentialsPath ?? join(DEVBOX_CONFIG_DIR, "credentials.json");
+  if (!existsSync(path)) return null;
+  try {
+    const raw = readFileSync(path, "utf-8");
+    const data = JSON.parse(raw) as { TunnelID?: string };
+    const id = data?.TunnelID;
+    return typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
+  } catch {
+    return null;
+  }
 }

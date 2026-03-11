@@ -234,7 +234,11 @@ export function resolveConfig(
         options?.devboxConfigOverride !== undefined
           ? options.devboxConfigOverride
           : loadDevboxConfig();
-      host = devbox ? getDevHost(subdomain, devbox) : "";
+      // Dev host must use the cell's domain.subdomain only (e.g. sso.casfa), not env SUBDOMAIN.
+      // Otherwise instance overrides (e.g. SUBDOMAIN=sso for symbiont) or mistaken env values
+      // (e.g. SUBDOMAIN=mymbp.symbiontlabs.me) would produce wrong hosts like mymbp.symbiontlabs.me.mymbp.shazhou.work.
+      const devSubdomain = subdomainFromConfig.trim();
+      host = devbox && devSubdomain ? getDevHost(devSubdomain, devbox) : "";
     } else {
       host = domainRoot.trim() ? `${subdomain}.${domainRoot}` : "";
     }

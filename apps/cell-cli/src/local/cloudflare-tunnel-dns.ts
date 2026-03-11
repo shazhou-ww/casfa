@@ -62,7 +62,7 @@ export async function setCnameRecord(
     result?: { id: string }[];
   };
   const content = target.endsWith(".") ? target : target + ".";
-  const body = { type: "CNAME", name: hostname, content, ttl: 1 };
+  const body = { type: "CNAME", name: hostname, content, ttl: 1, proxied: true };
   if (listData.success && Array.isArray(listData.result) && listData.result.length > 0) {
     const recordId = listData.result[0]!.id;
     const updateRes = await fetch(

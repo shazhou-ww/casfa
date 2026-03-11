@@ -12,6 +12,7 @@ import {
   loadDevboxConfig,
 } from "../../config/devbox-config.js";
 import { writeRoutes } from "../../local/devbox-routes.js";
+import { fetchCloudflareZonesWithId } from "../../local/cloudflare-tunnel-dns.js";
 import { loadEnvFiles } from "../../utils/env.js";
 
 function question(prompt: string): Promise<string> {
@@ -24,15 +25,22 @@ function question(prompt: string): Promise<string> {
   });
 }
 
-/** Fetch zone names from Cloudflare API. Returns [] if token missing or request fails. */
-async function fetchCloudflareZones(apiToken: string): Promise<string[]> {
-  const res = await fetch("https://api.cloudflare.com/client/v4/zones?per_page=50", {
-    headers: { Authorization: `Bearer ${apiToken}` },
+/** Enable Total TLS for the zone (required for two-level dev hostnames). Returns true on success. */
+async function enableTotalTls(apiToken: string, zoneId: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/acm/total_tls`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ enabled: true }),
   });
-  if (!res.ok) return [];
-  const data = (await res.json()) as { success?: boolean; result?: { name: string }[] };
-  if (!data.success || !Array.isArray(data.result)) return [];
-  return data.result.map((z) => z.name);
+  const data = (await res.json()) as { success?: boolean; errors?: { message: string }[] };
+  if (res.ok && data.success) return { ok: true };
+  const msg = data.errors?.[0]?.message ?? `HTTP ${res.status}`;
+  // Already enabled: API returns this when Total TLS is already on for the zone
+  if (/no state between current settings and new settings has changed/i.test(msg)) return { ok: true };
+  return { ok: false, error: msg };
 }
 
 /** Convert OS hostname to a valid DNS label (lowercase, a-z 0-9 hyphen, 1–63 chars, no leading/trailing hyphen). */
@@ -127,14 +135,16 @@ export async function devboxPrepareCommand(): Promise<void> {
   }
 
   if (!cfToken) {
-    console.log("4. Cloudflare API token (used for zone list here + cell deploy DNS later).");
+    console.log("4. Cloudflare API token (used for zone list, deploy DNS, and enabling Total TLS).");
     console.log("");
     console.log("   \x1b[1mStep 1:\x1b[0m Open \x1b[1;36mhttps://dash.cloudflare.com/profile/api-tokens\x1b[0m");
-    console.log("   \x1b[1mStep 2:\x1b[0m Click \"Create Token\" and choose template \x1b[1;36mEdit zone DNS\x1b[0m (Zone:Read + Zone:DNS:Edit).");
-    console.log("   \x1b[1mStep 3:\x1b[0m On the form:");
-    console.log("      • Zone Resources: set to \x1b[1;36mInclude → All zones\x1b[0m (so prepare and deploy work for any zone).");
-    console.log("      • Client IP / TTL: leave default unless you need to restrict.");
-    console.log("      • Continue to Create Token, then paste the token below.");
+    console.log("   \x1b[1mStep 2:\x1b[0m Click \x1b[1mCreate Token\x1b[0m → \x1b[1mCreate Custom Token\x1b[0m (do not use \"Edit zone DNS\" template; it cannot add SSL).");
+    console.log("   \x1b[1mStep 3:\x1b[0m Add permissions:");
+    console.log("      • \x1b[1mZone\x1b[0m → \x1b[1mZone\x1b[0m → \x1b[36mRead\x1b[0m");
+    console.log("      • \x1b[1mZone\x1b[0m → \x1b[1mDNS\x1b[0m → \x1b[36mEdit\x1b[0m");
+    console.log("      • \x1b[1mZone\x1b[0m → \x1b[1mSSL and Certificates\x1b[0m → \x1b[36mEdit\x1b[0m");
+    console.log("   \x1b[1mStep 4:\x1b[0m Zone Resources: \x1b[36mInclude\x1b[0m → \x1b[36mAll zones\x1b[0m (or limit to the zone you use for dev).");
+    console.log("   \x1b[1mStep 5:\x1b[0m Client IP / TTL: leave default. Continue to Create Token, then paste the token below.");
     console.log("");
     const tokenInput = await question(
       "Paste token (or press Enter to type dev root domain manually later): "
@@ -150,28 +160,33 @@ export async function devboxPrepareCommand(): Promise<void> {
   }
 
   let devRoot: string;
-  const zones = cfToken ? await fetchCloudflareZones(cfToken) : [];
-  if (cfToken && zones.length === 0) {
+  let zoneId: string | null = null;
+  const zonesWithId = cfToken ? await fetchCloudflareZonesWithId(cfToken) : [];
+  const zoneNames = zonesWithId.map((z) => z.name);
+  if (cfToken && zonesWithId.length === 0) {
     console.warn("  Could not list zones (invalid token or no zones). You can type the domain below.\n");
   }
 
-  if (zones.length > 0) {
+  if (zonesWithId.length > 0) {
     console.log("5. Select dev root domain (zone in your Cloudflare account):\n");
-    zones.forEach((name, i) => console.log(`   ${i + 1}. ${name}`));
+    zoneNames.forEach((name, i) => console.log(`   ${i + 1}. ${name}`));
     console.log("");
-    if (zones.length === 1) {
-      devRoot = zones[0]!;
+    if (zonesWithId.length === 1) {
+      devRoot = zonesWithId[0]!.name;
+      zoneId = zonesWithId[0]!.id;
       console.log("  →", devRoot, " (only one zone, auto-selected)\n");
     } else {
-      const raw = await question(`Enter number (1-${zones.length}) or domain name: `);
+      const raw = await question(`Enter number (1-${zonesWithId.length}) or domain name: `);
       const num = parseInt(raw, 10);
-      if (Number.isInteger(num) && num >= 1 && num <= zones.length) {
-        devRoot = zones[num - 1]!;
-      } else if (zones.includes(raw)) {
+      if (Number.isInteger(num) && num >= 1 && num <= zonesWithId.length) {
+        devRoot = zonesWithId[num - 1]!.name;
+        zoneId = zonesWithId[num - 1]!.id;
+      } else if (zoneNames.includes(raw)) {
         devRoot = raw;
+        zoneId = zonesWithId.find((z) => z.name === raw)?.id ?? null;
       } else if (raw) {
         devRoot = raw;
-        console.warn("  (Not in zone list; make sure this domain is in your Cloudflare account.)");
+        console.warn("  (Not in zone list; make sure this domain is in your Cloudflare account. Total TLS will not be enabled automatically.)");
       } else {
         console.error("devRoot is required.");
         process.exit(1);
@@ -224,7 +239,7 @@ export async function devboxPrepareCommand(): Promise<void> {
     console.log("Tunnel already exists:", tunnelName);
   }
 
-  // 7. Route DNS
+  // 7. Route DNS for base hostname (wildcard *.<devboxName>.<devRoot> is matched by ingress; per-host CNAME still via cell dev + API)
   const { exitCode: dnsExit, stderr: dnsErr } = await exec([
     "cloudflared",
     "tunnel",
@@ -260,16 +275,16 @@ export async function devboxPrepareCommand(): Promise<void> {
   writeRoutes({}, DEVBOX_ROUTES_PATH);
   console.log("Initialized", DEVBOX_ROUTES_PATH);
 
-  // 10. Write cloudflared config for tunnel run (wildcard so all *.<devboxName>.<devRoot> hit the proxy)
+  // 10. Write cloudflared config: wildcard *.<devboxName>.<devRoot> so e.g. sso.casfa.mymbp.devRoot hits proxy (Total TLS required for two-level SSL)
   const cloudflaredConfigPath = join(DEVBOX_CONFIG_DIR, "config.yml");
   const wildcardHostname = "*." + hostname;
   const cloudflaredConfig = [
     "tunnel: " + tunnelName,
     "credentials-file: " + credentialsPath,
     "ingress:",
-    "  - hostname: " + wildcardHostname,
+    "  - hostname: " + JSON.stringify(wildcardHostname),
     "    service: http://127.0.0.1:" + tunnelPort,
-    "  - hostname: " + hostname,
+    "  - hostname: " + JSON.stringify(hostname),
     "    service: http://127.0.0.1:" + tunnelPort,
     "  - service: http_status:404",
     "",
@@ -277,8 +292,33 @@ export async function devboxPrepareCommand(): Promise<void> {
   writeFileSync(cloudflaredConfigPath, cloudflaredConfig, "utf-8");
   console.log("Wrote", cloudflaredConfigPath);
 
+  // 11. Enable Total TLS for the zone (so two-level dev hostnames get edge certs)
+  if (cfToken && zoneId) {
+    const tot = await enableTotalTls(cfToken, zoneId);
+    if (tot.ok) {
+      console.log("Total TLS: enabled for", devRoot);
+    } else {
+      console.warn("Total TLS: could not enable automatically:", tot.error);
+      const needsAcm =
+        /Advanced Certificate Manager|has not been granted for this zone/i.test(tot.error ?? "");
+      if (needsAcm) {
+        console.warn("  This zone does not have Advanced Certificate Manager (ACM). Total TLS is an ACM feature.");
+        console.warn("  Options: (1) Enable ACM for this zone in Dashboard → SSL/TLS → Edge Certificates → Advanced; (2) Or enable Total TLS manually if your plan includes it.");
+      } else {
+        console.warn("  Enable it in Cloudflare Dashboard →", devRoot, "→ SSL/TLS → Total TLS.");
+      }
+    }
+  } else {
+    console.log("Total TLS: skipped (no API token or zone was typed manually). Enable in Dashboard → SSL/TLS if you see ERR_SSL_VERSION_OR_CIPHER_MISMATCH.");
+  }
+
   console.log("");
   console.log("=== Done ===");
   console.log("Run 'cell devbox start' to start proxy and tunnel.");
   console.log("Then run 'cell dev' in any cell with domain; routes will be registered automatically.");
+  if (!cfToken || !zoneId) {
+    console.log("");
+    console.log("SSL: Dev uses two-level subdomains (e.g. sso.casfa." + devboxName + "." + devRoot + ").");
+    console.log("     Enable Total TLS for this zone in Cloudflare Dashboard → SSL/TLS to avoid ERR_SSL_VERSION_OR_CIPHER_MISMATCH.");
+  }
 }
