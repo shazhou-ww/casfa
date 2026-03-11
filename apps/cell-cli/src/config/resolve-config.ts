@@ -12,6 +12,7 @@ import type {
   TestingConfig,
 } from "./cell-yaml-schema.js";
 import { isEnvRef, isSecretRef } from "./cell-yaml-schema.js";
+import { getDevHost, loadDevboxConfig, type DevboxConfig } from "./devbox-config.js";
 
 export type Stage = "dev" | "test" | "cloud";
 
@@ -103,7 +104,11 @@ export function resolveConfig(
   config: CellConfig,
   envMap: Record<string, string>,
   stage: Stage,
-  options?: { onMissingParam?: "throw" | "placeholder" }
+  options?: {
+    onMissingParam?: "throw" | "placeholder";
+    /** When provided (including null), overrides loadDevboxConfig() for dev stage. Use null in tests to force no devbox. */
+    devboxConfigOverride?: DevboxConfig | null;
+  }
 ): ResolvedConfig {
   const onMissing = options?.onMissingParam ?? "throw";
   const envVars: Record<string, string> = {};
@@ -210,7 +215,29 @@ export function resolveConfig(
   const deriveZoneFromHost = (host: string): string =>
     host.includes(".") ? host.split(".").slice(1).join(".") : host;
   const pushResolvedDomain = (d: DomainConfig, alias: string) => {
-    const host = resolveValueToString(d.host, envVars, envMap);
+    const subdomainFromConfig = resolveValueToString(d.subdomain, envVars, envMap);
+    const subdomain = (envVars.SUBDOMAIN ?? envMap.SUBDOMAIN ?? subdomainFromConfig).trim();
+    if (!subdomain) {
+      throw new Error("domain.subdomain is required (e.g. sso.casfa, drive.casfa), or set params.SUBDOMAIN.");
+    }
+    const domainRoot = envVars.DOMAIN_ROOT ?? envMap.DOMAIN_ROOT ?? "";
+    let host: string;
+    if (stage === "cloud") {
+      if (!domainRoot.trim()) {
+        throw new MissingParamsError(config.name, stage, [
+          "  DOMAIN_ROOT: required when domain.subdomain is set (e.g. shazhou.me).",
+        ]);
+      }
+      host = `${subdomain}.${domainRoot}`;
+    } else if (stage === "dev") {
+      const devbox =
+        options?.devboxConfigOverride !== undefined
+          ? options.devboxConfigOverride
+          : loadDevboxConfig();
+      host = devbox ? getDevHost(subdomain, devbox) : "";
+    } else {
+      host = domainRoot.trim() ? `${subdomain}.${domainRoot}` : "";
+    }
     let zone: string;
     if (d.dns !== undefined && typeof d.dns === "object" && d.dns !== null && "provider" in d.dns) {
       const dnsObj = d.dns as {
@@ -234,7 +261,7 @@ export function resolveConfig(
     } else {
       zone = d.zone != null ? resolveValueToString(d.zone, envVars, envMap) : deriveZoneFromHost(host);
     }
-    const domain: ResolvedDomainConfig = { alias, zone, host };
+    const domain: ResolvedDomainConfig = { alias, zone, host, subdomain };
     let dnsProvider: "route53" | "cloudflare" | undefined;
     let cloudflareZoneId: ResolvedValue | undefined;
     let cloudflareApiToken: SecretRef | undefined;
@@ -301,7 +328,7 @@ export function resolveConfig(
         : [];
     const isLegacyArray = Array.isArray(config.domains);
     for (const [aliasKey, d] of domainsEntries) {
-      const alias = isLegacyArray ? resolveValueToString(d.host, envVars, envMap) : aliasKey;
+      const alias = isLegacyArray ? resolveValueToString(d.subdomain, envVars, envMap) : aliasKey;
       pushResolvedDomain(d, alias);
     }
   }
@@ -309,8 +336,10 @@ export function resolveConfig(
 
   // 7. Standard Cell env vars (CELL_STAGE, CELL_BASE_URL)
   envVars.CELL_STAGE = stage;
-  if (stage === "cloud" && domain?.host) {
-    envVars.CELL_BASE_URL = `https://${domain.host}`;
+  if (domain?.host) {
+    if (stage === "cloud" || stage === "dev") {
+      envVars.CELL_BASE_URL = `https://${domain.host}`;
+    }
   }
 
   return {

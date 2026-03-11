@@ -77,6 +77,7 @@ describe("generateCloudFront", () => {
         alias: "app",
         zone: "example.com",
         host: "app.example.com",
+        subdomain: "app",
         certificate: "arn:aws:acm:us-east-1:123:certificate/abc",
       },
     });
@@ -117,6 +118,7 @@ describe("generateCloudFront", () => {
         alias: "app",
         zone: "example.com",
         host: "app.example.com",
+        subdomain: "app",
         dns: "cloudflare",
         certificate: "arn:aws:acm:us-east-1:123:certificate/external",
         cloudflare: { zoneId: "zone123", apiToken: "token" },

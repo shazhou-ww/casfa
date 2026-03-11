@@ -5,9 +5,12 @@ import react from "@vitejs/plugin-react";
 import { createServer, defineConfig, mergeConfig, type UserConfig } from "vite";
 import type { BackendEntry } from "../config/cell-yaml-schema.js";
 import { loadCellConfig } from "../config/load-cell-yaml.js";
+import { loadDevboxConfig, DEVBOX_ROUTES_PATH } from "../config/devbox-config.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import { ensureCognitoDevCallbackUrl } from "../local/cognito-dev.js";
+import { registerRoute, unregisterRoute } from "../local/devbox-routes.js";
 import {
+  exec,
   getContainerHostPort,
   isContainerRunning,
   isDockerRunning,
@@ -112,15 +115,43 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
   const envMap = loadEnvFiles(cellDir);
   const resolved = resolveConfig(config, envMap, "dev");
 
-  const portBase = parseInt(envMap.PORT_BASE ?? "7100", 10);
+  const portBase =
+    config.dev?.portBase ?? parseInt(envMap.PORT_BASE ?? "7100", 10);
   const httpPort = portBase + 1;
   const dynamodbPort = portBase + 2;
   const s3Port = portBase + 4;
   const frontendPort = portBase;
 
-  // Base URL for this app: from env (tunnel mode) or localhost
+  // When cell has domain but no devbox, dev host is empty → require devbox prepare
+  const hasDomain = !!(config.domain || (config.domains && Object.keys(config.domains).length > 0));
+  if (hasDomain && resolved.domain && !resolved.domain.host) {
+    console.error("Dev host is not set. Run 'cell devbox prepare' first.");
+    process.exit(1);
+  }
+
+  const devbox = loadDevboxConfig();
+  let devHostRegistered: string | null = null;
+  let routesPathForCleanup: string | null = null;
+  if (resolved.domain?.host) {
+    routesPathForCleanup = devbox?.proxyRegistryPath ?? DEVBOX_ROUTES_PATH;
+    registerRoute(resolved.domain.host, frontendPort, routesPathForCleanup);
+    devHostRegistered = resolved.domain.host;
+    // Add this hostname to the tunnel so DNS resolves to the tunnel (uses cloudflared login, no API token)
+    if (devbox?.tunnelId) {
+      const { exitCode, stderr } = await exec([
+        "cloudflared", "tunnel", "route", "dns", devbox.tunnelId, resolved.domain.host,
+      ]);
+      if (exitCode !== 0 && !stderr.includes("already exists") && !stderr.includes("already registered")) {
+        console.warn("Tunnel DNS route (optional):", stderr || "cloudflared tunnel route dns failed");
+      }
+    }
+  }
+
+  // Base URL for this app: from resolved (tunnel dev host) or env or localhost
   const cellBaseUrl =
-    envMap.CELL_BASE_URL?.trim() || `http://localhost:${frontendPort}`;
+    resolved.envVars.CELL_BASE_URL?.trim() ||
+    envMap.CELL_BASE_URL?.trim() ||
+    `http://localhost:${frontendPort}`;
 
   // DynamoDB
   if (resolved.tables.length > 0) {
@@ -350,6 +381,9 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
   }
 
   const cleanup = async () => {
+    if (devHostRegistered && routesPathForCleanup) {
+      unregisterRoute(devHostRegistered, routesPathForCleanup);
+    }
     if (viteServer) {
       await viteServer.close();
     }

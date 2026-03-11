@@ -117,6 +117,36 @@ ingress:
 
 每服务预留 20 个端口（如 drive 使用 7120–7139），Tunnel 只暴露各服务前端端口（即 PORT_BASE）。配置文件见 `.cloudflared/config.yml.example`。
 
+### 首次配置 Cloudflare（二选一）
+
+**A) 命令行一键配置（推荐）**
+
+前提：`shazhou.work` 已添加到 Cloudflare，且域名 NS 已指向 Cloudflare；本机已安装 `cloudflared`。
+
+```bash
+# 1. 一次性登录（会打开浏览器授权）
+cloudflared tunnel login
+
+# 2. 在项目根目录执行脚本：创建 tunnel、写 credentials、配 4 条 DNS、生成 config.yml
+./scripts/setup-cloudflare-tunnel.sh
+```
+
+脚本会：创建名为 `casfa-dev` 的 tunnel、把 credentials 写到 `.cloudflared/credentials.json`、为 `sso/drive/workshop/agent.casfa-dev.shazhou.work` 各建一条 CNAME、从 example 生成 `.cloudflared/config.yml`。若 tunnel 已存在，会提示你确保 credentials 已放在上述路径（可从 Dashboard 下载）。
+
+**B) 在 Dashboard 里手动配置**
+
+1. 登录 [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) 或 [Dashboard](https://dash.cloudflare.com/) → **Networks** → **Tunnels**。
+2. **Create a tunnel** → 选 **Cloudflared**，名称填 `casfa-dev`，创建。
+3. **Configure**：在 **Public Hostname** 里为每个子域名添加一条：
+   - `sso.casfa-dev.shazhou.work` → HTTP → `localhost:7100`
+   - `drive.casfa-dev.shazhou.work` → HTTP → `localhost:7120`
+   - `workshop.casfa-dev.shazhou.work` → HTTP → `localhost:7140`
+   - `agent.casfa-dev.shazhou.work` → HTTP → `localhost:7160`
+4. **Save** 后到安装说明里下载 **credentials**，保存到项目 `.cloudflared/credentials.json`。
+5. 复制配置并改 tunnel ID：`cp .cloudflared/config.yml.example .cloudflared/config.yml`，把其中的 `<TUNNEL_ID>` 换成该 tunnel 的 UUID（Tunnels 列表里可见）或名称 `casfa-dev`。
+
+DNS 若由 Cloudflare 管理，添加 Public Hostname 时通常会提示或自动创建 CNAME；否则到 **DNS** 里为上述 4 个 hostname 各加一条 CNAME，指向 `<TUNNEL_ID>.cfargotunnel.com`。
+
 ### Env 配置
 
 复制根目录 `.env.casfa-dev.example` 为 `.env.casfa-dev`，或把其中对应服务的变量合并到各 app 的 `.env`。每个 app 需设置本 app 的 `PORT_BASE` 以及依赖的 `SSO_BASE_URL` / `CELL_BASE_URL`。

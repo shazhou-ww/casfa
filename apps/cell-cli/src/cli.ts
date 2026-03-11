@@ -17,6 +17,7 @@ import { clientCreateCommand, clientSyncUrlsCommand } from "./commands/cognito/c
 import { idpSetupCommand, idpSyncCommand } from "./commands/cognito/idp.js";
 import { poolCreateCommand, poolDescribeCommand } from "./commands/cognito/pool.js";
 import { domainListCommand } from "./commands/domain.js";
+import { devboxInfoCommand, devboxPrepareCommand, devboxStartCommand, devboxStatusCommand, devboxStopCommand } from "./commands/devbox/index";
 import { MissingParamsError } from "./config/resolve-config.js";
 
 async function run(fn: () => Promise<void>): Promise<void> {
@@ -187,6 +188,43 @@ domain
   .option("-i, --instance <name>", "Use cell.<name>.yaml param overrides for this instance")
   .action(async (opts) => {
     await run(() => domainListCommand({ instance: opts.instance }));
+  });
+
+const devbox = program.command("devbox").description("Dev machine tunnel and proxy (run prepare once per machine)");
+
+devbox
+  .command("prepare")
+  .description("Check bun/Docker/cloudflared, create tunnel + DNS, write devbox.yaml and routes")
+  .action(async () => {
+    await run(() => devboxPrepareCommand());
+  });
+
+devbox
+  .command("info")
+  .description("Print devbox config and how to start proxy/tunnel")
+  .action(async () => {
+    await run(() => devboxInfoCommand());
+  });
+
+devbox
+  .command("start")
+  .description("Start proxy and cloudflared tunnel in the background (daemon)")
+  .action(async () => {
+    await run(() => devboxStartCommand());
+  });
+
+devbox
+  .command("stop")
+  .description("Stop proxy and tunnel started by 'cell devbox start'")
+  .action(async () => {
+    await run(() => devboxStopCommand());
+  });
+
+devbox
+  .command("status")
+  .description("Show whether proxy and tunnel are running")
+  .action(async () => {
+    await run(() => devboxStatusCommand());
   });
 
 // --- cognito command group ---

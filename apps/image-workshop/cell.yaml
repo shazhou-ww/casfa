@@ -31,7 +31,7 @@ frontend:
 params:
   COGNITO_REGION: "us-east-1"
   COGNITO_USER_POOL_ID: "us-east-1_gMTKxXOKo"
-  DOMAIN_HOST: "image-workshop.casfa.shazhou.me"
+  DOMAIN_ROOT: "shazhou.me"
   DNS:
     provider: route53
     zone: "casfa.shazhou.me"
@@ -58,8 +58,11 @@ tables:
   pending_client_info:
     keys: { pk: S }
 
+dev:
+  portBase: 7140
+
 domain:
-  host: !Param DOMAIN_HOST
+  subdomain: image-workshop.casfa
   dns: !Param DNS
 
 testing:

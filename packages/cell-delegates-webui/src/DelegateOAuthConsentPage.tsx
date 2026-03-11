@@ -55,6 +55,9 @@ export function DelegateOAuthConsentPage({
   const [clientName, setClientName] = useState(clientNameParam || "此应用");
   const [loadingPost, setLoadingPost] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** After authorize success: we show "授权完成" and then redirect; if redirect is custom scheme, show close hint. */
+  const [authorizedRedirectUrl, setAuthorizedRedirectUrl] = useState<string | null>(null);
+  const [showCloseWindowHint, setShowCloseWindowHint] = useState(false);
 
   // When URL has client_name, use it
   useEffect(() => {
@@ -84,6 +87,28 @@ export function DelegateOAuthConsentPage({
 
   if (loading || !isLoggedIn) return null;
 
+  if (authorizedRedirectUrl) {
+    return (
+      <Box sx={{ p: 2, maxWidth: 480, mx: "auto" }}>
+        <Card>
+          <CardContent>
+            <Typography variant="h6" component="h1" gutterBottom color="success.main">
+              授权完成
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 1 }}>
+              正在跳转…
+            </Typography>
+            {showCloseWindowHint && (
+              <Typography variant="body2" color="text.secondary">
+                若未自动跳转，请关闭此窗口并返回客户端。
+              </Typography>
+            )}
+          </CardContent>
+        </Card>
+      </Box>
+    );
+  }
+
   const handleAllow = async () => {
     setError(null);
     setLoadingPost(true);
@@ -110,6 +135,12 @@ export function DelegateOAuthConsentPage({
       }
       const redirectUrl = data.redirect_url;
       if (redirectUrl) {
+        setAuthorizedRedirectUrl(redirectUrl);
+        setLoadingPost(false);
+        const isCustomScheme = !/^https?:\/\//i.test(redirectUrl);
+        if (isCustomScheme) {
+          setTimeout(() => setShowCloseWindowHint(true), 1200);
+        }
         window.location.href = redirectUrl;
         return;
       }

@@ -50,7 +50,7 @@ params:
   AUTH_COOKIE_MAX_AGE_SECONDS: "3600"
   AUTH_REFRESH_COOKIE_PATH: "/oauth/refresh"
   AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS: "2592000"
-  DOMAIN_HOST: "sso.casfa.shazhou.me"
+  DOMAIN_ROOT: "shazhou.me"
   DNS:
     provider: route53
     zone: "casfa.shazhou.me"
@@ -62,8 +62,11 @@ cognito:
   clientId: !Param COGNITO_CLIENT_ID
   hostedUiUrl: !Param COGNITO_HOSTED_UI_URL
 
+dev:
+  portBase: 7100
+
 domain:
-  host: !Param DOMAIN_HOST
+  subdomain: sso.casfa
   dns: !Param DNS
 
 testing:

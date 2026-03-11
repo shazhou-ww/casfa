@@ -63,8 +63,10 @@ describe("generateTemplate", () => {
         },
       },
       domain: {
+        alias: "default",
         zone: "shazhou.me",
-        host: "beta.casfa.shazhou.me",
+        host: "drive.casfa.shazhou.me",
+        subdomain: "drive.casfa",
         certificate: "arn:aws:acm:us-east-1:123456789012:certificate/abc-def",
       },
     };

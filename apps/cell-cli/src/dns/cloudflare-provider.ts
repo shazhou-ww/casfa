@@ -17,7 +17,7 @@ export class CloudflareProvider implements DnsProvider {
     };
   }
 
-  generateCfnResources(): CfnFragment {
+  generateCfnResources(_config: ResolvedConfig): CfnFragment {
     return { Resources: {} };
   }
 
@@ -61,7 +61,13 @@ export class CloudflareProvider implements DnsProvider {
     console.log(`  DNS record created/updated`);
   }
 
-  async preDeployChecks(): Promise<void> {}
+  async preDeployChecks(
+    _config: ResolvedConfig,
+    _awsCli: AwsCliFn,
+    _awsEnv: Record<string, string | undefined>,
+    _stackExists: boolean,
+    _cellDir: string
+  ): Promise<void> {}
 
   private async findExistingCert(
     domain: string,

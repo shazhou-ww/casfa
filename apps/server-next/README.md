@@ -30,7 +30,7 @@
 - **本地测试**：`cell test` — 单元测试与 E2E。
 - **部署**：`cell deploy` — 部署 API、前端与基础设施。
 
-**生产域名**：`beta.casfa.shazhou.me`（在 `cell.yaml` 的 `domain` 中配置）。
+**生产域名**：`drive.casfa.shazhou.me`（在 `cell.yaml` 的 `domain` 中配置）。
 
 ## 环境变量（Cell 参数）
 
