@@ -260,12 +260,15 @@ export async function devboxPrepareCommand(): Promise<void> {
   writeRoutes({}, DEVBOX_ROUTES_PATH);
   console.log("Initialized", DEVBOX_ROUTES_PATH);
 
-  // 10. Write cloudflared config for tunnel run
+  // 10. Write cloudflared config for tunnel run (wildcard so all *.<devboxName>.<devRoot> hit the proxy)
   const cloudflaredConfigPath = join(DEVBOX_CONFIG_DIR, "config.yml");
+  const wildcardHostname = "*." + hostname;
   const cloudflaredConfig = [
     "tunnel: " + tunnelName,
     "credentials-file: " + credentialsPath,
     "ingress:",
+    "  - hostname: " + wildcardHostname,
+    "    service: http://127.0.0.1:" + tunnelPort,
     "  - hostname: " + hostname,
     "    service: http://127.0.0.1:" + tunnelPort,
     "  - service: http_status:404",

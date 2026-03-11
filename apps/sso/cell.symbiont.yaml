@@ -1,6 +1,6 @@
 # Symbiont instance: sso.symbiontlabs.me, Cognito mitsein-auth, Cloudflare DNS.
 # Deploy: cell deploy -i symbiont
-# Ensure .env has CLOUDFLARE_API_TOKEN for this instance when deploying.
+# Set CLOUDFLARE_API_TOKEN_SYMBIONT in .env when deploying (renamed to avoid overriding devbox prepare).
 params:
   DOMAIN_ROOT: "symbiontlabs.me"
   SUBDOMAIN: "sso"
@@ -13,3 +13,5 @@ params:
     provider: cloudflare
     zoneId: "977caaf5ca4e44095ddc837213633597"
     apiToken: !Secret CLOUDFLARE_API_TOKEN
+  # Resolve CLOUDFLARE_API_TOKEN from env CLOUDFLARE_API_TOKEN_SYMBIONT so devbox prepare is not overridden
+  CLOUDFLARE_API_TOKEN: !Env CLOUDFLARE_API_TOKEN_SYMBIONT

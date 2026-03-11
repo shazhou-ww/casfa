@@ -5,7 +5,12 @@ import react from "@vitejs/plugin-react";
 import { createServer, defineConfig, mergeConfig, type UserConfig } from "vite";
 import type { BackendEntry } from "../config/cell-yaml-schema.js";
 import { loadCellConfig } from "../config/load-cell-yaml.js";
-import { loadDevboxConfig, DEVBOX_ROUTES_PATH } from "../config/devbox-config.js";
+import { loadDevboxConfig, DEVBOX_ROUTES_PATH, getCloudflareApiToken } from "../config/devbox-config.js";
+import {
+  fetchCloudflareZonesWithId,
+  findZoneForHostname,
+  setCnameRecord,
+} from "../local/cloudflare-tunnel-dns.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import { ensureCognitoDevCallbackUrl } from "../local/cognito-dev.js";
 import { registerRoute, unregisterRoute } from "../local/devbox-routes.js";
@@ -136,13 +141,39 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
     routesPathForCleanup = devbox?.proxyRegistryPath ?? DEVBOX_ROUTES_PATH;
     registerRoute(resolved.domain.host, frontendPort, routesPathForCleanup);
     devHostRegistered = resolved.domain.host;
-    // Add this hostname to the tunnel so DNS resolves to the tunnel (uses cloudflared login, no API token)
+    const host = resolved.domain.host;
     if (devbox?.tunnelId) {
-      const { exitCode, stderr } = await exec([
-        "cloudflared", "tunnel", "route", "dns", devbox.tunnelId, resolved.domain.host,
-      ]);
-      if (exitCode !== 0 && !stderr.includes("already exists") && !stderr.includes("already registered")) {
-        console.warn("Tunnel DNS route (optional):", stderr || "cloudflared tunnel route dns failed");
+      const tunnelTarget = `${devbox.tunnelId}.cfargotunnel.com`;
+      const apiToken = getCloudflareApiToken({ devbox, envMap });
+      if (apiToken) {
+        const zones = await fetchCloudflareZonesWithId(apiToken);
+        const zone = findZoneForHostname(zones, host);
+        if (zone) {
+          const result = await setCnameRecord(apiToken, zone.id, host, tunnelTarget);
+          if (result.ok) {
+            console.log(`Tunnel DNS: CNAME ${host} -> ${tunnelTarget} (Cloudflare API)`);
+          } else {
+            console.warn("Tunnel DNS (API) failed:", result.error);
+          }
+        } else {
+          const zoneNames = zones.length ? zones.map((z) => z.name).join(", ") : "(none or token without Zone:Read)";
+          const devRoot = devbox?.devRoot ?? "?";
+          console.warn(
+            `Tunnel DNS: no zone found for ${host}. This hostname is under zone "${devRoot}" (from devbox devRoot). ` +
+              `Your Cloudflare zones: ${zoneNames}. ` +
+              `Add the zone "${devRoot}" to your Cloudflare account, or run "cell devbox prepare" and choose a devRoot that matches an existing zone.`
+          );
+        }
+      } else {
+        const { exitCode, stdout, stderr } = await exec([
+          "cloudflared", "tunnel", "route", "dns", devbox.tunnelId, host,
+        ]);
+        console.log(`Tunnel DNS: ${host} -> ${tunnelTarget} (cloudflared)`);
+        if (stdout) console.log(stdout);
+        if (stderr) console.warn(stderr);
+        if (exitCode !== 0 && !stderr.includes("already exists") && !stderr.includes("already registered")) {
+          console.warn("Tunnel DNS: cloudflared failed. Run 'cell devbox prepare' and add Cloudflare API token to create CNAME via API, or add CNAME manually in Cloudflare DNS.");
+        }
       }
     }
   }

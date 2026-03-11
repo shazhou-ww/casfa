@@ -46,6 +46,26 @@ cd apps/server-next && cell dev
 访问地址形如：`https://<subdomain>.<devboxName>.<devRoot>`（例如 `https://server-next.mymbp.shazhou.work`）。  
 查看/停止：`cell devbox status`、`cell devbox stop`；查看配置：`cell devbox info`。
 
+### 访问不了 / ERR_SSL_VERSION_OR_CIPHER_MISMATCH 时排查
+
+1. **确认 DNS 指到 tunnel**  
+   在要访问的 cell 目录至少跑过一次 `cell dev`（会为该 host 执行 `cloudflared tunnel route dns`）。然后检查：
+   ```bash
+   dig sso.casfa.mymbp.shazhou.work CNAME +short
+   ```
+   应看到 `xxx.cfargotunnel.com`。若不是，说明该 host 的 CNAME 未创建或未生效，流量没走 tunnel，就容易出现 SSL 错误。
+
+2. **确认 config 有通配符 ingress**  
+   打开 `~/.config/casfa/config.yml`，`ingress` 里应有 `*.mymbp.shazhou.work`（或你的 `*.<devboxName>.<devRoot>`）指向 `http://127.0.0.1:8443`。若只有一条 `mymbp.shazhou.work`，`sso.casfa.mymbp.shazhou.work` 不会匹配。修改后执行 `cell devbox stop` 再 `cell devbox start`。
+
+3. **Cloudflare 证书与多级子域**  
+   `sso.casfa.mymbp.shazhou.work` 是**两级**子域（`sso.casfa` 在 `mymbp.shazhou.work` 下）。Universal SSL 只覆盖根域和**一级**子域（`*.shazhou.work`），不包含两级。可选做法：
+   - **推荐**：在 Cloudflare Dashboard → SSL/TLS → 启用 **Total TLS**（若可用），会为各 hostname 自动签发证书。
+   - 或改用**一级**子域：例如 dev 根域选 `casfa-dev.shazhou.work`，cell 的 subdomain 用单段（如 `sso`），则 host 为 `sso.casfa-dev.shazhou.work`，仍在 Universal SSL 覆盖范围内（需 prepare 时选该 devRoot 并保证 tunnel DNS 指向该域）。
+
+4. **确认 proxy 与 tunnel 在跑**  
+   `cell devbox status` 应显示 proxy 和 tunnel 都在运行；`~/.config/casfa/devbox-routes.json` 里应有当前要访问的 host → 端口。
+
 ---
 
 ## 方式二：Quick Tunnel（零配置，临时链接）
