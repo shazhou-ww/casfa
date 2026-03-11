@@ -1,5 +1,6 @@
 name: casfa-next
 bucketNameSuffix: casfa-shazhou-me
+pathPrefix: "/drive"
 
 backend:
   dir: backend

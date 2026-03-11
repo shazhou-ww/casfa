@@ -1,5 +1,6 @@
 name: image-workshop
 bucketNameSuffix: casfa-shazhou-me
+pathPrefix: "/image-workshop"
 
 backend:
   dir: backend
