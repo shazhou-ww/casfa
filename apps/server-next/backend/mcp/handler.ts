@@ -1,8 +1,9 @@
 /**
  * MCP (Model Context Protocol) handler for server-next.
- * POST /api/mcp with Bearer auth; uses same root-resolver, files, branches logic as REST.
+ * POST /mcp with Bearer auth; uses same root-resolver, files, branches logic as REST.
  */
 
+import type { ToolResult } from "@casfa/cell-mcp";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -307,14 +308,19 @@ function handleResourcesRead(id: string | number, uri: string): McpResponse {
   return mcpError(id, MCP_INVALID_PARAMS, `Resource not found: ${uri}`);
 }
 
-async function handleToolsCall(
-  id: string | number,
-  name: string,
-  args: Record<string, unknown>,
+/** Tool execution: same logic as handleToolsCall but returns ToolResult for cell-mcp. */
+export async function executeTool(
   auth: NonNullable<Env["Variables"]["auth"]>,
-  deps: RootResolverDeps & { config: ServerConfig }
-): Promise<McpResponse> {
-  const _pathStr = typeof args.path === "string" ? args.path.replace(/^\/+|\/+$/g, "") : "";
+  deps: McpHandlerDeps,
+  name: string,
+  args: Record<string, unknown>
+): Promise<ToolResult> {
+  function err(message: string): ToolResult {
+    return { content: [{ type: "text", text: message }], isError: true };
+  }
+  function ok(content: ToolResult["content"]): ToolResult {
+    return { content };
+  }
 
   try {
     if (name === "branches_list") {
@@ -322,10 +328,9 @@ async function handleToolsCall(
       if (auth.type === "worker") {
         const branch = await deps.branchStore.getBranch(auth.branchId);
         if (!branch) {
-          return mcpError(id, MCP_INVALID_PARAMS, "Branch not found");
+          return err("Branch not found");
         }
-        return mcpSuccess(id, {
-          content: [
+        return ok([
             {
               type: "text" as const,
               text: JSON.stringify({
@@ -339,12 +344,10 @@ async function handleToolsCall(
                 ],
               }),
             },
-          ],
-        });
+          ]);
       }
       const branches = await deps.branchStore.listBranches(realmId);
-      return mcpSuccess(id, {
-        content: [
+      return ok([
           {
             type: "text" as const,
             text: JSON.stringify({
@@ -355,16 +358,15 @@ async function handleToolsCall(
                 expiresAt: b.expiresAt,
               })),
             }),
-          },
-        ],
-      });
+            },
+          ]);
     }
 
     if (name === "branch_create") {
       const mountPath =
         typeof args.mountPath === "string" ? args.mountPath.trim().replace(/^\/+|\/+$/g, "") : "";
       if (!mountPath) {
-        return mcpError(id, MCP_INVALID_PARAMS, "mountPath required");
+        return err("mountPath required");
       }
       const ttlSec = typeof args.ttl === "number" && args.ttl > 0 ? args.ttl : undefined;
       const ttlMs =
@@ -379,7 +381,7 @@ async function handleToolsCall(
 
       if (!parentBranchId) {
         if (!hasBranchManage(auth)) {
-          return mcpError(id, MCP_INVALID_PARAMS, "branch_manage or user required");
+          return err("branch_manage or user required");
         }
         if (auth.type === "user" || auth.type === "delegate") {
           const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
@@ -387,14 +389,10 @@ async function handleToolsCall(
         }
         const rootKey = await deps.branchStore.getRealmRoot(realmId);
         if (rootKey === null) {
-          return mcpError(
-            id,
-            MCP_INVALID_PARAMS,
-            "Realm not initialized. Open profile or realm first."
-          );
+          return err("Realm not initialized. Open profile or realm first.");
         }
         const rootRecord = await deps.branchStore.getRealmRootRecord(realmId);
-        if (!rootRecord) return mcpError(id, MCP_INVALID_PARAMS, "Realm root not found");
+        if (!rootRecord) return err("Realm root not found");
         const childRootKey = await resolvePath(deps.cas, rootKey, mountPath);
         const branchId = crypto.randomUUID();
         const now = Date.now();
@@ -409,8 +407,7 @@ async function handleToolsCall(
         if (childRootKey !== null) {
           await deps.branchStore.setBranchRoot(branchId, childRootKey);
         }
-        return mcpSuccess(id, {
-          content: [
+        return ok([
             {
               type: "text" as const,
               text: JSON.stringify({
@@ -420,24 +417,23 @@ async function handleToolsCall(
                 ...(deps.config.baseUrl && { baseUrl: deps.config.baseUrl }),
               }),
             },
-          ],
-        });
+          ]);
       }
 
       if (auth.type !== "worker" || auth.branchId !== parentBranchId) {
-        return mcpError(id, MCP_INVALID_PARAMS, "Must be worker of parent branch");
+        return err("Must be worker of parent branch");
       }
       const parentBranch = await deps.branchStore.getBranch(parentBranchId);
       if (!parentBranch) {
-        return mcpError(id, MCP_INVALID_PARAMS, "Parent branch not found");
+        return err("Parent branch not found");
       }
       const parentRootKey = await deps.branchStore.getBranchRoot(parentBranchId);
       if (parentRootKey === null) {
-        return mcpError(id, MCP_INVALID_PARAMS, "Parent branch has no root");
+        return err("Parent branch has no root");
       }
       const childRootKey = await resolvePath(deps.cas, parentRootKey, mountPath);
       if (childRootKey === null) {
-        return mcpError(id, MCP_INVALID_PARAMS, "mountPath does not resolve under parent root");
+        return err("mountPath does not resolve under parent root");
       }
       const childId = crypto.randomUUID();
       const now = Date.now();
@@ -450,8 +446,7 @@ async function handleToolsCall(
         expiresAt,
       });
       await deps.branchStore.setBranchRoot(childId, childRootKey);
-      return mcpSuccess(id, {
-        content: [
+      return ok([
           {
             type: "text" as const,
             text: JSON.stringify({
@@ -461,28 +456,25 @@ async function handleToolsCall(
               ...(deps.config.baseUrl && { baseUrl: deps.config.baseUrl }),
             }),
           },
-        ],
-      });
+      ]);
     }
 
     if (name === "branch_complete") {
       if (auth.type !== "worker") {
-        return mcpError(id, MCP_INVALID_PARAMS, "Only Worker can complete a branch");
+        return err("Only Worker can complete a branch");
       }
       try {
         const result = await completeBranch(auth.branchId, deps);
-        return mcpSuccess(id, {
-          content: [{ type: "text" as const, text: JSON.stringify(result) }],
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return mcpError(id, MCP_INVALID_PARAMS, message);
+        return ok([{ type: "text" as const, text: JSON.stringify(result) }]);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        return err(message);
       }
     }
 
     if (name === "fs_mkdir") {
       if (!hasFileWrite(auth)) {
-        return mcpError(id, MCP_INVALID_PARAMS, "file_write required");
+        return err("file_write required");
       }
       const pathStr =
         typeof args.path === "string"
@@ -491,11 +483,11 @@ async function handleToolsCall(
               .replace(/^\/+|\/+$/g, "")
           : "";
       if (!pathStr) {
-        return mcpError(id, MCP_INVALID_PARAMS, "path required");
+        return err("path required");
       }
       const rootResult = await getRootForMcpWrite(auth, deps);
       if ("error" in rootResult) {
-        return mcpError(id, MCP_INVALID_PARAMS, rootResult.error);
+        return err(rootResult.error);
       }
       const rootKey = rootResult.rootKey;
       try {
@@ -517,25 +509,23 @@ async function handleToolsCall(
         );
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
-        return mcpSuccess(id, {
-          content: [{ type: "text" as const, text: JSON.stringify({ path: pathStr }) }],
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "mkdir failed";
+        return ok([{ type: "text" as const, text: JSON.stringify({ path: pathStr }) }]);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "mkdir failed";
         if (
           message.includes("must not contain") ||
           message.includes("Parent path not found") ||
           message.includes("Not a dict")
         ) {
-          return mcpError(id, MCP_INVALID_PARAMS, message);
+          return err(message);
         }
-        throw err;
+        throw e;
       }
     }
 
     if (name === "fs_rm") {
       if (!hasFileWrite(auth)) {
-        return mcpError(id, MCP_INVALID_PARAMS, "file_write required");
+        return err("file_write required");
       }
       const pathStr =
         typeof args.path === "string"
@@ -544,11 +534,11 @@ async function handleToolsCall(
               .replace(/^\/+|\/+$/g, "")
           : "";
       if (!pathStr) {
-        return mcpError(id, MCP_INVALID_PARAMS, "path required");
+        return err("path required");
       }
       const rootResult = await getRootForMcpWrite(auth, deps);
       if ("error" in rootResult) {
-        return mcpError(id, MCP_INVALID_PARAMS, rootResult.error);
+        return err(rootResult.error);
       }
       const rootKey = rootResult.rootKey;
       try {
@@ -559,29 +549,27 @@ async function handleToolsCall(
         const newRootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, pathStr, onNodePut);
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
-        return mcpSuccess(id, {
-          content: [{ type: "text" as const, text: JSON.stringify({ path: pathStr }) }],
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "fs_rm failed";
+        return ok([{ type: "text" as const, text: JSON.stringify({ path: pathStr }) }]);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "fs_rm failed";
         if (
           message.includes("must not contain") ||
           message.includes("not found") ||
           message.includes("Parent path")
         ) {
-          return mcpError(id, MCP_INVALID_PARAMS, message);
+          return err(message);
         }
-        throw err;
+        throw e;
       }
     }
 
     if (name === "fs_mv") {
       if (!hasFileWrite(auth)) {
-        return mcpError(id, MCP_INVALID_PARAMS, "file_write required");
+        return err("file_write required");
       }
       const rootResult = await getRootForMcpWrite(auth, deps);
       if ("error" in rootResult) {
-        return mcpError(id, MCP_INVALID_PARAMS, rootResult.error);
+        return err(rootResult.error);
       }
       const rootKey = rootResult.rootKey;
       const fromStr =
@@ -597,12 +585,12 @@ async function handleToolsCall(
               .replace(/^\/+|\/+$/g, "")
           : "";
       if (!fromStr || !toStr) {
-        return mcpError(id, MCP_INVALID_PARAMS, "from and to required");
+        return err("from and to required");
       }
       try {
         const nodeKey = await resolvePath(deps.cas, rootKey, fromStr);
         if (nodeKey === null) {
-          return mcpError(id, MCP_INVALID_PARAMS, "from path not found");
+          return err("from path not found");
         }
         const realmId = getRealmId(auth);
         const onNodePut = deps.recordNewKey
@@ -619,29 +607,27 @@ async function handleToolsCall(
         );
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
-        return mcpSuccess(id, {
-          content: [{ type: "text" as const, text: JSON.stringify({ from: fromStr, to: toStr }) }],
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "fs_mv failed";
+        return ok([{ type: "text" as const, text: JSON.stringify({ from: fromStr, to: toStr }) }]);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "fs_mv failed";
         if (
           message.includes("must not contain") ||
           message.includes("Parent path not found") ||
           message.includes("Not a dict")
         ) {
-          return mcpError(id, MCP_INVALID_PARAMS, message);
+          return err(message);
         }
-        throw err;
+        throw e;
       }
     }
 
     if (name === "fs_cp") {
       if (!hasFileWrite(auth)) {
-        return mcpError(id, MCP_INVALID_PARAMS, "file_write required");
+        return err("file_write required");
       }
       const rootResult = await getRootForMcpWrite(auth, deps);
       if ("error" in rootResult) {
-        return mcpError(id, MCP_INVALID_PARAMS, rootResult.error);
+        return err(rootResult.error);
       }
       const rootKey = rootResult.rootKey;
       const fromStr =
@@ -657,12 +643,12 @@ async function handleToolsCall(
               .replace(/^\/+|\/+$/g, "")
           : "";
       if (!fromStr || !toStr) {
-        return mcpError(id, MCP_INVALID_PARAMS, "from and to required");
+        return err("from and to required");
       }
       try {
         const nodeKey = await resolvePath(deps.cas, rootKey, fromStr);
         if (nodeKey === null) {
-          return mcpError(id, MCP_INVALID_PARAMS, "from path not found");
+          return err("from path not found");
         }
         const realmId = getRealmId(auth);
         const onNodePut = deps.recordNewKey
@@ -678,25 +664,23 @@ async function handleToolsCall(
         );
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
-        return mcpSuccess(id, {
-          content: [{ type: "text" as const, text: JSON.stringify({ from: fromStr, to: toStr }) }],
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "fs_cp failed";
+        return ok([{ type: "text" as const, text: JSON.stringify({ from: fromStr, to: toStr }) }]);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "fs_cp failed";
         if (
           message.includes("must not contain") ||
           message.includes("Parent path not found") ||
           message.includes("Not a dict")
         ) {
-          return mcpError(id, MCP_INVALID_PARAMS, message);
+          return err(message);
         }
-        throw err;
+        throw e;
       }
     }
 
     if (name === "fs_write") {
       if (!hasFileWrite(auth)) {
-        return mcpError(id, MCP_INVALID_PARAMS, "file_write required");
+        return err("file_write required");
       }
       const pathStr =
         typeof args.path === "string"
@@ -705,7 +689,7 @@ async function handleToolsCall(
               .replace(/^\/+|\/+$/g, "")
           : "";
       if (!pathStr) {
-        return mcpError(id, MCP_INVALID_PARAMS, "path required");
+        return err("path required");
       }
       const content = typeof args.content === "string" ? args.content : "";
       const contentType =
@@ -716,11 +700,11 @@ async function handleToolsCall(
       const data = prependUtf8BomIfText(contentType, bytes);
       const MAX_BYTES = 4 * 1024 * 1024;
       if (data.length > MAX_BYTES) {
-        return mcpError(id, MCP_INVALID_PARAMS, `Content too large (max ${MAX_BYTES} bytes)`);
+        return err(`Content too large (max ${MAX_BYTES} bytes)`);
       }
       const rootResult = await getRootForMcpWrite(auth, deps);
       if ("error" in rootResult) {
-        return mcpError(id, MCP_INVALID_PARAMS, rootResult.error);
+        return err(rootResult.error);
       }
       const rootKey = rootResult.rootKey;
       try {
@@ -745,26 +729,24 @@ async function handleToolsCall(
         );
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
-        return mcpSuccess(id, {
-          content: [{ type: "text" as const, text: JSON.stringify({ path: pathStr }) }],
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "fs_write failed";
+        return ok([{ type: "text" as const, text: JSON.stringify({ path: pathStr }) }]);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "fs_write failed";
         if (
           message.includes("must not contain") ||
           message.includes("Path must not be empty") ||
           message.includes("Parent path not found") ||
           message.includes("Not a dict")
         ) {
-          return mcpError(id, MCP_INVALID_PARAMS, message);
+          return err(message);
         }
-        throw err;
+        throw e;
       }
     }
 
     // fs_ls, fs_stat, fs_read
     if (!hasFileRead(auth)) {
-      return mcpError(id, MCP_INVALID_PARAMS, "file_read required");
+      return err("file_read required");
     }
     if (auth.type === "user" || auth.type === "delegate") {
       const realmId = getRealmId(auth);
@@ -780,33 +762,29 @@ async function handleToolsCall(
     const rootKey = await getCurrentRoot(auth, deps);
     if (rootKey === null) {
       if (auth.type === "worker") {
-        if (pathStr !== "") return mcpError(id, MCP_INVALID_PARAMS, "Path not found");
+        if (pathStr !== "") return err("Path not found");
         if (name === "fs_ls") {
-          return mcpSuccess(id, {
-            content: [{ type: "text" as const, text: JSON.stringify({ entries: [] }) }],
-          });
+          return ok([{ type: "text" as const, text: JSON.stringify({ entries: [] }) }]);
         }
         if (name === "fs_stat") {
-          return mcpSuccess(id, {
-            content: [{ type: "text" as const, text: JSON.stringify({ kind: "directory" }) }],
-          });
+          return ok([{ type: "text" as const, text: JSON.stringify({ kind: "directory" }) }]);
         }
-        return mcpError(id, MCP_INVALID_PARAMS, "Path not found");
+        return err("Path not found");
       }
-      return mcpError(id, MCP_INVALID_PARAMS, "Realm or branch root not found");
+      return err("Realm or branch root not found");
     }
     const nodeKey = await resolvePath(deps.cas, rootKey, pathStr);
     if (nodeKey === null) {
-      return mcpError(id, MCP_INVALID_PARAMS, "Path not found");
+      return err("Path not found");
     }
     const node = await getNodeDecoded(deps.cas, nodeKey);
     if (!node) {
-      return mcpError(id, MCP_INVALID_PARAMS, "Node not found");
+      return err("Node not found");
     }
 
     if (name === "fs_ls") {
       if (node.kind !== "dict") {
-        return mcpError(id, MCP_INVALID_PARAMS, "Not a directory");
+        return err("Not a directory");
       }
       const names = node.childNames ?? [];
       const children = node.children ?? [];
@@ -819,54 +797,46 @@ async function handleToolsCall(
         const size = childNode?.kind === "file" ? childNode.fileInfo?.fileSize : undefined;
         entries.push({ name: childName, kind, ...(size !== undefined && { size }) });
       }
-      return mcpSuccess(id, {
-        content: [{ type: "text" as const, text: JSON.stringify({ entries }) }],
-      });
+      return ok([{ type: "text" as const, text: JSON.stringify({ entries }) }]);
     }
 
     if (name === "fs_stat") {
       if (node.kind === "file") {
-        return mcpSuccess(id, {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                kind: "file",
-                size: node.fileInfo?.fileSize ?? 0,
-                contentType: node.fileInfo?.contentType ?? "application/octet-stream",
-              }),
-            },
-          ],
-        });
+        return ok([
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              kind: "file",
+              size: node.fileInfo?.fileSize ?? 0,
+              contentType: node.fileInfo?.contentType ?? "application/octet-stream",
+            }),
+          },
+        ]);
       }
-      return mcpSuccess(id, {
-        content: [{ type: "text" as const, text: JSON.stringify({ kind: "directory" }) }],
-      });
+      return ok([{ type: "text" as const, text: JSON.stringify({ kind: "directory" }) }]);
     }
 
     if (name === "fs_read") {
       if (node.kind !== "file") {
-        return mcpError(id, MCP_INVALID_PARAMS, "Not a file");
+        return err("Not a file");
       }
       const data = node.data ?? new Uint8Array(0);
       const text = new TextDecoder().decode(data);
-      return mcpSuccess(id, {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({
-              content: text,
-              contentType: node.fileInfo?.contentType ?? "application/octet-stream",
-            }),
-          },
-        ],
-      });
+      return ok([
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            content: text,
+            contentType: node.fileInfo?.contentType ?? "application/octet-stream",
+          }),
+        },
+      ]);
     }
 
-    return mcpError(id, MCP_METHOD_NOT_FOUND, `Unknown tool: ${name}`);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Tool call failed";
-    return mcpError(id, MCP_INVALID_PARAMS, message);
+    return err(`Unknown tool: ${name}`);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Tool call failed";
+    return err(message);
   }
 }
 
@@ -943,7 +913,12 @@ export function createMcpHandler(deps: McpHandlerDeps) {
         if (typeof name !== "string" || !name) {
           response = mcpError(request.id, MCP_INVALID_PARAMS, "tools/call requires name");
         } else {
-          response = await handleToolsCall(request.id, name, args, auth, deps);
+          const result = await executeTool(auth, deps, name, args ?? {});
+          if (result.isError) {
+            response = mcpError(request.id, MCP_INVALID_PARAMS, result.content[0]?.text ?? "Tool error");
+          } else {
+            response = mcpSuccess(request.id, { content: result.content });
+          }
         }
         break;
       }

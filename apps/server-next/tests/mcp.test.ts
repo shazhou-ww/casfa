@@ -22,7 +22,7 @@ describe("MCP", () => {
     const res = await ctx.helpers.mcpRequest(token, "initialize");
     expect(res.status).toBe(200);
     const data = (await res.json()) as {
-      result?: { protocolVersion?: string; capabilities?: unknown };
+      result?: { protocolVersion?: string; capabilities?: unknown; serverInfo?: unknown };
     };
     expect(data.result?.protocolVersion).toBeDefined();
     expect(data.result?.capabilities).toBeDefined();

@@ -130,17 +130,26 @@ function createHelpers(url: string): TestHelpers {
   };
 
   const mcpRequest = async (token: string, method: string, params?: unknown): Promise<Response> => {
+    let bodyParams = params;
+    if (method === "initialize" && params === undefined) {
+      bodyParams = {
+        protocolVersion: "2025-03-26",
+        capabilities: {},
+        clientInfo: { name: "e2e-test", version: "0.1.0" },
+      };
+    }
     return fetch(`${url}/mcp`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
         method,
-        params,
+        params: bodyParams,
       }),
     });
   };

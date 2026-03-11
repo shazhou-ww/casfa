@@ -27,6 +27,7 @@
     "@casfa/cell-delegates-server": "workspace:*",
     "@casfa/cell-delegates-webui": "workspace:*",
     "@casfa/cell-cognito-server": "workspace:*",
+    "@casfa/cell-mcp": "workspace:*",
     "@casfa/core": "workspace:*",
     "@casfa/storage-fs": "workspace:*",
     "@casfa/storage-memory": "workspace:*",
@@ -41,6 +42,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.0",
+    "zod": "^4.3.6",
     "zustand": "^4.5.0"
   },
   "devDependencies": {
