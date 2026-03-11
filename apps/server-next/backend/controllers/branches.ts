@@ -9,6 +9,7 @@ import type { RootResolverDeps } from "../services/root-resolver.ts";
 import { ensureEmptyRoot, resolvePath } from "../services/root-resolver.ts";
 import type { Branch } from "../types/branch.ts";
 import type { Env } from "../types.ts";
+import { encodeCrockfordBase32 } from "../utils/crockford-base32.ts";
 
 function base64urlEncode(s: string): string {
   const bytes = new TextEncoder().encode(s);
@@ -32,8 +33,31 @@ async function parseBody<T>(c: Context<Env>): Promise<T> {
 }
 
 export function createBranchesController(deps: BranchesControllerDeps) {
-  const maxTtlMs = deps.config.auth.maxBranchTtlMs ?? 3600_000;
-  const defaultTtlMs = 3600_000;
+  const maxTtlMs = deps.config.auth.maxBranchTtlMs ?? 600_000;
+  const defaultTtlMs = 600_000;
+
+  function generateVerification(expiresAt: number): string {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return encodeCrockfordBase32(bytes);
+  }
+
+  function buildCreateResponse(
+    branchId: string,
+    verification: string,
+    expiresAt: number
+  ): Record<string, unknown> {
+    const body: Record<string, unknown> = {
+      branchId,
+      accessToken: base64urlEncode(branchId),
+      expiresAt,
+    };
+    const base = deps.config.baseUrl?.replace(/\/$/, "");
+    if (base) {
+      body.accessUrlPrefix = `${base}/branch/${branchId}/${verification}`;
+    }
+    return body;
+  }
 
   return {
     async create(c: Context<Env>) {
@@ -94,39 +118,35 @@ export function createBranchesController(deps: BranchesControllerDeps) {
             const branchId = crypto.randomUUID();
             const now = Date.now();
             const expiresAt = now + ttlMs;
+            const verification = generateVerification(expiresAt);
             await deps.branchStore.insertBranch({
               branchId,
               realmId,
               parentId: rootRecord.branchId,
               mountPath,
               expiresAt,
+              accessVerification: { value: verification, expiresAt },
             });
             return c.json(
-              {
-                branchId,
-                accessToken: base64urlEncode(branchId),
-                expiresAt,
-              },
+              buildCreateResponse(branchId, verification, expiresAt),
               201
             );
           }
           const branchId = crypto.randomUUID();
           const now = Date.now();
           const expiresAt = now + ttlMs;
+          const verification = generateVerification(expiresAt);
           await deps.branchStore.insertBranch({
             branchId,
             realmId,
             parentId: rootRecord.branchId,
             mountPath,
             expiresAt,
+            accessVerification: { value: verification, expiresAt },
           });
           await deps.branchStore.setBranchRoot(branchId, childRootKey);
           return c.json(
-            {
-              branchId,
-              accessToken: base64urlEncode(branchId),
-              expiresAt,
-            },
+            buildCreateResponse(branchId, verification, expiresAt),
             201
           );
         }
@@ -147,39 +167,35 @@ export function createBranchesController(deps: BranchesControllerDeps) {
           const childId = crypto.randomUUID();
           const now = Date.now();
           const expiresAt = now + ttlMs;
+          const verification = generateVerification(expiresAt);
           await deps.branchStore.insertBranch({
             branchId: childId,
             realmId: parentBranch.realmId,
             parentId: parentBranchId,
             mountPath,
             expiresAt,
+            accessVerification: { value: verification, expiresAt },
           });
           return c.json(
-            {
-              branchId: childId,
-              accessToken: base64urlEncode(childId),
-              expiresAt,
-            },
+            buildCreateResponse(childId, verification, expiresAt),
             201
           );
         }
         const childId = crypto.randomUUID();
         const now = Date.now();
         const expiresAt = now + ttlMs;
+        const verification = generateVerification(expiresAt);
         await deps.branchStore.insertBranch({
           branchId: childId,
           realmId: parentBranch.realmId,
           parentId: parentBranchId,
           mountPath,
           expiresAt,
+          accessVerification: { value: verification, expiresAt },
         });
         await deps.branchStore.setBranchRoot(childId, childRootKey);
         return c.json(
-          {
-            branchId: childId,
-            accessToken: base64urlEncode(childId),
-            expiresAt,
-          },
+          buildCreateResponse(childId, verification, expiresAt),
           201
         );
       } catch (err) {
