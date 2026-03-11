@@ -1,0 +1,5 @@
+cells:
+  - sso
+  - agent
+domain:
+  host: casfa.shazhou.me
