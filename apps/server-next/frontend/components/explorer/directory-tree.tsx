@@ -12,6 +12,7 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  LinearProgress,
   List,
   ListItemButton,
   ListItemIcon,
@@ -37,6 +38,12 @@ import {
   revokeFileBlobUrl,
   uploadFile,
 } from "../../lib/fs-api";
+import {
+  collectFromDrop,
+  collectFromFileList,
+  runUploadWithProgress,
+  validateUploadPlan,
+} from "../../lib/folder-upload";
 import type { FsEntry } from "../../types/api";
 
 type DirectoryTreeProps = {
@@ -87,10 +94,15 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [moveCopyLoading, setMoveCopyLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const inputFolderRef = useRef<HTMLInputElement>(null);
+  const cancelUploadRef = useRef(false);
+  const [uploadProgress, setUploadProgress] = useState<{ total: number; done: number } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const dragCountRef = useRef(0);
 
+  const supportsFolder =
+    typeof document !== "undefined" && "webkitdirectory" in document.createElement("input");
   const pathParts = formatPath(currentPath);
 
   const loadEntries = useCallback(() => {
@@ -334,6 +346,87 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
     [doUploadFiles]
   );
 
+  const handleFolderSelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      const entries = collectFromFileList(files ?? []);
+      if (entries.length === 0) {
+        if (files && files.length >= 1) {
+          const first = files[0];
+          const rel = (first as File & { webkitRelativePath?: string }).webkitRelativePath;
+          const folderName = rel ? rel.split("/").filter(Boolean)[0] : undefined;
+          if (folderName) {
+            try {
+              await createFolder(currentPath || "/", folderName);
+              setRefreshKey((k) => k + 1);
+              setSnackbar({ message: `已创建文件夹 ${folderName}`, severity: "success" });
+            } catch (err) {
+              setSnackbar({
+                message: err instanceof Error ? err.message : "创建文件夹失败",
+                severity: "error",
+              });
+            }
+          } else {
+            setSnackbar({ message: "未选择文件", severity: "error" });
+          }
+        } else {
+          setSnackbar({ message: "未选择文件", severity: "error" });
+        }
+        e.target.value = "";
+        return;
+      }
+      if (entries.some((entry) => entry.relativePath.includes("/"))) {
+        const validation = validateUploadPlan(entries);
+        if (!validation.ok) {
+          setSnackbar({ message: validation.message, severity: "error" });
+          e.target.value = "";
+          return;
+        }
+        cancelUploadRef.current = false;
+        setUploadProgress({ total: entries.length, done: 0 });
+        setUploading(true);
+        const basePath = (currentPath || "/").replace(/^\/+|\/+$/g, "");
+        try {
+          const result = await runUploadWithProgress(
+            entries,
+            basePath,
+            { createFolder, uploadFile },
+            {
+              onProgress: (done, total) => setUploadProgress({ total, done }),
+              getCancelled: () => cancelUploadRef.current,
+            }
+          );
+          setUploadProgress(null);
+          setUploading(false);
+          setRefreshKey((k) => k + 1);
+          if (result.success > 0) {
+            setSnackbar({
+              message:
+                result.failed > 0
+                  ? `已上传 ${result.success} 个，${result.failed} 个失败`
+                  : result.success === 1
+                    ? "已上传"
+                    : `已上传 ${result.success} 个文件`,
+              severity: result.failed > 0 ? "error" : "success",
+            });
+          } else if (result.errors.length) {
+            setSnackbar({
+              message: result.errors[0] ?? "上传失败",
+              severity: "error",
+            });
+          }
+        } finally {
+          setUploadProgress(null);
+          setUploading(false);
+        }
+      } else {
+        await doUploadFiles(Array.from(files));
+      }
+      e.target.value = "";
+    },
+    [currentPath, doUploadFiles]
+  );
+
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     dragCountRef.current += 1;
@@ -356,10 +449,64 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
       setDragOver(false);
       dragCountRef.current = 0;
       if (uploading) return;
+
+      const folderEntries = await collectFromDrop(e.dataTransfer);
+
+      if (folderEntries !== null && folderEntries.length > 0) {
+        const validation = validateUploadPlan(folderEntries);
+        if (!validation.ok) {
+          setSnackbar({ message: validation.message, severity: "error" });
+          return;
+        }
+        cancelUploadRef.current = false;
+        setUploadProgress({ total: folderEntries.length, done: 0 });
+        setUploading(true);
+        const basePath = (currentPath || "/").replace(/^\/+|\/+$/g, "");
+        try {
+          const result = await runUploadWithProgress(
+            folderEntries,
+            basePath,
+            { createFolder, uploadFile },
+            {
+              onProgress: (done, total) => setUploadProgress({ total, done }),
+              getCancelled: () => cancelUploadRef.current,
+            }
+          );
+          setUploadProgress(null);
+          setUploading(false);
+          setRefreshKey((k) => k + 1);
+          if (result.success > 0) {
+            setSnackbar({
+              message:
+                result.failed > 0
+                  ? `已上传 ${result.success} 个，${result.failed} 个失败`
+                  : result.success === 1
+                    ? "已上传"
+                    : `已上传 ${result.success} 个文件`,
+              severity: result.failed > 0 ? "error" : "success",
+            });
+          } else if (result.errors.length) {
+            setSnackbar({
+              message: result.errors[0] ?? "上传失败",
+              severity: "error",
+            });
+          }
+        } finally {
+          setUploadProgress(null);
+          setUploading(false);
+        }
+        return;
+      }
+
+      if (folderEntries !== null && folderEntries.length === 0) {
+        setSnackbar({ message: "未选择文件", severity: "error" });
+        return;
+      }
+
       const files = e.dataTransfer?.files;
       if (files?.length) await doUploadFiles(files);
     },
-    [doUploadFiles, uploading]
+    [currentPath, doUploadFiles, uploading]
   );
 
   return (
@@ -410,7 +557,9 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
         <Button
           size="small"
           startIcon={<CloudUploadIcon />}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() =>
+            supportsFolder ? inputFolderRef.current?.click() : fileInputRef.current?.click()
+          }
           disabled={uploading}
           sx={{ ml: 1 }}
           aria-label="上传"
@@ -424,6 +573,15 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
           style={{ display: "none" }}
           onChange={handleFileSelect}
         />
+        <input
+          type="file"
+          ref={inputFolderRef}
+          // @ts-expect-error webkitdirectory is not in React's HTMLInputElement type
+          webkitdirectory=""
+          multiple
+          style={{ display: "none" }}
+          onChange={handleFolderSelect}
+        />
         <Button
           size="small"
           startIcon={<CreateNewFolderIcon />}
@@ -434,6 +592,42 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
           新建文件夹
         </Button>
       </Toolbar>
+
+      {/* Upload progress bar and cancel */}
+      {uploadProgress !== null && uploadProgress.done < uploadProgress.total && (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            px: 1.5,
+            py: 0.75,
+            borderBottom: 1,
+            borderColor: "divider",
+          }}
+        >
+          <LinearProgress
+            variant="determinate"
+            value={
+              uploadProgress.total > 0
+                ? (uploadProgress.done / uploadProgress.total) * 100
+                : 0
+            }
+            sx={{ flex: 1 }}
+          />
+          <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+            正在上传 {uploadProgress.done}/{uploadProgress.total}
+          </Typography>
+          <Button
+            size="small"
+            onClick={() => {
+              cancelUploadRef.current = true;
+            }}
+          >
+            取消
+          </Button>
+        </Box>
+      )}
 
       <Dialog open={createDialogOpen} onClose={handleCloseCreateDialog} maxWidth="xs" fullWidth>
         <DialogTitle>新建文件夹</DialogTitle>
