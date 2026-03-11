@@ -23,8 +23,7 @@ The branch must be created with a non-existent mountPath so it starts with a nul
 ## Parameters
 
 **Input**
-- **casfaBaseUrl** (required): Casfa server base URL (use `baseUrl` from `branch_create`).
-- **branchAccessToken** (required): Branch access token (use `accessToken` from `branch_create`). The branch must have been created with a non-existent mountPath (null root).
+- **casfaBranchUrl** (required): Casfa branch root URL (use `accessUrlPrefix` from `branch_create`). Single URL for branch access; no token needed.
 - **prompt** (required): Text description of the desired image.
 - **width** / **height** (optional): Output dimensions in pixels (64–2048, default 1024).
 - **seed** (optional): Seed for reproducible results.

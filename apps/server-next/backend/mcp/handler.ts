@@ -130,7 +130,7 @@ const MCP_TOOLS = [
   {
     name: "branch_create",
     description:
-      "Create a branch. Without parentBranchId creates under realm root (requires branch_manage). With parentBranchId creates sub-branch (Worker only, parent must be own branch). If mountPath does not exist, the new branch starts with a null root (no root node); use this for image-workshop flux_image so the image becomes the branch root. Returns branchId, accessToken, expiresAt; when CELL_BASE_URL is configured also returns baseUrl for use as casfaBaseUrl in image-workshop flux_image.",
+      "Create a branch. Without parentBranchId creates under realm root (requires branch_manage). With parentBranchId creates sub-branch (Worker only, parent must be own branch). If mountPath does not exist, the new branch starts with a null root (no root node); use this for image-workshop flux_image so the image becomes the branch root. Returns branchId, accessToken, expiresAt, and accessUrlPrefix (single URL for branch-scoped requests; use as casfaBranchUrl in flux_image, no token needed).",
     inputSchema: {
       type: "object" as const,
       properties: {

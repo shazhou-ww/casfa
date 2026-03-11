@@ -40,8 +40,7 @@ bun run deploy
 ## Tool: `flux_image`
 
 - **入参**
-  - `casfaBaseUrl`（必填）：Casfa server 基地址，用 `branch_create` 返回的 `baseUrl`。
-  - `branchAccessToken`（必填）：branch 的 access token，用 `branch_create` 返回的 `accessToken`。branch 需用不存在的 mountPath 创建（null 根）。
+  - `casfaBranchUrl`（必填）：Casfa branch 根 URL，用 `branch_create` 返回的 `accessUrlPrefix`，一条 URL 即可访问该 branch，无需再传 token。
   - `prompt`（必填）：FLUX 文生图提示词。
   - 可选：`width`、`height`、`seed`、`safety_tolerance`、`output_format`。
 
