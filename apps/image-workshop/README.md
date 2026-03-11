@@ -40,15 +40,22 @@ bun run deploy
 ## Tool: `flux_image`
 
 - **入参**
-  - `casfaBaseUrl`（必填）：Casfa server 基地址，如 `https://beta.casfa.shazhou.me` 或 `http://localhost:7120`。
-  - `branchAccessToken`（必填）：Casfa branch 的 access token（Bearer）。
-  - `filename`（必填）：保存到 branch 的文件名。
+  - `casfaBaseUrl`（必填）：Casfa server 基地址，用 `branch_create` 返回的 `baseUrl`。
+  - `branchAccessToken`（必填）：branch 的 access token，用 `branch_create` 返回的 `accessToken`。branch 需用不存在的 mountPath 创建（null 根）。
   - `prompt`（必填）：FLUX 文生图提示词。
   - 可选：`width`、`height`、`seed`、`safety_tolerance`、`output_format`。
 
+- **出参（成功）**
+  - `success`: `true`
+  - `completed`: 被合并的 branchId（图片出现在该 branch 的 mountPath 下）。
+  - `key`: 生成图片的 CAS 节点 key。
+
+- **出参（失败）**
+  - `success`: `false`，`error`: 错误信息。
+
 - **流程**
   1. 使用 BFL FLUX API 生成图片。
-  2. 使用 `casfaBaseUrl` + `branchAccessToken` 将图片上传到 Casfa branch 并 complete。
+  2. 将图片写入 branch 根（PUT /api/realm/me/root），再 complete branch。
 
 ## 工程结构
 

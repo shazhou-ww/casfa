@@ -165,4 +165,43 @@ describe("Branches / Worker", () => {
     const listData = (await listRes.json()) as { entries?: { name: string }[] };
     expect(listData.entries?.some((e) => e.name === "parentDir")).toBe(true);
   });
+
+  it("branch with null root: PUT /api/realm/me/root sets root to file, complete merges file at mountPath", async () => {
+    const token = await ctx.helpers.createUserToken(realmId);
+    await ctx.helpers.authRequest(token, "POST", `/api/realm/${realmId}/fs/mkdir`, {
+      path: "img",
+    });
+    const res = await ctx.helpers.authRequest(token, "POST", `/api/realm/${realmId}/branches`, {
+      mountPath: "img/generated",
+    });
+    expect(res.status).toBe(201);
+    const { accessToken: workerToken, branchId } = (await res.json()) as {
+      accessToken: string;
+      branchId: string;
+    };
+    const putRootRes = await fetch(`${ctx.baseUrl}/api/realm/me/root`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${workerToken}`,
+        "Content-Type": "image/png",
+      },
+      body: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    });
+    expect(putRootRes.status).toBe(201);
+    const completeRes = await ctx.helpers.authRequest(
+      workerToken,
+      "POST",
+      "/api/realm/me/branches/me/complete"
+    );
+    expect(completeRes.status).toBe(200);
+    const getRes = await ctx.helpers.authRequest(
+      token,
+      "GET",
+      `/api/realm/${realmId}/files/img/generated?meta=1`
+    );
+    expect(getRes.status).toBe(200);
+    const meta = (await getRes.json()) as { kind?: string; contentType?: string };
+    expect(meta.kind).toBe("file");
+    expect(meta.contentType).toBe("image/png");
+  });
 });

@@ -61,6 +61,45 @@ async function ensureRootForUserOrDelegate(
   }
 }
 
+/**
+ * Set branch root to a single file (worker only). Used when branch was created with a
+ * non-existent mountPath (null root); the uploaded content becomes the entire root node.
+ */
+async function setRootAsFile(
+  auth: NonNullable<Env["Variables"]["auth"]>,
+  deps: FilesControllerDeps,
+  c: Context<Env>
+): Promise<Response> {
+  if (auth.type !== "worker") {
+    return c.json({ error: "FORBIDDEN", message: "Worker (branch token) required" }, 403);
+  }
+  const branch = await deps.branchStore.getBranch(auth.branchId);
+  if (!branch) {
+    return c.json({ error: "NOT_FOUND", message: "Branch not found" }, 404);
+  }
+  const MAX_BODY = 4 * 1024 * 1024;
+  const raw = await c.req.raw.arrayBuffer();
+  if (raw.byteLength > MAX_BODY) {
+    return c.json(
+      { error: "BAD_REQUEST", message: `Body too large (max ${MAX_BODY} bytes)` },
+      400
+    );
+  }
+  const data = new Uint8Array(raw);
+  const contentType =
+    c.req.header("Content-Type")?.split(";")[0]?.trim() || "application/octet-stream";
+  const encoded = await encodeFileNode(
+    { data, fileSize: data.length, contentType },
+    deps.key
+  );
+  const fileNodeKey = hashToKey(encoded.hash);
+  await deps.cas.putNode(fileNodeKey, streamFromBytes(encoded.bytes));
+  const realmId = auth.realmId;
+  deps.recordNewKey?.(realmId, fileNodeKey);
+  await deps.branchStore.setBranchRoot(auth.branchId, fileNodeKey);
+  return c.json({ path: "", key: fileNodeKey }, 201);
+}
+
 /** Root for write (upload); worker NUL -> create empty root first. */
 async function getRootForWrite(
   auth: NonNullable<Env["Variables"]["auth"]>,
@@ -86,6 +125,15 @@ async function getRootForWrite(
 
 export function createFilesController(deps: FilesControllerDeps) {
   return {
+    /** PUT /api/realm/me/root: set branch root to uploaded file (worker only). */
+    async setRootAsFile(c: Context<Env>) {
+      const auth = c.get("auth");
+      if (!auth || !hasFileWrite(auth)) {
+        return c.json({ error: "FORBIDDEN", message: "file_write required" }, 403);
+      }
+      return setRootAsFile(auth, deps, c);
+    },
+
     async list(c: Context<Env>) {
       const auth = c.get("auth");
       if (!auth || !hasFileRead(auth)) {
