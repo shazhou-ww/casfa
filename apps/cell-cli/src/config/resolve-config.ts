@@ -146,7 +146,10 @@ export function resolveConfig(
       } else if (isEnvRef(value)) {
         const envValue = envMap[value.env];
         if (envValue === undefined) {
-          if (onMissing === "placeholder") {
+          // SSO_BASE_URL optional in dev: app derives from CELL_BASE_URL when using tunnel (same subdomain layout as prod).
+          if (stage === "dev" && key === "SSO_BASE_URL") {
+            envVars[key] = "";
+          } else if (onMissing === "placeholder") {
             envVars[key] = `<${key}>`;
           } else {
             missingParams.push(`  ${key}: !Env "${value.env}" not found in env`);
