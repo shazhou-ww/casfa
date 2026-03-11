@@ -118,6 +118,10 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
   const s3Port = portBase + 4;
   const frontendPort = portBase;
 
+  // Base URL for this app: from env (tunnel mode) or localhost
+  const cellBaseUrl =
+    envMap.CELL_BASE_URL?.trim() || `http://localhost:${frontendPort}`;
+
   // DynamoDB
   if (resolved.tables.length > 0) {
     if (!(await isDockerRunning())) {
@@ -261,7 +265,7 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
 
   // Cognito: ensure dev callback URL is registered (Cognito redirects through Vite proxy → backend)
   if (config.cognito && resolved.backend) {
-    const devCallback = `http://localhost:${frontendPort}/oauth/callback`;
+    const devCallback = `${cellBaseUrl.replace(/\/$/, "")}/oauth/callback`;
     await ensureCognitoDevCallbackUrl(config.cognito, devCallback, {
       resolvedEnvVars: resolved.envVars,
       profile: envMap.AWS_PROFILE,
@@ -281,7 +285,7 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
         ...process.env,
         ...resolved.envVars,
         PORT: String(httpPort),
-        CELL_BASE_URL: `http://localhost:${frontendPort}`,
+        CELL_BASE_URL: cellBaseUrl,
         CELL_STAGE: "dev",
       };
       console.log(`Starting backend [${name}] on port ${httpPort}...`);
