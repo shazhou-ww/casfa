@@ -191,6 +191,20 @@ export function parseCellYaml(content: string): CellConfig {
   raw.params = resolvedParams;
 
   const resolved = deepResolveRefs(raw, resolvedParams) as CellConfig;
+  if (resolved.domain && "host" in resolved.domain) {
+    throw new Error(
+      "domain.host is removed; use domain.subdomain and params.DOMAIN_ROOT (see docs/plans/2026-03-11-devbox-subdomain-design.md)."
+    );
+  }
+  if (resolved.domains) {
+    for (const [alias, d] of Object.entries(resolved.domains)) {
+      if (d && "host" in d) {
+        throw new Error(
+          `domains.${alias}.host is removed; use domain.subdomain and params.DOMAIN_ROOT.`
+        );
+      }
+    }
+  }
   return resolved;
 }
 

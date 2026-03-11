@@ -152,6 +152,20 @@ cloudflare:
 `);
     expect(config.cloudflare).toEqual({ apiToken: { secret: "CLOUDFLARE_API_TOKEN" } });
   });
+
+  test("throws when domain.host is present (use domain.subdomain + DOMAIN_ROOT)", () => {
+    expect(() =>
+      parseCellYaml(`
+name: test
+params:
+  DOMAIN_ROOT: example.com
+domain:
+  host: app.example.com
+  dns: route53
+  zone: example.com
+`)
+    ).toThrow(/domain\.host is removed/);
+  });
 });
 
 describe("parseInstanceYaml / loadInstanceOverrides / loadCellConfig", () => {

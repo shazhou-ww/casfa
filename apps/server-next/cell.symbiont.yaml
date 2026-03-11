@@ -2,7 +2,8 @@
 # Deploy: cell deploy -i symbiont
 # Ensure .env has CLOUDFLARE_API_TOKEN for this instance when deploying.
 params:
-  DOMAIN_HOST: "casfa.symbiontlabs.me"
+  DOMAIN_ROOT: "symbiontlabs.me"
+  SUBDOMAIN: "casfa"
   SSO_BASE_URL: "https://sso.symbiontlabs.me"
   COGNITO_REGION: "us-east-1"
   COGNITO_USER_POOL_ID: "us-east-1_vgPkJO4J1"

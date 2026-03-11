@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 将 server-next 从 Serverless Framework 迁移到 Cell，统一 Cognito/OAuth/delegate 到 cell 方案，路由与 image-workshop 对齐，表改名 realms/grants，域名 beta.casfa.shazhou.me。
+**Goal:** 将 server-next 从 Serverless Framework 迁移到 Cell，统一 Cognito/OAuth/delegate 到 cell 方案，路由与 image-workshop 对齐，表改名 realms/grants，域名 drive.casfa.shazhou.me。
 
 **Architecture:** 在 server-next 增加 cell.yaml，后端接入 cell-cognito + cell-oauth，BranchStore 用 realms 表（BRANCH# 前缀、branchId），Grant 用 cell-oauth createDynamoGrantStore；OAuth/Delegates/MCP 路由与 image-workshop 一致；前端用 cell-auth-client；移除 Serverless 及旧脚本。
 
@@ -18,7 +18,7 @@
 - Create: `apps/server-next/cell.yaml`
 - Modify: `apps/server-next/package.json`（添加 @casfa/cell-cognito、@casfa/cell-oauth、cell-cli 或 workspace 引用；scripts 暂不删旧，先加 cell 命令）
 
-**Step 1:** 在 `apps/server-next` 下创建 `cell.yaml`，内容按设计文档第 5 节（name: casfa-next，backend 单 entry，routes 含 /api/*、/oauth/*、/.well-known/*、/mcp，frontend，tables realms+grants，buckets blob，params，cognito，domain beta.casfa.shazhou.me）。
+**Step 1:** 在 `apps/server-next` 下创建 `cell.yaml`，内容按设计文档第 5 节（name: casfa-next，backend 单 entry，routes 含 /api/*、/oauth/*、/.well-known/*、/mcp，frontend，tables realms+grants，buckets blob，params，cognito，domain drive.casfa.shazhou.me）。
 
 **Step 2:** 在 `apps/server-next/package.json` 的 dependencies 中加入 `@casfa/cell-cognito`、`@casfa/cell-oauth`（workspace:*）；devDependencies 中确保可运行 cell（例如 `"cell": "cell"` 或通过 workspace 的 cell-cli）。根目录 `bun install --no-cache` 拉依赖。
 
@@ -233,7 +233,7 @@ git commit -m "chore(server-next): remove Serverless, use cell dev/test/deploy"
 - Modify: `apps/server-next/README.md`
 - Modify: `apps/server-next/.env.example`
 
-**Step 1:** README 中说明：本地开发为 `cell dev`，测试为 `cell test`，部署为 `cell deploy`；环境变量以 cell 的 params 为准（COGNITO_*、MOCK_JWT_SECRET、API_BASE_URL 等）；表为 realms、grants；域名 beta.casfa.shazhou.me。移除 Serverless、stage、sls 相关说明。
+**Step 1:** README 中说明：本地开发为 `cell dev`，测试为 `cell test`，部署为 `cell deploy`；环境变量以 cell 的 params 为准（COGNITO_*、MOCK_JWT_SECRET、API_BASE_URL 等）；表为 realms、grants；域名 drive.casfa.shazhou.me。移除 Serverless、stage、sls 相关说明。
 
 **Step 2:** .env.example 中列出 Cell 所需变量（PORT_BASE、COGNITO_*、MOCK_JWT_SECRET、!Secret 等），与 cell.yaml params 对齐；移除 SLS_STAGE、DYNAMODB_TABLE_DELEGATES 等。
 

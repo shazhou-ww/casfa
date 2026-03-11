@@ -6,7 +6,11 @@ import { resolve } from "node:path";
 import { PreDeployCheckError } from "../commands/deploy-checks.js";
 
 export class Route53Provider implements DnsProvider {
-  async ensureCertificate(): Promise<string | null> {
+  async ensureCertificate(
+    _domain: string,
+    _awsCli: AwsCliFn,
+    _awsEnv: Record<string, string | undefined>
+  ): Promise<string | null> {
     return null;
   }
 
@@ -33,7 +37,7 @@ export class Route53Provider implements DnsProvider {
     return { Resources: resources };
   }
 
-  async ensureDnsRecords(): Promise<void> {}
+  async ensureDnsRecords(_domain: string, _cloudfrontDomain: string): Promise<void> {}
 
   async preDeployChecks(
     config: ResolvedConfig,
