@@ -35,6 +35,16 @@ export function isLocalhost(baseUrl: string): boolean {
   }
 }
 
+/** True when baseUrl has a path segment (single-domain / platform mode). Cookie path must be '/'. */
+function isPathBasedBaseUrl(baseUrl: string): boolean {
+  try {
+    const path = new URL(baseUrl).pathname.replace(/\/$/, "").trim();
+    return path.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export function loadConfig(): SsoConfig {
   return loadConfigFromEnv(process.env as Record<string, string>);
 }
@@ -58,6 +68,10 @@ export function loadConfigFromEnv(env: Record<string, string>): SsoConfig {
           }
         })()
       : undefined);
+  const authPath = get("AUTH_COOKIE_PATH", "/");
+  const refreshPath = get("AUTH_REFRESH_COOKIE_PATH", "/oauth/refresh");
+  const usePathBasedCookie =
+    isPathBasedBaseUrl(baseUrl);
   return {
     baseUrl,
     cognito: {
@@ -69,12 +83,12 @@ export function loadConfigFromEnv(env: Record<string, string>): SsoConfig {
     cookie: {
       authCookieName,
       authCookieDomain,
-      authCookiePath: get("AUTH_COOKIE_PATH", "/"),
+      authCookiePath: usePathBasedCookie ? "/" : authPath,
       authCookieMaxAgeSeconds: get("AUTH_COOKIE_MAX_AGE_SECONDS")
         ? Number(get("AUTH_COOKIE_MAX_AGE_SECONDS"))
         : undefined,
       refreshCookieName,
-      refreshCookiePath: get("AUTH_REFRESH_COOKIE_PATH", "/oauth/refresh"),
+      refreshCookiePath: usePathBasedCookie ? "/oauth/refresh" : refreshPath,
       refreshCookieMaxAgeSeconds: get("AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS")
         ? Number(get("AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS"))
         : undefined,
