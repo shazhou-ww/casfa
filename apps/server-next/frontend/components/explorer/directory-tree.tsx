@@ -12,6 +12,7 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  LinearProgress,
   List,
   ListItemButton,
   ListItemIcon,
@@ -567,6 +568,42 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
           新建文件夹
         </Button>
       </Toolbar>
+
+      {/* Upload progress bar and cancel */}
+      {uploadProgress !== null && uploadProgress.done < uploadProgress.total && (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            px: 1.5,
+            py: 0.75,
+            borderBottom: 1,
+            borderColor: "divider",
+          }}
+        >
+          <LinearProgress
+            variant="determinate"
+            value={
+              uploadProgress.total > 0
+                ? (uploadProgress.done / uploadProgress.total) * 100
+                : 0
+            }
+            sx={{ flex: 1 }}
+          />
+          <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+            正在上传 {uploadProgress.done}/{uploadProgress.total}
+          </Typography>
+          <Button
+            size="small"
+            onClick={() => {
+              cancelUploadRef.current = true;
+            }}
+          >
+            取消
+          </Button>
+        </Box>
+      )}
 
       <Dialog open={createDialogOpen} onClose={handleCloseCreateDialog} maxWidth="xs" fullWidth>
         <DialogTitle>新建文件夹</DialogTitle>
