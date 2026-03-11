@@ -2,6 +2,8 @@
 
 已安装 `cloudflared` 的前提下，可以用两种方式把本机 `cell dev` 暴露到公网（方便手机/外网访问或 OAuth 回调）。
 
+**Platform 模式（单域 path）**：在仓库根目录存在 `stack.yaml` 时，在根目录执行 `cell dev` 可在一个进程内启动所有 cell，访问地址为 `http://localhost:8900/sso/`、`/agent/` 等。平台构建用 `cell build`，产出到 `dist/<pathPrefix>`；单 stack 部署用 `cell deploy`（需存在 `stack.yaml`）。详见 `docs/plans/2026-03-11-single-domain-path-design.md`。
+
 ## 端口说明
 
 `cell dev` 默认 `PORT_BASE=7100`：
