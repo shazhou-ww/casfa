@@ -5,7 +5,7 @@ import react from "@vitejs/plugin-react";
 import { createServer, defineConfig, mergeConfig, type UserConfig } from "vite";
 import type { BackendEntry } from "../config/cell-yaml-schema.js";
 import { loadCellConfig } from "../config/load-cell-yaml.js";
-import { loadDevboxConfig, DEVBOX_ROUTES_PATH, getCloudflareApiToken } from "../config/devbox-config.js";
+import { loadDevboxConfig, DEVBOX_ROUTES_PATH, getCloudflareApiToken, getTunnelUuid } from "../config/devbox-config.js";
 import {
   fetchCloudflareZonesWithId,
   findZoneForHostname,
@@ -143,7 +143,10 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
     devHostRegistered = resolved.domain.host;
     const host = resolved.domain.host;
     if (devbox?.tunnelId) {
-      const tunnelTarget = `${devbox.tunnelId}.cfargotunnel.com`;
+      const tunnelUuid = getTunnelUuid(devbox);
+      const tunnelTarget = tunnelUuid
+        ? `${tunnelUuid}.cfargotunnel.com`
+        : `${devbox.tunnelId}.cfargotunnel.com`;
       const apiToken = getCloudflareApiToken({ devbox, envMap });
       if (apiToken) {
         const zones = await fetchCloudflareZonesWithId(apiToken);
@@ -376,6 +379,8 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
     const proxyConfig: UserConfig = defineConfig({
       server: {
         port: frontendPort,
+        host: "0.0.0.0",
+        allowedHosts: true,
         proxy,
       },
     });
@@ -394,7 +399,7 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
           ...(Object.keys(alias).length > 0 ? { alias } : undefined),
           conditions: ["bun"],
         },
-        server: { port: frontendPort, proxy },
+        server: { port: frontendPort, host: "0.0.0.0", allowedHosts: true, proxy },
         build: { outDir: "dist", emptyOutDir: true },
       });
       finalConfig = baseFromCell;

@@ -64,7 +64,7 @@ export async function devboxStartCommand(): Promise<void> {
   proxyProc.unref();
 
   const tunnelProc = Bun.spawn(
-    ["cloudflared", "tunnel", "run", "--config", cloudflaredConfigPath],
+    ["cloudflared", "tunnel", "--config", cloudflaredConfigPath, "run"],
     {
       stdio: ["ignore", "ignore", "ignore"],
       detached: true,

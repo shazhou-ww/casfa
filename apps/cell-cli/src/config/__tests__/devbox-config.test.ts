@@ -57,7 +57,7 @@ proxyRegistryPath: /custom/routes.json
     expect(loadDevboxConfig(path)).toBeNull();
   });
 
-  test("getDevHost builds subdomain.devboxName.devRoot", () => {
+  test("getDevHost builds subdomain.devboxName.devRoot (two-level)", () => {
     const devbox = {
       devboxName: "my-mbp",
       devRoot: "example.com",
