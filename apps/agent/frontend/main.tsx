@@ -92,8 +92,8 @@ function Root() {
     connectToSW(getCsrfTokenFromCookie())
       .then((port) => {
         setSwPort(port);
-        fetchThreads();
-        fetchSettings();
+        void fetchThreads().catch(() => {});
+        void fetchSettings().catch(() => {});
       })
       .catch(() => {});
   }, [ready, setSwPort, fetchThreads, fetchSettings]);

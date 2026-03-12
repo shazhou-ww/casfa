@@ -130,4 +130,119 @@ runtimeParam: !Secret BFL_API_KEY
       fs.rmSync(tmp, { recursive: true });
     }
   });
+
+  test("accepts minimal oauth config", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-cell-"));
+    try {
+      writeCellYaml(
+        tmp,
+        `
+name: oauth-cell
+oauth:
+  enabled: true
+  role: resource_server
+  scopes:
+    - use_mcp
+`
+      );
+      const result = loadCellConfig(tmp);
+      expect(result.oauth).toEqual({
+        enabled: true,
+        role: "resource_server",
+        scopes: ["use_mcp"],
+      });
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
+    }
+  });
+
+  test("throws when oauth enabled but scopes is empty", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-cell-"));
+    try {
+      writeCellYaml(
+        tmp,
+        `
+name: oauth-cell
+oauth:
+  enabled: true
+  role: both
+  scopes: []
+`
+      );
+      expect(() => loadCellConfig(tmp)).toThrow(
+        "cell.yaml: 'oauth.scopes' must be a non-empty array of strings when oauth.enabled is true"
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
+    }
+  });
+
+  test("throws when oauth uses unsupported v1 fields", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-cell-"));
+    try {
+      writeCellYaml(
+        tmp,
+        `
+name: oauth-cell
+oauth:
+  enabled: true
+  role: authorization_server
+  scopes:
+    - use_mcp
+  issuerPath: /agent
+`
+      );
+      expect(() => loadCellConfig(tmp)).toThrow(
+        "cell.yaml: 'oauth.issuerPath' is not supported in v1; issuer path is derived from mount"
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
+    }
+  });
+
+  test("throws when oauth role is invalid", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-cell-"));
+    try {
+      writeCellYaml(
+        tmp,
+        `
+name: oauth-cell
+oauth:
+  enabled: true
+  role: invalid_role
+  scopes:
+    - use_mcp
+`
+      );
+      expect(() => loadCellConfig(tmp)).toThrow(
+        "cell.yaml: 'oauth.role' must be one of: resource_server, authorization_server, both"
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
+    }
+  });
+
+  test("throws when oauth.discovery is present in v1", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-cell-"));
+    try {
+      writeCellYaml(
+        tmp,
+        `
+name: oauth-cell
+oauth:
+  enabled: true
+  role: authorization_server
+  scopes:
+    - use_mcp
+  discovery:
+    enabled: false
+`
+      );
+      expect(() => loadCellConfig(tmp)).toThrow(
+        "cell.yaml: 'oauth.discovery' is not supported in v1; discovery is automatic for oauth-enabled cells"
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
+    }
+  });
 });

@@ -85,6 +85,14 @@ export interface TestingConfig {
   e2e?: string;
 }
 
+export type OAuthRole = "resource_server" | "authorization_server" | "both";
+
+export interface OAuthConfig {
+  enabled: boolean;
+  role: OAuthRole;
+  scopes: string[];
+}
+
 export interface CellConfig {
   name: string;
   backend?: BackendConfig;
@@ -92,6 +100,7 @@ export interface CellConfig {
   testing?: TestingConfig;
   tables?: Record<string, TableConfig>;
   buckets?: Record<string, Record<string, unknown>>;
+  oauth?: OAuthConfig;
   /** Declared required param keys; values are provided by otavia.yaml. */
   params?: string[];
 }

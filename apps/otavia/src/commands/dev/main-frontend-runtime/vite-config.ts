@@ -96,6 +96,10 @@ function isBackendRoute(pathname: string, routeRules: RouteRule[]): boolean {
   return routeRules.some((r) => matchesRule(pathname, r));
 }
 
+function isGlobalWellKnownPath(pathname: string): boolean {
+  return pathname === "/.well-known" || pathname.startsWith("/.well-known/");
+}
+
 type ConfigOptions = {
   generatedConfigPath: URL;
   packageRoot: string;
@@ -129,6 +133,11 @@ export function createMainFrontendViteConfig(options: ConfigOptions) {
           const moduleSourcePath = frontendModuleProxyMap.get(pathname);
           if (moduleSourcePath) {
             req.url = `/@fs/${toAbsoluteFsPath(moduleSourcePath, options.packageRoot)}${parsed.search}`;
+            next();
+            return;
+          }
+
+          if (isGlobalWellKnownPath(pathname)) {
             next();
             return;
           }

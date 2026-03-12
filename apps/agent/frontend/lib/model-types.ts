@@ -153,6 +153,7 @@ export type OutgoingMessage = {
   type: "action";
   id?: string;
   action: Action;
+  csrfToken?: string;
 };
 
 export type IncomingMessage = {

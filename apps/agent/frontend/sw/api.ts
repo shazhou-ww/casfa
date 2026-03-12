@@ -14,7 +14,8 @@ function getBaseUrl(): string {
   const scope = self.registration?.scope;
   if (scope) {
     const u = new URL(scope);
-    return u.origin;
+    const path = u.pathname.replace(/\/+$/, "");
+    return `${u.origin}${path === "/" ? "" : path}`;
   }
   return "";
 }
@@ -62,13 +63,13 @@ export async function listMessages(threadId: string, limit = 500): Promise<{ mes
 }
 
 export async function listSettings(): Promise<{ items: { key: string; value: unknown }[] }> {
-  const res = await apiFetch(`/api/realm/${REALM_ID}/settings`);
+  const res = await apiFetch("/api/me/settings");
   if (!res.ok) throw new Error(`listSettings: ${res.status}`);
   return res.json();
 }
 
 export async function setSetting(key: string, value: unknown): Promise<void> {
-  const res = await apiFetch(`/api/realm/${REALM_ID}/settings/${encodeURIComponent(key)}`, {
+  const res = await apiFetch(`/api/me/settings/${encodeURIComponent(key)}`, {
     method: "PUT",
     body: JSON.stringify({ value }),
   });

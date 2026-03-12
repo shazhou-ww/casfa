@@ -84,6 +84,10 @@ export function createApp(deps: AppDeps) {
     }, 200)
   );
 
+  const settingsController = createSettingsController({
+    settingsStore: deps.settingsStore,
+  });
+
   app.use("/api/me", authMiddleware);
   app.get("/api/me", (c) => {
     const auth = c.get("auth");
@@ -95,6 +99,9 @@ export function createApp(deps: AppDeps) {
       picture: auth.picture,
     }, 200);
   });
+  app.get("/api/me/settings", (c) => settingsController.list(c));
+  app.get("/api/me/settings/:key", (c) => settingsController.get(c));
+  app.put("/api/me/settings/:key", (c) => settingsController.set(c));
   app.use("/api/realm/:realmId/*", authMiddleware, realmMiddleware);
   app.use("/api/realm/:realmId", authMiddleware, realmMiddleware);
 
@@ -106,9 +113,6 @@ export function createApp(deps: AppDeps) {
     messageStore: deps.messageStore,
     threadStore: deps.threadStore,
   });
-  const settingsController = createSettingsController({
-    settingsStore: deps.settingsStore,
-  });
 
   app.get("/api/realm/:realmId/threads", (c) => threadsController.list(c));
   app.post("/api/realm/:realmId/threads", (c) => threadsController.create(c));
@@ -118,10 +122,6 @@ export function createApp(deps: AppDeps) {
 
   app.get("/api/realm/:realmId/threads/:threadId/messages", (c) => messagesController.list(c));
   app.post("/api/realm/:realmId/threads/:threadId/messages", (c) => messagesController.create(c));
-
-  app.get("/api/realm/:realmId/settings", (c) => settingsController.list(c));
-  app.get("/api/realm/:realmId/settings/:key", (c) => settingsController.get(c));
-  app.put("/api/realm/:realmId/settings/:key", (c) => settingsController.set(c));
 
   app.onError((err, c) => {
     console.error("[api] 500", c.req.method, c.req.path, err instanceof Error ? err.message : String(err));

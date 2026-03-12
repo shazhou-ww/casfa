@@ -10,6 +10,27 @@ import { getRequestBaseUrl } from "../request-url.ts";
 
 const PENDING_CLIENT_TTL_SEC = 3600; // 1 hour
 
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+export function resolveSsoBaseUrlForRequest(ssoBaseUrl: string, requestBaseUrl: string): string {
+  try {
+    const configured = new URL(ssoBaseUrl);
+    const request = new URL(requestBaseUrl);
+    const configuredPath = configured.pathname.replace(/\/+$/, "");
+    if (configured.origin === request.origin) {
+      return `${configured.origin}${configuredPath}`;
+    }
+    if (isLoopbackHost(configured.hostname) && isLoopbackHost(request.hostname)) {
+      return `${request.origin}${configuredPath}`;
+    }
+    return `${configured.origin}${configuredPath}`;
+  } catch {
+    return ssoBaseUrl.replace(/\/+$/, "");
+  }
+}
+
 export function createLoginRedirectRoutes(
   config: ServerConfig,
   deps: { pendingClientInfoStore: PendingClientInfoStore }
@@ -29,7 +50,8 @@ export function createLoginRedirectRoutes(
     if (auth) {
       return c.redirect(returnUrl);
     }
-    const url = new URL(`${ssoBaseUrl}/login`);
+    const requestScopedSsoBaseUrl = resolveSsoBaseUrlForRequest(ssoBaseUrl, baseUrl);
+    const url = new URL(`${requestScopedSsoBaseUrl}/login`);
     url.searchParams.set("return_url", returnUrl);
     return c.redirect(url.toString());
   });

@@ -17,21 +17,24 @@ export function Layout() {
   const fetchThreads = useAgentStore((s) => s.fetchThreads);
   const swPort = useAgentStore((s) => s.swPort);
 
+  const refreshFromSw = useCallback(() => {
+    void fetchSettings().catch(() => {});
+    void fetchThreads().catch(() => {});
+  }, [fetchSettings, fetchThreads]);
+
   useEffect(() => {
     if (!swPort) return;
-    fetchSettings();
-    fetchThreads();
-  }, [swPort, fetchSettings, fetchThreads]);
+    refreshFromSw();
+  }, [swPort, refreshFromSw]);
 
   useEffect(() => {
     if (!swPort) return;
     const onFocus = () => {
-      fetchSettings();
-      fetchThreads();
+      refreshFromSw();
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [swPort, fetchSettings, fetchThreads]);
+  }, [swPort, refreshFromSw]);
 
   const handleOpenMenu = useCallback((e: React.MouseEvent<HTMLElement>) => setAnchorEl(e.currentTarget), []);
   const handleCloseMenu = useCallback(() => setAnchorEl(null), []);

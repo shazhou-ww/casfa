@@ -134,7 +134,7 @@ URL 中的 `~N` 导航段 / FS `?path=` 中的 `~N` 段提供从 `nodeId` 向下
 
 | 方法 | 路径 | 描述 | 认证 |
 |------|------|------|------|
-| GET | `/.well-known/oauth-authorization-server` | OAuth 2.1 授权服务器元数据 | 无 |
+| GET | `/.well-known/oauth-authorization-server/{cellMount}` | OAuth 2.1 授权服务器元数据（path issuer） | 无 |
 | GET | `/.well-known/oauth-protected-resource` | 受保护资源元数据 | 无 |
 
 #### OAuth 2.1 授权

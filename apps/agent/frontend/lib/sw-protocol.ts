@@ -51,7 +51,10 @@ export function connectToSW(csrfToken?: string): Promise<MessagePort> {
  * Send an action to the SW over the given port.
  */
 export function send(port: MessagePort, message: OutgoingMessage): void {
-  port.postMessage(message);
+  port.postMessage({
+    ...message,
+    csrfToken: getCsrfTokenFromCookie(),
+  });
 }
 
 /**

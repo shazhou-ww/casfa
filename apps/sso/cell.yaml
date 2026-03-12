@@ -43,6 +43,12 @@ params:
   - COGNITO_CLIENT_ID
   - COGNITO_HOSTED_UI_URL
 
+oauth:
+  enabled: true
+  role: authorization_server
+  scopes:
+    - use_mcp
+
 cognito:
   region: !Param COGNITO_REGION
   userPoolId: !Param COGNITO_USER_POOL_ID
