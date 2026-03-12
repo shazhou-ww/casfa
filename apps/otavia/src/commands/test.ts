@@ -2,9 +2,31 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseDocument } from "yaml";
 import { loadOtaviaYaml } from "../config/load-otavia-yaml.js";
+import { loadCellConfig } from "../config/load-cell-yaml.js";
+import { mergeParams, resolveParams } from "../config/resolve-params.js";
+import { tablePhysicalName, bucketPhysicalName } from "../config/resource-names.js";
+import { loadEnvForCell } from "../utils/env.js";
+import {
+  isDockerRunning,
+  startDynamoDB,
+  startMinIO,
+  waitForPort,
+  stopContainer,
+} from "../local/docker.js";
+import {
+  isDynamoDBReady,
+  ensureLocalTables,
+  type LocalTableEntry,
+} from "../local/dynamodb-local.js";
+import { ensureLocalBuckets } from "../local/minio-local.js";
 
 const DEFAULT_UNIT_PATTERN = "**/__tests__/*.test.ts";
 const CELL_YAML = "cell.yaml";
+const E2E_GATEWAY_PORT = 8910;
+const E2E_DYNAMODB_PORT = 8012;
+const E2E_MINIO_PORT = 9014;
+const E2E_DYNAMODB_CONTAINER = "otavia-dynamodb-e2e";
+const E2E_MINIO_CONTAINER = "otavia-minio-e2e";
 
 interface CellYamlTesting {
   unit?: string;
@@ -107,9 +129,190 @@ export async function testUnitCommand(rootDir: string): Promise<void> {
 }
 
 /**
- * E2E test command placeholder (Task 12).
+ * E2E test command: start non-persistent Docker (DynamoDB Local + MinIO with --rm),
+ * start gateway in a subprocess with DYNAMODB_ENDPOINT and S3_ENDPOINT injected;
+ * for each cell that has testing.e2e run bun test <e2ePattern> in apps/<cellId> with
+ * env CELL_BASE_URL etc.; then stop gateway and containers.
  */
-export async function testE2eCommand(_rootDir: string): Promise<void> {
-  console.log("E2E not implemented");
-  process.exit(0);
+export async function testE2eCommand(rootDir: string): Promise<void> {
+  const root = path.resolve(rootDir);
+  const otavia = loadOtaviaYaml(root);
+  const appsDir = path.join(root, "apps");
+
+  type CellE2E = { cellId: string; cellDir: string; config: ReturnType<typeof loadCellConfig>; e2ePattern: string };
+  const e2eCells: CellE2E[] = [];
+  let hasTables = false;
+  let hasBuckets = false;
+
+  for (const cellId of otavia.cells) {
+    const cellDir = path.join(appsDir, cellId);
+    if (!fs.existsSync(cellDir)) continue;
+    let config: ReturnType<typeof loadCellConfig>;
+    try {
+      config = loadCellConfig(cellDir);
+    } catch {
+      continue;
+    }
+    if (config.tables && Object.keys(config.tables).length > 0) hasTables = true;
+    if (config.buckets && Object.keys(config.buckets).length > 0) hasBuckets = true;
+    const e2ePattern = config.testing?.e2e;
+    if (e2ePattern && typeof e2ePattern === "string") {
+      e2eCells.push({ cellId, cellDir, config, e2ePattern });
+    }
+  }
+
+  if (e2eCells.length === 0) {
+    console.log("No e2e tests configured");
+    process.exit(0);
+  }
+
+  let gatewayProc: ReturnType<typeof Bun.spawn> | null = null;
+  const needDocker = hasTables || hasBuckets;
+
+  try {
+    if (needDocker && !(await isDockerRunning())) {
+      throw new Error("Docker is not running. Start Docker to run e2e tests.");
+    }
+
+    if (hasTables) {
+      await startDynamoDB({
+        port: E2E_DYNAMODB_PORT,
+        persistent: false,
+        containerName: E2E_DYNAMODB_CONTAINER,
+      });
+      const ready = await waitForPort(E2E_DYNAMODB_PORT);
+      if (!ready) throw new Error("DynamoDB Local did not become ready in time");
+      const dynamoEndpoint = `http://localhost:${E2E_DYNAMODB_PORT}`;
+      if (!(await isDynamoDBReady(dynamoEndpoint))) {
+        throw new Error("DynamoDB endpoint not accepting requests");
+      }
+      const tablesList: LocalTableEntry[] = [];
+      for (const cellId of otavia.cells) {
+        const cellDir = path.join(appsDir, cellId);
+        if (!fs.existsSync(cellDir)) continue;
+        let config: ReturnType<typeof loadCellConfig>;
+        try {
+          config = loadCellConfig(cellDir);
+        } catch {
+          continue;
+        }
+        if (!config.tables) continue;
+        for (const [key, tableConfig] of Object.entries(config.tables)) {
+          tablesList.push({
+            tableName: tablePhysicalName(otavia.stackName, cellId, key),
+            config: tableConfig,
+          });
+        }
+      }
+      await ensureLocalTables(dynamoEndpoint, tablesList);
+    }
+
+    if (hasBuckets) {
+      await startMinIO({
+        port: E2E_MINIO_PORT,
+        containerName: E2E_MINIO_CONTAINER,
+        rm: true,
+      });
+      const ready = await waitForPort(E2E_MINIO_PORT);
+      if (!ready) throw new Error("MinIO did not become ready in time");
+      const s3Endpoint = `http://localhost:${E2E_MINIO_PORT}`;
+      const bucketNames: string[] = [];
+      for (const cellId of otavia.cells) {
+        const cellDir = path.join(appsDir, cellId);
+        if (!fs.existsSync(cellDir)) continue;
+        let config: ReturnType<typeof loadCellConfig>;
+        try {
+          config = loadCellConfig(cellDir);
+        } catch {
+          continue;
+        }
+        if (!config.buckets) continue;
+        for (const key of Object.keys(config.buckets)) {
+          bucketNames.push(bucketPhysicalName(otavia.stackName, cellId, key));
+        }
+      }
+      await ensureLocalBuckets(s3Endpoint, bucketNames);
+    }
+
+    const gatewayEnv: Record<string, string> = {
+      ...process.env,
+      OTAVIA_DEV_GATEWAY_ONLY: "1",
+      PORT: String(E2E_GATEWAY_PORT),
+    };
+    if (hasTables) gatewayEnv.DYNAMODB_ENDPOINT = `http://localhost:${E2E_DYNAMODB_PORT}`;
+    if (hasBuckets) gatewayEnv.S3_ENDPOINT = `http://localhost:${E2E_MINIO_PORT}`;
+
+    const cliPath = path.join(root, "apps", "otavia", "src", "cli.ts");
+    gatewayProc = Bun.spawn(["bun", "run", cliPath, "dev"], {
+      cwd: root,
+      env: gatewayEnv,
+      stdio: "pipe",
+    });
+
+    const gatewayReady = await waitForPort(E2E_GATEWAY_PORT);
+    if (!gatewayReady) {
+      throw new Error("Gateway did not become ready in time");
+    }
+
+    function resolvedParamsToEnv(resolved: Record<string, string | unknown>): Record<string, string> {
+      const env: Record<string, string> = {};
+      for (const [key, value] of Object.entries(resolved)) {
+        if (value === null || value === undefined) {
+          env[key] = "";
+        } else if (typeof value === "object") {
+          env[key] = JSON.stringify(value);
+        } else {
+          env[key] = String(value);
+        }
+      }
+      return env;
+    }
+
+    const failedCells: string[] = [];
+    for (const { cellId, cellDir, config, e2ePattern } of e2eCells) {
+      const merged = mergeParams(otavia.params, config.params);
+      const envMap = loadEnvForCell(root, cellId);
+      const resolved = resolveParams(merged as Record<string, unknown>, envMap, {
+        onMissingParam: "placeholder",
+      });
+      const resolvedEnv = resolvedParamsToEnv(resolved as Record<string, string | unknown>);
+      const cellEnv = {
+        ...resolvedEnv,
+        CELL_BASE_URL: `http://localhost:${E2E_GATEWAY_PORT}/${cellId}`,
+        PORT: String(E2E_GATEWAY_PORT),
+        CELL_STAGE: "test",
+      };
+      if (hasTables) cellEnv.DYNAMODB_ENDPOINT = `http://localhost:${E2E_DYNAMODB_PORT}`;
+      if (hasBuckets) cellEnv.S3_ENDPOINT = `http://localhost:${E2E_MINIO_PORT}`;
+
+      const proc = Bun.spawn(["bun", "test", e2ePattern], {
+        cwd: cellDir,
+        env: cellEnv,
+        stdio: "inherit",
+      });
+      const exitCode = await proc.exited;
+      if (exitCode !== 0) failedCells.push(cellId);
+    }
+
+    if (failedCells.length > 0) {
+      console.error(`E2E tests failed for: ${failedCells.join(", ")}`);
+      process.exit(1);
+    }
+  } finally {
+    if (gatewayProc) {
+      gatewayProc.kill();
+    }
+    if (needDocker) {
+      try {
+        await stopContainer(E2E_DYNAMODB_CONTAINER);
+      } catch {
+        // container may already be removed (--rm)
+      }
+      try {
+        await stopContainer(E2E_MINIO_CONTAINER);
+      } catch {
+        // container may already be removed (--rm)
+      }
+    }
+  }
 }

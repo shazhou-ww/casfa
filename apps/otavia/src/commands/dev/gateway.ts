@@ -175,12 +175,13 @@ export type GatewayServer = { stop: () => void };
 
 /**
  * Start the dev gateway: single Hono app mounting each cell at /<cellId>.
- * Starts Docker (DynamoDB Local + MinIO) when any cell has tables/buckets.
- * Returns the server so the caller can keep the process alive and stop on SIGINT.
+ * Starts Docker (DynamoDB Local + MinIO) when any cell has tables/buckets, unless
+ * overrides are provided (e.g. for e2e: caller already started Docker and passes endpoints).
  */
 export async function runGatewayDev(
   rootDir: string,
-  backendPort: number
+  backendPort: number,
+  overrides?: { dynamoEndpoint?: string; s3Endpoint?: string }
 ): Promise<GatewayServer> {
   const otavia = loadOtaviaYaml(rootDir);
   const cells = await discoverCells(rootDir, otavia, backendPort);
@@ -188,7 +189,16 @@ export async function runGatewayDev(
     throw new Error("No cells found");
   }
 
-  const { dynamoEndpoint, s3Endpoint } = await ensureDockerResources(rootDir, otavia, cells);
+  let dynamoEndpoint: string | undefined;
+  let s3Endpoint: string | undefined;
+  if (overrides?.dynamoEndpoint !== undefined || overrides?.s3Endpoint !== undefined) {
+    dynamoEndpoint = overrides.dynamoEndpoint;
+    s3Endpoint = overrides.s3Endpoint;
+  } else {
+    const resources = await ensureDockerResources(rootDir, otavia, cells);
+    dynamoEndpoint = resources.dynamoEndpoint;
+    s3Endpoint = resources.s3Endpoint;
+  }
   applyLocalEndpoints(cells, dynamoEndpoint, s3Endpoint);
 
   const gatewayApp = new Hono();
