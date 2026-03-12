@@ -159,10 +159,15 @@ function Root() {
     );
   }
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={resolveBasename()}>
       <App />
     </BrowserRouter>
   );
+}
+
+function resolveBasename(): string {
+  const seg = window.location.pathname.split("/").filter(Boolean)[0];
+  return seg ? `/${seg}` : "/";
 }
 
 const rootEl = document.getElementById("root");

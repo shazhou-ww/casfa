@@ -54,6 +54,12 @@ tsconfig.build.json
 # cell-cli build output (and cell app local state)
 .cell
 
+# otavia build output
+.otavia
+
+# generated mount-specific service worker proxies (apps/main frontend dev)
+apps/main/frontend/*/sw.ts
+
 # Cloudflare Tunnel credentials (do not commit)
 .cloudflared/credentials.json
 

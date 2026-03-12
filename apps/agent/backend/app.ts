@@ -1,3 +1,5 @@
+export { createAppForGateway as createAppForBackend } from "./gateway-app";
+export { createAppForGateway } from "./gateway-app";
 import { getTokenFromRequest } from "@casfa/cell-auth-server";
 import type { OAuthServer } from "@casfa/cell-cognito-server";
 import type { PendingClientInfoStore } from "@casfa/cell-delegates-server";

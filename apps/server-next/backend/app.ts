@@ -1,3 +1,5 @@
+export { createAppForGateway as createAppForBackend } from "./gateway-app";
+export { createAppForGateway } from "./gateway-app";
 import type { CasFacade } from "@casfa/cas";
 import { getTokenFromRequest } from "@casfa/cell-auth-server";
 import type { DelegatesEnv, DelegateGrantStore, PendingClientInfoStore } from "@casfa/cell-delegates-server";

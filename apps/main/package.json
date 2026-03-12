@@ -1,0 +1,33 @@
+{
+  "name": "@casfa/main",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "otavia": "bun run ../otavia/src/cli.ts --",
+    "dev": "bun run otavia dev",
+    "setup": "bun run otavia setup",
+    "clean": "bun run otavia clean",
+    "typecheck": "bun run otavia typecheck",
+    "lint": "bun run otavia lint",
+    "lint:fix": "bun run otavia lint -- --fix",
+    "test": "bun run otavia test",
+    "test:unit": "bun run otavia test:unit",
+    "test:e2e": "bun run otavia test:e2e",
+    "deploy": "bun run otavia deploy",
+    "aws:login": "bun run otavia aws login",
+    "aws:logout": "bun run otavia aws logout"
+  },
+  "dependencies": {
+    "@casfa/agent": "workspace:*",
+    "@casfa/image-workshop": "workspace:*",
+    "@casfa/server-next": "workspace:*",
+    "@casfa/sso": "workspace:*",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.4",
+    "vite": "^7.3.1"
+  }
+}

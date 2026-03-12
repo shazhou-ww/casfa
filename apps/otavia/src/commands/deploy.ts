@@ -4,6 +4,7 @@ import { resolve, dirname } from "node:path";
 import { build } from "esbuild";
 import { loadOtaviaYaml } from "../config/load-otavia-yaml.js";
 import { loadCellConfig } from "../config/load-cell-yaml.js";
+import { resolveCellDir } from "../config/resolve-cell-dir.js";
 import { mergeParams, resolveParams } from "../config/resolve-params.js";
 import { loadEnvForCell } from "../utils/env.js";
 import { generateTemplate } from "../deploy/template.js";
@@ -89,17 +90,16 @@ async function stackExists(
 /** Load otavia + all cells and resolve params for cloud; throws if missing !Env/!Secret. */
 function loadOtaviaAndResolveParams(rootDir: string) {
   const otavia = loadOtaviaYaml(rootDir);
-  const appsDir = resolve(rootDir, "apps");
-  const cells: { cellId: string; config: ReturnType<typeof loadCellConfig> }[] = [];
+  const cells: { mount: string; cellDir: string; config: ReturnType<typeof loadCellConfig> }[] = [];
 
-  for (const cellId of otavia.cells) {
-    const cellDir = resolve(appsDir, cellId);
+  for (const entry of otavia.cellsList) {
+    const cellDir = resolveCellDir(rootDir, entry.package);
     if (!existsSync(resolve(cellDir, "cell.yaml"))) continue;
     const config = loadCellConfig(cellDir);
-    const envMap = loadEnvForCell(rootDir, cellId, { stage: "cloud" });
-    const merged = mergeParams(otavia.params, config.params) as Record<string, unknown>;
+    const envMap = loadEnvForCell(rootDir, cellDir, { stage: "cloud" });
+    const merged = mergeParams(mergeParams(otavia.params, config.params), entry.params) as Record<string, unknown>;
     resolveParams(merged, envMap, { onMissingParam: "throw" });
-    cells.push({ cellId, config });
+    cells.push({ mount: entry.mount, cellDir, config });
   }
 
   return { otavia, cells };
@@ -107,27 +107,27 @@ function loadOtaviaAndResolveParams(rootDir: string) {
 
 /**
  * Build backend: for each cell with backend.entries, esbuild handler to
- * .otavia/build/<cellId>/<entryKey>/index.js, then zip to .otavia/build/<cellId>/<entryKey>.zip.
- * Returns map: "cellId/entryKey" -> hash (first 12 chars SHA256 of zip).
+ * .otavia/build/<mount>/<entryKey>/index.js, then zip to .otavia/build/<mount>-<entryKey>.zip.
+ * Returns map: "mount/entryKey" -> hash (first 12 chars SHA256 of zip).
  */
 async function buildBackends(
   rootDir: string,
-  cells: { cellId: string; config: ReturnType<typeof loadCellConfig> }[]
+  cells: { mount: string; cellDir: string; config: ReturnType<typeof loadCellConfig> }[]
 ): Promise<Map<string, string>> {
   const hashes = new Map<string, string>();
   const buildRoot = resolve(rootDir, OTAVIA_BUILD);
 
-  for (const { cellId, config } of cells) {
+  for (const { mount, cellDir, config } of cells) {
     if (!config.backend?.entries) continue;
-    const backendDir = resolve(rootDir, "apps", cellId, config.backend.dir ?? "backend");
+    const backendDir = resolve(cellDir, config.backend.dir ?? "backend");
 
     for (const [entryKey, entry] of Object.entries(config.backend.entries)) {
       const handlerPath = resolve(backendDir, entry.handler);
-      const outDir = resolve(buildRoot, cellId, entryKey);
+      const outDir = resolve(buildRoot, mount, entryKey);
       const outfile = resolve(outDir, "index.js");
       mkdirSync(dirname(outfile), { recursive: true });
 
-      console.log(`  Building backend [${cellId}/${entryKey}]...`);
+      console.log(`  Building backend [${mount}/${entryKey}]...`);
       await build({
         entryPoints: [handlerPath],
         bundle: true,
@@ -140,10 +140,10 @@ async function buildBackends(
         loader: { ".md": "text" },
       });
 
-      const zipPath = resolve(buildRoot, `${cellId}-${entryKey}.zip`);
+      const zipPath = resolve(buildRoot, `${mount}-${entryKey}.zip`);
       await zipDirectory(outDir, zipPath);
       const hash = await fileHash(zipPath);
-      hashes.set(`${cellId}/${entryKey}`, hash);
+      hashes.set(`${mount}/${entryKey}`, hash);
     }
   }
 
@@ -151,22 +151,21 @@ async function buildBackends(
 }
 
 /**
- * Build frontend: for each cell with frontend, run vite build in apps/<cellId>
- * with outDir .otavia/dist/<cellId> and base /<cellId>/.
+ * Build frontend: for each cell with frontend, run vite build in cellDir
+ * with outDir .otavia/dist/<mount> and base /<mount>/.
  */
 async function buildFrontends(
   rootDir: string,
-  cells: { cellId: string; config: ReturnType<typeof loadCellConfig> }[]
+  cells: { mount: string; cellDir: string; config: ReturnType<typeof loadCellConfig> }[]
 ): Promise<void> {
-  for (const { cellId, config } of cells) {
+  for (const { mount, cellDir, config } of cells) {
     if (!config.frontend) continue;
-    const cellDir = resolve(rootDir, "apps", cellId);
-    const outDir = resolve(rootDir, OTAVIA_DIST, cellId);
+    const outDir = resolve(rootDir, OTAVIA_DIST, mount);
     mkdirSync(outDir, { recursive: true });
 
-    console.log(`  Building frontend [${cellId}]...`);
+    console.log(`  Building frontend [${mount}]...`);
     const proc = Bun.spawn(
-      ["bun", "x", "vite", "build", "--outDir", outDir, "--base", `/${cellId}/`],
+      ["bun", "x", "vite", "build", "--outDir", outDir, "--base", `/${mount}/`],
       {
         cwd: cellDir,
         stdout: "inherit",
@@ -176,7 +175,7 @@ async function buildFrontends(
     );
     const exitCode = await proc.exited;
     if (exitCode !== 0) {
-      throw new Error(`Vite build failed for cell ${cellId} (exit code ${exitCode})`);
+      throw new Error(`Vite build failed for ${mount} (exit code ${exitCode})`);
     }
   }
 }
@@ -219,7 +218,7 @@ export async function deployCommand(
   }
 
   let otavia: ReturnType<typeof loadOtaviaYaml>;
-  let cells: { cellId: string; config: ReturnType<typeof loadCellConfig> }[];
+  let cells: { mount: string; cellDir: string; config: ReturnType<typeof loadCellConfig> }[];
 
   try {
     const loaded = loadOtaviaAndResolveParams(rootDir);
@@ -265,14 +264,14 @@ export async function deployCommand(
   const s3KeyReplacements: { placeholder: string; s3Key: string }[] = [];
   const buildRoot = resolve(rootDir, OTAVIA_BUILD);
 
-  for (const { cellId, config } of cells) {
+  for (const { mount, config } of cells) {
     if (!config.backend?.entries) continue;
     for (const entryKey of Object.keys(config.backend.entries)) {
-      const key = `${cellId}/${entryKey}`;
+      const key = `${mount}/${entryKey}`;
       const hash = lambdaHashes.get(key);
       if (!hash) continue;
-      const zipPath = resolve(buildRoot, `${cellId}-${entryKey}.zip`);
-      const s3Key = `lambda/${cellId}/${entryKey}-${hash}.zip`;
+      const zipPath = resolve(buildRoot, `${mount}-${entryKey}.zip`);
+      const s3Key = `lambda/${mount}/${entryKey}-${hash}.zip`;
       console.log(`  Uploading ${s3Key}...`);
       const { exitCode } = await awsCli(
         ["s3", "cp", zipPath, `s3://${deployBucketName}/${s3Key}`],
@@ -283,7 +282,7 @@ export async function deployCommand(
         process.exit(1);
       }
       s3KeyReplacements.push({
-        placeholder: `build/${cellId}/${entryKey}/code.zip`,
+        placeholder: `build/${mount}/${entryKey}/code.zip`,
         s3Key,
       });
     }
@@ -382,16 +381,16 @@ export async function deployCommand(
 
   if (frontendBucket && hasFrontend) {
     console.log("\n=== Uploading frontend ===");
-    for (const { cellId } of cells) {
-      const srcDir = resolve(rootDir, OTAVIA_DIST, cellId);
+    for (const { mount } of cells) {
+      const srcDir = resolve(rootDir, OTAVIA_DIST, mount);
       if (!existsSync(srcDir)) continue;
-      console.log(`  Syncing ${cellId} → s3://${frontendBucket}/${cellId}/`);
+      console.log(`  Syncing ${mount} → s3://${frontendBucket}/${mount}/`);
       const { exitCode: syncCode } = await awsCli(
-        ["s3", "sync", srcDir, `s3://${frontendBucket}/${cellId}/`, "--delete"],
+        ["s3", "sync", srcDir, `s3://${frontendBucket}/${mount}/`, "--delete"],
         awsEnv
       );
       if (syncCode !== 0) {
-        console.error(`Failed to sync frontend for ${cellId}`);
+        console.error(`Failed to sync frontend for ${mount}`);
         process.exit(1);
       }
     }

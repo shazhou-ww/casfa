@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./backend": "./backend/app.ts",
+    "./backend/*": "./backend/*",
+    "./frontend": "./frontend/main.tsx",
+    "./frontend/*": "./frontend/*",
+    "./frontend/sw": "./frontend/sw.ts",
+    "./cell.yaml": "./cell.yaml"
+  },
   "scripts": {
     "aws:login": "cell aws login",
     "aws:logout": "cell aws logout",

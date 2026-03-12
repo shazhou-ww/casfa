@@ -1,0 +1,15 @@
+stackName: otavia-local
+cells:
+  - package: "@casfa/sso"
+    mount: "sso"
+  - package: "@casfa/server-next"
+    mount: "drive"
+  - package: "@casfa/agent"
+    mount: "agent"
+  - package: "@casfa/image-workshop"
+    mount: "workshop"
+domain:
+  host: casfa.shazhou.me
+  dns:
+    provider: cloudflare
+    zone: casfa.shazhou.me

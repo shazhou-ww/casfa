@@ -5,6 +5,7 @@ import type { OtaviaYaml } from "../config/otavia-yaml-schema.js";
 import type { CellConfig } from "../config/cell-yaml-schema.js";
 import { loadOtaviaYaml } from "../config/load-otavia-yaml.js";
 import { loadCellConfig } from "../config/load-cell-yaml.js";
+import { resolveCellDir } from "../config/resolve-cell-dir.js";
 import { mergeParams, resolveParams } from "../config/resolve-params.js";
 import { loadEnvForCell } from "../utils/env.js";
 import { tablePhysicalName, bucketPhysicalName } from "../config/resource-names.js";
@@ -111,31 +112,34 @@ export function generateTemplate(rootDir: string): string {
   const outputs: Record<string, unknown> = {};
   const conditions: Record<string, unknown> = {};
   const pathBehaviors: Array<{ pathPattern: string; originId: string; isApi?: boolean }> = [];
-  const firstCellId = otavia.cells[0];
+  const firstMount = otavia.cellsList[0]?.mount ?? "";
   const origin = domainHost ? `https://${domainHost}` : "";
 
-  for (const cellId of otavia.cells) {
-    const cellDir = resolve(rootDir, "apps", cellId);
+  for (const cellEntry of otavia.cellsList) {
+    const cellDir = resolveCellDir(rootDir, cellEntry.package);
     if (!existsSync(resolve(cellDir, "cell.yaml"))) {
       continue;
     }
     const config = loadCellConfig(cellDir);
-    const envMap = loadEnvForCell(rootDir, cellId, { stage: "cloud" });
-    const merged = mergeParams(otavia.params, config.params) as Record<string, unknown>;
+    const envMap = loadEnvForCell(rootDir, cellDir, { stage: "cloud" });
+    const merged = mergeParams(
+      mergeParams(otavia.params, config.params),
+      cellEntry.params
+    ) as Record<string, unknown>;
     const resolved = resolveParams(merged, envMap, { onMissingParam: "throw" });
     const envVars = resolvedParamsToEnv(resolved);
-    const pathPrefix = `/${cellId}`;
+    const pathPrefix = `/${cellEntry.mount}`;
     envVars.CELL_BASE_URL = origin ? `${origin}${pathPrefix}` : "";
-    if (firstCellId) {
-      envVars.SSO_BASE_URL = origin ? `${origin}/${firstCellId}` : "";
+    if (firstMount) {
+      envVars.SSO_BASE_URL = origin ? `${origin}/${firstMount}` : "";
     }
     envVars.CELL_STAGE = "cloud";
 
-    const prefix = toPascalCase(cellId);
+    const prefix = toPascalCase(cellEntry.mount);
 
     if (config.tables) {
       for (const [tableKey, tableConfig] of Object.entries(config.tables)) {
-        const tableName = tablePhysicalName(stackName, cellId, tableKey);
+        const tableName = tablePhysicalName(stackName, cellEntry.mount, tableKey);
         const frag = generateDynamoDBTable(tableName, tableKey, tableConfig);
         const refMap = buildRefMap([frag], prefix);
         const prefixed = prefixFragment(frag, prefix, refMap);
@@ -146,7 +150,7 @@ export function generateTemplate(rootDir: string): string {
 
     if (config.buckets) {
       for (const [bucketKey] of Object.entries(config.buckets)) {
-        const bucketName = bucketPhysicalName(stackName, cellId, bucketKey);
+        const bucketName = bucketPhysicalName(stackName, cellEntry.mount, bucketKey);
         const frag = generateBucket(bucketKey, bucketName);
         const refMap = buildRefMap([frag], prefix);
         const prefixed = prefixFragment(frag, prefix, refMap);
@@ -166,7 +170,7 @@ export function generateTemplate(rootDir: string): string {
 
       for (const [entryKey, entry] of Object.entries(config.backend.entries)) {
         const frag = generateLambdaFragment(entryKey, prefix, {
-          handlerPath: `build/${cellId}/${entryKey}/code.zip`,
+          handlerPath: `build/${cellEntry.mount}/${entryKey}/code.zip`,
           runtime: config.backend.runtime,
           timeout: entry.timeout,
           memory: entry.memory,
@@ -179,7 +183,7 @@ export function generateTemplate(rootDir: string): string {
         apiRoutes.push({ functionLogicalId: funcLogicalId });
       }
 
-      const apiFrag = generateHttpApi(prefix, `${stackName}-${cellId}-api`, apiRoutes);
+      const apiFrag = generateHttpApi(prefix, `${stackName}-${cellEntry.mount}-api`, apiRoutes);
       Object.assign(resources, apiFrag.Resources);
       if (apiFrag.Outputs) Object.assign(outputs, apiFrag.Outputs);
 

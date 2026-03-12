@@ -3,6 +3,7 @@ import path from "node:path";
 import { parseDocument } from "yaml";
 import { loadOtaviaYaml } from "../config/load-otavia-yaml.js";
 import { loadCellConfig } from "../config/load-cell-yaml.js";
+import { resolveCellDir } from "../config/resolve-cell-dir.js";
 import { mergeParams, resolveParams } from "../config/resolve-params.js";
 import { tablePhysicalName, bucketPhysicalName } from "../config/resource-names.js";
 import { loadEnvForCell } from "../utils/env.js";
@@ -36,8 +37,9 @@ interface CellYaml {
   testing?: CellYamlTesting;
 }
 
-function loadCellYaml(appsDir: string, cellId: string): CellYaml | null {
-  const cellPath = path.join(appsDir, cellId, CELL_YAML);
+function loadCellYaml(rootDir: string, packageName: string): CellYaml | null {
+  const cellDir = resolveCellDir(rootDir, packageName);
+  const cellPath = path.join(cellDir, CELL_YAML);
   if (!fs.existsSync(cellPath)) {
     return null;
   }
@@ -86,39 +88,38 @@ async function hasTestFiles(cellDir: string, pattern: string): Promise<boolean> 
 
 /**
  * Run unit tests for all cells: load otavia.yaml, for each cell load cell.yaml,
- * get testing.unit pattern (default: __tests__/*.test.ts), run bun test in apps/cellId.
+ * get testing.unit pattern (default: __tests__/*.test.ts), run bun test in each cellDir.
  * If no test files found for a cell, skip and log. Aggregate exit codes; if any cell fails, exit(1).
  */
 export async function testUnitCommand(rootDir: string): Promise<void> {
   const root = path.resolve(rootDir);
   const otavia = loadOtaviaYaml(root);
-  const appsDir = path.join(root, "apps");
   const failedCells: string[] = [];
 
-  for (const cellId of otavia.cells) {
-    const cellDir = path.join(appsDir, cellId);
-    if (!fs.existsSync(cellDir)) {
-      console.warn(`Skipping ${cellId}: apps/${cellId} not found`);
+  for (const entry of otavia.cellsList) {
+    const cellDir = resolveCellDir(root, entry.package);
+    if (!fs.existsSync(path.join(cellDir, CELL_YAML))) {
+      console.warn(`Skipping ${entry.mount}: cell not found`);
       continue;
     }
 
-    const cellConfig = loadCellYaml(appsDir, cellId);
+    const cellConfig = loadCellYaml(root, entry.package);
     const pattern =
       cellConfig?.testing?.unit ?? DEFAULT_UNIT_PATTERN;
 
     const hasTests = await hasTestFiles(cellDir, pattern);
     if (!hasTests) {
-      console.log(`Skipping ${cellId}: no unit tests`);
+      console.log(`Skipping ${entry.mount}: no unit tests`);
       continue;
     }
 
     const proc = Bun.spawn(["bun", "test", pattern], {
       cwd: cellDir,
-      stdio: "inherit",
+      stdio: ["inherit", "inherit", "inherit"],
     });
     const exitCode = await proc.exited;
     if (exitCode !== 0) {
-      failedCells.push(cellId);
+      failedCells.push(entry.mount);
     }
   }
 
@@ -131,22 +132,27 @@ export async function testUnitCommand(rootDir: string): Promise<void> {
 /**
  * E2E test command: start non-persistent Docker (DynamoDB Local + MinIO with --rm),
  * start gateway in a subprocess with DYNAMODB_ENDPOINT and S3_ENDPOINT injected;
- * for each cell that has testing.e2e run bun test <e2ePattern> in apps/<cellId> with
+ * for each cell that has testing.e2e run bun test <e2ePattern> in cellDir with
  * env CELL_BASE_URL etc.; then stop gateway and containers.
  */
 export async function testE2eCommand(rootDir: string): Promise<void> {
   const root = path.resolve(rootDir);
   const otavia = loadOtaviaYaml(root);
-  const appsDir = path.join(root, "apps");
 
-  type CellE2E = { cellId: string; cellDir: string; config: ReturnType<typeof loadCellConfig>; e2ePattern: string };
+  type CellE2E = {
+    mount: string;
+    cellDir: string;
+    config: ReturnType<typeof loadCellConfig>;
+    e2ePattern: string;
+    params?: Record<string, unknown>;
+  };
   const e2eCells: CellE2E[] = [];
   let hasTables = false;
   let hasBuckets = false;
 
-  for (const cellId of otavia.cells) {
-    const cellDir = path.join(appsDir, cellId);
-    if (!fs.existsSync(cellDir)) continue;
+  for (const entry of otavia.cellsList) {
+    const cellDir = resolveCellDir(root, entry.package);
+    if (!fs.existsSync(path.join(cellDir, "cell.yaml"))) continue;
     let config: ReturnType<typeof loadCellConfig>;
     try {
       config = loadCellConfig(cellDir);
@@ -157,7 +163,7 @@ export async function testE2eCommand(rootDir: string): Promise<void> {
     if (config.buckets && Object.keys(config.buckets).length > 0) hasBuckets = true;
     const e2ePattern = config.testing?.e2e;
     if (e2ePattern && typeof e2ePattern === "string") {
-      e2eCells.push({ cellId, cellDir, config, e2ePattern });
+      e2eCells.push({ mount: entry.mount, cellDir, config, e2ePattern, params: entry.params });
     }
   }
 
@@ -187,9 +193,9 @@ export async function testE2eCommand(rootDir: string): Promise<void> {
         throw new Error("DynamoDB endpoint not accepting requests");
       }
       const tablesList: LocalTableEntry[] = [];
-      for (const cellId of otavia.cells) {
-        const cellDir = path.join(appsDir, cellId);
-        if (!fs.existsSync(cellDir)) continue;
+      for (const entry of otavia.cellsList) {
+        const cellDir = resolveCellDir(root, entry.package);
+        if (!fs.existsSync(path.join(cellDir, "cell.yaml"))) continue;
         let config: ReturnType<typeof loadCellConfig>;
         try {
           config = loadCellConfig(cellDir);
@@ -199,7 +205,7 @@ export async function testE2eCommand(rootDir: string): Promise<void> {
         if (!config.tables) continue;
         for (const [key, tableConfig] of Object.entries(config.tables)) {
           tablesList.push({
-            tableName: tablePhysicalName(otavia.stackName, cellId, key),
+            tableName: tablePhysicalName(otavia.stackName, entry.mount, key),
             config: tableConfig,
           });
         }
@@ -217,9 +223,9 @@ export async function testE2eCommand(rootDir: string): Promise<void> {
       if (!ready) throw new Error("MinIO did not become ready in time");
       const s3Endpoint = `http://localhost:${E2E_MINIO_PORT}`;
       const bucketNames: string[] = [];
-      for (const cellId of otavia.cells) {
-        const cellDir = path.join(appsDir, cellId);
-        if (!fs.existsSync(cellDir)) continue;
+      for (const entry of otavia.cellsList) {
+        const cellDir = resolveCellDir(root, entry.package);
+        if (!fs.existsSync(path.join(cellDir, "cell.yaml"))) continue;
         let config: ReturnType<typeof loadCellConfig>;
         try {
           config = loadCellConfig(cellDir);
@@ -228,7 +234,7 @@ export async function testE2eCommand(rootDir: string): Promise<void> {
         }
         if (!config.buckets) continue;
         for (const key of Object.keys(config.buckets)) {
-          bucketNames.push(bucketPhysicalName(otavia.stackName, cellId, key));
+          bucketNames.push(bucketPhysicalName(otavia.stackName, entry.mount, key));
         }
       }
       await ensureLocalBuckets(s3Endpoint, bucketNames);
@@ -242,11 +248,13 @@ export async function testE2eCommand(rootDir: string): Promise<void> {
     if (hasTables) gatewayEnv.DYNAMODB_ENDPOINT = `http://localhost:${E2E_DYNAMODB_PORT}`;
     if (hasBuckets) gatewayEnv.S3_ENDPOINT = `http://localhost:${E2E_MINIO_PORT}`;
 
-    const cliPath = path.join(root, "apps", "otavia", "src", "cli.ts");
+    const cliPath = fs.existsSync(path.join(root, "apps", "otavia", "src", "cli.ts"))
+      ? path.join(root, "apps", "otavia", "src", "cli.ts")
+      : path.join(root, "..", "otavia", "src", "cli.ts");
     gatewayProc = Bun.spawn(["bun", "run", cliPath, "dev"], {
       cwd: root,
       env: gatewayEnv,
-      stdio: "pipe",
+      stdio: ["ignore", "pipe", "pipe"],
     });
 
     const gatewayReady = await waitForPort(E2E_GATEWAY_PORT);
@@ -269,16 +277,16 @@ export async function testE2eCommand(rootDir: string): Promise<void> {
     }
 
     const failedCells: string[] = [];
-    for (const { cellId, cellDir, config, e2ePattern } of e2eCells) {
-      const merged = mergeParams(otavia.params, config.params);
-      const envMap = loadEnvForCell(root, cellId);
+    for (const { mount, cellDir, config, e2ePattern, params } of e2eCells) {
+      const merged = mergeParams(mergeParams(otavia.params, config.params), params);
+      const envMap = loadEnvForCell(root, cellDir);
       const resolved = resolveParams(merged as Record<string, unknown>, envMap, {
         onMissingParam: "placeholder",
       });
       const resolvedEnv = resolvedParamsToEnv(resolved as Record<string, string | unknown>);
-      const cellEnv = {
+      const cellEnv: Record<string, string> = {
         ...resolvedEnv,
-        CELL_BASE_URL: `http://localhost:${E2E_GATEWAY_PORT}/${cellId}`,
+        CELL_BASE_URL: `http://localhost:${E2E_GATEWAY_PORT}/${mount}`,
         PORT: String(E2E_GATEWAY_PORT),
         CELL_STAGE: "test",
       };
@@ -288,10 +296,10 @@ export async function testE2eCommand(rootDir: string): Promise<void> {
       const proc = Bun.spawn(["bun", "test", e2ePattern], {
         cwd: cellDir,
         env: cellEnv,
-        stdio: "inherit",
+        stdio: ["inherit", "inherit", "inherit"],
       });
       const exitCode = await proc.exited;
-      if (exitCode !== 0) failedCells.push(cellId);
+      if (exitCode !== 0) failedCells.push(mount);
     }
 
     if (failedCells.length > 0) {

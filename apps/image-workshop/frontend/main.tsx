@@ -655,13 +655,18 @@ function Root() {
     );
   }
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={resolveBasename()}>
       <Routes>
         <Route path="/oauth/authorize" element={<DelegateOAuthAuthorizeRoute />} />
         <Route path="*" element={<App />} />
       </Routes>
     </BrowserRouter>
   );
+}
+
+function resolveBasename(): string {
+  const seg = window.location.pathname.split("/").filter(Boolean)[0];
+  return seg ? `/${seg}` : "/";
 }
 
 createRoot(document.getElementById("root")!).render(
