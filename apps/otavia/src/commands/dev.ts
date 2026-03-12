@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { checkAwsCredentials } from "./aws-auth.js";
 import { runGatewayDev } from "./dev/gateway.js";
 import { startViteDev } from "./dev/vite-dev.js";
 
@@ -13,6 +14,14 @@ const DEFAULT_VITE_PORT = 7100;
  */
 export async function devCommand(rootDir: string): Promise<void> {
   const root = resolve(rootDir);
+  const aws = await checkAwsCredentials(root);
+  if (!aws.ok) {
+    console.error(
+      `AWS credentials are invalid or expired for profile "${aws.profile}".`
+    );
+    console.error("Run: bun run otavia aws login");
+    process.exit(1);
+  }
   const backendPort = parseInt(process.env.PORT ?? String(DEFAULT_BACKEND_PORT), 10);
   const gatewayOnly = process.env.OTAVIA_DEV_GATEWAY_ONLY === "1";
   const overrides: { dynamoEndpoint?: string; s3Endpoint?: string } | undefined = gatewayOnly
