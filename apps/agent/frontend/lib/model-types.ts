@@ -54,7 +54,13 @@ export type ToolCallChunk = {
   arguments?: string;
 };
 
-export type StreamChunk = TextChunk | ToolCallChunk;
+export type ToolResultChunk = {
+  type: "tool-result";
+  callId?: string;
+  result?: string;
+};
+
+export type StreamChunk = TextChunk | ToolCallChunk | ToolResultChunk;
 
 export type StreamState = {
   messageId: string;
