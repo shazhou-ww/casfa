@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 import { Command } from "commander";
-import fs from "fs";
-import path from "path";
+import { loadOtaviaYaml } from "./config/load-otavia-yaml.js";
 
 const program = new Command();
 
@@ -15,9 +14,10 @@ const placeholderAction = async () => {
 };
 
 program.hook("preAction", () => {
-  const configPath = path.join(process.cwd(), "otavia.yaml");
-  if (!fs.existsSync(configPath)) {
-    console.error("otavia.yaml not found");
+  try {
+    loadOtaviaYaml(process.cwd());
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
 });
