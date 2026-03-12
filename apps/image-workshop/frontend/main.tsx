@@ -391,7 +391,7 @@ function CreateDelegateDialog({
             value={ttlHours}
             onChange={(e) => setTtlHours(Number(e.target.value))}
             size="small"
-            slotProps={{ htmlInput: { min: 1, max: 8760 } }}
+            inputProps={{ min: 1, max: 8760 }}
             sx={{ width: 150 }}
           />
           {error && <Alert severity="error">{error}</Alert>}
