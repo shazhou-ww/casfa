@@ -6,6 +6,8 @@ import { cleanCommand } from "./commands/clean.js";
 import { awsLoginCommand, awsLogoutCommand } from "./commands/aws.js";
 import { devCommand } from "./commands/dev.js";
 import { testUnitCommand, testE2eCommand } from "./commands/test.js";
+import { typecheckCommand } from "./commands/typecheck.js";
+import { lintCommand } from "./commands/lint.js";
 
 const program = new Command();
 
@@ -54,8 +56,21 @@ program.command("test:e2e")
     await testE2eCommand(process.cwd());
   });
 program.command("deploy").description("Deploy stack").action(placeholderAction);
-program.command("typecheck").description("Type check").action(placeholderAction);
-program.command("lint").description("Lint").action(placeholderAction);
+program
+  .command("typecheck")
+  .description("Type check all cells")
+  .action(async () => {
+    await typecheckCommand(process.cwd());
+  });
+program
+  .command("lint")
+  .description("Lint all cells")
+  .option("--fix", "Apply safe fixes")
+  .option("--unsafe", "Apply unsafe fixes")
+  .action(async (_args: unknown, cmd: { opts: () => { fix?: boolean; unsafe?: boolean } }) => {
+    const opts = cmd.opts();
+    await lintCommand(process.cwd(), { fix: opts.fix, unsafe: opts.unsafe });
+  });
 program.command("clean").description("Clean artifacts").action(() => {
   cleanCommand(process.cwd());
 });
