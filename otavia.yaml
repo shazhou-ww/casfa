@@ -1,5 +1,11 @@
 stackName: otavia-local
 cells:
   - sso
+  - server-next
+  - agent
+  - image-workshop
 domain:
-  host: example.com
+  host: casfa.shazhou.me
+  dns:
+    provider: cloudflare
+    zone: casfa.shazhou.me
