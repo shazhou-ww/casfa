@@ -115,6 +115,34 @@ describe("buildMainDevGeneratedConfig", () => {
       ])
     );
   });
+
+  test("converts module source paths to paths relative to base dir", () => {
+    const generated = buildMainDevGeneratedConfig(
+      [
+        {
+          mount: "agent",
+          routeRules: [],
+          moduleProxySpecs: [
+            {
+              mount: "agent",
+              routePath: "/agent/sw.js",
+              sourcePath: "/repo/apps/main/node_modules/@casfa/agent/frontend/sw.ts",
+            },
+          ],
+          frontendRouteRules: [],
+        },
+      ],
+      8900,
+      "/repo/apps/main"
+    );
+
+    expect(generated.frontendModuleProxyRules).toEqual([
+      {
+        path: "/agent/sw.js",
+        sourcePath: "node_modules/@casfa/agent/frontend/sw.ts",
+      },
+    ]);
+  });
 });
 
 describe("deriveFrontendRouteRulesFromCellConfig", () => {

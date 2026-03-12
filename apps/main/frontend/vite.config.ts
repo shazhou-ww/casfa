@@ -1,4 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -18,6 +20,7 @@ const backendPort = process.env.GATEWAY_BACKEND_PORT ?? "8900";
 const vitePort = parseInt(process.env.VITE_PORT ?? "7100", 10);
 const backendTarget = `http://localhost:${backendPort}`;
 const generatedConfigPath = new URL("./src/generated/main-dev-config.json", import.meta.url);
+const packageRoot = resolvePath(fileURLToPath(new URL(".", import.meta.url)), "..");
 
 function isRouteMatch(v: unknown): v is RouteMatch {
   return v === "prefix" || v === "exact";
@@ -95,6 +98,14 @@ const routeRules: RouteRule[] =
 const frontendModuleProxyRules = generated?.frontendModuleProxyRules ?? [];
 const frontendModuleProxyMap = new Map(frontendModuleProxyRules.map((r) => [r.path, r.sourcePath]));
 
+function toAbsoluteFsPath(sourcePath: string): string {
+  const isWindowsAbs = /^[A-Za-z]:[\\/]/.test(sourcePath);
+  const absolute = sourcePath.startsWith("/") || isWindowsAbs
+    ? sourcePath
+    : resolvePath(packageRoot, sourcePath);
+  return absolute.replace(/\\/g, "/");
+}
+
 function extractMountFromPath(pathname: string): string | null {
   const seg = pathname.split("/").filter(Boolean)[0];
   if (!seg) return null;
@@ -121,7 +132,7 @@ function mountAwareApiRewritePlugin(): Plugin {
         const pathname = parsed.pathname;
         const moduleSourcePath = frontendModuleProxyMap.get(pathname);
         if (moduleSourcePath) {
-          req.url = `/@fs/${moduleSourcePath}${parsed.search}`;
+          req.url = `/@fs/${toAbsoluteFsPath(moduleSourcePath)}${parsed.search}`;
           next();
           return;
         }

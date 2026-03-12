@@ -6,7 +6,6 @@ import { create } from "zustand";
 import type {
   Action,
   Change,
-  IncomingMessage,
   Message,
   MessageContent,
   ModelState,
@@ -76,13 +75,20 @@ const ACTION_RESPONSE_TIMEOUT_MS = 15000;
 let swConnectInFlight: Promise<MessagePort> | null = null;
 let swBroadcastUnsubscribe: (() => void) | null = null;
 
-function isIncomingChangeMessage(msg: unknown): msg is IncomingMessage {
-  return (
-    typeof msg === "object" &&
-    msg !== null &&
-    (msg as IncomingMessage).type === "change" &&
-    Array.isArray((msg as IncomingMessage).changes)
-  );
+function upsertMessageById(list: Message[], message: Message): Message[] {
+  const idx = list.findIndex((m) => m.messageId === message.messageId);
+  if (idx === -1) return [...list, message];
+  const next = list.slice(0);
+  next[idx] = message;
+  return next;
+}
+
+function dedupeMessagesById(messages: Message[]): Message[] {
+  const byId = new Map<string, Message>();
+  for (const msg of messages) {
+    byId.set(msg.messageId, msg);
+  }
+  return Array.from(byId.values()).sort((a, b) => a.createdAt - b.createdAt);
 }
 
 function clearPending(id: string): void {
@@ -136,17 +142,10 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
     }
     set({ swPort: port });
     if (port) {
-      const onIncomingChange = (msg: IncomingMessage) => {
+      swBroadcastUnsubscribe = subscribeToChangeBroadcast((msg) => {
         for (const change of msg.changes) {
           get().applyChange(change);
         }
-      };
-      port.onmessage = (event: MessageEvent) => {
-        if (!isIncomingChangeMessage(event.data)) return;
-        onIncomingChange(event.data);
-      };
-      swBroadcastUnsubscribe = subscribeToChangeBroadcast((msg) => {
-        onIncomingChange(msg);
       });
     }
   },
@@ -172,7 +171,7 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
         set((s) => {
           const list = s.messagesByThread[threadId] ?? [];
           return {
-            messagesByThread: { ...s.messagesByThread, [threadId]: [...list, message] },
+            messagesByThread: { ...s.messagesByThread, [threadId]: upsertMessageById(list, message) },
           };
         });
         break;
@@ -201,7 +200,7 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
       }
       case "messages.replaced": {
         const { threadId, messages } = change.payload;
-        const sorted = [...messages].sort((a, b) => a.createdAt - b.createdAt);
+        const sorted = dedupeMessagesById(messages);
         set((s) => ({
           messagesByThread: { ...s.messagesByThread, [threadId]: sorted },
         }));
@@ -234,7 +233,7 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
           const nextStreams = { ...s.streamByMessageId };
           delete nextStreams[messageId];
           return {
-            messagesByThread: { ...s.messagesByThread, [threadId]: [...list, message] },
+            messagesByThread: { ...s.messagesByThread, [threadId]: upsertMessageById(list, message) },
             streamByMessageId: nextStreams,
           };
         });
