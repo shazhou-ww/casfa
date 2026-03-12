@@ -20,11 +20,57 @@ const theme = createTheme({
   },
 });
 
+const SW_CONTROLLER_RELOAD_ONCE_KEY = "agent.sw.controller.reload.once";
+let swRegisterInFlight = false;
+
+function ensureSwScopePath(): boolean {
+  if (typeof window === "undefined") return true;
+  const basename = resolveBasename();
+  if (basename === "/") return true;
+  if (window.location.pathname !== basename) return true;
+  const target = new URL(window.location.href);
+  target.pathname = `${basename}/`;
+  window.location.replace(target.toString());
+  return false;
+}
+
 function registerServiceWorker() {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+  if (swRegisterInFlight) return;
+  swRegisterInFlight = true;
   const basename = resolveBasename();
-  const url = import.meta.env.DEV ? `${basename}/sw.ts` : `${basename}/sw.js`;
-  navigator.serviceWorker.register(url, { scope: `${basename}/`, type: "module" }).catch(() => {});
+  // Always request .js so dev/prod both match frontend route config.
+  const url = `${basename}/sw.js`;
+  // Script is served at /<mount>/sw.js, so max allowed scope is /<mount>/.
+  const scope = `${basename}/`;
+  const runPostRegisterSteps = (_registration: ServiceWorkerRegistration) => {
+    if (navigator.serviceWorker.controller) {
+      try {
+        window.sessionStorage.removeItem(SW_CONTROLLER_RELOAD_ONCE_KEY);
+      } catch {
+        // ignore storage access issues
+      }
+    } else {
+      try {
+        if (window.sessionStorage.getItem(SW_CONTROLLER_RELOAD_ONCE_KEY) !== "1") {
+          window.sessionStorage.setItem(SW_CONTROLLER_RELOAD_ONCE_KEY, "1");
+          window.location.reload();
+        }
+      } catch {
+        // ignore storage access issues
+      }
+    }
+  };
+
+  navigator.serviceWorker
+    .register(url, { scope, type: "module" })
+    .then((registration) => {
+      runPostRegisterSteps(registration);
+    })
+    .catch(() => {})
+    .finally(() => {
+      swRegisterInFlight = false;
+    });
 }
 
 function Root() {
@@ -34,6 +80,7 @@ function Root() {
   const fetchSettings = useAgentStore((s) => s.fetchSettings);
 
   useEffect(() => {
+    if (!ensureSwScopePath()) return;
     registerServiceWorker();
     initAuth()
       .then(() => setReady(true))

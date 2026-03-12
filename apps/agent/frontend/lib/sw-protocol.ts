@@ -13,13 +13,22 @@ export function getCsrfTokenFromCookie(): string | undefined {
   return m ? decodeURIComponent(m[1].trim()) : undefined;
 }
 
-function getController(): Promise<ServiceWorker> {
-  return navigator.serviceWorker.ready.then(() => {
-    if (navigator.serviceWorker.controller) return navigator.serviceWorker.controller;
+function getMessageTarget(): Promise<ServiceWorker> {
+  return navigator.serviceWorker.ready.then((registration) => {
+    if (navigator.serviceWorker.controller) {
+      return navigator.serviceWorker.controller;
+    }
+    const fallbackWorker =
+      registration.active ?? registration.waiting ?? registration.installing;
+    if (fallbackWorker) {
+      return fallbackWorker;
+    }
     return new Promise<ServiceWorker>((resolve) => {
       navigator.serviceWorker.addEventListener(
         "controllerchange",
-        () => resolve(navigator.serviceWorker.controller!),
+        () => {
+          resolve(navigator.serviceWorker.controller!);
+        },
         { once: true }
       );
     });
@@ -31,9 +40,9 @@ function getController(): Promise<ServiceWorker> {
  * Pass csrfToken (e.g. from getCsrfTokenFromCookie()) so the SW can call the API with CSRF header.
  */
 export function connectToSW(csrfToken?: string): Promise<MessagePort> {
-  return getController().then((controller) => {
+  return getMessageTarget().then((target) => {
     const channel = new MessageChannel();
-    controller.postMessage({ type: SW_CONNECT_TYPE, csrfToken }, [channel.port2]);
+    target.postMessage({ type: SW_CONNECT_TYPE, csrfToken }, [channel.port2]);
     return channel.port1;
   });
 }

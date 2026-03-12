@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildMainDevGeneratedConfig,
+  deriveFrontendModuleProxySpecs,
+  deriveFrontendRouteRulesFromCellConfig,
   deriveRouteRulesFromCellConfig,
 } from "../vite-dev.js";
 
@@ -60,6 +62,8 @@ describe("buildMainDevGeneratedConfig", () => {
             { path: "/oauth/authorize", match: "exact" },
             { path: "/oauth/callback", match: "exact" },
           ],
+          moduleProxySpecs: [],
+          frontendRouteRules: [],
         },
         {
           mount: "agent",
@@ -67,6 +71,14 @@ describe("buildMainDevGeneratedConfig", () => {
             { path: "/api", match: "prefix" },
             { path: "/oauth/login", match: "exact" },
           ],
+          moduleProxySpecs: [
+            {
+              mount: "agent",
+              routePath: "/agent/sw.js",
+              sourcePath: "/repo/apps/agent/frontend/sw.ts",
+            },
+          ],
+          frontendRouteRules: [],
         },
       ],
       8900
@@ -74,6 +86,12 @@ describe("buildMainDevGeneratedConfig", () => {
 
     expect(generated.firstMount).toBe("sso");
     expect(generated.mounts).toEqual(["sso", "agent"]);
+    expect(generated.frontendModuleProxyRules).toEqual([
+      {
+        path: "/agent/sw.js",
+        sourcePath: "/repo/apps/agent/frontend/sw.ts",
+      },
+    ]);
     expect(generated.proxyRules).toEqual(
       expect.arrayContaining([
         {
@@ -95,6 +113,65 @@ describe("buildMainDevGeneratedConfig", () => {
           target: "http://localhost:8900",
         },
       ])
+    );
+  });
+});
+
+describe("deriveFrontendRouteRulesFromCellConfig", () => {
+  test("converts frontend entry routes into mounted route rules", () => {
+    const config = {
+      name: "agent",
+      frontend: {
+        dir: "frontend",
+        entries: {
+          main: { entry: "index.html", routes: ["/*"] },
+          sw: { entry: "sw.ts", routes: ["/sw.js"] },
+        },
+      },
+    } as any;
+
+    expect(deriveFrontendRouteRulesFromCellConfig("agent", config)).toEqual([
+      { mount: "agent", path: "/agent", match: "prefix", entryName: "main", entryType: "html" },
+      { mount: "agent", path: "/agent/sw.js", match: "exact", entryName: "sw", entryType: "module" },
+    ]);
+  });
+});
+
+describe("deriveFrontendModuleProxySpecs", () => {
+  test("creates module proxy specs from non-html entries", () => {
+    const config = {
+      name: "agent",
+      frontend: {
+        dir: "frontend",
+        entries: {
+          main: { entry: "index.html", routes: ["/*"] },
+          sw: { entry: "sw.ts", routes: ["/sw.js"] },
+        },
+      },
+    } as any;
+
+    expect(deriveFrontendModuleProxySpecs("agent", "/repo/apps/agent", config)).toEqual([
+      {
+        mount: "agent",
+        routePath: "/agent/sw.js",
+        sourcePath: "/repo/apps/agent/frontend/sw.ts",
+      },
+    ]);
+  });
+
+  test("throws for wildcard module routes", () => {
+    const config = {
+      name: "broken",
+      frontend: {
+        dir: "frontend",
+        entries: {
+          worker: { entry: "worker.ts", routes: ["/workers/*"] },
+        },
+      },
+    } as any;
+
+    expect(() => deriveFrontendModuleProxySpecs("broken", "/repo/apps/broken", config)).toThrow(
+      'Invalid module frontend route "/workers/*" for mount "broken": wildcard routes are only supported for HTML entries'
     );
   });
 });

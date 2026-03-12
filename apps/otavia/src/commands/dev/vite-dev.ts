@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadOtaviaYaml } from "../../config/load-otavia-yaml.js";
 import { loadCellConfig } from "../../config/load-cell-yaml.js";
@@ -28,6 +28,17 @@ export type MainDevGeneratedConfig = {
   mounts: string[];
   routeRules: RouteRule[];
   proxyRules: ProxyRule[];
+  frontendModuleProxyRules: Array<{
+    path: string;
+    sourcePath: string;
+  }>;
+  frontendRouteRules: Array<{
+    mount: string;
+    path: string;
+    match: RouteMatch;
+    entryName: string;
+    entryType: "html" | "module";
+  }>;
 };
 
 function normalizeRoutePath(path: string): string {
@@ -58,16 +69,36 @@ export function deriveRouteRulesFromCellConfig(config: CellConfig): RouteRule[] 
 }
 
 export function buildMainDevGeneratedConfig(
-  cells: Array<{ mount: string; routeRules: RouteRule[] }>,
+  cells: Array<{
+    mount: string;
+    routeRules: RouteRule[];
+    moduleProxySpecs: FrontendModuleProxySpec[];
+    frontendRouteRules: Array<{
+      mount: string;
+      path: string;
+      match: RouteMatch;
+      entryName: string;
+      entryType: "html" | "module";
+    }>;
+  }>,
   backendPort: number
 ): MainDevGeneratedConfig {
   const mounts = cells.map((c) => c.mount);
   const firstMount = mounts[0] ?? "";
   const routeRulesMap = new Map<string, RouteRule>();
   const proxyRules: ProxyRule[] = [];
+  const frontendModuleProxyRules: MainDevGeneratedConfig["frontendModuleProxyRules"] = [];
+  const frontendRouteRules: MainDevGeneratedConfig["frontendRouteRules"] = [];
   const target = `http://localhost:${backendPort}`;
 
   for (const cell of cells) {
+    frontendModuleProxyRules.push(
+      ...cell.moduleProxySpecs.map((spec) => ({
+        path: spec.routePath,
+        sourcePath: spec.sourcePath,
+      }))
+    );
+    frontendRouteRules.push(...cell.frontendRouteRules);
     for (const rule of cell.routeRules) {
       const rrKey = `${rule.path}|${rule.match}`;
       if (!routeRulesMap.has(rrKey)) routeRulesMap.set(rrKey, rule);
@@ -94,7 +125,83 @@ export function buildMainDevGeneratedConfig(
     mounts,
     routeRules: Array.from(routeRulesMap.values()),
     proxyRules,
+    frontendModuleProxyRules,
+    frontendRouteRules,
   };
+}
+
+function normalizeFrontendRoutePath(path: string): string {
+  if (path === "") return "/";
+  if (!path.startsWith("/")) {
+    throw new Error(`Invalid frontend route "${path}": route must start with "/"`);
+  }
+  const trimmed = path.replace(/\/+$/, "");
+  return trimmed || "/";
+}
+
+function toMountedPath(mount: string, routePath: string): string {
+  const normalizedRoute = normalizeFrontendRoutePath(routePath);
+  return normalizedRoute === "/" ? `/${mount}` : `/${mount}${normalizedRoute}`;
+}
+
+function isHtmlEntry(entry: string): boolean {
+  return entry.toLowerCase().endsWith(".html");
+}
+
+export function deriveFrontendRouteRulesFromCellConfig(
+  mount: string,
+  config: CellConfig
+): MainDevGeneratedConfig["frontendRouteRules"] {
+  const entries = config.frontend?.entries ? Object.entries(config.frontend.entries) : [];
+  const rules: MainDevGeneratedConfig["frontendRouteRules"] = [];
+  for (const [entryName, entry] of entries) {
+    const entryType: "html" | "module" = isHtmlEntry(entry.entry) ? "html" : "module";
+    for (const route of entry.routes ?? []) {
+      const isPrefix = route.endsWith("/*");
+      const rawPath = isPrefix ? route.slice(0, -2) : route;
+      const path = toMountedPath(mount, rawPath);
+      rules.push({
+        mount,
+        path,
+        match: isPrefix ? "prefix" : "exact",
+        entryName,
+        entryType,
+      });
+    }
+  }
+  return rules;
+}
+
+type FrontendModuleProxySpec = {
+  mount: string;
+  routePath: string;
+  sourcePath: string;
+};
+
+export function deriveFrontendModuleProxySpecs(
+  mount: string,
+  cellDir: string,
+  config: CellConfig
+): FrontendModuleProxySpec[] {
+  if (!config.frontend) return [];
+  const specs: FrontendModuleProxySpec[] = [];
+  for (const entry of Object.values(config.frontend.entries)) {
+    if (isHtmlEntry(entry.entry)) continue;
+    const sourcePath = resolve(cellDir, config.frontend.dir, entry.entry).replace(/\\/g, "/");
+    for (const route of entry.routes ?? []) {
+      if (route.endsWith("/*")) {
+        throw new Error(
+          `Invalid module frontend route "${route}" for mount "${mount}": wildcard routes are only supported for HTML entries`
+        );
+      }
+      specs.push({
+        mount,
+        routePath: toMountedPath(mount, route),
+        sourcePath,
+      });
+    }
+  }
+  return specs;
 }
 
 /**
@@ -114,9 +221,9 @@ export async function startViteDev(
   const cellsWithFrontend: {
     mount: string;
     packageName: string;
-    hasServiceWorker: boolean;
-    swEntryPath?: string;
     routeRules: RouteRule[];
+    frontendRouteRules: MainDevGeneratedConfig["frontendRouteRules"];
+    moduleProxySpecs: FrontendModuleProxySpec[];
   }[] = [];
 
   for (const entry of otavia.cellsList) {
@@ -125,18 +232,15 @@ export async function startViteDev(
     if (!existsSync(cellYamlPath)) continue;
     const config = loadCellConfig(cellDir);
     if (!config.frontend?.dir) continue;
-    const hasServiceWorker = Boolean(config.frontend.entries?.sw?.entry);
-    const swEntryPath =
-      hasServiceWorker && config.frontend.entries?.sw?.entry
-        ? resolve(cellDir, config.frontend.dir, config.frontend.entries.sw.entry).replace(/\\/g, "/")
-        : undefined;
     const routeRules = deriveRouteRulesFromCellConfig(config);
+    const frontendRouteRules = deriveFrontendRouteRulesFromCellConfig(entry.mount, config);
+    const moduleProxySpecs = deriveFrontendModuleProxySpecs(entry.mount, cellDir, config);
     cellsWithFrontend.push({
       mount: entry.mount,
       packageName: entry.package,
-      hasServiceWorker,
-      swEntryPath,
       routeRules,
+      frontendRouteRules,
+      moduleProxySpecs,
     });
   }
 
@@ -170,28 +274,6 @@ ${cellsWithFrontend
   writeFileSync(generatedLoadersPath, loadersSource, "utf-8");
   const generatedDevConfig = buildMainDevGeneratedConfig(cellsWithFrontend, backendPort);
   writeFileSync(generatedDevConfigPath, JSON.stringify(generatedDevConfig, null, 2), "utf-8");
-
-  // Regenerate service worker proxy entries for cells that expose frontend/sw.
-  for (const entryName of readdirSync(frontendRoot, { withFileTypes: true })) {
-    if (!entryName.isDirectory()) continue;
-    const mount = entryName.name;
-    const dirPath = resolve(frontendRoot, mount);
-    const swPath = resolve(dirPath, "sw.ts");
-    const isKnownMount = cellsWithFrontend.some((c) => c.mount === mount);
-    if (!isKnownMount && existsSync(swPath)) {
-      rmSync(swPath, { force: true });
-    }
-  }
-  for (const cell of cellsWithFrontend) {
-    if (!cell.hasServiceWorker || !cell.swEntryPath) continue;
-    const mountDir = resolve(frontendRoot, cell.mount);
-    mkdirSync(mountDir, { recursive: true });
-    const swProxyPath = resolve(mountDir, "sw.ts");
-    const swProxySource = `// Auto-generated by otavia dev. Do not edit.
-import ${JSON.stringify(`/@fs/${cell.swEntryPath}`)};
-`;
-    writeFileSync(swProxyPath, swProxySource, "utf-8");
-  }
 
   const env = {
     ...process.env,
