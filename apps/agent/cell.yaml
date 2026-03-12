@@ -56,5 +56,11 @@ tables:
 params:
   - AUTH
 
+oauth:
+  enabled: true
+  role: both
+  scopes:
+    - use_mcp
+
 testing:
   unit: backend/

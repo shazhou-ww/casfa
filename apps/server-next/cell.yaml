@@ -54,5 +54,11 @@ params:
   - AUTH
   - MAX_BRANCH_TTL_MS
 
+oauth:
+  enabled: true
+  role: both
+  scopes:
+    - use_mcp
+
 testing:
   unit: backend/

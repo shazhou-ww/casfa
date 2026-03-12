@@ -92,8 +92,23 @@ describe("buildMainDevGeneratedConfig", () => {
         sourcePath: "/repo/apps/agent/frontend/sw.ts",
       },
     ]);
+    expect(generated.routeRules).toEqual(
+      expect.arrayContaining([
+        { path: "/api", match: "prefix" },
+        { path: "/oauth/login", match: "exact" },
+        { path: "/oauth/authorize", match: "exact" },
+        { path: "/oauth/callback", match: "exact" },
+        { path: "/.well-known", match: "prefix" },
+      ])
+    );
     expect(generated.proxyRules).toEqual(
       expect.arrayContaining([
+        {
+          mount: "__global__",
+          path: "/.well-known",
+          match: "prefix",
+          target: "http://localhost:8900",
+        },
         {
           mount: "agent",
           path: "/agent/api",

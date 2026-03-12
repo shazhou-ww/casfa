@@ -76,6 +76,7 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
   port.onmessage = async (e: MessageEvent) => {
     const msg = e.data;
     if (msg?.type !== "action") return;
+    if (typeof msg.csrfToken === "string") setCsrfToken(msg.csrfToken);
     const id = msg.id as string | undefined;
     const action = msg.action;
 

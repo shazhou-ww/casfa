@@ -8,15 +8,25 @@ export type SettingsControllerDeps = {
 
 export function createSettingsController(deps: SettingsControllerDeps) {
   const { settingsStore } = deps;
+  function resolveRealmId(c: Context<Env>): string | null {
+    const fromPath = c.req.param("realmId");
+    if (fromPath && fromPath.trim() !== "") return fromPath;
+    const auth = c.get("auth");
+    if (!auth?.userId) return null;
+    return auth.userId;
+  }
+
   return {
     async list(c: Context<Env>) {
-      const realmId = c.req.param("realmId")!;
+      const realmId = resolveRealmId(c);
+      if (!realmId) return c.json({ error: "UNAUTHORIZED", message: "Missing auth realm" }, 401);
       const items = await settingsStore.list(realmId);
       return c.json({ items }, 200);
     },
 
     async get(c: Context<Env>) {
-      const realmId = c.req.param("realmId")!;
+      const realmId = resolveRealmId(c);
+      if (!realmId) return c.json({ error: "UNAUTHORIZED", message: "Missing auth realm" }, 401);
       const key = c.req.param("key")!;
       const result = await settingsStore.get(realmId, key);
       if (!result) return c.json({ error: "NOT_FOUND", message: "Setting not found" }, 404);
@@ -24,7 +34,8 @@ export function createSettingsController(deps: SettingsControllerDeps) {
     },
 
     async set(c: Context<Env>) {
-      const realmId = c.req.param("realmId")!;
+      const realmId = resolveRealmId(c);
+      if (!realmId) return c.json({ error: "UNAUTHORIZED", message: "Missing auth realm" }, 401);
       const key = c.req.param("key")!;
       let body: { value: unknown };
       try {

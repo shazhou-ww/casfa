@@ -4,6 +4,7 @@
  */
 
 import { setMCPToken } from "./mcp-oauth-tokens.ts";
+import { buildOAuthAuthorizationServerMetadataUrl } from "./oauth-discovery-url";
 import type {
   MCPServerConfig,
   OAuthAuthorizationServerMetadata,
@@ -14,6 +15,20 @@ const PENDING_KEY = "mcp_oauth_pending";
 
 /** Prevent duplicate token exchange when React runs effect twice (Strict Mode). */
 const exchangeInFlight = new Set<string>();
+
+function getMountBasePath(): string {
+  if (typeof window === "undefined") return "";
+  const seg = window.location.pathname.split("/").filter(Boolean)[0];
+  return seg ? `/${seg}` : "";
+}
+
+function withMountPath(path: string): string {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  const base = getMountBasePath();
+  if (!base) return normalized;
+  if (normalized === base || normalized.startsWith(`${base}/`)) return normalized;
+  return `${base}${normalized}`;
+}
 
 export type OAuthDiscoveryResult = {
   resourceMetadata: OAuthProtectedResourceMetadata;
@@ -39,9 +54,11 @@ export async function fetchResourceMetadata(url: string): Promise<OAuthProtected
 /** Try OIDC and RFC8414 well-known paths for AS metadata. */
 export async function fetchAuthorizationServerMetadata(issuerUrl: string): Promise<OAuthAuthorizationServerMetadata> {
   const base = issuerUrl.replace(/\/$/, "");
+  const rfc8414Url = buildOAuthAuthorizationServerMetadataUrl(issuerUrl);
   const candidates = [
+    rfc8414Url,
     `${base}/.well-known/openid-configuration`,
-    `${base}/.well-known/oauth-authorization-server`,
+    `${base}/.well-known/oauth-authorization-server`, // Backward compatibility for old issuer-local layout.
   ];
   for (const url of candidates) {
     try {
@@ -191,13 +208,51 @@ function clearPendingState(state: string): void {
 /** Get redirect_uri for MCP OAuth callback (SPA origin + path). */
 export function getMcpOAuthRedirectUri(): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  return `${origin}/oauth/mcp-callback`;
+  return `${origin}${withMountPath("/oauth/mcp-callback")}`;
 }
 
 /** URL of our MCP OAuth Client ID Metadata Document (for client_id when using public client). */
 export function getMcpClientMetadataUrl(): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  return `${origin}/oauth/mcp-client-metadata`;
+  return `${origin}${withMountPath("/oauth/mcp-client-metadata")}`;
+}
+
+type DynamicClientRegistrationResponse = {
+  client_id?: string;
+};
+
+export async function resolveOAuthClientId(
+  config: MCPServerConfig,
+  discovery: OAuthDiscoveryResult,
+  redirectUri: string
+): Promise<string> {
+  if (config.oauthClientMetadataUrl) return config.oauthClientMetadataUrl;
+  if (config.oauthClientId) return config.oauthClientId;
+
+  const registrationEndpoint = discovery.asMetadata.registration_endpoint;
+  if (registrationEndpoint) {
+    try {
+      const res = await fetch(registrationEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "omit",
+        body: JSON.stringify({
+          client_name: config.name?.trim() || "MCP Client",
+          redirect_uris: [redirectUri],
+          grant_types: ["authorization_code", "refresh_token"],
+          token_endpoint_auth_method: "none",
+        }),
+      });
+      if (res.ok) {
+        const payload = (await res.json()) as DynamicClientRegistrationResponse;
+        if (payload.client_id && payload.client_id.trim()) return payload.client_id;
+      }
+    } catch {
+      // Ignore and fall back to metadata URL / issuer.
+    }
+  }
+
+  return getMcpClientMetadataUrl() || discovery.asMetadata.issuer || discovery.asBaseUrl;
 }
 
 /** Start OAuth: build auth URL, then redirect or open popup. When usePopup is true, returns a Promise that resolves when the popup completes OAuth. */
@@ -215,12 +270,7 @@ export async function startOAuth(
   const redirectUri = typeof options === "string" ? options : options?.redirectUri;
   const usePopup = typeof options === "object" && options?.usePopup === true;
   const redirect = redirectUri ?? getMcpOAuthRedirectUri();
-  const clientId =
-    config.oauthClientMetadataUrl ??
-    config.oauthClientId ??
-    getMcpClientMetadataUrl() ??
-    discovery.asMetadata.issuer ??
-    discovery.asBaseUrl;
+  const clientId = await resolveOAuthClientId(config, discovery, redirect);
   const scope =
     discovery.resourceMetadata.scopes_supported?.join(" ") ??
     discovery.asMetadata.scopes_supported?.join(" ") ??

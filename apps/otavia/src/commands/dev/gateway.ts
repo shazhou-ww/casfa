@@ -19,6 +19,14 @@ import {
 } from "../../local/docker.js";
 import { isDynamoDBReady, ensureLocalTables, type LocalTableEntry } from "../../local/dynamodb-local.js";
 import { isMinIOReady, ensureLocalBuckets } from "../../local/minio-local.js";
+import {
+  buildOAuthAuthorizationServerMetadata,
+  buildOAuthProtectedResourceMetadata,
+  createOAuthDiscoveryRegistry,
+  extractMountFromAuthorizationServerWellKnownPath,
+  extractProtectedResourcePathFromWellKnown,
+  getRequestOrigin,
+} from "./well-known.js";
 
 const DYNAMODB_PORT = 8000;
 const MINIO_PORT = 9000;
@@ -286,8 +294,47 @@ export async function runGatewayDev(
 
   const gatewayApp = new Hono();
   const firstMount = otavia.cellsList[0]?.mount ?? "";
+  const oauthDiscoveryRegistry = createOAuthDiscoveryRegistry(cells);
 
   gatewayApp.get("/", (c) => c.redirect(`/${firstMount}/`, 301));
+
+  gatewayApp.get("/.well-known/oauth-authorization-server", (c) => {
+    return c.json({ error: "not_found", message: "issuer path suffix is required" }, 404);
+  });
+
+  gatewayApp.get("/.well-known/oauth-authorization-server/*", (c) => {
+    const mount = extractMountFromAuthorizationServerWellKnownPath(c.req.path);
+    if (!mount) {
+      return c.json({ error: "not_found" }, 404);
+    }
+    const oauthCell = oauthDiscoveryRegistry.get(mount);
+    if (!oauthCell) {
+      return c.json({ error: "not_found" }, 404);
+    }
+    const origin = getRequestOrigin(c);
+    return c.json(buildOAuthAuthorizationServerMetadata(origin, mount, oauthCell.scopes));
+  });
+
+  gatewayApp.get("/.well-known/oauth-protected-resource", (c) => {
+    return c.json({ error: "not_found", message: "resource path suffix is required" }, 404);
+  });
+
+  gatewayApp.get("/.well-known/oauth-protected-resource/*", (c) => {
+    const resourcePath = extractProtectedResourcePathFromWellKnown(c.req.path);
+    if (!resourcePath) {
+      return c.json({ error: "not_found" }, 404);
+    }
+    const mount = resourcePath.split("/").filter(Boolean)[0];
+    if (!mount) {
+      return c.json({ error: "not_found" }, 404);
+    }
+    const oauthCell = oauthDiscoveryRegistry.get(mount);
+    if (!oauthCell) {
+      return c.json({ error: "not_found" }, 404);
+    }
+    const origin = getRequestOrigin(c);
+    return c.json(buildOAuthProtectedResourceMetadata(origin, resourcePath, mount, oauthCell.scopes));
+  });
 
   for (const cell of cells) {
     gatewayApp.get(`/${cell.mount}`, (c) => c.redirect(`/${cell.mount}/`, 301));

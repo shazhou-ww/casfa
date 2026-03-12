@@ -31,6 +31,12 @@ params:
   - AUTH
   - BFL_API_KEY
 
+oauth:
+  enabled: true
+  role: both
+  scopes:
+    - use_mcp
+
 tables:
   grants:
     keys:

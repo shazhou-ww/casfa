@@ -41,6 +41,9 @@ export type MainDevGeneratedConfig = {
   }>;
 };
 
+const GLOBAL_WELL_KNOWN_RULE: RouteRule = { path: "/.well-known", match: "prefix" };
+const GLOBAL_PROXY_MOUNT = "__global__";
+
 const MAIN_FRONTEND_INDEX_HTML = `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -158,6 +161,17 @@ export function buildMainDevGeneratedConfig(
       });
     }
   }
+
+  const globalRuleKey = `${GLOBAL_WELL_KNOWN_RULE.path}|${GLOBAL_WELL_KNOWN_RULE.match}`;
+  if (!routeRulesMap.has(globalRuleKey)) {
+    routeRulesMap.set(globalRuleKey, GLOBAL_WELL_KNOWN_RULE);
+  }
+  proxyRules.push({
+    mount: GLOBAL_PROXY_MOUNT,
+    path: GLOBAL_WELL_KNOWN_RULE.path,
+    match: GLOBAL_WELL_KNOWN_RULE.match,
+    target,
+  });
 
   proxyRules.sort((a, b) => {
     if (a.path === b.path) {
