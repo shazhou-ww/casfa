@@ -8,6 +8,7 @@ import { devCommand } from "./commands/dev.js";
 import { testUnitCommand, testE2eCommand } from "./commands/test.js";
 import { typecheckCommand } from "./commands/typecheck.js";
 import { lintCommand } from "./commands/lint.js";
+import { deployCommand } from "./commands/deploy.js";
 
 const program = new Command();
 
@@ -55,7 +56,12 @@ program.command("test:e2e")
   .action(async () => {
     await testE2eCommand(process.cwd());
   });
-program.command("deploy").description("Deploy stack").action(placeholderAction);
+program.command("deploy")
+  .description("Deploy stack (build, upload, CloudFormation)")
+  .option("--yes", "Skip confirmation")
+  .action(async (_args: unknown, cmd: { opts: () => { yes?: boolean } }) => {
+    await deployCommand(process.cwd(), { yes: cmd.opts().yes });
+  });
 program
   .command("typecheck")
   .description("Type check all cells")
