@@ -1,21 +1,79 @@
+import { existsSync, readFileSync } from "node:fs";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+
+type RouteMatch = "prefix" | "exact";
+type RouteRule = { path: string; match: RouteMatch };
+type ProxyRule = { mount: string; path: string; match: RouteMatch; target: string };
+type MainDevGeneratedConfig = {
+  firstMount: string;
+  mounts: string[];
+  routeRules: RouteRule[];
+  proxyRules: ProxyRule[];
+};
 
 const backendPort = process.env.GATEWAY_BACKEND_PORT ?? "8900";
 const vitePort = parseInt(process.env.VITE_PORT ?? "7100", 10);
 const backendTarget = `http://localhost:${backendPort}`;
+const generatedConfigPath = new URL("./src/generated/main-dev-config.json", import.meta.url);
 
-const mounts: string[] = (() => {
+function isRouteMatch(v: unknown): v is RouteMatch {
+  return v === "prefix" || v === "exact";
+}
+
+function isRouteRule(v: unknown): v is RouteRule {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    typeof (v as RouteRule).path === "string" &&
+    isRouteMatch((v as RouteRule).match)
+  );
+}
+
+function isProxyRule(v: unknown): v is ProxyRule {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    typeof (v as ProxyRule).mount === "string" &&
+    typeof (v as ProxyRule).path === "string" &&
+    isRouteMatch((v as ProxyRule).match) &&
+    typeof (v as ProxyRule).target === "string"
+  );
+}
+
+function loadGeneratedConfig(): MainDevGeneratedConfig | null {
+  if (!existsSync(generatedConfigPath)) return null;
   try {
-    const parsed = JSON.parse(process.env.OTAVIA_MOUNTS ?? "[]");
-    return Array.isArray(parsed) ? parsed.filter((m): m is string => typeof m === "string") : [];
+    const parsed = JSON.parse(readFileSync(generatedConfigPath, "utf-8")) as Partial<MainDevGeneratedConfig>;
+    if (!Array.isArray(parsed.mounts) || !Array.isArray(parsed.routeRules) || !Array.isArray(parsed.proxyRules)) {
+      return null;
+    }
+    const mounts = parsed.mounts.filter((m): m is string => typeof m === "string");
+    const routeRules = parsed.routeRules.filter(isRouteRule);
+    const proxyRules = parsed.proxyRules.filter(isProxyRule);
+    const firstMount = typeof parsed.firstMount === "string" ? parsed.firstMount : mounts[0] ?? "";
+    return { firstMount, mounts, routeRules, proxyRules };
   } catch {
-    return [];
+    return null;
   }
-})();
+}
 
+const generated = loadGeneratedConfig();
+const mounts: string[] =
+  generated?.mounts ??
+  (() => {
+    try {
+      const parsed = JSON.parse(process.env.OTAVIA_MOUNTS ?? "[]");
+      return Array.isArray(parsed) ? parsed.filter((m): m is string => typeof m === "string") : [];
+    } catch {
+      return [];
+    }
+  })();
 const mountSet = new Set(mounts);
-const apiPrefixes = ["/api", "/oauth", "/.well-known", "/mcp"];
+const firstMount = generated?.firstMount ?? mounts[0] ?? "";
+const routeRules: RouteRule[] =
+  generated?.routeRules ??
+  ["/api", "/oauth", "/.well-known", "/mcp"].map((path) => ({ path, match: "prefix" as const }));
 
 function extractMountFromPath(pathname: string): string | null {
   const seg = pathname.split("/").filter(Boolean)[0];
@@ -23,8 +81,14 @@ function extractMountFromPath(pathname: string): string | null {
   return mountSet.has(seg) ? seg : null;
 }
 
-function isApiLike(pathname: string): boolean {
-  return apiPrefixes.some((p) => pathname === p || pathname.startsWith(p + "/"));
+function matchesRule(pathname: string, rule: RouteRule): boolean {
+  return rule.match === "exact"
+    ? pathname === rule.path
+    : pathname === rule.path || pathname.startsWith(rule.path + "/");
+}
+
+function isBackendRoute(pathname: string): boolean {
+  return routeRules.some((r) => matchesRule(pathname, r));
 }
 
 function mountAwareApiRewritePlugin(): Plugin {
@@ -41,13 +105,13 @@ function mountAwareApiRewritePlugin(): Plugin {
           next();
           return;
         }
-        if (!isApiLike(pathname)) {
+        if (!isBackendRoute(pathname)) {
           next();
           return;
         }
 
         const referer = req.headers.referer;
-        let mount = mounts[0];
+        let mount = firstMount;
         if (referer) {
           try {
             const refPath = new URL(referer).pathname;
@@ -67,9 +131,35 @@ function mountAwareApiRewritePlugin(): Plugin {
 }
 
 const proxy: Record<string, object> = {};
-for (const mount of mounts) {
-  for (const p of apiPrefixes) {
-    proxy[`/${mount}${p}`] = { target: backendTarget };
+const proxyRules: ProxyRule[] =
+  generated?.proxyRules ??
+  mounts.flatMap((mount) =>
+    ["/api", "/oauth", "/.well-known", "/mcp"].map((path) => ({
+      mount,
+      path: `/${mount}${path}`,
+      match: "prefix" as const,
+      target: backendTarget,
+    }))
+  );
+const sortedProxyRules = proxyRules.slice().sort((a, b) => {
+  if (a.path === b.path) {
+    if (a.match === b.match) return 0;
+    return a.match === "exact" ? -1 : 1;
+  }
+  return b.path.length - a.path.length;
+});
+for (const rule of sortedProxyRules) {
+  if (proxy[rule.path]) continue;
+  if (rule.match === "exact") {
+    proxy[rule.path] = {
+      target: rule.target,
+      bypass(req: { url?: string }) {
+        const pathname = req.url?.split("?")[0] ?? "";
+        if (pathname !== rule.path) return "/index.html";
+      },
+    };
+  } else {
+    proxy[rule.path] = { target: rule.target };
   }
 }
 
