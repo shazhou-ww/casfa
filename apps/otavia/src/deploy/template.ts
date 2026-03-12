@@ -6,7 +6,7 @@ import type { CellConfig } from "../config/cell-yaml-schema.js";
 import { loadOtaviaYaml } from "../config/load-otavia-yaml.js";
 import { loadCellConfig } from "../config/load-cell-yaml.js";
 import { resolveCellDir } from "../config/resolve-cell-dir.js";
-import { mergeParams, resolveParams } from "../config/resolve-params.js";
+import { assertDeclaredParamsProvided, mergeParams, resolveParams } from "../config/resolve-params.js";
 import { loadEnvForCell } from "../utils/env.js";
 import { tablePhysicalName, bucketPhysicalName } from "../config/resource-names.js";
 import { generateDynamoDBTable } from "./dynamodb.js";
@@ -122,10 +122,8 @@ export function generateTemplate(rootDir: string): string {
     }
     const config = loadCellConfig(cellDir);
     const envMap = loadEnvForCell(rootDir, cellDir, { stage: "cloud" });
-    const merged = mergeParams(
-      mergeParams(otavia.params, config.params),
-      cellEntry.params
-    ) as Record<string, unknown>;
+    const merged = mergeParams(otavia.params, cellEntry.params) as Record<string, unknown>;
+    assertDeclaredParamsProvided(config.params, merged, cellEntry.mount);
     const resolved = resolveParams(merged, envMap, { onMissingParam: "throw" });
     const envVars = resolvedParamsToEnv(resolved);
     const pathPrefix = `/${cellEntry.mount}`;

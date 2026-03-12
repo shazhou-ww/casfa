@@ -5,7 +5,7 @@ import { build } from "esbuild";
 import { loadOtaviaYaml } from "../config/load-otavia-yaml.js";
 import { loadCellConfig } from "../config/load-cell-yaml.js";
 import { resolveCellDir } from "../config/resolve-cell-dir.js";
-import { mergeParams, resolveParams } from "../config/resolve-params.js";
+import { assertDeclaredParamsProvided, mergeParams, resolveParams } from "../config/resolve-params.js";
 import { loadEnvForCell } from "../utils/env.js";
 import { generateTemplate } from "../deploy/template.js";
 
@@ -97,7 +97,8 @@ function loadOtaviaAndResolveParams(rootDir: string) {
     if (!existsSync(resolve(cellDir, "cell.yaml"))) continue;
     const config = loadCellConfig(cellDir);
     const envMap = loadEnvForCell(rootDir, cellDir, { stage: "cloud" });
-    const merged = mergeParams(mergeParams(otavia.params, config.params), entry.params) as Record<string, unknown>;
+    const merged = mergeParams(otavia.params, entry.params) as Record<string, unknown>;
+    assertDeclaredParamsProvided(config.params, merged, entry.mount);
     resolveParams(merged, envMap, { onMissingParam: "throw" });
     cells.push({ mount: entry.mount, cellDir, config });
   }

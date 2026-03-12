@@ -3,7 +3,6 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { loadCellConfig } from "../load-cell-yaml.js";
-import { isEnvRef, isSecretRef } from "../cell-yaml-schema.js";
 
 function writeCellYaml(dir: string, content: string) {
   const filePath = path.join(dir, "cell.yaml");
@@ -31,7 +30,7 @@ name: my-cell
     }
   });
 
-  test("returns backend and params when present, with !Env in params", () => {
+  test("returns backend and declared params when present", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-cell-"));
     try {
       writeCellYaml(
@@ -48,8 +47,8 @@ backend:
       routes:
         - /api/*
 params:
-  DOMAIN_ROOT: !Env DOMAIN_ROOT
-  plain: hello
+  - DOMAIN_ROOT
+  - SSO_BASE_URL
 `
       );
       const result = loadCellConfig(tmp);
@@ -57,13 +56,7 @@ params:
       expect(result.backend?.runtime).toBe("bun");
       expect(result.backend?.entries?.api?.handler).toBe("backend/handler.ts");
       expect(result.backend?.entries?.api?.routes).toEqual(["/api/*"]);
-      expect(result.params?.plain).toBe("hello");
-      const domainRoot = result.params?.DOMAIN_ROOT;
-      expect(domainRoot).toBeDefined();
-      expect(isEnvRef(domainRoot)).toBe(true);
-      if (isEnvRef(domainRoot)) {
-        expect(domainRoot.env).toBe("DOMAIN_ROOT");
-      }
+      expect(result.params).toEqual(["DOMAIN_ROOT", "SSO_BASE_URL"]);
     } finally {
       fs.rmSync(tmp, { recursive: true });
     }
@@ -101,7 +94,7 @@ name: ""
     }
   });
 
-  test("parses !Secret in params", () => {
+  test("throws when params is not string array", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-cell-"));
     try {
       writeCellYaml(
@@ -109,15 +102,30 @@ name: ""
         `
 name: secret-cell
 params:
-  API_KEY: !Secret API_KEY
+  API_KEY: value
 `
       );
-      const result = loadCellConfig(tmp);
-      const apiKey = result.params?.API_KEY;
-      expect(isSecretRef(apiKey)).toBe(true);
-      if (isSecretRef(apiKey)) {
-        expect(apiKey.secret).toBe("API_KEY");
-      }
+      expect(() => loadCellConfig(tmp)).toThrow("cell.yaml: 'params' must be an array of strings");
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
+    }
+  });
+
+  test("throws when !Env or !Secret appears in cell.yaml", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-cell-"));
+    try {
+      writeCellYaml(
+        tmp,
+        `
+name: secret-cell
+params:
+  - API_KEY
+runtimeParam: !Secret BFL_API_KEY
+`
+      );
+      expect(() => loadCellConfig(tmp)).toThrow(
+        "cell.yaml: !Env and !Secret are not supported; move refs to otavia.yaml params"
+      );
     } finally {
       fs.rmSync(tmp, { recursive: true });
     }

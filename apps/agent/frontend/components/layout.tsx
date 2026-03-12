@@ -5,7 +5,7 @@ import SmartToyIcon from "@mui/icons-material/SmartToy";
 import { Box, Button, Menu, MenuItem, Typography } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
-import { useCurrentUser } from "../lib/auth.ts";
+import { useCurrentUser, withMountPath } from "../lib/auth.ts";
 import { useAgentStore } from "../stores/agent-store.ts";
 import { ThreadList } from "./chat/thread-list.tsx";
 
@@ -41,7 +41,7 @@ export function Layout() {
   }, [navigate, handleCloseMenu]);
   const handleLogout = useCallback(() => {
     handleCloseMenu();
-    window.location.href = "/oauth/logout";
+    window.location.href = withMountPath("/oauth/logout");
   }, [handleCloseMenu]);
 
   const displayName = user ? user.email || user.userId : "";

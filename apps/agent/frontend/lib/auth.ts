@@ -7,6 +7,21 @@ let apiFetchInstance: ((path: string, init: RequestInit | null) => Promise<Respo
 let ssoBaseUrlValue: string | undefined = undefined;
 let cookieUser: { userId: string; email?: string; name?: string; picture?: string } | null = null;
 
+function getMountBasePath(): string {
+  if (typeof window === "undefined") return "";
+  const seg = window.location.pathname.split("/").filter(Boolean)[0];
+  return seg ? `/${seg}` : "";
+}
+
+export function withMountPath(path: string): string {
+  if (/^https?:\/\//.test(path)) return path;
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  const base = getMountBasePath();
+  if (!base) return normalized;
+  if (normalized === base || normalized.startsWith(base + "/")) return normalized;
+  return `${base}${normalized}`;
+}
+
 export function setCookieUser(user: { userId: string; email?: string; name?: string; picture?: string } | null): void {
   cookieUser = user;
 }
@@ -31,7 +46,7 @@ export function useCurrentUser(): { userId: string; email?: string } | null {
 export async function initAuth(): Promise<void> {
   let config: { ssoBaseUrl?: string | null } = {};
   try {
-    const res = await fetch("/api/info");
+    const res = await fetch(withMountPath("/api/info"));
     if (res.ok) config = (await res.json()) as { ssoBaseUrl?: string | null };
   } catch {
     /* use defaults */
@@ -42,25 +57,25 @@ export async function initAuth(): Promise<void> {
   }
   ssoBaseUrlValue = ssoBaseUrl;
   try {
-    await fetch("/api/csrf", { credentials: "include" });
+    await fetch(withMountPath("/api/csrf"), { credentials: "include" });
   } catch {
     /* non-blocking */
   }
   authClientInstance = createAuthClient({
     ssoBaseUrl,
-    logoutEndpoint: "/oauth/logout",
+    logoutEndpoint: withMountPath("/oauth/logout"),
     clearCsrfOnLogout: { cookieName: "csrf_token", path: "/" },
-    redirectAfterLogout: { path: "/oauth/login" },
+    redirectAfterLogout: { path: withMountPath("/oauth/login") },
   });
   apiFetchInstance = createApiFetch({
     authClient: authClientInstance,
     baseUrl: "",
     onUnauthorized: () => {
-      window.location.replace("/oauth/logout");
+      window.location.replace(withMountPath("/oauth/logout"));
     },
     csrfCookieName: "csrf_token",
     ssoBaseUrl,
-    ssoRefreshPath: "/oauth/refresh",
+    ssoRefreshPath: withMountPath("/oauth/refresh"),
   });
 }
 
@@ -88,7 +103,7 @@ export function useCookieAuthCheck(): { loading: boolean; isLoggedIn: boolean } 
       setState({ loading: false, isLoggedIn: false });
       return;
     }
-    apiFetchInstance("/api/me", null)
+    apiFetchInstance(withMountPath("/api/me"), null)
       .then(async (res) => {
         if (cancelled) return;
         const data = res.ok
@@ -135,5 +150,5 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
     path.startsWith("http://") || path.startsWith("https://")
       ? new URL(path).pathname + new URL(path).search
       : path;
-  return apiFetchInstance(pathOnly, init ?? null);
+  return apiFetchInstance(withMountPath(pathOnly), init ?? null);
 }

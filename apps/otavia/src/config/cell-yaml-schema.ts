@@ -5,12 +5,17 @@
 
 export type SecretRef = { secret: string };
 export type EnvRef = { env: string };
+export type ParamRef = { param: string };
 
-/** Param value during parsing; may contain !Env / !Secret refs. Not resolved in loader. */
+/**
+ * Param value shape used by config pipeline.
+ * NOTE: cell.yaml itself does not support !Env/!Secret; these refs come from otavia.yaml params.
+ */
 export type RawParamValue =
   | string
   | SecretRef
   | EnvRef
+  | ParamRef
   | Record<string, unknown>;
 
 export function isSecretRef(v: unknown): v is SecretRef {
@@ -27,6 +32,16 @@ export function isEnvRef(v: unknown): v is EnvRef {
     typeof v === "object" &&
     v !== null &&
     "env" in v &&
+    !("secret" in v)
+  );
+}
+
+export function isParamRef(v: unknown): v is ParamRef {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    "param" in v &&
+    !("env" in v) &&
     !("secret" in v)
   );
 }
@@ -77,5 +92,6 @@ export interface CellConfig {
   testing?: TestingConfig;
   tables?: Record<string, TableConfig>;
   buckets?: Record<string, Record<string, unknown>>;
-  params?: Record<string, RawParamValue>;
+  /** Declared required param keys; values are provided by otavia.yaml. */
+  params?: string[];
 }

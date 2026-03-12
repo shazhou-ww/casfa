@@ -19,6 +19,7 @@ export const ENV_NAMES = {
   AUTH_COOKIE_DOMAIN: "AUTH_COOKIE_DOMAIN",
   AUTH_COOKIE_PATH: "AUTH_COOKIE_PATH",
   AUTH_COOKIE_MAX_AGE_SECONDS: "AUTH_COOKIE_MAX_AGE_SECONDS",
+  AUTH: "AUTH",
 } as const;
 
 export type ServerConfig = {
@@ -45,6 +46,31 @@ export type ServerConfig = {
 };
 
 const DEFAULT_PORT = 7161; // PORT_BASE+1 when PORT_BASE=7160
+
+type AuthParam = {
+  cognitoRegion?: string;
+  cognitoUserPoolId?: string;
+  ssoBaseUrl?: string;
+};
+
+function parseAuthParam(raw: string | undefined): AuthParam | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+    return {
+      cognitoRegion:
+        typeof parsed.cognitoRegion === "string" ? parsed.cognitoRegion : undefined,
+      cognitoUserPoolId:
+        typeof parsed.cognitoUserPoolId === "string"
+          ? parsed.cognitoUserPoolId
+          : undefined,
+      ssoBaseUrl: typeof parsed.ssoBaseUrl === "string" ? parsed.ssoBaseUrl : undefined,
+    };
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * When CELL_BASE_URL is path-based (e.g. http://localhost:8900/agent), return origin + '/sso'.
@@ -83,15 +109,16 @@ export function loadConfig(): ServerConfig {
   const port = Number(process.env.PORT) || DEFAULT_PORT;
   const stage = process.env.SLS_STAGE ?? process.env.STAGE ?? "dev";
   const baseUrl = (process.env.CELL_BASE_URL || "").replace(/\/$/, "");
-  let ssoBaseUrl = process.env.SSO_BASE_URL?.replace(/\/$/, "");
+  const authParam = parseAuthParam(process.env.AUTH);
+  let ssoBaseUrl = (process.env.SSO_BASE_URL ?? authParam?.ssoBaseUrl)?.replace(/\/$/, "");
   if (!ssoBaseUrl && stage === "dev" && baseUrl) {
     ssoBaseUrl = deriveSsoBaseUrlForPath(baseUrl) ?? deriveSsoBaseUrlInDev(baseUrl) ?? "";
   }
   const cookieName = ssoBaseUrl ? "auth" : (process.env.AUTH_COOKIE_NAME || undefined);
   const auth: ServerConfig["auth"] = {
     mockJwtSecret: process.env.MOCK_JWT_SECRET || undefined,
-    cognitoRegion: process.env.COGNITO_REGION,
-    cognitoUserPoolId: process.env.COGNITO_USER_POOL_ID,
+    cognitoRegion: process.env.COGNITO_REGION ?? authParam?.cognitoRegion,
+    cognitoUserPoolId: process.env.COGNITO_USER_POOL_ID ?? authParam?.cognitoUserPoolId,
     cookieName,
     cookieDomain: process.env.AUTH_COOKIE_DOMAIN || undefined,
     cookiePath: process.env.AUTH_COOKIE_PATH ?? (cookieName ? "/" : undefined),
