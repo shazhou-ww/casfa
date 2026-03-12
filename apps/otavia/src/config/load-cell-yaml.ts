@@ -47,5 +47,5 @@ export function loadCellConfig(cellDir: string): CellConfig {
     throw new Error("cell.yaml: 'name' must be a non-empty string");
   }
 
-  return raw as CellConfig;
+  return raw as unknown as CellConfig;
 }

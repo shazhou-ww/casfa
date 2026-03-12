@@ -4,6 +4,7 @@ import { loadOtaviaYaml } from "./config/load-otavia-yaml.js";
 import { setupCommand } from "./commands/setup.js";
 import { cleanCommand } from "./commands/clean.js";
 import { awsLoginCommand, awsLogoutCommand } from "./commands/aws.js";
+import { devCommand } from "./commands/dev.js";
 
 const program = new Command();
 
@@ -31,7 +32,9 @@ program.command("setup")
   .action(async (_args: unknown, cmd: { opts: () => { tunnel?: boolean } }) => {
     await setupCommand(process.cwd(), { tunnel: cmd.opts().tunnel });
   });
-program.command("dev").description("Start development").action(placeholderAction);
+program.command("dev").description("Start development").action(async () => {
+  await devCommand(process.cwd());
+});
 program.command("test").description("Run tests").action(placeholderAction);
 program.command("test:unit").description("Run unit tests").action(placeholderAction);
 program.command("test:e2e").description("Run e2e tests").action(placeholderAction);
