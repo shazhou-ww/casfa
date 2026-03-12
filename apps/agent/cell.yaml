@@ -1,6 +1,4 @@
 name: agent
-bucketNameSuffix: casfa-shazhou-me
-pathPrefix: "/agent"
 
 backend:
   dir: backend
@@ -64,13 +62,6 @@ params:
     zone: "casfa.shazhou.me"
   LOG_LEVEL: "info"
   SSO_BASE_URL: !Env SSO_BASE_URL
-
-dev:
-  portBase: 7160
-
-domain:
-  subdomain: agent.casfa
-  dns: !Param DNS
 
 testing:
   unit: backend/

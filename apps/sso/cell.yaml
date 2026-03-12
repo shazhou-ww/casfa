@@ -1,6 +1,4 @@
 name: sso
-bucketNameSuffix: mitsein
-pathPrefix: "/sso"
 
 backend:
   dir: backend
@@ -62,13 +60,6 @@ cognito:
   userPoolId: !Param COGNITO_USER_POOL_ID
   clientId: !Param COGNITO_CLIENT_ID
   hostedUiUrl: !Param COGNITO_HOSTED_UI_URL
-
-dev:
-  portBase: 7100
-
-domain:
-  subdomain: sso.casfa
-  dns: !Param DNS
 
 testing:
   unit: backend/
