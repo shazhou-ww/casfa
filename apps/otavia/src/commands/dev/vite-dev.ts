@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { loadOtaviaYaml } from "../../config/load-otavia-yaml.js";
 import { loadCellConfig } from "../../config/load-cell-yaml.js";
 import type { CellConfig } from "../../config/cell-yaml-schema.js";
@@ -81,7 +81,8 @@ export function buildMainDevGeneratedConfig(
       entryType: "html" | "module";
     }>;
   }>,
-  backendPort: number
+  backendPort: number,
+  sourcePathBaseDir?: string
 ): MainDevGeneratedConfig {
   const mounts = cells.map((c) => c.mount);
   const firstMount = mounts[0] ?? "";
@@ -95,7 +96,9 @@ export function buildMainDevGeneratedConfig(
     frontendModuleProxyRules.push(
       ...cell.moduleProxySpecs.map((spec) => ({
         path: spec.routePath,
-        sourcePath: spec.sourcePath,
+        sourcePath: sourcePathBaseDir
+          ? relative(sourcePathBaseDir, spec.sourcePath).replace(/\\/g, "/")
+          : spec.sourcePath,
       }))
     );
     frontendRouteRules.push(...cell.frontendRouteRules);
@@ -272,7 +275,7 @@ ${cellsWithFrontend
 } as Record<string, () => Promise<unknown>>;
 `;
   writeFileSync(generatedLoadersPath, loadersSource, "utf-8");
-  const generatedDevConfig = buildMainDevGeneratedConfig(cellsWithFrontend, backendPort);
+  const generatedDevConfig = buildMainDevGeneratedConfig(cellsWithFrontend, backendPort, root);
   writeFileSync(generatedDevConfigPath, JSON.stringify(generatedDevConfig, null, 2), "utf-8");
 
   const env = {
