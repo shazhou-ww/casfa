@@ -33,12 +33,77 @@ params:
       );
       const result = loadOtaviaYaml(tmp);
       expect(result.stackName).toBe("my-stack");
-      expect(result.cells).toEqual(["cell-a", "cell-b"]);
+      expect(result.cells).toEqual({ "cell-a": "@casfa/cell-a", "cell-b": "@casfa/cell-b" });
+      expect(result.cellsList).toEqual([
+        { mount: "cell-a", package: "@casfa/cell-a" },
+        { mount: "cell-b", package: "@casfa/cell-b" },
+      ]);
       expect(result.domain.host).toBe("example.com");
       expect(result.domain.dns?.provider).toBe("route53");
       expect(result.domain.dns?.zone).toBe("example.com");
       expect(result.domain.dns?.zoneId).toBe("Z123");
       expect(result.params).toEqual({ foo: "bar" });
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
+    }
+  });
+
+  test("parses cells as object (mount -> package)", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-test-"));
+    try {
+      writeYaml(
+        tmp,
+        `
+stackName: my-stack
+cells:
+  sso: "@casfa/sso"
+  drive: "@casfa/server-next"
+domain:
+  host: example.com
+`
+      );
+      const result = loadOtaviaYaml(tmp);
+      expect(result.cells).toEqual({ sso: "@casfa/sso", drive: "@casfa/server-next" });
+      expect(result.cellsList).toEqual([
+        { mount: "sso", package: "@casfa/sso" },
+        { mount: "drive", package: "@casfa/server-next" },
+      ]);
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
+    }
+  });
+
+  test("parses canonical cells list with package/mount/params", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-test-"));
+    try {
+      writeYaml(
+        tmp,
+        `
+stackName: my-stack
+cells:
+  - package: "@casfa/sso"
+    mount: "auth"
+    params:
+      issuer: "https://issuer.example.com"
+  - package: "@casfa/server-next"
+domain:
+  host: example.com
+`
+      );
+      const result = loadOtaviaYaml(tmp);
+      expect(result.cells).toEqual({ auth: "@casfa/sso", "server-next": "@casfa/server-next" });
+      expect(result.cellsList).toEqual([
+        {
+          mount: "auth",
+          package: "@casfa/sso",
+          params: { issuer: "https://issuer.example.com" },
+        },
+        {
+          mount: "server-next",
+          package: "@casfa/server-next",
+          params: undefined,
+        },
+      ]);
     } finally {
       fs.rmSync(tmp, { recursive: true });
     }
@@ -103,7 +168,7 @@ domain:
   host: x.com
 `
       );
-      expect(() => loadOtaviaYaml(tmpEmpty)).toThrow("otavia.yaml: cells must be a non-empty array");
+      expect(() => loadOtaviaYaml(tmpEmpty)).toThrow("otavia.yaml: cells must be a non-empty array or object");
     } finally {
       fs.rmSync(tmpMissing, { recursive: true });
       fs.rmSync(tmpEmpty, { recursive: true });

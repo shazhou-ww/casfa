@@ -1,3 +1,5 @@
+export { createAppForGateway as createAppForBackend } from "./gateway-app";
+export { createAppForGateway } from "./gateway-app";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { SsoConfig } from "./config.ts";

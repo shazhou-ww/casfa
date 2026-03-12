@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { loadOtaviaYaml } from "../config/load-otavia-yaml.js";
 import { loadCellConfig } from "../config/load-cell-yaml.js";
+import { resolveCellDir } from "../config/resolve-cell-dir.js";
 import { mergeParams } from "../config/resolve-params.js";
 import { isEnvRef, isSecretRef } from "../config/cell-yaml-schema.js";
 import { loadEnvForCell } from "../utils/env.js";
@@ -65,42 +66,43 @@ export async function setupCommand(
   // 2. Load otavia.yaml (rethrow on error)
   const otavia = loadOtaviaYaml(rootDir);
 
-  const appsDir = path.join(rootDir, "apps");
-
-  for (const cellId of otavia.cells) {
-    const cellYamlPath = path.join(appsDir, cellId, "cell.yaml");
+  for (const entry of otavia.cellsList) {
+    const cellDir = resolveCellDir(rootDir, entry.package);
+    const cellYamlPath = path.join(cellDir, "cell.yaml");
     if (!existsSync(cellYamlPath)) {
-      console.warn(`Warning: cell "${cellId}" not found (missing ${cellYamlPath}), skipping.`);
+      console.warn(`Warning: cell "${entry.mount}" (${entry.package}) not found, skipping.`);
       continue;
     }
 
-    const cellDir = path.join(appsDir, cellId);
     const envPath = path.join(cellDir, ".env");
     const envExamplePath = path.join(cellDir, ".env.example");
 
     if (existsSync(envPath)) {
-      console.log(`Skip .env: already exists (apps/${cellId}/.env)`);
+      console.log(`Skip .env: already exists (${entry.mount})`);
     } else if (existsSync(envExamplePath)) {
       copyFileSync(envExamplePath, envPath);
-      console.log(`Created .env from .env.example (apps/${cellId}/.env)`);
+      console.log(`Created .env from .env.example (${entry.mount})`);
     } else {
-      console.log(`Skip .env: no .env.example (apps/${cellId})`);
+      console.log(`Skip .env: no .env.example (${entry.mount})`);
     }
 
     // Optional: warn on missing !Env/!Secret in params
     try {
       const cellConfig = loadCellConfig(cellDir);
       const merged = mergeParams(
-        otavia.params as Record<string, unknown> | undefined,
-        cellConfig.params as Record<string, unknown> | undefined
+        mergeParams(
+          otavia.params as Record<string, unknown> | undefined,
+          cellConfig.params as Record<string, unknown> | undefined
+        ),
+        entry.params
       );
       const refKeys = collectRefKeys(merged);
       if (refKeys.length === 0) continue;
 
-      const env = loadEnvForCell(rootDir, cellId);
+      const env = loadEnvForCell(rootDir, cellDir);
       const missing = refKeys.filter((k) => env[k] === undefined || env[k] === "");
       if (missing.length > 0) {
-        console.warn(`Warning: missing env for cell ${cellId}: ${missing.join(", ")}`);
+        console.warn(`Warning: missing env for ${entry.mount}: ${missing.join(", ")}`);
       }
     } catch {
       // Do not block: if cell.yaml fails to load or merge fails, skip warning

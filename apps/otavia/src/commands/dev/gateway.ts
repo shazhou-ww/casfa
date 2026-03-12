@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Hono } from "hono";
@@ -6,6 +6,7 @@ import type { OtaviaYaml } from "../../config/otavia-yaml-schema.js";
 import type { CellConfig } from "../../config/cell-yaml-schema.js";
 import { loadOtaviaYaml } from "../../config/load-otavia-yaml.js";
 import { loadCellConfig } from "../../config/load-cell-yaml.js";
+import { resolveCellDir } from "../../config/resolve-cell-dir.js";
 import { mergeParams, resolveParams } from "../../config/resolve-params.js";
 import { loadEnvForCell } from "../../utils/env.js";
 import { tablePhysicalName, bucketPhysicalName } from "../../config/resource-names.js";
@@ -16,7 +17,7 @@ import {
   waitForPort,
 } from "../../local/docker.js";
 import { isDynamoDBReady, ensureLocalTables, type LocalTableEntry } from "../../local/dynamodb-local.js";
-import { ensureLocalBuckets } from "../../local/minio-local.js";
+import { isMinIOReady, ensureLocalBuckets } from "../../local/minio-local.js";
 
 const DYNAMODB_PORT = 8000;
 const MINIO_PORT = 9000;
@@ -24,8 +25,11 @@ const DYNAMODB_CONTAINER = "otavia-dynamodb-dev";
 const MINIO_CONTAINER = "otavia-minio-dev";
 
 export interface GatewayCellInfo {
-  cellId: string;
+  /** Path segment for this cell in the stack (e.g. "sso", "drive"). */
+  mount: string;
   cellDir: string;
+  /** Package name (e.g. @casfa/sso). Used to import gateway module. */
+  packageName: string;
   config: CellConfig;
   env: Record<string, string>;
 }
@@ -45,27 +49,34 @@ function resolvedParamsToEnv(resolved: Record<string, string | unknown>): Record
 }
 
 async function discoverCells(rootDir: string, otavia: OtaviaYaml, backendPort: number): Promise<GatewayCellInfo[]> {
-  const firstCellId = otavia.cells[0];
-  const ssoBaseUrl = `http://localhost:${backendPort}/${firstCellId}`;
+  const firstMount = otavia.cellsList[0]?.mount ?? "";
+  const ssoBaseUrl = `http://localhost:${backendPort}/${firstMount}`;
   const cells: GatewayCellInfo[] = [];
 
-  for (const cellId of otavia.cells) {
-    const cellDir = resolve(rootDir, "apps", cellId);
+  for (const entry of otavia.cellsList) {
+    const cellDir = resolveCellDir(rootDir, entry.package);
     const cellYamlPath = resolve(cellDir, "cell.yaml");
     if (!existsSync(cellYamlPath)) {
-      console.warn(`[gateway] Skipping cell "${cellId}": cell.yaml not found at ${cellYamlPath}`);
+      console.warn(`[gateway] Skipping "${entry.mount}" (${entry.package}): cell.yaml not found at ${cellYamlPath}`);
       continue;
     }
+    const pkgPath = resolve(cellDir, "package.json");
+    if (!existsSync(pkgPath)) {
+      console.warn(`[gateway] Skipping "${entry.mount}": package.json not found`);
+      continue;
+    }
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { name?: string };
+    const packageName = pkg?.name ?? entry.package;
     const config = loadCellConfig(cellDir);
-    const merged = mergeParams(otavia.params, config.params);
-    const envMap = loadEnvForCell(rootDir, cellId);
+    const merged = mergeParams(mergeParams(otavia.params, config.params), entry.params);
+    const envMap = loadEnvForCell(rootDir, cellDir);
     const resolved = resolveParams(merged as Record<string, unknown>, envMap, {
       onMissingParam: "placeholder",
     });
     const env = resolvedParamsToEnv(resolved as Record<string, string | unknown>);
-    env.CELL_BASE_URL = `http://localhost:${backendPort}/${cellId}`;
+    env.CELL_BASE_URL = `http://localhost:${backendPort}/${entry.mount}`;
     env.SSO_BASE_URL = ssoBaseUrl;
-    cells.push({ cellId, cellDir, config, env });
+    cells.push({ mount: entry.mount, cellDir, packageName, config, env });
   }
   return cells;
 }
@@ -93,23 +104,27 @@ async function ensureDockerResources(
       persistent: false,
       containerName: DYNAMODB_CONTAINER,
     });
-    const ready = await waitForPort(DYNAMODB_PORT);
-    if (!ready) {
+    if (!(await waitForPort(DYNAMODB_PORT))) {
       throw new Error("DynamoDB Local did not become ready in time");
     }
     dynamoEndpoint = `http://localhost:${DYNAMODB_PORT}`;
+    // DynamoDB Local may accept TCP before the API is ready; retry isDynamoDBReady
+    for (let i = 0; i < 30; i++) {
+      if (await isDynamoDBReady(dynamoEndpoint)) break;
+      await Bun.sleep(500);
+      if (i === 29) {
+        throw new Error("DynamoDB endpoint not accepting requests");
+      }
+    }
     const tablesList: LocalTableEntry[] = [];
     for (const cell of cells) {
       if (!cell.config.tables) continue;
       for (const [key, config] of Object.entries(cell.config.tables)) {
         tablesList.push({
-          tableName: tablePhysicalName(stackName, cell.cellId, key),
+          tableName: tablePhysicalName(stackName, cell.mount, key),
           config,
         });
       }
-    }
-    if (!(await isDynamoDBReady(dynamoEndpoint))) {
-      throw new Error("DynamoDB endpoint not accepting requests");
     }
     await ensureLocalTables(dynamoEndpoint, tablesList);
   }
@@ -120,16 +135,23 @@ async function ensureDockerResources(
       containerName: MINIO_CONTAINER,
       // no dataDir for dev => ephemeral
     });
-    const ready = await waitForPort(MINIO_PORT);
-    if (!ready) {
+    if (!(await waitForPort(MINIO_PORT))) {
       throw new Error("MinIO did not become ready in time");
     }
     s3Endpoint = `http://localhost:${MINIO_PORT}`;
+    // MinIO may accept TCP before the S3 API is ready; retry isMinIOReady
+    for (let i = 0; i < 30; i++) {
+      if (await isMinIOReady(s3Endpoint)) break;
+      await Bun.sleep(500);
+      if (i === 29) {
+        throw new Error("MinIO endpoint not accepting S3 requests");
+      }
+    }
     const bucketNames: string[] = [];
     for (const cell of cells) {
       if (!cell.config.buckets) continue;
       for (const key of Object.keys(cell.config.buckets)) {
-        bucketNames.push(bucketPhysicalName(stackName, cell.cellId, key));
+        bucketNames.push(bucketPhysicalName(stackName, cell.mount, key));
       }
     }
     await ensureLocalBuckets(s3Endpoint, bucketNames);
@@ -154,19 +176,39 @@ function applyLocalEndpoints(
 }
 
 async function loadCellGatewayApp(
-  cellDir: string
-): Promise<((env: Record<string, string>) => Hono) | null> {
-  const gatewayAppPath = resolve(cellDir, "backend", "gateway-app.ts");
-  if (!existsSync(gatewayAppPath)) {
-    return null;
-  }
+  cell: GatewayCellInfo
+): Promise<((env: Record<string, string>) => Hono | Promise<Hono>) | null> {
+  // Preferred: package export contract "@pkg/backend"
   try {
-    const mod = await import(pathToFileURL(gatewayAppPath).href);
+    const mod = await import(`${cell.packageName}/backend`);
+    if (typeof mod?.createAppForBackend === "function") {
+      return mod.createAppForBackend;
+    }
     if (typeof mod?.createAppForGateway === "function") {
       return mod.createAppForGateway;
     }
   } catch {
-    // Module load error
+    // Fallback to file-based discovery.
+  }
+
+  // Compatibility fallback while migrating from gateway naming.
+  const candidates = [
+    resolve(cell.cellDir, "backend", "app.ts"),
+    resolve(cell.cellDir, "backend", "gateway-app.ts"),
+  ];
+  for (const backendEntryPath of candidates) {
+    if (!existsSync(backendEntryPath)) continue;
+    try {
+      const mod = await import(pathToFileURL(backendEntryPath).href);
+      if (typeof mod?.createAppForBackend === "function") {
+        return mod.createAppForBackend;
+      }
+      if (typeof mod?.createAppForGateway === "function") {
+        return mod.createAppForGateway;
+      }
+    } catch {
+      // Module load error, try next candidate.
+    }
   }
   return null;
 }
@@ -174,7 +216,7 @@ async function loadCellGatewayApp(
 export type GatewayServer = { stop: () => void };
 
 /**
- * Start the dev gateway: single Hono app mounting each cell at /<cellId>.
+ * Start the dev gateway: single Hono app mounting each cell at /<mount>.
  * Starts Docker (DynamoDB Local + MinIO) when any cell has tables/buckets, unless
  * overrides are provided (e.g. for e2e: caller already started Docker and passes endpoints).
  */
@@ -202,24 +244,24 @@ export async function runGatewayDev(
   applyLocalEndpoints(cells, dynamoEndpoint, s3Endpoint);
 
   const gatewayApp = new Hono();
-  const firstCellId = otavia.cells[0];
+  const firstMount = otavia.cellsList[0]?.mount ?? "";
 
-  gatewayApp.get("/", (c) => c.redirect(`/${firstCellId}/`, 301));
+  gatewayApp.get("/", (c) => c.redirect(`/${firstMount}/`, 301));
 
   for (const cell of cells) {
-    gatewayApp.get(`/${cell.cellId}`, (c) => c.redirect(`/${cell.cellId}/`, 301));
+    gatewayApp.get(`/${cell.mount}`, (c) => c.redirect(`/${cell.mount}/`, 301));
   }
 
   for (const cell of cells) {
-    const createApp = await loadCellGatewayApp(cell.cellDir);
+    const createApp = await loadCellGatewayApp(cell);
     if (!createApp) {
       console.warn(
-        `[gateway] No backend/gateway-app.ts (createAppForGateway) for "${cell.cellId}", skipping mount`
+        `[gateway] No backend entry for "${cell.mount}" (tried backend/app.ts and backend/gateway-app.ts), skipping mount`
       );
       continue;
     }
-    const cellApp = createApp(cell.env);
-    const prefix = `/${cell.cellId}`;
+    const cellApp = await Promise.resolve(createApp(cell.env));
+    const prefix = `/${cell.mount}`;
     gatewayApp.all(prefix + "/", async (c) => {
       const u = new URL(c.req.url);
       const newUrl = new URL("/" + (u.search || ""), u.origin);
@@ -241,7 +283,7 @@ export async function runGatewayDev(
       });
       return cellApp.fetch(newReq);
     });
-    console.log(`[gateway] Mounted ${cell.cellId} at /${cell.cellId}`);
+    console.log(`[gateway] Mounted ${cell.mount} at /${cell.mount}`);
   }
 
   const server = Bun.serve({

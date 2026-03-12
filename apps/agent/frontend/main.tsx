@@ -22,8 +22,9 @@ const theme = createTheme({
 
 function registerServiceWorker() {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
-  const url = import.meta.env.DEV ? "/sw.ts" : "/sw.js";
-  navigator.serviceWorker.register(url, { scope: "/", type: "module" }).catch(() => {});
+  const basename = resolveBasename();
+  const url = import.meta.env.DEV ? `${basename}/sw.ts` : `${basename}/sw.js`;
+  navigator.serviceWorker.register(url, { scope: `${basename}/`, type: "module" }).catch(() => {});
 }
 
 function Root() {
@@ -58,10 +59,15 @@ function Root() {
     );
   }
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={resolveBasename()}>
       <App />
     </BrowserRouter>
   );
+}
+
+function resolveBasename(): string {
+  const seg = window.location.pathname.split("/").filter(Boolean)[0];
+  return seg ? `/${seg}` : "/";
 }
 
 const rootEl = document.getElementById("root");

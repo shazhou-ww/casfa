@@ -4,6 +4,81 @@ import { parseDocument } from "yaml";
 import type { OtaviaYaml } from "./otavia-yaml-schema.js";
 
 const CONFIG_FILENAME = "otavia.yaml";
+const DEFAULT_SCOPE = "@casfa";
+
+type CellRef = { mount: string; package: string; params?: Record<string, unknown> };
+
+function packageToMount(packageName: string): string {
+  const trimmed = packageName.trim();
+  if (trimmed.length === 0) return trimmed;
+  const parts = trimmed.split("/");
+  return trimmed.startsWith("@") ? (parts[1] ?? "") : (parts[0] ?? "");
+}
+
+function normalizeParams(value: unknown, pathLabel: string): Record<string, unknown> | undefined {
+  if (value == null) return undefined;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${pathLabel} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function parseCells(data: unknown): { cells: Record<string, string>; cellsList: CellRef[] } {
+  if (data == null) {
+    throw new Error("otavia.yaml: missing cells");
+  }
+  if (Array.isArray(data)) {
+    if (data.length === 0) {
+      throw new Error("otavia.yaml: cells must be a non-empty array or object");
+    }
+    const cellsList: CellRef[] = [];
+    for (let i = 0; i < data.length; i += 1) {
+      const item = data[i];
+      const itemPath = `otavia.yaml: cells[${i}]`;
+      if (typeof item === "string") {
+        const mount = item.trim();
+        if (!mount) throw new Error(`${itemPath} must be a non-empty string`);
+        cellsList.push({ mount, package: `${DEFAULT_SCOPE}/${mount}` });
+        continue;
+      }
+      if (item == null || typeof item !== "object" || Array.isArray(item)) {
+        throw new Error(`${itemPath} must be a string or an object { package, mount?, params? }`);
+      }
+      const record = item as Record<string, unknown>;
+      const packageName = typeof record.package === "string" ? record.package.trim() : "";
+      if (!packageName) throw new Error(`${itemPath}.package must be a non-empty string`);
+      const mount =
+        typeof record.mount === "string" && record.mount.trim()
+          ? record.mount.trim()
+          : packageToMount(packageName);
+      if (!mount) throw new Error(`${itemPath}.mount is required when package cannot infer mount`);
+      const params = normalizeParams(record.params, `${itemPath}.params`);
+      cellsList.push({ mount, package: packageName, params });
+    }
+    const cells = Object.fromEntries(cellsList.map((c) => [c.mount, c.package]));
+    return { cells, cellsList };
+  }
+  if (typeof data === "object" && !Array.isArray(data)) {
+    const entries = Object.entries(data as Record<string, unknown>);
+    if (entries.length === 0) {
+      throw new Error("otavia.yaml: cells object must have at least one entry");
+    }
+    const cellsList: CellRef[] = [];
+    for (const [mountRaw, pkg] of entries) {
+      const mount = mountRaw.trim();
+      if (typeof mount !== "string" || mount === "") {
+        throw new Error("otavia.yaml: cells keys (mount) must be non-empty strings");
+      }
+      if (typeof pkg !== "string" || pkg === "") {
+        throw new Error(`otavia.yaml: cells["${mount}"] must be a non-empty package name string`);
+      }
+      cellsList.push({ mount, package: pkg.trim() });
+    }
+    const cells = Object.fromEntries(cellsList.map((c) => [c.mount, c.package]));
+    return { cells, cellsList };
+  }
+  throw new Error("otavia.yaml: cells must be an array or an object");
+}
 
 export function loadOtaviaYaml(rootDir: string): OtaviaYaml {
   const configPath = path.resolve(rootDir, CONFIG_FILENAME);
@@ -24,18 +99,7 @@ export function loadOtaviaYaml(rootDir: string): OtaviaYaml {
     throw new Error("otavia.yaml: stackName must be a string");
   }
 
-  if (data.cells == null) {
-    throw new Error("otavia.yaml: missing cells");
-  }
-  if (!Array.isArray(data.cells)) {
-    throw new Error("otavia.yaml: cells must be an array");
-  }
-  if (data.cells.length === 0) {
-    throw new Error("otavia.yaml: cells must be a non-empty array");
-  }
-  if (!data.cells.every((c): c is string => typeof c === "string")) {
-    throw new Error("otavia.yaml: cells must be an array of strings");
-  }
+  const { cells, cellsList } = parseCells(data.cells);
 
   if (data.domain == null || typeof data.domain !== "object") {
     throw new Error("otavia.yaml: missing domain");
@@ -50,7 +114,8 @@ export function loadOtaviaYaml(rootDir: string): OtaviaYaml {
 
   const result: OtaviaYaml = {
     stackName: data.stackName as string,
-    cells: data.cells as string[],
+    cells,
+    cellsList,
     domain: {
       host: domain.host as string,
       dns:

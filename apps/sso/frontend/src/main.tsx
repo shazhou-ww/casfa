@@ -28,11 +28,16 @@ const theme = createTheme({
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("Missing #root");
 
+function resolveBasename(): string {
+  const seg = window.location.pathname.split("/").filter(Boolean)[0];
+  return seg ? `/${seg}` : "/";
+}
+
 createRoot(rootEl).render(
   <StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <BrowserRouter>
+      <BrowserRouter basename={resolveBasename()}>
         <App />
       </BrowserRouter>
     </ThemeProvider>
