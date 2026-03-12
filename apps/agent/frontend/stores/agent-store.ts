@@ -6,6 +6,7 @@ import { create } from "zustand";
 import type {
   Action,
   Change,
+  IncomingMessage,
   Message,
   MessageContent,
   ModelState,
@@ -73,6 +74,16 @@ type AgentActions = {
 const pendingById = new Map<string, Pending>();
 const ACTION_RESPONSE_TIMEOUT_MS = 15000;
 let swConnectInFlight: Promise<MessagePort> | null = null;
+let swBroadcastUnsubscribe: (() => void) | null = null;
+
+function isIncomingChangeMessage(msg: unknown): msg is IncomingMessage {
+  return (
+    typeof msg === "object" &&
+    msg !== null &&
+    (msg as IncomingMessage).type === "change" &&
+    Array.isArray((msg as IncomingMessage).changes)
+  );
+}
 
 function clearPending(id: string): void {
   pendingById.delete(id);
@@ -112,6 +123,10 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
   setSwPort(port) {
     const prev = get().swPort;
     if (prev === port) return;
+    if (swBroadcastUnsubscribe) {
+      swBroadcastUnsubscribe();
+      swBroadcastUnsubscribe = null;
+    }
     if (prev) {
       try {
         prev.close();
@@ -121,10 +136,17 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
     }
     set({ swPort: port });
     if (port) {
-      subscribeToChangeBroadcast((msg) => {
+      const onIncomingChange = (msg: IncomingMessage) => {
         for (const change of msg.changes) {
           get().applyChange(change);
         }
+      };
+      port.onmessage = (event: MessageEvent) => {
+        if (!isIncomingChangeMessage(event.data)) return;
+        onIncomingChange(event.data);
+      };
+      swBroadcastUnsubscribe = subscribeToChangeBroadcast((msg) => {
+        onIncomingChange(msg);
       });
     }
   },

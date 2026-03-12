@@ -54,7 +54,11 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    self.clients.claim().then(() => hydrate().then((s) => { modelState = s; }))
+    self.clients.claim().then(() =>
+      hydrate().then((s) => {
+        modelState = s;
+      })
+    )
   );
 });
 

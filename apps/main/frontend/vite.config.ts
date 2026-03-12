@@ -5,11 +5,13 @@ import react from "@vitejs/plugin-react";
 type RouteMatch = "prefix" | "exact";
 type RouteRule = { path: string; match: RouteMatch };
 type ProxyRule = { mount: string; path: string; match: RouteMatch; target: string };
+type FrontendModuleProxyRule = { path: string; sourcePath: string };
 type MainDevGeneratedConfig = {
   firstMount: string;
   mounts: string[];
   routeRules: RouteRule[];
   proxyRules: ProxyRule[];
+  frontendModuleProxyRules: FrontendModuleProxyRule[];
 };
 
 const backendPort = process.env.GATEWAY_BACKEND_PORT ?? "8900";
@@ -41,18 +43,34 @@ function isProxyRule(v: unknown): v is ProxyRule {
   );
 }
 
+function isFrontendModuleProxyRule(v: unknown): v is FrontendModuleProxyRule {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    typeof (v as FrontendModuleProxyRule).path === "string" &&
+    typeof (v as FrontendModuleProxyRule).sourcePath === "string"
+  );
+}
+
 function loadGeneratedConfig(): MainDevGeneratedConfig | null {
   if (!existsSync(generatedConfigPath)) return null;
   try {
     const parsed = JSON.parse(readFileSync(generatedConfigPath, "utf-8")) as Partial<MainDevGeneratedConfig>;
-    if (!Array.isArray(parsed.mounts) || !Array.isArray(parsed.routeRules) || !Array.isArray(parsed.proxyRules)) {
+    if (
+      !Array.isArray(parsed.mounts) ||
+      !Array.isArray(parsed.routeRules) ||
+      !Array.isArray(parsed.proxyRules)
+    ) {
       return null;
     }
     const mounts = parsed.mounts.filter((m): m is string => typeof m === "string");
     const routeRules = parsed.routeRules.filter(isRouteRule);
     const proxyRules = parsed.proxyRules.filter(isProxyRule);
+    const frontendModuleProxyRules = Array.isArray(parsed.frontendModuleProxyRules)
+      ? parsed.frontendModuleProxyRules.filter(isFrontendModuleProxyRule)
+      : [];
     const firstMount = typeof parsed.firstMount === "string" ? parsed.firstMount : mounts[0] ?? "";
-    return { firstMount, mounts, routeRules, proxyRules };
+    return { firstMount, mounts, routeRules, proxyRules, frontendModuleProxyRules };
   } catch {
     return null;
   }
@@ -74,6 +92,8 @@ const firstMount = generated?.firstMount ?? mounts[0] ?? "";
 const routeRules: RouteRule[] =
   generated?.routeRules ??
   ["/api", "/oauth", "/.well-known", "/mcp"].map((path) => ({ path, match: "prefix" as const }));
+const frontendModuleProxyRules = generated?.frontendModuleProxyRules ?? [];
+const frontendModuleProxyMap = new Map(frontendModuleProxyRules.map((r) => [r.path, r.sourcePath]));
 
 function extractMountFromPath(pathname: string): string | null {
   const seg = pathname.split("/").filter(Boolean)[0];
@@ -99,6 +119,12 @@ function mountAwareApiRewritePlugin(): Plugin {
         const url = req.url ?? "/";
         const parsed = new URL(url, "http://localhost");
         const pathname = parsed.pathname;
+        const moduleSourcePath = frontendModuleProxyMap.get(pathname);
+        if (moduleSourcePath) {
+          req.url = `/@fs/${moduleSourcePath}${parsed.search}`;
+          next();
+          return;
+        }
 
         const alreadyMounted = extractMountFromPath(pathname);
         if (alreadyMounted) {
