@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { Command } from "commander";
 import { loadOtaviaYaml } from "./config/load-otavia-yaml.js";
+import { setupCommand } from "./commands/setup.js";
 
 const program = new Command();
 
@@ -22,7 +23,12 @@ program.hook("preAction", () => {
   }
 });
 
-program.command("setup").description("Setup Otavia stack").action(placeholderAction);
+program.command("setup")
+  .description("Setup Otavia stack")
+  .option("--tunnel", "Setup tunnel for remote dev")
+  .action(async (_args: unknown, cmd: { opts: () => { tunnel?: boolean } }) => {
+    await setupCommand(process.cwd(), { tunnel: cmd.opts().tunnel });
+  });
 program.command("dev").description("Start development").action(placeholderAction);
 program.command("test").description("Run tests").action(placeholderAction);
 program.command("test:unit").description("Run unit tests").action(placeholderAction);
