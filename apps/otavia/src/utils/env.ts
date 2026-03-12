@@ -25,8 +25,13 @@ export function parseEnvFile(content: string): Record<string, string> {
 /**
  * Load .env files: root .env, then apps/<cellId>/.env, then apps/<cellId>/.env.local.
  * Later overrides earlier.
+ * When stage is "cloud", .env.local is skipped (no local overrides for deploy).
  */
-export function loadEnvForCell(rootDir: string, cellId: string): Record<string, string> {
+export function loadEnvForCell(
+  rootDir: string,
+  cellId: string,
+  options?: { stage?: string }
+): Record<string, string> {
   const merged: Record<string, string> = {};
   const rootEnv = resolve(rootDir, ".env");
   if (existsSync(rootEnv)) {
@@ -37,9 +42,11 @@ export function loadEnvForCell(rootDir: string, cellId: string): Record<string, 
   if (existsSync(cellEnv)) {
     Object.assign(merged, parseEnvFile(readFileSync(cellEnv, "utf-8")));
   }
-  const cellEnvLocal = resolve(cellDir, ".env.local");
-  if (existsSync(cellEnvLocal)) {
-    Object.assign(merged, parseEnvFile(readFileSync(cellEnvLocal, "utf-8")));
+  if (options?.stage !== "cloud") {
+    const cellEnvLocal = resolve(cellDir, ".env.local");
+    if (existsSync(cellEnvLocal)) {
+      Object.assign(merged, parseEnvFile(readFileSync(cellEnvLocal, "utf-8")));
+    }
   }
   return merged;
 }
