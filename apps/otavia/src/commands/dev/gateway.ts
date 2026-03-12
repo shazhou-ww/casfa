@@ -59,6 +59,34 @@ export function resolveGatewaySsoBaseUrl(
   return `http://localhost:${backendPort}/${defaultMount}`;
 }
 
+function toResourceEnvKey(prefix: string, key: string): string {
+  const normalized = key.replace(/[^A-Za-z0-9]/g, "_").toUpperCase();
+  return `${prefix}${normalized}`;
+}
+
+export function applyResourceNameEnvVars(cells: GatewayCellInfo[], stackName: string): void {
+  for (const cell of cells) {
+    if (cell.config.tables) {
+      for (const key of Object.keys(cell.config.tables)) {
+        cell.env[toResourceEnvKey("DYNAMODB_TABLE_", key)] = tablePhysicalName(
+          stackName,
+          cell.mount,
+          key
+        );
+      }
+    }
+    if (cell.config.buckets) {
+      for (const key of Object.keys(cell.config.buckets)) {
+        cell.env[toResourceEnvKey("S3_BUCKET_", key)] = bucketPhysicalName(
+          stackName,
+          cell.mount,
+          key
+        );
+      }
+    }
+  }
+}
+
 async function discoverCells(rootDir: string, otavia: OtaviaYaml, backendPort: number): Promise<GatewayCellInfo[]> {
   const firstMount = otavia.cellsList[0]?.mount ?? "";
   const cells: GatewayCellInfo[] = [];
@@ -242,6 +270,7 @@ export async function runGatewayDev(
   if (cells.length === 0) {
     throw new Error("No cells found");
   }
+  applyResourceNameEnvVars(cells, otavia.stackName);
 
   let dynamoEndpoint: string | undefined;
   let s3Endpoint: string | undefined;
