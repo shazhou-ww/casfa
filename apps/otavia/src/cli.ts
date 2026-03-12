@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import { loadOtaviaYaml } from "./config/load-otavia-yaml.js";
 import { setupCommand } from "./commands/setup.js";
+import { cleanCommand } from "./commands/clean.js";
 
 const program = new Command();
 
@@ -36,7 +37,9 @@ program.command("test:e2e").description("Run e2e tests").action(placeholderActio
 program.command("deploy").description("Deploy stack").action(placeholderAction);
 program.command("typecheck").description("Type check").action(placeholderAction);
 program.command("lint").description("Lint").action(placeholderAction);
-program.command("clean").description("Clean artifacts").action(placeholderAction);
+program.command("clean").description("Clean artifacts").action(() => {
+  cleanCommand(process.cwd());
+});
 
 const aws = program.command("aws").description("AWS-related commands");
 aws.command("login").description("AWS login").action(placeholderAction);
