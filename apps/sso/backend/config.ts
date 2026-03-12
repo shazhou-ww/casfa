@@ -45,6 +45,15 @@ function isPathBasedBaseUrl(baseUrl: string): boolean {
   }
 }
 
+function getBasePath(baseUrl: string): string {
+  try {
+    const path = new URL(baseUrl).pathname.replace(/\/$/, "");
+    return path || "";
+  } catch {
+    return "";
+  }
+}
+
 export function loadConfig(): SsoConfig {
   return loadConfigFromEnv(process.env as Record<string, string>);
 }
@@ -70,8 +79,8 @@ export function loadConfigFromEnv(env: Record<string, string>): SsoConfig {
       : undefined);
   const authPath = get("AUTH_COOKIE_PATH", "/");
   const refreshPath = get("AUTH_REFRESH_COOKIE_PATH", "/oauth/refresh");
-  const usePathBasedCookie =
-    isPathBasedBaseUrl(baseUrl);
+  const usePathBasedCookie = isPathBasedBaseUrl(baseUrl);
+  const basePath = getBasePath(baseUrl);
   return {
     baseUrl,
     cognito: {
@@ -88,7 +97,8 @@ export function loadConfigFromEnv(env: Record<string, string>): SsoConfig {
         ? Number(get("AUTH_COOKIE_MAX_AGE_SECONDS"))
         : undefined,
       refreshCookieName,
-      refreshCookiePath: usePathBasedCookie ? "/oauth/refresh" : refreshPath,
+      // In mounted dev (/sso), refresh endpoint is /sso/oauth/refresh externally.
+      refreshCookiePath: usePathBasedCookie ? `${basePath}/oauth/refresh` : refreshPath,
       refreshCookieMaxAgeSeconds: get("AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS")
         ? Number(get("AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS"))
         : undefined,

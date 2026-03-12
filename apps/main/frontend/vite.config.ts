@@ -75,7 +75,9 @@ for (const mount of mounts) {
 
 export default defineConfig({
   plugins: [mountAwareApiRewritePlugin(), react()],
-  resolve: { conditions: ["bun"] },
+  // Main frontend dynamically imports mounted cell frontends (workspace packages).
+  // Force React to resolve to a single instance to avoid invalid hook call errors.
+  resolve: { conditions: ["bun"], dedupe: ["react", "react-dom"] },
   server: {
     port: vitePort,
     host: "0.0.0.0",

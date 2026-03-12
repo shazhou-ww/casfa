@@ -341,7 +341,13 @@ export function createOAuthServer(config: OAuthServerConfig): OAuthServer {
       if (parts.length >= 3) {
         try {
           const verified = await jwtVerifier(bearerToken);
-          const grant = await grantStore.getByAccessTokenHash(verified.userId, hash);
+          let grant: DelegateGrant | null = null;
+          try {
+            grant = await grantStore.getByAccessTokenHash(verified.userId, hash);
+          } catch {
+            // Grant-store lookup is optional for user tokens; do not reject valid JWTs.
+            grant = null;
+          }
           if (grant) {
             return {
               type: "delegate",
