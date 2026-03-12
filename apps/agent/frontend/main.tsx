@@ -106,7 +106,10 @@ function Root() {
     );
   }
   return (
-    <BrowserRouter basename={resolveBasename()}>
+    <BrowserRouter
+      basename={resolveBasename()}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <App />
     </BrowserRouter>
   );

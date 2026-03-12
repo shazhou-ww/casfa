@@ -655,7 +655,10 @@ function Root() {
     );
   }
   return (
-    <BrowserRouter basename={resolveBasename()}>
+    <BrowserRouter
+      basename={resolveBasename()}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <Routes>
         <Route path="/oauth/authorize" element={<DelegateOAuthAuthorizeRoute />} />
         <Route path="*" element={<App />} />
