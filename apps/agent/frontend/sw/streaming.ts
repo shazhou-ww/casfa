@@ -225,12 +225,11 @@ export type UnregisterAbort = (messageId: string) => void;
  */
 export type OnStreamStarted = () => void;
 
-const MAX_TOOL_ROUNDS = 5;
-
 /**
  * Run messages.send: save user message, call LLM (streaming), handle tool_calls loop, save assistant message, emit Changes.
  * Uses tempMessageId for the stream; stream.done carries the final message from the backend.
  * Calls onStreamStarted (if provided) after emitting stream.status "streaming", so the client can ack the request without waiting for the full reply.
+ * Tool loop has no fixed round cap; it stops when model emits no tool call, or when user sends stream.cancel.
  */
 export async function runMessagesSend(
   threadId: string,
@@ -279,10 +278,9 @@ export async function runMessagesSend(
   onStreamStarted?.();
 
   const assistantContent: MessageContent[] = [];
-  let round = 0;
 
   try {
-    while (round < MAX_TOOL_ROUNDS) {
+    while (true) {
       const result = await callLlmStream(pm.provider, pm.modelId, messagesForApi, {
         signal: controller.signal,
         onChunk(text) {
@@ -300,6 +298,19 @@ export async function runMessagesSend(
 
       const toolResults: string[] = [];
       for (const tc of result.toolCalls) {
+        await applyAndBroadcast({
+          kind: "stream.chunk",
+          payload: {
+            messageId: tempMessageId,
+            threadId,
+            chunk: {
+              type: "tool-call",
+              callId: tc.id,
+              name: tc.name,
+              arguments: tc.arguments,
+            },
+          },
+        });
         assistantContent.push({
           type: "tool-call",
           callId: tc.id,
@@ -331,7 +342,6 @@ export async function runMessagesSend(
       }));
 
       messagesForApi = [...messagesForApi, assistantTurn, ...toolTurns];
-      round++;
     }
   } catch (err) {
     unregisterAbort(tempMessageId);
