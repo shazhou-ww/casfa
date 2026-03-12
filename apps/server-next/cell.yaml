@@ -59,6 +59,9 @@ oauth:
   role: both
   scopes:
     - use_mcp
+    - file_read
+    - file_write
+    - branch_manage
 
 testing:
   unit: backend/
