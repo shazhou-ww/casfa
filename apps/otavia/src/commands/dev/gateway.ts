@@ -211,7 +211,8 @@ export async function runGatewayDev(
     const cellApp = createApp(cell.env);
     const prefix = `/${cell.cellId}`;
     gatewayApp.all(prefix + "/", async (c) => {
-      const newUrl = new URL("/" + (c.req.url.includes("?") ? "?" + new URL(c.req.url).searchParams.toString() : ""), new URL(c.req.url).origin);
+      const u = new URL(c.req.url);
+      const newUrl = new URL("/" + (u.search || ""), u.origin);
       const newReq = new Request(newUrl, {
         method: c.req.method,
         headers: c.req.raw.headers,
@@ -230,7 +231,7 @@ export async function runGatewayDev(
       });
       return cellApp.fetch(newReq);
     });
-    console.log(`[otavia dev] Mounted ${cell.cellId} at /${cell.cellId}`);
+    console.log(`[gateway] Mounted ${cell.cellId} at /${cell.cellId}`);
   }
 
   const server = Bun.serve({
@@ -239,6 +240,6 @@ export async function runGatewayDev(
     fetch: gatewayApp.fetch,
   });
 
-  console.log(`[otavia dev] Gateway running at http://localhost:${server.port}`);
+  console.log(`[gateway] Gateway running at http://localhost:${server.port}`);
   return { stop: () => server.stop() };
 }
