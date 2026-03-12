@@ -1,0 +1,17 @@
+{
+  "name": "@casfa/otavia",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "otavia": "src/cli.ts" },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src/"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "yaml": "^2.5.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": { "typescript": "^5.8.3" }
+}
