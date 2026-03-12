@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { loadOtaviaYaml } from "./config/load-otavia-yaml.js";
 import { setupCommand } from "./commands/setup.js";
 import { cleanCommand } from "./commands/clean.js";
+import { awsLoginCommand, awsLogoutCommand } from "./commands/aws.js";
 
 const program = new Command();
 
@@ -42,7 +43,7 @@ program.command("clean").description("Clean artifacts").action(() => {
 });
 
 const aws = program.command("aws").description("AWS-related commands");
-aws.command("login").description("AWS login").action(placeholderAction);
-aws.command("logout").description("AWS logout").action(placeholderAction);
+aws.command("login").description("AWS login").action(async () => { await awsLoginCommand(process.cwd()); });
+aws.command("logout").description("AWS logout").action(async () => { await awsLogoutCommand(process.cwd()); });
 
 program.parse();
