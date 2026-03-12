@@ -50,6 +50,7 @@ export function buildDynamoDBArgs(opts: DynamoDBOpts): string[] {
     "docker",
     "run",
     "-d",
+    ...(opts.persistent ? [] : ["--rm"]),
     "--name",
     opts.containerName,
     "-p",
@@ -82,6 +83,8 @@ export interface MinIOOpts {
   port: number;
   containerName: string;
   dataDir?: string;
+  /** When true, add --rm so container is removed on exit (e.g. for e2e). */
+  rm?: boolean;
 }
 
 export function buildMinIOArgs(opts: MinIOOpts): string[] {
@@ -89,6 +92,7 @@ export function buildMinIOArgs(opts: MinIOOpts): string[] {
     "docker",
     "run",
     "-d",
+    ...(opts.rm ? ["--rm"] : []),
     "--name",
     opts.containerName,
     "-p",
