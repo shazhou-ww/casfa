@@ -5,6 +5,7 @@ import { setupCommand } from "./commands/setup.js";
 import { cleanCommand } from "./commands/clean.js";
 import { awsLoginCommand, awsLogoutCommand } from "./commands/aws.js";
 import { devCommand } from "./commands/dev.js";
+import { testUnitCommand, testE2eCommand } from "./commands/test.js";
 
 const program = new Command();
 
@@ -35,9 +36,23 @@ program.command("setup")
 program.command("dev").description("Start development").action(async () => {
   await devCommand(process.cwd());
 });
-program.command("test").description("Run tests").action(placeholderAction);
-program.command("test:unit").description("Run unit tests").action(placeholderAction);
-program.command("test:e2e").description("Run e2e tests").action(placeholderAction);
+program.command("test")
+  .description("Run tests (unit then e2e)")
+  .action(async () => {
+    const rootDir = process.cwd();
+    await testUnitCommand(rootDir);
+    await testE2eCommand(rootDir);
+  });
+program.command("test:unit")
+  .description("Run unit tests")
+  .action(async () => {
+    await testUnitCommand(process.cwd());
+  });
+program.command("test:e2e")
+  .description("Run e2e tests")
+  .action(async () => {
+    await testE2eCommand(process.cwd());
+  });
 program.command("deploy").description("Deploy stack").action(placeholderAction);
 program.command("typecheck").description("Type check").action(placeholderAction);
 program.command("lint").description("Lint").action(placeholderAction);
