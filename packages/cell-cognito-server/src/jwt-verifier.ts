@@ -1,6 +1,24 @@
 import * as jose from "jose";
 import type { JwtVerifier, VerifiedUser } from "./types.ts";
 
+export function mapJwtPayloadToVerifiedUser(payload: jose.JWTPayload): VerifiedUser {
+  if (typeof payload.sub !== "string") throw new Error("Missing sub in JWT");
+  const userId = payload.sub;
+  const email =
+    typeof payload.email === "string"
+      ? payload.email
+      : typeof payload["cognito:username"] === "string"
+        ? payload["cognito:username"]
+        : userId;
+  const name = typeof payload.name === "string" ? payload.name : email;
+  return {
+    userId,
+    email,
+    name,
+    rawClaims: payload as Record<string, unknown>,
+  };
+}
+
 export function createCognitoJwtVerifier(config: {
   region: string;
   userPoolId: string;
@@ -12,15 +30,7 @@ export function createCognitoJwtVerifier(config: {
 
   return async (token: string): Promise<VerifiedUser> => {
     const { payload } = await jose.jwtVerify(token, jwks, { issuer });
-    if (typeof payload.sub !== "string") throw new Error("Missing sub in JWT");
-    if (typeof payload.email !== "string") throw new Error("Missing email in JWT");
-    if (typeof payload.name !== "string") throw new Error("Missing name in JWT");
-    return {
-      userId: payload.sub,
-      email: payload.email,
-      name: payload.name,
-      rawClaims: payload as Record<string, unknown>,
-    };
+    return mapJwtPayloadToVerifiedUser(payload);
   };
 }
 
@@ -28,15 +38,7 @@ export function createMockJwtVerifier(secret: string): JwtVerifier {
   const key = new TextEncoder().encode(secret);
   return async (token: string): Promise<VerifiedUser> => {
     const { payload } = await jose.jwtVerify(token, key, { algorithms: ["HS256"] });
-    if (typeof payload.sub !== "string") throw new Error("Missing sub in mock JWT");
-    if (typeof payload.email !== "string") throw new Error("Missing email in mock JWT");
-    if (typeof payload.name !== "string") throw new Error("Missing name in mock JWT");
-    return {
-      userId: payload.sub,
-      email: payload.email,
-      name: payload.name,
-      rawClaims: payload as Record<string, unknown>,
-    };
+    return mapJwtPayloadToVerifiedUser(payload);
   };
 }
 

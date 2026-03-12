@@ -72,9 +72,29 @@ type AgentActions = {
 
 const pendingById = new Map<string, Pending>();
 const ACTION_RESPONSE_TIMEOUT_MS = 15000;
+let swConnectInFlight: Promise<MessagePort> | null = null;
 
 function clearPending(id: string): void {
   pendingById.delete(id);
+}
+
+async function ensureSwPort(
+  get: () => AgentState & AgentActions
+): Promise<MessagePort> {
+  const existing = get().swPort;
+  if (existing) return existing;
+
+  if (!swConnectInFlight) {
+    swConnectInFlight = connectToSW(getCsrfTokenFromCookie()).finally(() => {
+      swConnectInFlight = null;
+    });
+  }
+
+  const port = await swConnectInFlight;
+  if (!get().swPort) {
+    get().setSwPort(port);
+  }
+  return get().swPort ?? port;
 }
 
 export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
@@ -227,10 +247,11 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
   },
 
   sendAction(action, id) {
-    const port = get().swPort;
-    if (!port) return Promise.reject(new Error("SW not connected"));
-    if (id != null) {
-      return new Promise<unknown>((resolve, reject) => {
+    return (async () => {
+      const port = await ensureSwPort(get);
+      if (!port) throw new Error("SW not connected");
+      if (id != null) {
+        return await new Promise<unknown>((resolve, reject) => {
         let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
           timeoutId = null;
           if (pendingById.has(id)) {
@@ -250,9 +271,10 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
         });
         send(port, { type: "action", id, action });
       });
-    }
-    send(port, { type: "action", action });
-    return Promise.resolve();
+      }
+      send(port, { type: "action", action });
+      return undefined;
+    })();
   },
 
   getLlmProviders() {

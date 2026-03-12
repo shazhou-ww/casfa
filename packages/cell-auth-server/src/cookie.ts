@@ -30,6 +30,7 @@ export function getCookieFromRequest(request: Request, cookieName: string): stri
   const cookieHeader = request.headers.get("Cookie");
   if (!cookieHeader) return null;
   const parts = cookieHeader.split(";");
+  let lastNonEmpty: string | null = null;
   for (const part of parts) {
     const eq = part.indexOf("=");
     if (eq === -1) continue;
@@ -39,9 +40,9 @@ export function getCookieFromRequest(request: Request, cookieName: string): stri
     if (value.startsWith('"') && value.endsWith('"')) {
       value = value.slice(1, -1).replace(/\\"/g, '"');
     }
-    return value || null;
+    if (value) lastNonEmpty = value;
   }
-  return null;
+  return lastNonEmpty;
 }
 
 export type BuildAuthCookieOptions = {

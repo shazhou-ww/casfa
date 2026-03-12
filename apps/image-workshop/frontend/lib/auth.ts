@@ -67,19 +67,21 @@ export async function initAuth(): Promise<void> {
 
   authClientInstance = createAuthClient({
     ssoBaseUrl,
-    logoutEndpoint: withMountPath("/oauth/logout"),
+    // Endpoint under SSO base URL; do not prepend current app mount.
+    logoutEndpoint: "/oauth/logout",
     redirectAfterLogout: { path: withMountPath("/oauth/login") },
   });
   apiFetchInstance = createApiFetch({
     authClient: authClientInstance,
     baseUrl: "",
     onUnauthorized: () => {
-      console.log("[auth] onUnauthorized: redirecting to /oauth/logout");
-      window.location.replace(withMountPath("/oauth/logout"));
+      const loginUrl = `${withMountPath("/oauth/login")}?return_url=${encodeURIComponent(window.location.href)}`;
+      window.location.replace(loginUrl);
     },
     csrfCookieName: "",
     ssoBaseUrl,
-    ssoRefreshPath: withMountPath("/oauth/refresh"),
+    // Refresh is hosted by SSO; keep path absolute to SSO base.
+    ssoRefreshPath: "/oauth/refresh",
   });
 }
 

@@ -13,6 +13,7 @@ export function ThreadList() {
   const createThread = useAgentStore((s) => s.createThread);
   const deleteThread = useAgentStore((s) => s.deleteThread);
   const threadsLoading = useAgentStore((s) => s.threadsLoading);
+  const swReady = useAgentStore((s) => s.swPort != null);
 
   const handleNewThread = useCallback(async () => {
     await createThread({ title: "New chat" });
@@ -30,7 +31,7 @@ export function ThreadList() {
   return (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <Box sx={{ p: 1, borderBottom: 1, borderColor: "divider", display: "flex", alignItems: "center", gap: 0.5 }}>
-        <IconButton size="small" onClick={handleNewThread} aria-label="New thread">
+        <IconButton size="small" onClick={handleNewThread} aria-label="New thread" disabled={!swReady}>
           <AddIcon />
         </IconButton>
         <Typography variant="subtitle2" color="text.secondary">

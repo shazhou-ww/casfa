@@ -49,9 +49,18 @@ function resolvedParamsToEnv(resolved: Record<string, string | unknown>): Record
   return env;
 }
 
+export function resolveGatewaySsoBaseUrl(
+  configuredSsoBaseUrl: string | undefined,
+  backendPort: number,
+  defaultMount: string
+): string {
+  const configured = configuredSsoBaseUrl?.trim();
+  if (configured) return configured;
+  return `http://localhost:${backendPort}/${defaultMount}`;
+}
+
 async function discoverCells(rootDir: string, otavia: OtaviaYaml, backendPort: number): Promise<GatewayCellInfo[]> {
   const firstMount = otavia.cellsList[0]?.mount ?? "";
-  const ssoBaseUrl = `http://localhost:${backendPort}/${firstMount}`;
   const cells: GatewayCellInfo[] = [];
 
   for (const entry of otavia.cellsList) {
@@ -76,6 +85,7 @@ async function discoverCells(rootDir: string, otavia: OtaviaYaml, backendPort: n
       onMissingParam: "placeholder",
     });
     const env = resolvedParamsToEnv(resolved as Record<string, string | unknown>);
+    const ssoBaseUrl = resolveGatewaySsoBaseUrl(env.SSO_BASE_URL, backendPort, firstMount);
     env.CELL_BASE_URL = `http://localhost:${backendPort}/${entry.mount}`;
     env.SSO_BASE_URL = ssoBaseUrl;
     cells.push({ mount: entry.mount, cellDir, packageName, config, env });
