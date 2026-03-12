@@ -7,29 +7,41 @@ import { ThreadLoadedScenarios } from "../components/chat/thread-loaded-scenario
 import type { Message } from "../lib/api.ts";
 
 function normalizeMessageContent(content: Message["content"]): Message["content"] {
-  return content.flatMap((part) => {
-    if (part.type === "text") return [part];
-    if (part.type === "tool-call") return [part];
-    if (part.type === "tool-result") return [part];
+  const normalized: Message["content"] = [];
+  for (const part of content) {
+    if (part.type === "text") {
+      normalized.push(part);
+      continue;
+    }
+    if (part.type === "tool-call") {
+      normalized.push(part);
+      continue;
+    }
+    if (part.type === "tool-result") {
+      normalized.push(part);
+      continue;
+    }
 
     const raw = part as unknown as Record<string, unknown>;
     if (raw.type === "tool_call") {
-      return [{
+      normalized.push({
         type: "tool-call" as const,
         callId: typeof raw.callId === "string" ? raw.callId : "",
         name: typeof raw.name === "string" ? raw.name : "",
         arguments: typeof raw.arguments === "string" ? raw.arguments : "",
-      }];
+      });
+      continue;
     }
     if (raw.type === "tool_result") {
-      return [{
+      normalized.push({
         type: "tool-result" as const,
         callId: typeof raw.callId === "string" ? raw.callId : "",
         result: typeof raw.result === "string" ? raw.result : "",
-      }];
+      });
+      continue;
     }
-    return [];
-  });
+  }
+  return normalized;
 }
 
 export function ChatPage() {
@@ -45,6 +57,12 @@ export function ChatPage() {
   const streams = currentThreadId
     ? Object.values(streamByMessageId).filter((s) => s.threadId === currentThreadId)
     : [];
+  const activeStream = useMemo(() => {
+    const running = streams
+      .filter((s) => s.status === "waiting_agent" || s.status === "streaming")
+      .sort((a, b) => b.startedAt - a.startedAt);
+    return running[0] ?? null;
+  }, [streams]);
   const displayMessages: Message[] = useMemo(() => {
     const list = messages.map((m) => ({
       ...m,
@@ -71,6 +89,18 @@ export function ChatPage() {
           });
           continue;
         }
+        if (c.type === "tool-result") {
+          if (textBuffer) {
+            content.push({ type: "text", text: textBuffer });
+            textBuffer = "";
+          }
+          content.push({
+            type: "tool-result",
+            callId: c.callId ?? "",
+            result: c.result ?? "",
+          });
+          continue;
+        }
       }
       if (textBuffer) {
         content.push({ type: "text", text: textBuffer });
@@ -90,11 +120,18 @@ export function ChatPage() {
   }, [messages, streams]);
 
   const providers = getLlmProviders();
+  const modelOptions = useMemo(
+    () =>
+      providers.flatMap((p) =>
+        p.models.map((m) => ({
+          id: m.id,
+          label: `${p.name ?? p.id} / ${m.name ?? m.id}`,
+        }))
+      ),
+    [providers]
+  );
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
   const modelId = lastAssistant?.modelId ?? providers[0]?.models[0]?.id ?? null;
-  const provider = modelId
-    ? providers.find((p) => p.models.some((m) => m.id === modelId)) ?? providers[0] ?? null
-    : providers[0] ?? null;
 
   useEffect(() => {
     if (currentThreadId) fetchMessages(currentThreadId);
@@ -122,9 +159,9 @@ export function ChatPage() {
           <MessageList messages={displayMessages} />
           <Compose
             threadId={currentThreadId}
-            messages={displayMessages}
-            provider={provider}
             modelId={modelId}
+            modelOptions={modelOptions}
+            activeStreamMessageId={activeStream?.messageId ?? null}
           />
         </>
       )}

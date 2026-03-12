@@ -319,6 +319,18 @@ export async function runMessagesSend(
         });
         const toolResult = await executeTool(tc.name, tc.arguments, state, threadId);
         toolResults.push(toolResult);
+        await applyAndBroadcast({
+          kind: "stream.chunk",
+          payload: {
+            messageId: tempMessageId,
+            threadId,
+            chunk: {
+              type: "tool-result",
+              callId: tc.id,
+              result: toolResult,
+            },
+          },
+        });
         assistantContent.push({
           type: "tool-result",
           callId: tc.id,
