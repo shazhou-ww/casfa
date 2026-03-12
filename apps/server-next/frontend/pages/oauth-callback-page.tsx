@@ -1,7 +1,7 @@
 import { Box, CircularProgress, Typography } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { authClient } from "../lib/auth";
+import { authClient, withMountPath } from "../lib/auth";
 import { getAndClearCodeVerifier } from "../lib/pkce";
 
 /**
@@ -32,7 +32,7 @@ export function OAuthCallbackPage(): JSX.Element {
     });
     if (codeVerifier) body.set("code_verifier", codeVerifier);
 
-    fetch("/oauth/token", {
+    fetch(withMountPath("/oauth/token"), {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: body.toString(),

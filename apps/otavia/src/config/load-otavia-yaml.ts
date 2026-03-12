@@ -1,12 +1,46 @@
 import fs from "fs";
 import path from "path";
-import { parseDocument } from "yaml";
+import { parseDocument, type SchemaOptions } from "yaml";
 import type { OtaviaYaml } from "./otavia-yaml-schema.js";
+import { isEnvRef, isParamRef, isSecretRef } from "./cell-yaml-schema.js";
 
 const CONFIG_FILENAME = "otavia.yaml";
 const DEFAULT_SCOPE = "@casfa";
 
 type CellRef = { mount: string; package: string; params?: Record<string, unknown> };
+
+const customTags: SchemaOptions["customTags"] = [
+  {
+    tag: "!Secret",
+    resolve(value: string) {
+      return { secret: value ?? "" };
+    },
+  },
+  {
+    tag: "!Env",
+    resolve(value: string) {
+      return { env: value ?? "" };
+    },
+  },
+  {
+    tag: "!Param",
+    resolve(value: string) {
+      return { param: value ?? "" };
+    },
+  },
+];
+
+function walkParamTree(
+  value: unknown,
+  pathLabel: string,
+  visitor: (v: unknown, p: string) => void
+): void {
+  visitor(value, pathLabel);
+  if (value == null || typeof value !== "object" || Array.isArray(value)) return;
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    walkParamTree(v, `${pathLabel}.${k}`, visitor);
+  }
+}
 
 function packageToMount(packageName: string): string {
   const trimmed = packageName.trim();
@@ -86,7 +120,7 @@ export function loadOtaviaYaml(rootDir: string): OtaviaYaml {
     throw new Error("otavia.yaml not found");
   }
   const raw = fs.readFileSync(configPath, "utf-8");
-  const doc = parseDocument(raw);
+  const doc = parseDocument(raw, { customTags });
   const data = doc.toJSON() as Record<string, unknown> | null | undefined;
   if (data == null || typeof data !== "object") {
     throw new Error("otavia.yaml: invalid YAML or empty document");
@@ -137,6 +171,19 @@ export function loadOtaviaYaml(rootDir: string): OtaviaYaml {
   };
   if (data.params != null && typeof data.params === "object" && !Array.isArray(data.params)) {
     result.params = data.params as Record<string, unknown>;
+    walkParamTree(result.params, "otavia.yaml: params", (v, p) => {
+      if (isParamRef(v)) {
+        throw new Error(`${p} cannot use !Param; top-level params only allow plain values, !Env, !Secret`);
+      }
+    });
+  }
+  for (const cell of result.cellsList) {
+    if (!cell.params) continue;
+    walkParamTree(cell.params, `otavia.yaml: cells["${cell.mount}"].params`, (v, p) => {
+      if (isEnvRef(v) || isSecretRef(v)) {
+        throw new Error(`${p} cannot use !Env/!Secret; use !Param to reference top-level params`);
+      }
+    });
   }
   return result;
 }

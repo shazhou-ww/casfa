@@ -8,6 +8,21 @@ let ssoBaseUrlValue: string | undefined = undefined;
 let baseUrlValue: string | undefined = undefined;
 let cookieUser: { userId: string; email?: string; name?: string; picture?: string } | null = null;
 
+function getMountBasePath(): string {
+  if (typeof window === "undefined") return "";
+  const seg = window.location.pathname.split("/").filter(Boolean)[0];
+  return seg ? `/${seg}` : "";
+}
+
+export function withMountPath(path: string): string {
+  if (/^https?:\/\//.test(path)) return path;
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  const base = getMountBasePath();
+  if (!base) return normalized;
+  if (normalized === base || normalized.startsWith(base + "/")) return normalized;
+  return `${base}${normalized}`;
+}
+
 export type AuthConfig = { ssoBaseUrl?: string | null; baseUrl?: string | null };
 
 export function setCookieUser(user: { userId: string; email?: string; name?: string; picture?: string } | null): void {
@@ -38,7 +53,7 @@ export function useCurrentUser(): { userId: string; email?: string } | null {
 export async function initAuth(): Promise<void> {
   let config: AuthConfig = {};
   try {
-    const res = await fetch("/api/info");
+    const res = await fetch(withMountPath("/api/info"));
     if (res.ok) config = (await res.json()) as AuthConfig;
   } catch {
     /* use defaults */
@@ -52,19 +67,19 @@ export async function initAuth(): Promise<void> {
 
   authClientInstance = createAuthClient({
     ssoBaseUrl,
-    logoutEndpoint: "/oauth/logout",
-    redirectAfterLogout: { path: "/oauth/login" },
+    logoutEndpoint: withMountPath("/oauth/logout"),
+    redirectAfterLogout: { path: withMountPath("/oauth/login") },
   });
   apiFetchInstance = createApiFetch({
     authClient: authClientInstance,
     baseUrl: "",
     onUnauthorized: () => {
       console.log("[auth] onUnauthorized: redirecting to /oauth/logout");
-      window.location.replace("/oauth/logout");
+      window.location.replace(withMountPath("/oauth/logout"));
     },
     csrfCookieName: "",
     ssoBaseUrl,
-    ssoRefreshPath: "/oauth/refresh",
+    ssoRefreshPath: withMountPath("/oauth/refresh"),
   });
 }
 
@@ -109,7 +124,7 @@ export function useCookieAuthCheck(): { loading: boolean; isLoggedIn: boolean } 
       setState({ loading: false, isLoggedIn: false });
       return;
     }
-    apiFetchInstance("/api/me", null)
+    apiFetchInstance(withMountPath("/api/me"), null)
       .then(async (res) => {
         if (cancelled) return;
         const data = res.ok ? ((await res.json()) as { userId?: string; email?: string; name?: string; picture?: string }) : null;
@@ -140,5 +155,9 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   } else {
     path = (input as Request).url;
   }
-  return apiFetchInstance(path, init ?? null);
+  const pathOnly =
+    path.startsWith("http://") || path.startsWith("https://")
+      ? new URL(path).pathname + new URL(path).search
+      : path;
+  return apiFetchInstance(withMountPath(pathOnly), init ?? null);
 }

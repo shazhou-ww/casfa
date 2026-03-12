@@ -7,7 +7,7 @@ import { LoginPage } from "./pages/login-page";
 import { OAuthCallbackPage } from "./pages/oauth-callback-page";
 import { OAuthConsentPage } from "./pages/oauth-consent-page";
 import { SettingsPage } from "./pages/settings-page";
-import { apiFetch, useCookieAuthCheck } from "./lib/auth";
+import { apiFetch, useCookieAuthCheck, withMountPath } from "./lib/auth";
 
 const SCOPE_DESCRIPTIONS: Record<string, string> = {
   use_mcp: "使用 MCP 接口",
@@ -21,8 +21,8 @@ function DelegateOAuthAuthorizeRoute() {
   const { loading, isLoggedIn } = useCookieAuthCheck();
   return (
     <DelegateOAuthConsentPage
-      authorizeUrl="/api/oauth/delegate/authorize"
-      loginUrl="/oauth/login"
+      authorizeUrl={withMountPath("/api/oauth/delegate/authorize")}
+      loginUrl={withMountPath("/oauth/login")}
       loading={loading}
       isLoggedIn={isLoggedIn}
       fetch={apiFetch}

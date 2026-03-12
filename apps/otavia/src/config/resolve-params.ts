@@ -1,4 +1,4 @@
-import { isEnvRef, isSecretRef } from "./cell-yaml-schema.js";
+import { isEnvRef, isParamRef, isSecretRef } from "./cell-yaml-schema.js";
 
 /** Thrown when a required !Env or !Secret is missing from envMap and onMissingParam is "throw". */
 export class MissingParamsError extends Error {
@@ -15,6 +15,19 @@ export class MissingParamsError extends Error {
     ].join("\n");
     super(message);
     this.name = "MissingParamsError";
+    this.missingKeys = missingKeys;
+  }
+}
+
+/** Thrown when a cell declares required params but otavia.yaml does not provide values. */
+export class MissingDeclaredParamsError extends Error {
+  readonly missingKeys: string[];
+
+  constructor(missingKeys: string[], context?: string) {
+    const header = context ? `Missing required params for ${context}:` : "Missing required params:";
+    const message = ["", header, ...missingKeys.map((k) => `  ${k}`), ""].join("\n");
+    super(message);
+    this.name = "MissingDeclaredParamsError";
     this.missingKeys = missingKeys;
   }
 }
@@ -37,7 +50,52 @@ export function mergeParams(
   stackParams?: Record<string, unknown>,
   cellParams?: Record<string, unknown>
 ): Record<string, unknown> {
-  return { ...stackParams, ...cellParams };
+  const stack = stackParams ?? {};
+  const cell = cellParams ?? {};
+
+  function resolveCellValue(value: unknown): unknown {
+    if (isParamRef(value)) {
+      return stack[value.param];
+    }
+    if (Array.isArray(value)) {
+      return value.map((v) => resolveCellValue(v));
+    }
+    if (typeof value === "object" && value !== null) {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        out[k] = resolveCellValue(v);
+      }
+      return out;
+    }
+    return value;
+  }
+
+  const resolvedCell: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(cell)) {
+    resolvedCell[k] = resolveCellValue(v);
+  }
+  return { ...stack, ...resolvedCell };
+}
+
+/**
+ * Validate that all declared param keys exist in provided params.
+ * Value `undefined` is treated as missing.
+ */
+export function assertDeclaredParamsProvided(
+  declaredParams: string[] | undefined,
+  providedParams: Record<string, unknown>,
+  context?: string
+): void {
+  if (!declaredParams || declaredParams.length === 0) return;
+  const missing: string[] = [];
+  for (const key of declaredParams) {
+    if (!Object.prototype.hasOwnProperty.call(providedParams, key) || providedParams[key] === undefined) {
+      missing.push(key);
+    }
+  }
+  if (missing.length > 0) {
+    throw new MissingDeclaredParamsError(missing, context);
+  }
 }
 
 const PLACEHOLDER = "[missing]";

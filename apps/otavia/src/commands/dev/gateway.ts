@@ -7,7 +7,7 @@ import type { CellConfig } from "../../config/cell-yaml-schema.js";
 import { loadOtaviaYaml } from "../../config/load-otavia-yaml.js";
 import { loadCellConfig } from "../../config/load-cell-yaml.js";
 import { resolveCellDir } from "../../config/resolve-cell-dir.js";
-import { mergeParams, resolveParams } from "../../config/resolve-params.js";
+import { assertDeclaredParamsProvided, mergeParams, resolveParams } from "../../config/resolve-params.js";
 import { loadEnvForCell } from "../../utils/env.js";
 import { tablePhysicalName, bucketPhysicalName } from "../../config/resource-names.js";
 import {
@@ -68,7 +68,8 @@ async function discoverCells(rootDir: string, otavia: OtaviaYaml, backendPort: n
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { name?: string };
     const packageName = pkg?.name ?? entry.package;
     const config = loadCellConfig(cellDir);
-    const merged = mergeParams(mergeParams(otavia.params, config.params), entry.params);
+    const merged = mergeParams(otavia.params, entry.params);
+    assertDeclaredParamsProvided(config.params, merged, entry.mount);
     const envMap = loadEnvForCell(rootDir, cellDir);
     const resolved = resolveParams(merged as Record<string, unknown>, envMap, {
       onMissingParam: "placeholder",

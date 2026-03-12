@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { loadOtaviaYaml } from "../config/load-otavia-yaml.js";
+import { resolveCellDir } from "../config/resolve-cell-dir.js";
 
 function removeDirIfExists(dirPath: string): void {
   if (fs.existsSync(dirPath)) {
@@ -14,7 +15,6 @@ function removeDirIfExists(dirPath: string): void {
  */
 export function cleanCommand(rootDir: string): void {
   const otavia = loadOtaviaYaml(rootDir);
-  const appsDir = path.join(rootDir, "apps");
 
   // Root-level temp dirs
   removeDirIfExists(path.join(rootDir, ".cell"));
@@ -22,9 +22,10 @@ export function cleanCommand(rootDir: string): void {
   removeDirIfExists(path.join(rootDir, ".otavia"));
 
   // Per-cell temp dirs
-  for (const cellId of otavia.cells) {
-    removeDirIfExists(path.join(appsDir, cellId, ".cell"));
-    removeDirIfExists(path.join(appsDir, cellId, ".esbuild"));
+  for (const entry of otavia.cellsList) {
+    const cellDir = resolveCellDir(rootDir, entry.package);
+    removeDirIfExists(path.join(cellDir, ".cell"));
+    removeDirIfExists(path.join(cellDir, ".esbuild"));
   }
 
   console.log("Cleaned .cell, .esbuild, .otavia");

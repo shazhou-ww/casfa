@@ -4,7 +4,7 @@ import { parseDocument } from "yaml";
 import { loadOtaviaYaml } from "../config/load-otavia-yaml.js";
 import { loadCellConfig } from "../config/load-cell-yaml.js";
 import { resolveCellDir } from "../config/resolve-cell-dir.js";
-import { mergeParams, resolveParams } from "../config/resolve-params.js";
+import { assertDeclaredParamsProvided, mergeParams, resolveParams } from "../config/resolve-params.js";
 import { tablePhysicalName, bucketPhysicalName } from "../config/resource-names.js";
 import { loadEnvForCell } from "../utils/env.js";
 import {
@@ -278,7 +278,8 @@ export async function testE2eCommand(rootDir: string): Promise<void> {
 
     const failedCells: string[] = [];
     for (const { mount, cellDir, config, e2ePattern, params } of e2eCells) {
-      const merged = mergeParams(mergeParams(otavia.params, config.params), params);
+      const merged = mergeParams(otavia.params, params);
+      assertDeclaredParamsProvided(config.params, merged, mount);
       const envMap = loadEnvForCell(root, cellDir);
       const resolved = resolveParams(merged as Record<string, unknown>, envMap, {
         onMissingParam: "placeholder",

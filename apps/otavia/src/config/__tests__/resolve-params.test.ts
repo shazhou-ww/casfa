@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
+  assertDeclaredParamsProvided,
+  MissingDeclaredParamsError,
   MissingParamsError,
   mergeParams,
   resolveParams,
@@ -26,6 +28,19 @@ describe("mergeParams", () => {
 
   test("stack-only params", () => {
     expect(mergeParams({ x: 1 }, undefined)).toEqual({ x: 1 });
+  });
+
+  test("cell !Param references top-level params", () => {
+    const stack = { REGION: "us-east-1", API_KEY: { secret: "BFL_API_KEY" } };
+    const cell = {
+      REGION: { param: "REGION" },
+      BFL_API_KEY: { param: "API_KEY" },
+    };
+    expect(mergeParams(stack, cell)).toEqual({
+      REGION: "us-east-1",
+      API_KEY: { secret: "BFL_API_KEY" },
+      BFL_API_KEY: { secret: "BFL_API_KEY" },
+    });
   });
 });
 
@@ -104,5 +119,19 @@ describe("resolveParams", () => {
   test("default onMissingParam is throw", () => {
     const merged = { X: { env: "NOT_IN_ENV" } };
     expect(() => resolveParams(merged, {})).toThrow(MissingParamsError);
+  });
+});
+
+describe("assertDeclaredParamsProvided", () => {
+  test("passes when all declared params are present", () => {
+    expect(() =>
+      assertDeclaredParamsProvided(["A", "B"], { A: 1, B: { env: "B" } }, "cell-a")
+    ).not.toThrow();
+  });
+
+  test("throws when declared params are missing", () => {
+    expect(() =>
+      assertDeclaredParamsProvided(["A", "B"], { A: 1 }, "cell-a")
+    ).toThrow(MissingDeclaredParamsError);
   });
 });

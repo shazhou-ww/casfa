@@ -6,7 +6,7 @@ import StorageIcon from "@mui/icons-material/Storage";
 import { Box, Button, Menu, MenuItem, Snackbar, Typography } from "@mui/material";
 import { useCallback, useState } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
-import { authClient, useCurrentUser } from "../lib/auth";
+import { authClient, useCurrentUser, withMountPath } from "../lib/auth";
 import { SidebarTree } from "./explorer/sidebar-tree";
 
 const SIDEBAR_WIDTH = 260;
@@ -37,7 +37,7 @@ export function Layout() {
 
   const handleLogout = useCallback(() => {
     handleCloseMenu();
-    window.location.href = "/oauth/logout";
+    window.location.href = withMountPath("/oauth/logout");
   }, [handleCloseMenu]);
 
   const displayName = user ? user.email || user.userId : "";

@@ -1,4 +1,4 @@
-import { apiFetch, authClient, getBaseUrl, getCookieUser, initAuth, useCookieAuthCheck } from "./lib/auth";
+import { apiFetch, authClient, getBaseUrl, getCookieUser, initAuth, useCookieAuthCheck, withMountPath } from "./lib/auth";
 import { DelegateOAuthConsentPage } from "@casfa/cell-delegates-webui";
 import AddIcon from "@mui/icons-material/Add";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
@@ -77,8 +77,8 @@ function DelegateOAuthAuthorizeRoute() {
   const { loading, isLoggedIn } = useCookieAuthCheck();
   return (
     <DelegateOAuthConsentPage
-      authorizeUrl="/api/oauth/delegate/authorize"
-      loginUrl="/oauth/login"
+      authorizeUrl={withMountPath("/api/oauth/delegate/authorize")}
+      loginUrl={withMountPath("/oauth/login")}
       clientInfoUrl={getBaseUrl() ?? ""}
       loading={loading}
       isLoggedIn={isLoggedIn}
@@ -105,7 +105,7 @@ function OAuthCallbackComplete() {
       return;
     }
 
-    fetch("/oauth/token", {
+    fetch(withMountPath("/oauth/token"), {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ grant_type: "authorization_code", code }),
@@ -114,7 +114,7 @@ function OAuthCallbackComplete() {
         if (!r.ok) throw new Error(`Token exchange failed: ${r.status}`);
         const data = await r.json();
         authClient.setTokens(data.id_token ?? data.access_token, data.refresh_token ?? null);
-        window.history.replaceState({}, "", "/");
+        window.history.replaceState({}, "", withMountPath("/"));
         window.location.reload();
       })
       .catch((e) => setStatus(`Login failed: ${e.message}`));
@@ -150,7 +150,7 @@ function ConsentPage() {
       setLoading(false);
       return;
     }
-    fetch(`/oauth/consent-info?session=${encodeURIComponent(session)}`)
+    fetch(withMountPath(`/oauth/consent-info?session=${encodeURIComponent(session)}`))
       .then(async (r) => {
         if (!r.ok) throw new Error("Session expired or invalid.");
         const data = await r.json();
@@ -164,7 +164,7 @@ function ConsentPage() {
   const approve = useCallback(async () => {
     setSubmitting(true);
     try {
-      const res = await fetch("/oauth/approve", {
+      const res = await fetch(withMountPath("/oauth/approve"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session, clientName: clientName.trim() }),
@@ -179,7 +179,7 @@ function ConsentPage() {
   }, [session, clientName]);
 
   const deny = useCallback(() => {
-    fetch(`/oauth/deny?session=${encodeURIComponent(session)}`, { method: "POST" });
+    fetch(withMountPath(`/oauth/deny?session=${encodeURIComponent(session)}`), { method: "POST" });
     window.close();
   }, [session]);
 
@@ -272,7 +272,7 @@ function ConsentPage() {
 
 // ── Login Page (SSO: redirect to /oauth/login) ──
 function LoginPage() {
-  const loginUrl = `/oauth/login?return_url=${encodeURIComponent(window.location.origin + "/")}`;
+  const loginUrl = withMountPath(`/oauth/login?return_url=${encodeURIComponent(window.location.origin + withMountPath("/"))}`);
   return (
     <Box
       sx={{

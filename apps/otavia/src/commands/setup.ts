@@ -4,7 +4,7 @@ import path from "node:path";
 import { loadOtaviaYaml } from "../config/load-otavia-yaml.js";
 import { loadCellConfig } from "../config/load-cell-yaml.js";
 import { resolveCellDir } from "../config/resolve-cell-dir.js";
-import { mergeParams } from "../config/resolve-params.js";
+import { assertDeclaredParamsProvided, mergeParams } from "../config/resolve-params.js";
 import { isEnvRef, isSecretRef } from "../config/cell-yaml-schema.js";
 import { loadEnvForCell } from "../utils/env.js";
 
@@ -38,8 +38,10 @@ function collectRefKeys(params: Record<string, unknown>): string[] {
 }
 
 /**
- * Setup command: check bun, otavia.yaml, each cell's cell.yaml; copy .env.example → .env when missing;
- * optionally warn on missing !Env/!Secret in params (do not block).
+ * Setup command: check bun, otavia.yaml, each cell's cell.yaml; copy stack-host
+ * .env.example -> .env when missing (rootDir only); optionally warn on:
+ * - missing declared params (cell.yaml params not provided in otavia.yaml)
+ * - missing env vars referenced by !Env/!Secret in otavia.yaml params.
  * options.tunnel: when true, write cloudflared tunnel config and print start instructions (no daemon).
  */
 export async function setupCommand(
@@ -66,6 +68,19 @@ export async function setupCommand(
   // 2. Load otavia.yaml (rethrow on error)
   const otavia = loadOtaviaYaml(rootDir);
 
+  // 3. Stack-host env bootstrap: apps/main/.env.example -> apps/main/.env
+  const rootEnvPath = path.join(rootDir, ".env");
+  const rootEnvExamplePath = path.join(rootDir, ".env.example");
+  if (existsSync(rootEnvPath)) {
+    console.log("Skip .env: already exists (main)");
+  } else if (existsSync(rootEnvExamplePath)) {
+    copyFileSync(rootEnvExamplePath, rootEnvPath);
+    console.log("Created .env from .env.example (main)");
+  } else {
+    console.log("Skip .env: no .env.example (main)");
+  }
+
+  // 4. Validate cells and warn missing env refs
   for (const entry of otavia.cellsList) {
     const cellDir = resolveCellDir(rootDir, entry.package);
     const cellYamlPath = path.join(cellDir, "cell.yaml");
@@ -74,28 +89,17 @@ export async function setupCommand(
       continue;
     }
 
-    const envPath = path.join(cellDir, ".env");
-    const envExamplePath = path.join(cellDir, ".env.example");
-
-    if (existsSync(envPath)) {
-      console.log(`Skip .env: already exists (${entry.mount})`);
-    } else if (existsSync(envExamplePath)) {
-      copyFileSync(envExamplePath, envPath);
-      console.log(`Created .env from .env.example (${entry.mount})`);
-    } else {
-      console.log(`Skip .env: no .env.example (${entry.mount})`);
-    }
-
     // Optional: warn on missing !Env/!Secret in params
     try {
       const cellConfig = loadCellConfig(cellDir);
-      const merged = mergeParams(
-        mergeParams(
-          otavia.params as Record<string, unknown> | undefined,
-          cellConfig.params as Record<string, unknown> | undefined
-        ),
-        entry.params
-      );
+      const merged = mergeParams(otavia.params as Record<string, unknown> | undefined, entry.params);
+      try {
+        assertDeclaredParamsProvided(cellConfig.params, merged, entry.mount);
+      } catch (err) {
+        if (err instanceof Error) {
+          console.warn(err.message);
+        }
+      }
       const refKeys = collectRefKeys(merged);
       if (refKeys.length === 0) continue;
 

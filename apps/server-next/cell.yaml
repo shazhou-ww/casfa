@@ -51,15 +51,8 @@ buckets:
 
 # Default instance: casfa.shazhou.me (Route53). Symbiont: cell.symbiont.yaml.
 params:
-  COGNITO_REGION: "us-east-1"
-  COGNITO_USER_POOL_ID: "us-east-1_gMTKxXOKo"
-  MAX_BRANCH_TTL_MS: "86400000"
-  DOMAIN_ROOT: "shazhou.me"
-  DNS:
-    provider: route53
-    zone: "casfa.shazhou.me"
-  LOG_LEVEL: "info"
-  SSO_BASE_URL: !Env SSO_BASE_URL
+  - AUTH
+  - MAX_BRANCH_TTL_MS
 
 testing:
   unit: backend/
