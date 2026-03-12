@@ -10,6 +10,7 @@ import { resolveCellDir } from "../../config/resolve-cell-dir.js";
 import { assertDeclaredParamsProvided, mergeParams, resolveParams } from "../../config/resolve-params.js";
 import { loadEnvForCell } from "../../utils/env.js";
 import { tablePhysicalName, bucketPhysicalName } from "../../config/resource-names.js";
+import { buildForwardUrlForCellMount } from "./forward-url.js";
 import {
   isDockerRunning,
   startDynamoDB,
@@ -264,8 +265,7 @@ export async function runGatewayDev(
     const cellApp = await Promise.resolve(createApp(cell.env));
     const prefix = `/${cell.mount}`;
     gatewayApp.all(prefix + "/", async (c) => {
-      const u = new URL(c.req.url);
-      const newUrl = new URL("/" + (u.search || ""), u.origin);
+      const newUrl = buildForwardUrlForCellMount(c.req.url, prefix);
       const newReq = new Request(newUrl, {
         method: c.req.method,
         headers: c.req.raw.headers,
@@ -274,9 +274,7 @@ export async function runGatewayDev(
       return cellApp.fetch(newReq);
     });
     gatewayApp.all(`${prefix}/*`, async (c) => {
-      const url = new URL(c.req.url);
-      const afterPrefix = url.pathname.slice(prefix.length) || "/";
-      const newUrl = new URL(afterPrefix + (url.search ? "?" + url.search : ""), url.origin);
+      const newUrl = buildForwardUrlForCellMount(c.req.url, prefix);
       const newReq = new Request(newUrl, {
         method: c.req.method,
         headers: c.req.raw.headers,
