@@ -2,6 +2,10 @@
   "name": "@casfa/otavia",
   "version": "0.1.0",
   "type": "module",
+  "exports": {
+    "./dev/main-frontend-runtime/main-entry": "./src/commands/dev/main-frontend-runtime/main-entry.ts",
+    "./dev/main-frontend-runtime/vite-config": "./src/commands/dev/main-frontend-runtime/vite-config.ts"
+  },
   "bin": { "otavia": "src/cli.ts" },
   "scripts": {
     "dev": "bun run src/cli.ts",
