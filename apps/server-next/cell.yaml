@@ -1,6 +1,4 @@
 name: casfa-next
-bucketNameSuffix: casfa-shazhou-me
-pathPrefix: "/drive"
 
 backend:
   dir: backend
@@ -62,13 +60,6 @@ params:
     zone: "casfa.shazhou.me"
   LOG_LEVEL: "info"
   SSO_BASE_URL: !Env SSO_BASE_URL
-
-dev:
-  portBase: 7120
-
-domain:
-  subdomain: drive.casfa
-  dns: !Param DNS
 
 testing:
   unit: backend/

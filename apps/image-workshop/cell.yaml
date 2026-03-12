@@ -1,6 +1,4 @@
 name: image-workshop
-bucketNameSuffix: casfa-shazhou-me
-pathPrefix: "/image-workshop"
 
 backend:
   dir: backend
@@ -58,13 +56,6 @@ tables:
         projection: ALL
   pending_client_info:
     keys: { pk: S }
-
-dev:
-  portBase: 7140
-
-domain:
-  subdomain: image-workshop.casfa
-  dns: !Param DNS
 
 testing:
   unit: backend/
