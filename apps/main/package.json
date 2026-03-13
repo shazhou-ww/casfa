@@ -20,9 +20,9 @@
   },
   "dependencies": {
     "@casfa/agent": "workspace:*",
-    "@casfa/image-workshop": "workspace:*",
+    "@casfa/artist": "workspace:*",
     "@casfa/otavia": "workspace:*",
-    "@casfa/server-next": "workspace:*",
+    "@casfa/drive": "workspace:*",
     "@casfa/sso": "workspace:*",
     "react": "18.2.0",
     "react-dom": "18.2.0"

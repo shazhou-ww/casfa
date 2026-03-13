@@ -58,16 +58,16 @@ params:
 stackName: my-stack
 cells:
   sso: "@casfa/sso"
-  drive: "@casfa/server-next"
+  drive: "@casfa/drive"
 domain:
   host: example.com
 `
       );
       const result = loadOtaviaYaml(tmp);
-      expect(result.cells).toEqual({ sso: "@casfa/sso", drive: "@casfa/server-next" });
+      expect(result.cells).toEqual({ sso: "@casfa/sso", drive: "@casfa/drive" });
       expect(result.cellsList).toEqual([
         { mount: "sso", package: "@casfa/sso" },
-        { mount: "drive", package: "@casfa/server-next" },
+        { mount: "drive", package: "@casfa/drive" },
       ]);
     } finally {
       fs.rmSync(tmp, { recursive: true });
@@ -86,13 +86,13 @@ cells:
     mount: "auth"
     params:
       issuer: "https://issuer.example.com"
-  - package: "@casfa/server-next"
+  - package: "@casfa/drive"
 domain:
   host: example.com
 `
       );
       const result = loadOtaviaYaml(tmp);
-      expect(result.cells).toEqual({ auth: "@casfa/sso", "server-next": "@casfa/server-next" });
+      expect(result.cells).toEqual({ auth: "@casfa/sso", drive: "@casfa/drive" });
       expect(result.cellsList).toEqual([
         {
           mount: "auth",
@@ -100,8 +100,8 @@ domain:
           params: { issuer: "https://issuer.example.com" },
         },
         {
-          mount: "server-next",
-          package: "@casfa/server-next",
+          mount: "drive",
+          package: "@casfa/drive",
           params: undefined,
         },
       ]);
@@ -150,8 +150,8 @@ params:
         `
 stackName: my-stack
 cells:
-  - package: "@casfa/image-workshop"
-    mount: "workshop"
+  - package: "@casfa/artist"
+    mount: "artist"
     params:
       BFL_API_KEY: !Param BFL_API_KEY
 domain:

@@ -9,7 +9,7 @@ export interface StackDomainConfig {
 }
 
 export interface StackYaml {
-  /** Cell names or paths (e.g. sso, agent → apps/sso, apps/agent). */
+  /** Cell names or paths (e.g. sso, agent -> cells/sso, cells/agent). */
   cells: string[];
   domain?: StackDomainConfig;
   bucketNameSuffix?: string;

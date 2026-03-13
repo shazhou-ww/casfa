@@ -1,5 +1,5 @@
 /**
- * MCP (Model Context Protocol) handler for server-next.
+ * MCP (Model Context Protocol) handler for drive.
  * POST /mcp with Bearer auth; uses same root-resolver, files, branches logic as REST.
  */
 
@@ -121,7 +121,7 @@ const MCP_TOOLS = [
   {
     name: "branch_create",
     description:
-      "Create a branch. Without parentBranchId creates under realm root (requires branch_manage). With parentBranchId creates sub-branch (Worker only, parent must be own branch). If mountPath does not exist, the new branch starts with a null root (no root node); use this for image-workshop flux_image so the image becomes the branch root. Returns branchId, accessToken, expiresAt, and accessUrlPrefix (single URL for branch-scoped requests; use as casfaBranchUrl in flux_image, no token needed).",
+      "Create a branch. Without parentBranchId creates under realm root (requires branch_manage). With parentBranchId creates sub-branch (Worker only, parent must be own branch). If mountPath does not exist, the new branch starts with a null root (no root node); use this for artist flux_image so the image becomes the branch root. Returns branchId, accessToken, expiresAt, and accessUrlPrefix (single URL for branch-scoped requests; use as casfaBranchUrl in flux_image, no token needed).",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -259,7 +259,7 @@ function handleInitialize(id: string | number): McpResponse {
       resources: { subscribe: false, listChanged: false },
       prompts: { listChanged: false },
     },
-    serverInfo: { name: "casfa-server-next-mcp", version: "0.1.0" },
+    serverInfo: { name: "casfa-drive-mcp", version: "0.1.0" },
   });
 }
 

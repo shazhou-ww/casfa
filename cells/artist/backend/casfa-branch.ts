@@ -1,6 +1,6 @@
 /**
  * Casfa branch client: upload file and complete branch using a single branch root URL.
- * Uses server-next path-based access: {branchRootUrl}/api/realm/me/... (no Bearer token).
+ * Uses drive path-based access: {branchRootUrl}/api/realm/me/... (no Bearer token).
  */
 export type CasfaBranchOptions = {
   /** Branch root URL (accessUrlPrefix from branch_create), e.g. https://drive.example.com/branch/{branchId}/{verification}. */
