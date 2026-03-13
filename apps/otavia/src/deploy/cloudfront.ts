@@ -9,6 +9,8 @@ const CACHING_OPTIMIZED_POLICY = "658327ea-f89d-4fab-a63d-7e88639e58f6";
 export interface GenerateCloudFrontOptions {
   domainHost: string;
   defaultOriginId: string;
+  /** Root path ("/") should redirect to /<mount>/ when set. */
+  defaultCellMount?: string;
   /** S3 frontend bucket ref - used for default origin */
   frontendBucketRef?: string;
   /** Path behaviors: pathPattern (e.g. /sso/*) -> originId. API origins use originId as Api Ref. */
@@ -24,6 +26,7 @@ export function generateCloudFrontDistribution(options: GenerateCloudFrontOption
   const {
     domainHost,
     defaultOriginId,
+    defaultCellMount,
     frontendBucketRef = "FrontendBucket",
     pathBehaviors,
     hostedZoneId,
@@ -33,6 +36,8 @@ export function generateCloudFrontDistribution(options: GenerateCloudFrontOption
 
   const resources: Record<string, unknown> = {};
   const conditions: Record<string, unknown> = {};
+  const rootRedirectPath = defaultCellMount ? `/${defaultCellMount}/` : "/";
+  const rootIndexPath = defaultCellMount ? `/${defaultCellMount}/index.html` : "/index.html";
 
   const autoCert = !certificateArn && !!domainHost && !!hostedZoneId;
   let certificateRef: unknown;
@@ -75,14 +80,22 @@ export function generateCloudFrontDistribution(options: GenerateCloudFrontOption
       FunctionCode: [
         "function handler(event) {",
         "  var uri = event.request.uri;",
+        `  var rootRedirectPath = ${JSON.stringify(rootRedirectPath)};`,
+        `  var rootIndexPath = ${JSON.stringify(rootIndexPath)};`,
         "  if (uri === '/') {",
-        "    event.request.uri = '/index.html';",
+        "    return {",
+        "      statusCode: 302,",
+        "      statusDescription: 'Found',",
+        "      headers: {",
+        "        location: { value: rootRedirectPath }",
+        "      }",
+        "    };",
         "  } else if (uri.lastIndexOf('.') <= uri.lastIndexOf('/')) {",
         "    var parts = uri.split('/').filter(Boolean);",
         "    if (parts.length > 0) {",
         "      event.request.uri = '/' + parts[0] + '/index.html';",
         "    } else {",
-        "      event.request.uri = '/index.html';",
+        "      event.request.uri = rootIndexPath;",
         "    }",
         "  }",
         "  return event.request;",

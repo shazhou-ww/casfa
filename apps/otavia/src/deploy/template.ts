@@ -124,6 +124,7 @@ export function generateTemplate(rootDir: string): string {
   const conditions: Record<string, unknown> = {};
   const pathBehaviors: Array<{ pathPattern: string; originId: string; isApi?: boolean }> = [];
   const firstMount = otavia.cellsList[0]?.mount ?? "";
+  const defaultCellMount = otavia.defaultCell ?? firstMount;
   const origin = domainHost ? `https://${domainHost}` : "";
 
   for (const cellEntry of otavia.cellsList) {
@@ -239,6 +240,7 @@ export function generateTemplate(rootDir: string): string {
     stackName,
     domainHost,
     defaultOriginId: "S3Frontend",
+    defaultCellMount,
     frontendBucketRef: "FrontendBucket",
     pathBehaviors: pathBehaviors.sort((a, b) => b.pathPattern.length - a.pathPattern.length),
     hostedZoneId: otavia.domain?.dns?.zoneId,
