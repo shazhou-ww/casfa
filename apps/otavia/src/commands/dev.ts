@@ -7,6 +7,17 @@ import { startTunnel } from "./dev/tunnel.js";
 const DEFAULT_BACKEND_PORT = 8900;
 const DEFAULT_VITE_PORT = 7100;
 
+export function resolveDevPublicBaseUrl(options: {
+  tunnelEnabled?: boolean;
+  tunnelPublicBaseUrl?: string;
+  gatewayOnly: boolean;
+  vitePort: number;
+}): string | undefined {
+  if (options.tunnelEnabled) return options.tunnelPublicBaseUrl;
+  if (options.gatewayOnly) return undefined;
+  return `http://localhost:${options.vitePort}`;
+}
+
 /**
  * Dev command: validate otavia.yaml, start backend gateway, then Vite dev server.
  * When OTAVIA_DEV_GATEWAY_ONLY=1 (e.g. for e2e), only run gateway with PORT and optional
@@ -27,6 +38,7 @@ export async function devCommand(
     process.exit(1);
   }
   const backendPort = parseInt(process.env.PORT ?? String(DEFAULT_BACKEND_PORT), 10);
+  const vitePort = parseInt(process.env.VITE_PORT ?? String(DEFAULT_VITE_PORT), 10);
   const gatewayOnly = process.env.OTAVIA_DEV_GATEWAY_ONLY === "1";
   const overrides: { dynamoEndpoint?: string; s3Endpoint?: string } | undefined = gatewayOnly
     ? (process.env.DYNAMODB_ENDPOINT || process.env.S3_ENDPOINT
@@ -48,7 +60,13 @@ export async function devCommand(
     console.log(`[tunnel] Started. Public base URL: ${publicBaseUrl}`);
   }
 
-  const server = await runGatewayDev(root, backendPort, overrides, { publicBaseUrl });
+  const effectivePublicBaseUrl = resolveDevPublicBaseUrl({
+    tunnelEnabled: options?.tunnel,
+    tunnelPublicBaseUrl: publicBaseUrl,
+    gatewayOnly,
+    vitePort,
+  });
+  const server = await runGatewayDev(root, backendPort, overrides, { publicBaseUrl: effectivePublicBaseUrl });
 
   if (gatewayOnly) {
     process.on("SIGINT", () => {
@@ -64,8 +82,7 @@ export async function devCommand(
     await new Promise(() => {});
   }
 
-  const vitePort = parseInt(process.env.VITE_PORT ?? String(DEFAULT_VITE_PORT), 10);
-  const viteHandle = await startViteDev(root, backendPort, vitePort, publicBaseUrl);
+  const viteHandle = await startViteDev(root, backendPort, vitePort, effectivePublicBaseUrl);
 
   const cleanup = () => {
     tunnelHandle?.stop();
