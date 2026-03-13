@@ -219,5 +219,38 @@ export function loadOtaviaYaml(rootDir: string): OtaviaYaml {
       }
     });
   }
+
+  if (data.oauth != null) {
+    if (typeof data.oauth !== "object" || Array.isArray(data.oauth)) {
+      throw new Error("otavia.yaml: oauth must be an object");
+    }
+    const oauth = data.oauth as Record<string, unknown>;
+    if (oauth.callback != null) {
+      if (typeof oauth.callback !== "object" || Array.isArray(oauth.callback)) {
+        throw new Error("otavia.yaml: oauth.callback must be an object");
+      }
+      const callback = oauth.callback as Record<string, unknown>;
+      if (typeof callback.cell !== "string" || callback.cell.trim() === "") {
+        throw new Error("otavia.yaml: oauth.callback.cell must be a non-empty string");
+      }
+      if (typeof callback.path !== "string" || callback.path.trim() === "") {
+        throw new Error("otavia.yaml: oauth.callback.path must be a non-empty string");
+      }
+      const cell = callback.cell.trim();
+      const callbackPath = callback.path.trim();
+      if (!callbackPath.startsWith("/")) {
+        throw new Error("otavia.yaml: oauth.callback.path must start with '/'");
+      }
+      const mountSet = new Set(result.cellsList.map((entry) => entry.mount));
+      if (!mountSet.has(cell)) {
+        throw new Error(
+          `otavia.yaml: oauth.callback.cell "${cell}" must match one of configured cells`
+        );
+      }
+      result.oauth = { callback: { cell, path: callbackPath } };
+    } else {
+      result.oauth = {};
+    }
+  }
   return result;
 }

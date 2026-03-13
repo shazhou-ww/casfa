@@ -276,7 +276,8 @@ export function deriveFrontendModuleProxySpecs(
 export async function startViteDev(
   rootDir: string,
   backendPort: number,
-  vitePort: number
+  vitePort: number,
+  publicBaseUrl?: string
 ): Promise<ViteDevHandle> {
   const root = resolve(rootDir);
   const otavia = loadOtaviaYaml(root);
@@ -364,8 +365,9 @@ ${cellsWithFrontend
     }
   });
 
+  const base = publicBaseUrl?.replace(/\/$/, "") ?? `http://localhost:${vitePort}`;
   console.log(
-    `[vite] Main frontend dev server starting at http://localhost:${vitePort} (mounts: ${cellsWithFrontend
+    `[vite] Main frontend dev server starting at ${base} (mounts: ${cellsWithFrontend
       .map((c) => c.mount)
       .join(", ")})`
   );

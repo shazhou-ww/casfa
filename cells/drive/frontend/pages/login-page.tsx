@@ -1,6 +1,7 @@
 import { Box, Typography } from "@mui/material";
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
+import { redirectToLoginOnce } from "../lib/auth";
 
 /** SSO only: redirect to backend /oauth/login (which redirects to SSO). */
 export function LoginPage() {
@@ -8,10 +9,10 @@ export function LoginPage() {
   const returnUrl = searchParams.get("returnUrl") ?? searchParams.get("return_url") ?? "/";
 
   useEffect(() => {
-    const url = `/oauth/login?return_url=${encodeURIComponent(
-      returnUrl.startsWith("/") ? `${window.location.origin}${returnUrl}` : returnUrl
-    )}`;
-    window.location.replace(url);
+    const resolvedReturnUrl = returnUrl.startsWith("/")
+      ? `${window.location.origin}${returnUrl}`
+      : returnUrl;
+    redirectToLoginOnce(resolvedReturnUrl);
   }, [returnUrl]);
 
   return (

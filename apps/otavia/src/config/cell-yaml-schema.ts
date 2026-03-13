@@ -1,6 +1,6 @@
 /**
  * Schema types for otavia cell.yaml (otavia variant).
- * Excludes: pathPrefix, bucketNameSuffix, dev, domain, domains, cognito, cloudflare, network.
+ * Excludes: pathPrefix, bucketNameSuffix, dev, domain, domains, cloudflare, network.
  */
 
 export type SecretRef = { secret: string };
@@ -93,6 +93,14 @@ export interface OAuthConfig {
   scopes: string[];
 }
 
+export interface CognitoConfig {
+  region: string;
+  userPoolId: string;
+  clientId: string;
+  hostedUiUrl?: string;
+  clientSecret?: string;
+}
+
 export interface CellConfig {
   name: string;
   backend?: BackendConfig;
@@ -101,6 +109,7 @@ export interface CellConfig {
   tables?: Record<string, TableConfig>;
   buckets?: Record<string, Record<string, unknown>>;
   oauth?: OAuthConfig;
+  cognito?: CognitoConfig;
   /** Declared required param keys; values are provided by otavia.yaml. */
   params?: string[];
 }

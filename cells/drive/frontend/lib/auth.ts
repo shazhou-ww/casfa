@@ -7,6 +7,7 @@ let apiFetchInstance: ((path: string, init: RequestInit | null) => Promise<Respo
 let ssoBaseUrlValue: string | undefined = undefined;
 /** /api/me response is cached so fs-api etc. can get realmId (userId). */
 let cookieUser: { userId: string; email?: string; name?: string; picture?: string } | null = null;
+let loginRedirectInFlight = false;
 
 export type AuthConfig = { ssoBaseUrl?: string | null };
 
@@ -23,6 +24,20 @@ export function withMountPath(path: string): string {
   if (!base) return normalized;
   if (normalized === base || normalized.startsWith(base + "/")) return normalized;
   return `${base}${normalized}`;
+}
+
+export function buildLoginRedirectUrl(returnUrl: string): string {
+  return `${withMountPath("/oauth/login")}?return_url=${encodeURIComponent(returnUrl)}`;
+}
+
+/**
+ * Deduplicates login redirects across AuthGuard / onUnauthorized / login page effects.
+ * React StrictMode can run effects twice in dev, which otherwise causes repeated/cancelled requests.
+ */
+export function redirectToLoginOnce(returnUrl: string): void {
+  if (loginRedirectInFlight) return;
+  loginRedirectInFlight = true;
+  window.location.replace(buildLoginRedirectUrl(returnUrl));
 }
 
 export function setCookieUser(user: { userId: string; email?: string; name?: string; picture?: string } | null): void {
@@ -84,8 +99,7 @@ export async function initAuth(): Promise<void> {
     authClient: authClientInstance,
     baseUrl: "",
     onUnauthorized: () => {
-      const loginUrl = `${withMountPath("/oauth/login")}?return_url=${encodeURIComponent(window.location.href)}`;
-      window.location.replace(loginUrl);
+      redirectToLoginOnce(window.location.href);
     },
     csrfCookieName: "csrf_token",
     ssoBaseUrl,

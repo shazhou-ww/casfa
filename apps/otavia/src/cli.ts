@@ -33,12 +33,39 @@ program.hook("preAction", () => {
 program.command("setup")
   .description("Setup Otavia stack")
   .option("--tunnel", "Setup tunnel for remote dev")
-  .action(async (_args: unknown, cmd: { opts: () => { tunnel?: boolean } }) => {
-    await setupCommand(process.cwd(), { tunnel: cmd.opts().tunnel });
-  });
-program.command("dev").description("Start development").action(async () => {
-  await devCommand(process.cwd());
-});
+  .action(
+    async (
+      _args: unknown,
+      cmd: {
+        opts: () => { tunnel?: boolean };
+        getOptionValueSource: (name: string) => string | undefined;
+      }
+    ) => {
+      const opts = cmd.opts();
+      const source = cmd.getOptionValueSource("tunnel");
+      await setupCommand(process.cwd(), { tunnel: opts.tunnel, tunnelSpecified: source === "cli" });
+    }
+  );
+program.command("dev")
+  .description("Start development")
+  .option("--tunnel", "Auto-start cloudflared tunnel and use tunnel host URLs")
+  .option("--tunnel-host <host>", "Tunnel hostname or full URL used as public base URL")
+  .option("--tunnel-config <path>", "Path to cloudflared config.yml")
+  .action(
+    async (
+      _args: unknown,
+      cmd: {
+        opts: () => { tunnel?: boolean; tunnelHost?: string; tunnelConfig?: string };
+      }
+    ) => {
+      const opts = cmd.opts();
+      await devCommand(process.cwd(), {
+        tunnel: opts.tunnel,
+        tunnelHost: opts.tunnelHost,
+        tunnelConfig: opts.tunnelConfig,
+      });
+    }
+  );
 program.command("test")
   .description("Run tests (unit then e2e)")
   .action(async () => {

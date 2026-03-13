@@ -13,6 +13,17 @@ export interface OtaviaYamlDomain {
   dns?: OtaviaYamlDns;
 }
 
+export interface OtaviaYamlOAuthCallback {
+  /** Cell name mounted in otavia paths, e.g. "sso". */
+  cell: string;
+  /** Callback path inside that cell, e.g. "/oauth/callback". */
+  path: string;
+}
+
+export interface OtaviaYamlOAuth {
+  callback?: OtaviaYamlOAuthCallback;
+}
+
 /** One cell in the stack: mount path segment (e.g. "sso") and its package (e.g. "@casfa/sso"). */
 export interface CellEntry {
   mount: string;
@@ -34,4 +45,5 @@ export interface OtaviaYaml {
   cellsList: CellEntry[];
   domain: OtaviaYamlDomain;
   params?: Record<string, unknown>;
+  oauth?: OtaviaYamlOAuth;
 }
