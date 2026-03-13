@@ -2,6 +2,7 @@
  * When using SSO: only login redirect, logout redirect, and .well-known. No token/callback on this cell.
  */
 import { buildClearAuthCookieHeader } from "@casfa/cell-auth-server";
+import { buildClearRefreshCookieHeader } from "@casfa/cell-auth-server";
 import type { ServerConfig } from "../config.ts";
 import type { Env } from "../types.ts";
 import type { PendingClientInfoStore } from "@casfa/cell-delegates-server";
@@ -12,6 +13,15 @@ const PENDING_CLIENT_TTL_SEC = 3600; // 1 hour
 
 function isLoopbackHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+export function resolveSsoRefreshCookiePath(ssoBaseUrl: string): string {
+  try {
+    const path = new URL(ssoBaseUrl).pathname.replace(/\/+$/, "");
+    return `${path || ""}/oauth/refresh`;
+  } catch {
+    return "/oauth/refresh";
+  }
 }
 
 export function resolveSsoBaseUrlForRequest(ssoBaseUrl: string, requestBaseUrl: string): string {
@@ -66,6 +76,14 @@ export function createLoginRedirectRoutes(
         sameSite: "Strict",
       });
       c.header("Set-Cookie", clearHeader);
+      const refreshCookiePath = resolveSsoRefreshCookiePath(ssoBaseUrl);
+      const clearRefreshHeader = buildClearRefreshCookieHeader({
+        cookieName: "auth_refresh",
+        cookiePath: refreshCookiePath,
+        cookieDomain: auth.cookieDomain,
+        sameSite: "Strict",
+      });
+      c.res.headers.append("Set-Cookie", clearRefreshHeader);
     }
     const base = getRequestBaseUrl(c).replace(/\/$/, "");
     return c.redirect(`${base}/oauth/login`);

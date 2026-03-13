@@ -37,7 +37,9 @@ export function Layout() {
 
   const handleLogout = useCallback(() => {
     handleCloseMenu();
-    window.location.href = withMountPath("/oauth/logout");
+    void authClient.logout().catch(() => {
+      window.location.href = withMountPath("/oauth/logout");
+    });
   }, [handleCloseMenu]);
 
   const displayName = user ? user.email || user.userId : "";
