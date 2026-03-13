@@ -162,13 +162,14 @@ async function buildFrontends(
   for (const { mount, cellDir, config } of cells) {
     if (!config.frontend) continue;
     const outDir = resolve(rootDir, OTAVIA_DIST, mount);
+    const frontendDir = resolve(cellDir, config.frontend.dir ?? "frontend");
     mkdirSync(outDir, { recursive: true });
 
     console.log(`  Building frontend [${mount}]...`);
     const proc = Bun.spawn(
       ["bun", "x", "vite", "build", "--outDir", outDir, "--base", `/${mount}/`],
       {
-        cwd: cellDir,
+        cwd: frontendDir,
         stdout: "inherit",
         stderr: "inherit",
         env: { ...process.env },
@@ -298,7 +299,7 @@ export async function deployCommand(
     process.exit(1);
   }
 
-  template = template.replace(/S3Bucket: PLACEHOLDER/, `S3Bucket: ${deployBucketName}`);
+  template = template.replace(/S3Bucket: PLACEHOLDER/g, `S3Bucket: ${deployBucketName}`);
   for (const { placeholder, s3Key } of s3KeyReplacements) {
     const escaped = placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     template = template.replace(new RegExp(`S3Key: ${escaped}`), `S3Key: ${s3Key}`);
