@@ -1,6 +1,6 @@
 import { Box, CircularProgress } from "@mui/material";
 import { Navigate, Outlet } from "react-router-dom";
-import { useCookieAuthCheck } from "../lib/auth";
+import { buildLoginRedirectUrl, useCookieAuthCheck } from "../lib/auth";
 
 export function AuthGuard() {
   const { loading, isLoggedIn } = useCookieAuthCheck();
@@ -13,8 +13,7 @@ export function AuthGuard() {
     );
   }
   if (!isLoggedIn) {
-    const returnUrl = encodeURIComponent(window.location.href);
-    return <Navigate to={`/oauth/login?return_url=${returnUrl}`} replace />;
+    return <Navigate to={buildLoginRedirectUrl(window.location.href)} replace />;
   }
 
   return <Outlet />;

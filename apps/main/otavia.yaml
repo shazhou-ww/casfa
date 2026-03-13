@@ -40,3 +40,7 @@ domain:
     provider: route53
     zone: shazhou.me
     zoneId: Z02459572I8BNRDEU4P1F
+oauth:
+  callback:
+    cell: sso
+    path: /oauth/callback

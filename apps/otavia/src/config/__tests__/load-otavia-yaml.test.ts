@@ -410,4 +410,83 @@ domain:
       fs.rmSync(tmp, { recursive: true });
     }
   });
+
+  test("parses oauth callback config", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-test-"));
+    try {
+      writeYaml(
+        tmp,
+        `
+stackName: my-stack
+cells:
+  sso: "@casfa/sso"
+domain:
+  host: example.com
+oauth:
+  callback:
+    cell: sso
+    path: /oauth/callback
+`
+      );
+      const result = loadOtaviaYaml(tmp);
+      expect(result.oauth).toEqual({
+        callback: {
+          cell: "sso",
+          path: "/oauth/callback",
+        },
+      });
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
+    }
+  });
+
+  test("throws when oauth callback path does not start with slash", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-test-"));
+    try {
+      writeYaml(
+        tmp,
+        `
+stackName: my-stack
+cells:
+  sso: "@casfa/sso"
+domain:
+  host: example.com
+oauth:
+  callback:
+    cell: sso
+    path: oauth/callback
+`
+      );
+      expect(() => loadOtaviaYaml(tmp)).toThrow(
+        "otavia.yaml: oauth.callback.path must start with '/'"
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
+    }
+  });
+
+  test("throws when oauth callback cell is not in cells", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-test-"));
+    try {
+      writeYaml(
+        tmp,
+        `
+stackName: my-stack
+cells:
+  sso: "@casfa/sso"
+domain:
+  host: example.com
+oauth:
+  callback:
+    cell: drive
+    path: /oauth/callback
+`
+      );
+      expect(() => loadOtaviaYaml(tmp)).toThrow(
+        'otavia.yaml: oauth.callback.cell "drive" must match one of configured cells'
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
+    }
+  });
 });

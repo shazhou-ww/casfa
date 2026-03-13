@@ -61,10 +61,25 @@ function resolvedParamsToEnv(resolved: Record<string, string | unknown>): Record
 export function resolveGatewaySsoBaseUrl(
   configuredSsoBaseUrl: string | undefined,
   backendPort: number,
-  defaultMount: string
+  defaultMount: string,
+  publicBaseUrl?: string
 ): string {
   const configured = configuredSsoBaseUrl?.trim();
-  if (configured) return configured;
+  if (configured) {
+    if (publicBaseUrl) {
+      try {
+        const parsed = new URL(configured);
+        const host = parsed.hostname.toLowerCase();
+        if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
+          return `${publicBaseUrl.replace(/\/$/, "")}/${defaultMount}`;
+        }
+      } catch {
+        // Keep configured value if it is not a URL.
+      }
+    }
+    return configured;
+  }
+  if (publicBaseUrl) return `${publicBaseUrl.replace(/\/$/, "")}/${defaultMount}`;
   return `http://localhost:${backendPort}/${defaultMount}`;
 }
 
@@ -96,7 +111,12 @@ export function applyResourceNameEnvVars(cells: GatewayCellInfo[], stackName: st
   }
 }
 
-async function discoverCells(rootDir: string, otavia: OtaviaYaml, backendPort: number): Promise<GatewayCellInfo[]> {
+async function discoverCells(
+  rootDir: string,
+  otavia: OtaviaYaml,
+  backendPort: number,
+  publicBaseUrl?: string
+): Promise<GatewayCellInfo[]> {
   const firstMount = otavia.cellsList[0]?.mount ?? "";
   const cells: GatewayCellInfo[] = [];
 
@@ -122,9 +142,13 @@ async function discoverCells(rootDir: string, otavia: OtaviaYaml, backendPort: n
       onMissingParam: "placeholder",
     });
     const env = resolvedParamsToEnv(resolved as Record<string, string | unknown>);
-    const ssoBaseUrl = resolveGatewaySsoBaseUrl(env.SSO_BASE_URL, backendPort, firstMount);
+    const ssoBaseUrl = resolveGatewaySsoBaseUrl(env.SSO_BASE_URL, backendPort, firstMount, publicBaseUrl);
     env.CELL_BASE_URL =
-      entry.mount === "sso" ? ssoBaseUrl : `http://localhost:${backendPort}/${entry.mount}`;
+      entry.mount === "sso"
+        ? ssoBaseUrl
+        : publicBaseUrl
+          ? `${publicBaseUrl.replace(/\/$/, "")}/${entry.mount}`
+          : `http://localhost:${backendPort}/${entry.mount}`;
     env.SSO_BASE_URL = ssoBaseUrl;
     cells.push({ mount: entry.mount, cellDir, packageName, config, env });
   }
@@ -273,10 +297,11 @@ export type GatewayServer = { stop: () => void };
 export async function runGatewayDev(
   rootDir: string,
   backendPort: number,
-  overrides?: { dynamoEndpoint?: string; s3Endpoint?: string }
+  overrides?: { dynamoEndpoint?: string; s3Endpoint?: string },
+  options?: { publicBaseUrl?: string }
 ): Promise<GatewayServer> {
   const otavia = loadOtaviaYaml(rootDir);
-  const cells = await discoverCells(rootDir, otavia, backendPort);
+  const cells = await discoverCells(rootDir, otavia, backendPort, options?.publicBaseUrl);
   if (cells.length === 0) {
     throw new Error("No cells found");
   }

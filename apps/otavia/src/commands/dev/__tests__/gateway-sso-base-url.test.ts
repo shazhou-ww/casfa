@@ -12,6 +12,34 @@ describe("resolveGatewaySsoBaseUrl", () => {
   test("falls back to backend mount URL when env is missing", () => {
     expect(resolveGatewaySsoBaseUrl(undefined, 8900, "sso")).toBe("http://localhost:8900/sso");
   });
+
+  test("uses tunnel host when provided and env is missing", () => {
+    expect(resolveGatewaySsoBaseUrl(undefined, 8900, "sso", "https://mybox.dev.example.com")).toBe(
+      "https://mybox.dev.example.com/sso"
+    );
+  });
+
+  test("overrides localhost SSO base URL in tunnel mode", () => {
+    expect(
+      resolveGatewaySsoBaseUrl(
+        "http://localhost:7100/sso",
+        8900,
+        "sso",
+        "https://mybox.dev.example.com"
+      )
+    ).toBe("https://mybox.dev.example.com/sso");
+  });
+
+  test("keeps non-local configured SSO base URL in tunnel mode", () => {
+    expect(
+      resolveGatewaySsoBaseUrl(
+        "https://sso.example.com",
+        8900,
+        "sso",
+        "https://mybox.dev.example.com"
+      )
+    ).toBe("https://sso.example.com");
+  });
 });
 
 describe("applyResourceNameEnvVars", () => {

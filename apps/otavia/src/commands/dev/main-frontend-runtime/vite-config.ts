@@ -202,6 +202,7 @@ export function createMainFrontendViteConfig(options: ConfigOptions) {
     server: {
       port: options.vitePort,
       host: "0.0.0.0",
+      allowedHosts: true,
       strictPort: true,
       proxy,
     },
