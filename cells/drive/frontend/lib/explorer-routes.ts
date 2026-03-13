@@ -7,7 +7,12 @@
 export function pathToRoute(path: string): string {
   const p = (path || "/").replace(/\/+/g, "/").replace(/\/$/, "") || "/";
   if (p === "/") return "/files";
-  return `/files${p}`;
+  const encodedPath = p
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return `/files/${encodedPath}`;
 }
 
 export function routeToPath(pathname: string): string {
@@ -15,7 +20,19 @@ export function routeToPath(pathname: string): string {
     return "/";
   }
   if (pathname.startsWith("/files/")) {
-    return `/${pathname.slice("/files/".length)}`;
+    const rawPath = pathname.slice("/files/".length);
+    const decodedPath = rawPath
+      .split("/")
+      .filter(Boolean)
+      .map((segment) => {
+        try {
+          return decodeURIComponent(segment);
+        } catch {
+          return segment;
+        }
+      })
+      .join("/");
+    return decodedPath ? `/${decodedPath}` : "/";
   }
   return "/";
 }
