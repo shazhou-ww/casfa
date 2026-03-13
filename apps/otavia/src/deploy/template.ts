@@ -95,6 +95,13 @@ function resolvedParamsToEnv(resolved: Record<string, string | unknown>): Record
   return env;
 }
 
+function toApiPathPattern(mount: string, route: string): string {
+  const trimmedRoute = route.trim();
+  const mountPrefix = `/${mount}`.replace(/\/+/g, "/");
+  const joined = `${mountPrefix}${trimmedRoute.startsWith("/") ? trimmedRoute : `/${trimmedRoute}`}`;
+  return joined.replace(/\/+/g, "/");
+}
+
 /**
  * Generate a single CloudFormation template (YAML) from OtaviaYaml + all cell configs + resolved params (cloud stage).
  * Resources: each cell's tables -> DynamoDB, buckets -> S3, backend entries -> Lambda + API Gateway HTTP API,
@@ -121,7 +128,7 @@ export function generateTemplate(rootDir: string): string {
       continue;
     }
     const config = loadCellConfig(cellDir);
-    const envMap = loadEnvForCell(rootDir, cellDir, { stage: "cloud" });
+    const envMap = loadEnvForCell(rootDir, cellDir, { stage: "deploy" });
     const merged = mergeParams(otavia.params, cellEntry.params) as Record<string, unknown>;
     assertDeclaredParamsProvided(config.params, merged, cellEntry.mount);
     const resolved = resolveParams(merged, envMap, { onMissingParam: "throw" });
@@ -165,6 +172,7 @@ export function generateTemplate(rootDir: string): string {
         ? Object.keys(config.buckets).map((k) => `${prefix}${toPascalCase(k)}Bucket`)
         : [];
       const apiRoutes: Array<{ functionLogicalId: string }> = [];
+      const apiPathPatterns = new Set<string>();
 
       for (const [entryKey, entry] of Object.entries(config.backend.entries)) {
         const frag = generateLambdaFragment(entryKey, prefix, {
@@ -179,18 +187,25 @@ export function generateTemplate(rootDir: string): string {
         Object.assign(resources, frag.Resources);
         const funcLogicalId = `${prefix}${toPascalCase(entryKey)}Function`;
         apiRoutes.push({ functionLogicalId: funcLogicalId });
+        for (const route of entry.routes ?? []) {
+          apiPathPatterns.add(toApiPathPattern(cellEntry.mount, route));
+        }
       }
 
       const apiFrag = generateHttpApi(prefix, `${stackName}-${cellEntry.mount}-api`, apiRoutes);
       Object.assign(resources, apiFrag.Resources);
       if (apiFrag.Outputs) Object.assign(outputs, apiFrag.Outputs);
 
-      const pathPattern = pathPrefix.endsWith("/") ? `${pathPrefix}*` : `${pathPrefix}/*`;
-      pathBehaviors.push({
-        pathPattern,
-        originId: `${prefix}HttpApi`,
-        isApi: true,
-      });
+      if (apiPathPatterns.size === 0) {
+        apiPathPatterns.add(pathPrefix.endsWith("/") ? `${pathPrefix}*` : `${pathPrefix}/*`);
+      }
+      for (const pathPattern of Array.from(apiPathPatterns).sort((a, b) => b.length - a.length)) {
+        pathBehaviors.push({
+          pathPattern,
+          originId: `${prefix}HttpApi`,
+          isApi: true,
+        });
+      }
     }
   }
 
@@ -203,7 +218,7 @@ export function generateTemplate(rootDir: string): string {
     domainHost,
     defaultOriginId: "S3Frontend",
     frontendBucketRef: "FrontendBucket",
-    pathBehaviors,
+    pathBehaviors: pathBehaviors.sort((a, b) => b.pathPattern.length - a.pathPattern.length),
     hostedZoneId: otavia.domain?.dns?.zoneId,
     certificateArn: undefined,
   });

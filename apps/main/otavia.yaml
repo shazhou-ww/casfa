@@ -1,4 +1,4 @@
-stackName: otavia-local
+stackName: otavia-beta
 params:
   COGNITO_REGION: "us-east-1"
   COGNITO_USER_POOL_ID: "us-east-1_gMTKxXOKo"
@@ -34,7 +34,8 @@ cells:
       AUTH: !Param AUTH
       BFL_API_KEY: !Param BFL_API_KEY
 domain:
-  host: casfa.shazhou.me
+  host: beta.casfa.shazhou.me
   dns:
-    provider: cloudflare
-    zone: casfa.shazhou.me
+    provider: route53
+    zone: shazhou.me
+    zoneId: Z02459572I8BNRDEU4P1F

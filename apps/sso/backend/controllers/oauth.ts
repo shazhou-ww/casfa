@@ -42,12 +42,12 @@ export function createSsoOAuthRoutes(deps: Deps) {
   const routes = new Hono();
   const { config, cognitoConfig, oauthServer } = deps;
   const cookie = config.cookie;
+  const publicBaseUrl = config.baseUrl.replace(/\/$/, "");
+  const callbackUri = `${publicBaseUrl}/oauth/callback`;
 
   routes.get("/oauth/authorize", (c) => {
-    const baseUrl = getRequestBaseUrl(c);
-    const returnUrl = c.req.query("return_url") ?? c.req.query("state") ?? baseUrl;
+    const returnUrl = c.req.query("return_url") ?? c.req.query("state") ?? publicBaseUrl;
     const state = btoa(JSON.stringify({ return_url: returnUrl }));
-    const callbackUri = `${baseUrl}/oauth/callback`;
     const redirectUrl = buildCognitoAuthorizeUrl(cognitoConfig, {
       redirectUri: callbackUri,
       state,
@@ -57,11 +57,11 @@ export function createSsoOAuthRoutes(deps: Deps) {
   });
 
   routes.get("/oauth/callback", async (c) => {
-    const baseUrl = getRequestBaseUrl(c);
+    const requestBaseUrl = getRequestBaseUrl(c);
     const code = c.req.query("code");
     const stateRaw = c.req.query("state");
     if (!code) return c.text("Missing code", 400);
-    let returnUrl = baseUrl;
+    let returnUrl = publicBaseUrl;
     try {
       if (stateRaw) {
         const parsed = JSON.parse(atob(stateRaw));
@@ -71,10 +71,9 @@ export function createSsoOAuthRoutes(deps: Deps) {
       /* use default return_url */
     }
     try {
-      const callbackUri = `${baseUrl}/oauth/callback`;
       const tokens = await exchangeCodeForTokens(cognitoConfig, code, callbackUri);
       const accessToken = tokens.idToken ?? tokens.accessToken;
-      const requestHost = new URL(baseUrl).hostname;
+      const requestHost = new URL(requestBaseUrl).hostname;
       const cookieDomain = cookie.authCookieDomain ?? requestHost;
       const secure = requestHost !== "localhost" && requestHost !== "127.0.0.1";
       const sameSite = requestHost === "localhost" || requestHost === "127.0.0.1" ? "Lax" : "Strict";
