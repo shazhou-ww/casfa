@@ -44,6 +44,10 @@ export function createSsoOAuthRoutes(deps: Deps) {
   const cookie = config.cookie;
   const publicBaseUrl = config.baseUrl.replace(/\/$/, "");
   const callbackUri = `${publicBaseUrl}/oauth/callback`;
+  const publicHost = new URL(publicBaseUrl).hostname;
+  const cookieDomain = cookie.authCookieDomain ?? publicHost;
+  const secure = publicHost !== "localhost" && publicHost !== "127.0.0.1";
+  const sameSite = publicHost === "localhost" || publicHost === "127.0.0.1" ? "Lax" : "Strict";
 
   routes.get("/oauth/authorize", (c) => {
     const returnUrl = c.req.query("return_url") ?? c.req.query("state") ?? publicBaseUrl;
@@ -57,7 +61,6 @@ export function createSsoOAuthRoutes(deps: Deps) {
   });
 
   routes.get("/oauth/callback", async (c) => {
-    const requestBaseUrl = getRequestBaseUrl(c);
     const code = c.req.query("code");
     const stateRaw = c.req.query("state");
     if (!code) return c.text("Missing code", 400);
@@ -73,10 +76,6 @@ export function createSsoOAuthRoutes(deps: Deps) {
     try {
       const tokens = await exchangeCodeForTokens(cognitoConfig, code, callbackUri);
       const accessToken = tokens.idToken ?? tokens.accessToken;
-      const requestHost = new URL(requestBaseUrl).hostname;
-      const cookieDomain = cookie.authCookieDomain ?? requestHost;
-      const secure = requestHost !== "localhost" && requestHost !== "127.0.0.1";
-      const sameSite = requestHost === "localhost" || requestHost === "127.0.0.1" ? "Lax" : "Strict";
       const authHeader = buildAuthCookieHeader(accessToken, {
         cookieName: cookie.authCookieName,
         cookieDomain,
@@ -107,11 +106,6 @@ export function createSsoOAuthRoutes(deps: Deps) {
     const code = (body.code as string) ?? null;
     const codeVerifier = (body.code_verifier as string) ?? null;
     if (!code) return c.json({ error: "invalid_request", error_description: "Missing code" }, 400);
-    const baseUrl = getRequestBaseUrl(c);
-    const requestHost = new URL(baseUrl).hostname;
-    const cookieDomain = cookie.authCookieDomain ?? requestHost;
-    const secure = requestHost !== "localhost" && requestHost !== "127.0.0.1";
-    const sameSite = requestHost === "localhost" || requestHost === "127.0.0.1" ? "Lax" : "Strict";
     try {
       const result = await oauthServer.handleToken({
         grantType: "authorization_code",
@@ -153,11 +147,6 @@ export function createSsoOAuthRoutes(deps: Deps) {
   routes.post("/oauth/refresh", async (c) => {
     const refreshToken = getCookieFromRequest(c.req.raw, cookie.refreshCookieName);
     if (!refreshToken) return c.json({ error: "invalid_request", error_description: "Missing refresh cookie" }, 401);
-    const baseUrl = getRequestBaseUrl(c);
-    const requestHost = new URL(baseUrl).hostname;
-    const cookieDomain = cookie.authCookieDomain ?? requestHost;
-    const secure = requestHost !== "localhost" && requestHost !== "127.0.0.1";
-    const sameSite = requestHost === "localhost" || requestHost === "127.0.0.1" ? "Lax" : "Strict";
     try {
       const tokens = await refreshCognitoTokens(cognitoConfig, refreshToken);
       const authHeader = buildAuthCookieHeader(tokens.idToken ?? tokens.accessToken, {
@@ -182,10 +171,6 @@ export function createSsoOAuthRoutes(deps: Deps) {
   });
 
   routes.post("/oauth/logout", (c) => {
-    const baseUrl = getRequestBaseUrl(c);
-    const requestHost = new URL(baseUrl).hostname;
-    const cookieDomain = cookie.authCookieDomain ?? requestHost;
-    const sameSite = requestHost === "localhost" || requestHost === "127.0.0.1" ? "Lax" : "Strict";
     const clearAuth = buildClearAuthCookieHeader({
       cookieName: cookie.authCookieName,
       cookiePath: cookie.authCookiePath,

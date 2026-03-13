@@ -95,6 +95,11 @@ function resolvedParamsToEnv(resolved: Record<string, string | unknown>): Record
   return env;
 }
 
+function toResourceEnvKey(prefix: string, key: string): string {
+  const normalized = key.replace(/[^A-Za-z0-9]/g, "_").toUpperCase();
+  return `${prefix}${normalized}`;
+}
+
 function toApiPathPattern(mount: string, route: string): string {
   const trimmedRoute = route.trim();
   const mountPrefix = `/${mount}`.replace(/\/+/g, "/");
@@ -171,6 +176,24 @@ export function generateTemplate(rootDir: string): string {
       const bucketLogicalIds = config.buckets
         ? Object.keys(config.buckets).map((k) => `${prefix}${toPascalCase(k)}Bucket`)
         : [];
+      if (config.tables) {
+        for (const tableKey of Object.keys(config.tables)) {
+          envVars[toResourceEnvKey("DYNAMODB_TABLE_", tableKey)] = tablePhysicalName(
+            stackName,
+            cellEntry.mount,
+            tableKey
+          );
+        }
+      }
+      if (config.buckets) {
+        for (const bucketKey of Object.keys(config.buckets)) {
+          envVars[toResourceEnvKey("S3_BUCKET_", bucketKey)] = bucketPhysicalName(
+            stackName,
+            cellEntry.mount,
+            bucketKey
+          );
+        }
+      }
       const apiRoutes: Array<{ functionLogicalId: string }> = [];
       const apiPathPatterns = new Set<string>();
 

@@ -1,4 +1,4 @@
 {
   "extends": "../../tsconfig.cell-backend.json",
-  "include": ["backend/**/*.ts", "shared/**/*.ts"]
+  "include": ["backend/**/*.ts", "backend/**/*.d.ts", "shared/**/*.ts"]
 }

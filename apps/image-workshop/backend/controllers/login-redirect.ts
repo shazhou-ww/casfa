@@ -29,7 +29,7 @@ export function createLoginRedirectRoutes(
     if (auth) {
       return c.redirect(returnUrl);
     }
-    const url = new URL(`${ssoBaseUrl}/login`);
+    const url = new URL(`${ssoBaseUrl}/`);
     url.searchParams.set("return_url", returnUrl);
     return c.redirect(url.toString());
   });

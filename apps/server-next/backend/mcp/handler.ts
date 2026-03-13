@@ -4,9 +4,6 @@
  */
 
 import type { ToolResult } from "@casfa/cell-mcp";
-import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { streamFromBytes } from "@casfa/cas";
 import { encodeDictNode, encodeFileNode, hashToKey } from "@casfa/core";
 import type { Context } from "hono";
@@ -24,13 +21,7 @@ import { addOrReplaceAtPath, removeEntryAtPath } from "../services/tree-mutation
 import type { Env } from "../types.ts";
 import { encodeCrockfordBase32 } from "../utils/crockford-base32.ts";
 import { prependUtf8BomIfText } from "../utils/utf8-bom.ts";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const skillContent = readFileSync(
-  resolve(__dirname, "skills", "casfa-file-management.md"),
-  "utf-8"
-);
+import skillContent from "./skills/casfa-file-management.md";
 
 // ---------------------------------------------------------------------------
 // Types
