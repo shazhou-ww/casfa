@@ -99,7 +99,6 @@ function toResourceEnvKey(prefix: string, key: string): string {
   const normalized = key.replace(/[^A-Za-z0-9]/g, "_").toUpperCase();
   return `${prefix}${normalized}`;
 }
-
 function toApiPathPattern(mount: string, route: string): string {
   const trimmedRoute = route.trim();
   const mountPrefix = `/${mount}`.replace(/\/+/g, "/");
