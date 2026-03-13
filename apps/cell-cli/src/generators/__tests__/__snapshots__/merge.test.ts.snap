@@ -6,7 +6,7 @@ Conditions:
   UseCustomDomain:
     Fn::Not:
       - Fn::Equals:
-          - beta.casfa.shazhou.me
+          - drive.casfa.shazhou.me
           - ""
 Resources:
   DelegatesTable:
@@ -291,7 +291,7 @@ Resources:
         Aliases:
           Fn::If:
             - UseCustomDomain
-            - - beta.casfa.shazhou.me
+            - - drive.casfa.shazhou.me
             - Ref: AWS::NoValue
         ViewerCertificate:
           Fn::If:

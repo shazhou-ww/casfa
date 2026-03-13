@@ -1,0 +1,11 @@
+cells:
+  - sso
+  - drive
+  - agent
+  - artist
+domain:
+  host: casfa.shazhou.me
+  dns:
+    provider: cloudflare
+    zone: casfa.shazhou.me
+# optional: bucketNameSuffix for S3

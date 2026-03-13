@@ -1,0 +1,41 @@
+stackName: otavia-beta
+params:
+  COGNITO_REGION: "us-east-1"
+  COGNITO_USER_POOL_ID: "us-east-1_gMTKxXOKo"
+  COGNITO_CLIENT_ID: "rrr40170csj0160ptr9lusi3k"
+  COGNITO_HOSTED_UI_URL: "https://casfa-auth.auth.us-east-1.amazoncognito.com"
+  MAX_BRANCH_TTL_MS: "86400000"
+  SSO_BASE_URL: !Env SSO_BASE_URL
+  AUTH:
+    cognitoRegion: "us-east-1"
+    cognitoUserPoolId: "us-east-1_gMTKxXOKo"
+    ssoBaseUrl: !Env SSO_BASE_URL
+  BFL_API_KEY: !Secret BFL_API_KEY
+cells:
+  - package: "@casfa/sso"
+    mount: "sso"
+    params:
+      COGNITO_REGION: !Param COGNITO_REGION
+      COGNITO_USER_POOL_ID: !Param COGNITO_USER_POOL_ID
+      COGNITO_CLIENT_ID: !Param COGNITO_CLIENT_ID
+      COGNITO_HOSTED_UI_URL: !Param COGNITO_HOSTED_UI_URL
+  - package: "@casfa/drive"
+    mount: "drive"
+    params:
+      AUTH: !Param AUTH
+      MAX_BRANCH_TTL_MS: !Param MAX_BRANCH_TTL_MS
+  - package: "@casfa/agent"
+    mount: "agent"
+    params:
+      AUTH: !Param AUTH
+  - package: "@casfa/artist"
+    mount: "artist"
+    params:
+      AUTH: !Param AUTH
+      BFL_API_KEY: !Param BFL_API_KEY
+domain:
+  host: beta.casfa.shazhou.me
+  dns:
+    provider: route53
+    zone: shazhou.me
+    zoneId: Z02459572I8BNRDEU4P1F

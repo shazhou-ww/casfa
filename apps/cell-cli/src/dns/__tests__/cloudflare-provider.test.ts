@@ -24,6 +24,7 @@ describe("CloudflareProvider", () => {
           alias: "app",
           zone: "example.com",
           host: "app.example.com",
+          subdomain: "app",
           dns: "cloudflare",
           cloudflare: { zoneId: "zone-id-123", apiToken: "token" },
         },

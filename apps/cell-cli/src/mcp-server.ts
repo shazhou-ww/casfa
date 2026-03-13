@@ -124,7 +124,7 @@ function createCellMcpServer(): McpServer {
     {
       description:
         "Run a cell CLI command (dev, build, deploy, test, status, logs, domain list, secret list, init, etc.). " +
-        "Use cellDir to target a specific cell (e.g. apps/sso). Use instance for -i (e.g. symbiont). " +
+        "Use cellDir to target a specific cell (e.g. cells/sso). Use instance for -i (e.g. symbiont). " +
         "For deploy you can pass deployYes and domains.",
       inputSchema: cellRunInputSchema,
     },

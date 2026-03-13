@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import * as jose from "jose";
-import { createMockJwt, createMockJwtVerifier } from "./jwt-verifier.ts";
+import {
+  createMockJwt,
+  createMockJwtVerifier,
+  mapJwtPayloadToVerifiedUser,
+} from "./jwt-verifier.ts";
 
 describe("createMockJwtVerifier", () => {
   const secret = "test-secret-key-for-unit-tests";
@@ -38,22 +42,15 @@ describe("createMockJwtVerifier", () => {
     await expect(verifier(token)).rejects.toThrow("Missing sub");
   });
 
-  it("throws if email is missing", async () => {
+  it("falls back to sub when email/name are missing", async () => {
     const token = await createMockJwt(secret, {
       sub: "user-123",
-      name: "No Email",
     });
     const verifier = createMockJwtVerifier(secret);
-    await expect(verifier(token)).rejects.toThrow("Missing email");
-  });
-
-  it("throws if name is missing", async () => {
-    const token = await createMockJwt(secret, {
-      sub: "user-123",
-      email: "test@example.com",
-    });
-    const verifier = createMockJwtVerifier(secret);
-    await expect(verifier(token)).rejects.toThrow("Missing name");
+    const result = await verifier(token);
+    expect(result.userId).toBe("user-123");
+    expect(result.email).toBe("user-123");
+    expect(result.name).toBe("user-123");
   });
 });
 
@@ -66,5 +63,16 @@ describe("createMockJwt", () => {
       name: "A B",
     });
     expect(token.split(".")).toHaveLength(3);
+  });
+});
+
+describe("mapJwtPayloadToVerifiedUser", () => {
+  it("uses cognito:username as email fallback", () => {
+    const mapped = mapJwtPayloadToVerifiedUser({
+      sub: "user-abc",
+      "cognito:username": "microsoft_xxx",
+    });
+    expect(mapped.email).toBe("microsoft_xxx");
+    expect(mapped.name).toBe("microsoft_xxx");
   });
 });

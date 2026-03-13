@@ -2,14 +2,14 @@
 
 ## 1. 目标与范围
 
-- 将 server-next 从 Serverless Framework 迁移到 Cell，单一生产环境，域名 **beta.casfa.shazhou.me**。
+- 将 server-next 从 Serverless Framework 迁移到 Cell，单一生产环境，域名 **drive.casfa.shazhou.me**。
 - 不迁移旧 beta 数据（新 Cell 全新表/桶）；一次性切流量，完全改用 Cell（移除 Serverless、相关脚本与依赖）。
 - **Cognito 登录与 delegate 授权**统一到 cell 方案：使用 `@casfa/cell-cognito`、`@casfa/cell-oauth`，前端使用 `@casfa/cell-auth-client`，参考 image-workshop。
 - **OAuth、delegate、MCP 路由**与 image-workshop 规范化一致（见第 4 节）。
 
 ## 2. 架构概览
 
-- **Cell 配置**：`cell.yaml`（name: `casfa-next`），backend 单 entry、frontend、tables（realms、grants）、buckets（blob）、params、cognito、domain（host: `beta.casfa.shazhou.me`）。
+- **Cell 配置**：`cell.yaml`（name: `casfa-next`），backend 单 entry、frontend、tables（realms、grants）、buckets（blob）、params、cognito、domain（host: `drive.casfa.shazhou.me`）。
 - **认证**：cell-cognito（JWT 校验）+ cell-oauth（OAuth Server + grant store）。Bearer 解析用 `oauthServer.resolveAuth(token)`；**branch token**（worker）保留在 server-next 内：`resolveAuth` 为 null 时再解析 base64 branchId + BranchStore。
 - **前端**：cell-auth-client，登录走 `/oauth/authorize` → `/oauth/callback` → `/oauth/token`，不再直连 Cognito Hosted UI。
 - **环境变量**：Cell 注入 `DYNAMODB_TABLE_REALMS`、`DYNAMODB_TABLE_GRANTS`、`S3_BUCKET_BLOB`、`FRONTEND_BUCKET`、`APP_ORIGIN`（cloud）及 params；backend 读 `S3_BUCKET_BLOB`（不再用 `S3_BUCKET`）。
@@ -115,7 +115,7 @@ cognito:
 
 domain:
   zone: shazhou.me
-  host: beta.casfa.shazhou.me
+  host: drive.casfa.shazhou.me
 ```
 
 ## 6. 后端改动清单
@@ -141,7 +141,7 @@ domain:
 
 ## 9. 部署与域名
 
-- 部署：在 server-next 目录执行 `cell deploy`；DNS 已指 beta.casfa.shazhou.me 则直接生效。
+- 部署：在 server-next 目录执行 `cell deploy`；DNS 已指 drive.casfa.shazhou.me 则直接生效。
 - 不迁数据；旧 beta stack 可下线。
 
 ## 10. 后续工作

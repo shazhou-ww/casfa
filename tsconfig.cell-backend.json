@@ -18,7 +18,8 @@
       "@casfa/storage-s3": ["./packages/storage-s3/src/index.ts"],
       "@casfa/cell-auth-server": ["./packages/cell-auth-server/src/index.ts"],
       "@casfa/cell-cognito-server": ["./packages/cell-cognito-server/src/index.ts"],
-      "@casfa/cell-delegates-server": ["./packages/cell-delegates-server/src/index.ts"]
+      "@casfa/cell-delegates-server": ["./packages/cell-delegates-server/src/index.ts"],
+      "@casfa/cell-mcp": ["./packages/cell-mcp/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "dist"]

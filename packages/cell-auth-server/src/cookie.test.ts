@@ -96,6 +96,13 @@ describe("getCookieFromRequest", () => {
     const req = new Request("https://x/y");
     expect(getCookieFromRequest(req, "auth_refresh")).toBeNull();
   });
+
+  it("prefers a later non-empty cookie value when duplicates exist", () => {
+    const req = new Request("https://x/y", {
+      headers: { Cookie: "auth=; other=v; auth=valid-token" },
+    });
+    expect(getCookieFromRequest(req, "auth")).toBe("valid-token");
+  });
 });
 
 describe("buildAuthCookieHeader", () => {

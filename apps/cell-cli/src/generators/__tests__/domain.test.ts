@@ -21,6 +21,7 @@ describe("generateDomain", () => {
         alias: "app",
         zone: "example.com",
         host: "app.example.com",
+        subdomain: "app",
         dns: "route53",
         hostedZoneId: "Z1234567890",
       },
@@ -46,6 +47,7 @@ describe("generateDomain", () => {
         alias: "app",
         zone: "example.com",
         host: "app.example.com",
+        subdomain: "app",
         dns: "cloudflare",
         cloudflare: { zoneId: "zone123", apiToken: "token" },
       },
@@ -56,7 +58,7 @@ describe("generateDomain", () => {
 
   test("no record when dns is route53 but hostedZoneId missing", () => {
     const config = makeConfig({
-      domain: { alias: "app", zone: "example.com", host: "app.example.com" },
+      domain: { alias: "app", zone: "example.com", host: "app.example.com", subdomain: "app" },
     });
     const result = generateDomain(config);
     expect(Object.keys(result.Resources)).toHaveLength(0);
@@ -68,6 +70,7 @@ describe("generateDomain", () => {
         alias: "app",
         zone: "example.com",
         host: "app.example.com",
+        subdomain: "app",
         hostedZoneId: "Z1234567890",
       },
     });

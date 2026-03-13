@@ -1,0 +1,67 @@
+name: drive
+
+backend:
+  dir: backend
+  runtime: nodejs20.x
+  entries:
+    api:
+      handler: lambda.ts
+      app: dev-app.ts
+      timeout: 30
+      memory: 1024
+      routes:
+        - /api/*
+        - /oauth/login
+        - /oauth/logout
+        - /oauth/register
+        - /oauth/client-info
+        - /oauth/token
+        - /.well-known/*
+        - /mcp
+
+frontend:
+  dir: frontend
+  entries:
+    main:
+      entry: index.html
+      routes: ["/*"]
+
+tables:
+  realms:
+    keys: { pk: S, sk: S }
+    gsi:
+      realm-index:
+        keys: { gsi1pk: S, gsi1sk: S }
+        projection: ALL
+  grants:
+    keys: { pk: S, sk: S }
+    gsi:
+      user-hash-index:
+        keys: { gsi1pk: S, gsi1sk: S }
+        projection: ALL
+      user-refresh-index:
+        keys: { gsi2pk: S, gsi2sk: S }
+        projection: ALL
+  # Stub OAuth client_name from dynamic registration; set item attribute "ttl" (epoch seconds) for AWS DynamoDB TTL (enable on table in AWS).
+  pending_client_info:
+    keys: { pk: S }
+
+buckets:
+  blob: {}
+
+# Default instance: casfa.shazhou.me (Route53). Symbiont: cell.symbiont.yaml.
+params:
+  - AUTH
+  - MAX_BRANCH_TTL_MS
+
+oauth:
+  enabled: true
+  role: both
+  scopes:
+    - use_mcp
+    - file_read
+    - file_write
+    - branch_manage
+
+testing:
+  unit: backend/

@@ -24,6 +24,7 @@ describe("Route53Provider", () => {
           alias: "app",
           zone: "example.com",
           host: "app.example.com",
+          subdomain: "app",
           hostedZoneId: "Z1234567890",
         },
       });
@@ -44,7 +45,7 @@ describe("Route53Provider", () => {
 
     test("no resources when hostedZoneId is missing", () => {
       const config = makeConfig({
-        domain: { alias: "app", zone: "example.com", host: "app.example.com" },
+        domain: { alias: "app", zone: "example.com", host: "app.example.com", subdomain: "app" },
       });
       const result = provider.generateCfnResources(config);
       expect(Object.keys(result.Resources)).toHaveLength(0);

@@ -17,6 +17,16 @@ docs/
 
 ## 文档导航
 
+### [casfa-system-intro.md](./casfa-system-intro.md) — Casfa 系统介绍（beta）
+
+面向应用开发者的系统级介绍文档，包括：
+
+- Casfa 是什么、解决什么问题
+- beta 版本整体架构（单域 + 多 Cell 路径挂载）
+- 三类场景使用方式（普通用户 / AI Agent / MCP tools & client）
+- Agent 接入配置与常见排错
+- 基于 Casfa 构建 MCP 服务的推荐模式
+
 ### [casfa-api/](./casfa-api/README.md) — API 接口文档
 
 CASFA 全部 HTTP API 的详细文档，包括：
