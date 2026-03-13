@@ -31,6 +31,7 @@ export async function handleAction(action: Action, state: ModelState): Promise<C
 
     case "sync.pull": {
       const scope = action.payload?.scope;
+      const targetThreadId = action.payload?.threadId;
       const changes: Change[] = [];
       let threads = state.threads;
 
@@ -48,10 +49,14 @@ export async function handleAction(action: Action, state: ModelState): Promise<C
       }
 
       if (scope === "messages" || scope === undefined) {
-        for (const t of threads) {
-          const { messages } = await api.listMessages(t.threadId);
+        const threadIdsToFetch =
+          scope === "messages" && targetThreadId
+            ? [targetThreadId]
+            : threads.map((t) => t.threadId);
+        for (const threadId of threadIdsToFetch) {
+          const { messages } = await api.listMessages(threadId);
           const list = messages as Message[];
-          changes.push({ kind: "messages.replaced", payload: { threadId: t.threadId, messages: list } });
+          changes.push({ kind: "messages.replaced", payload: { threadId, messages: list } });
         }
       }
 

@@ -348,7 +348,10 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
   fetchMessages: async (threadId) => {
     set((s) => ({ messagesLoading: { ...s.messagesLoading, [threadId]: true } }));
     try {
-      await get().sendAction({ kind: "sync.pull" }, crypto.randomUUID());
+      await get().sendAction(
+        { kind: "sync.pull", payload: { scope: "messages", threadId } },
+        crypto.randomUUID()
+      );
     } finally {
       set((s) => ({ messagesLoading: { ...s.messagesLoading, [threadId]: false } }));
     }

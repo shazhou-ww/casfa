@@ -88,7 +88,7 @@ export type Action =
   | { kind: "messages.send"; payload: { threadId: string; content: MessageContent[]; modelId?: string } }
   | { kind: "stream.cancel"; payload: { messageId: string } }
   | { kind: "settings.update"; payload: { key: string; value: unknown } }
-  | { kind: "sync.pull"; payload?: { scope?: "threads" | "messages" | "settings" } };
+  | { kind: "sync.pull"; payload?: { scope?: "threads" | "messages" | "settings"; threadId?: string } };
 
 // ----- Change (SW → UI) -----
 

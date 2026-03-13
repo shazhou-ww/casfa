@@ -222,6 +222,7 @@ export async function callLlmStream(
   opts: {
     signal?: AbortSignal;
     onChunk: (text: string) => void;
+    onToolCallChunk?: (toolCall: { id: string; name: string; arguments: string }) => void;
     tools?: OpenAIFormatTool[];
   }
 ): Promise<CallLlmStreamResult> {
@@ -301,6 +302,13 @@ export async function callLlmStream(
               const arg = fn?.arguments ?? tc.arguments;
               if (arg != null) cur.arguments += arg;
               toolCallByIndex.set(idx, cur);
+              if (cur.id && cur.name) {
+                opts.onToolCallChunk?.({
+                  id: cur.id,
+                  name: cur.name,
+                  arguments: cur.arguments,
+                });
+              }
             }
           }
         } catch {
@@ -392,6 +400,15 @@ export async function runMessagesSend(
           const chunk: StreamChunk = { type: "text", text };
           applyAndBroadcast({ kind: "stream.chunk", payload: { messageId: tempMessageId, threadId, chunk } });
         },
+        onToolCallChunk(toolCall) {
+          const chunk: StreamChunk = {
+            type: "tool-call",
+            callId: toolCall.id,
+            name: toolCall.name,
+            arguments: toolCall.arguments,
+          };
+          applyAndBroadcast({ kind: "stream.chunk", payload: { messageId: tempMessageId, threadId, chunk } });
+        },
         tools: ctx.tools,
       });
 
@@ -403,19 +420,6 @@ export async function runMessagesSend(
 
       const toolResults: string[] = [];
       for (const tc of result.toolCalls) {
-        await applyAndBroadcast({
-          kind: "stream.chunk",
-          payload: {
-            messageId: tempMessageId,
-            threadId,
-            chunk: {
-              type: "tool-call",
-              callId: tc.id,
-              name: tc.name,
-              arguments: tc.arguments,
-            },
-          },
-        });
         assistantContent.push({
           type: "tool-call",
           callId: tc.id,

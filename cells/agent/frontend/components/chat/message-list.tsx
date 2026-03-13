@@ -342,15 +342,22 @@ function groupContentParts(parts: MessageContentPart[]): RenderBlock[] {
 
     if (part.type === "tool-call") {
       const callId = part.callId || `tool-${blocks.length}`;
-      const block: ToolCallBlock = {
-        type: "tool",
-        callId,
-        name: part.name || "tool",
-        request: part.arguments || "",
-        response: null,
-      };
-      toolIndexByCallId.set(callId, blocks.length);
-      blocks.push(block);
+      const existingIdx = toolIndexByCallId.get(callId);
+      if (existingIdx !== undefined && blocks[existingIdx]?.type === "tool") {
+        const existing = blocks[existingIdx] as ToolCallBlock;
+        if (part.name) existing.name = part.name;
+        existing.request = part.arguments || existing.request;
+      } else {
+        const block: ToolCallBlock = {
+          type: "tool",
+          callId,
+          name: part.name || "tool",
+          request: part.arguments || "",
+          response: null,
+        };
+        toolIndexByCallId.set(callId, blocks.length);
+        blocks.push(block);
+      }
       continue;
     }
 
@@ -479,7 +486,7 @@ async function copyText(text: string): Promise<void> {
 }
 
 function messageToCopyText(message: Message): string {
-  const sections = [`role: ${message.role}`];
+  const sections: string[] = [];
   for (const part of message.content) {
     if (part.type === "text") {
       if (part.text.trim()) sections.push(part.text.trim());

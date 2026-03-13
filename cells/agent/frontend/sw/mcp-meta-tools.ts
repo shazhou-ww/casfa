@@ -7,6 +7,7 @@ import { listPrompts, listTools, mcpCall } from "../lib/mcp-client.ts";
 import { MCP_SERVERS_SETTINGS_KEY, parseMcpServers } from "../lib/mcp-types.ts";
 import type { MCPServerConfig } from "../lib/mcp-types.ts";
 import type { ModelState } from "../lib/model-types.ts";
+import systemPromptTextRaw from "./system-prompt.md?raw";
 
 const MCP_DEBUG_PREFIX = "[agent-mcp-debug]";
 
@@ -478,18 +479,7 @@ export async function buildToolsAndPromptForThread(
   _state: ModelState,
   threadId: string
 ): Promise<BuildToolsAndPromptResult> {
-  const systemPromptText = [
-    "You are an AI assistant.",
-    "Your primary goal is to help the user with a clear, correct, user-facing answer.",
-    "Do not guess when information is uncertain.",
-    "When information is missing or uncertain, use tools to retrieve evidence before answering.",
-    "If information cannot be retrieved, clearly state that the information or tool capability is insufficient.",
-    "Never claim an operation succeeded unless a tool result in this turn confirms it.",
-    "Use exact serverId from list_mcp_servers and exact toolName from get_mcp_tools.",
-    "MCP meta tools available: list_mcp_servers, get_mcp_tools, load_tool.",
-    "For MCP execution: discover server and tool with meta tools, load schema via load_tool, then call returned loadedToolName directly.",
-    "Keep responses concise and evidence-based.",
-  ].join(" ");
+  const systemPromptText = systemPromptTextRaw.trim();
 
   return {
     systemPromptText,
