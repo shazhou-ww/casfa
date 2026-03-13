@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { homedir } from "node:os";
+import concurrently from "concurrently";
 import { parse as parseYaml } from "yaml";
 
 type TunnelConfig = {
@@ -11,6 +12,10 @@ export type TunnelHandle = {
   publicBaseUrl: string;
   stop: () => void;
 };
+
+const TUNNEL_LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
+type TunnelLogLevel = (typeof TUNNEL_LOG_LEVELS)[number];
+const DEFAULT_TUNNEL_LOG_LEVEL: TunnelLogLevel = "warn";
 
 export function extractTunnelHostFromConfig(configContent: string): string | null {
   const parsed = parseYaml(configContent) as TunnelConfig | null;
@@ -44,9 +49,28 @@ export function defaultTunnelConfigPath(rootDir: string): string {
   return legacyGlobalConfig;
 }
 
+export function resolveTunnelLogLevel(level?: string): TunnelLogLevel {
+  const normalized = (level ?? process.env.OTAVIA_TUNNEL_LOG_LEVEL ?? DEFAULT_TUNNEL_LOG_LEVEL)
+    .trim()
+    .toLowerCase();
+  if (TUNNEL_LOG_LEVELS.includes(normalized as TunnelLogLevel)) {
+    return normalized as TunnelLogLevel;
+  }
+  throw new Error(
+    `Invalid tunnel log level "${normalized}". Expected one of: ${TUNNEL_LOG_LEVELS.join(", ")}.`
+  );
+}
+
+export function buildCloudflaredTunnelCommand(
+  tunnelConfigPath: string,
+  tunnelLogLevel: TunnelLogLevel
+): string {
+  return `cloudflared tunnel --loglevel ${tunnelLogLevel} --config ${JSON.stringify(tunnelConfigPath)} run`;
+}
+
 export async function startTunnel(
   rootDir: string,
-  options?: { tunnelConfigPath?: string; tunnelHost?: string }
+  options?: { tunnelConfigPath?: string; tunnelHost?: string; tunnelLogLevel?: string }
 ): Promise<TunnelHandle> {
   const tunnelConfigPath = options?.tunnelConfigPath ?? defaultTunnelConfigPath(rootDir);
   if (!existsSync(tunnelConfigPath)) {
@@ -75,20 +99,42 @@ export async function startTunnel(
     );
   }
   const publicBaseUrl = normalizeTunnelPublicBaseUrl(host);
-
-  const child = Bun.spawn(["cloudflared", "tunnel", "--config", tunnelConfigPath, "run"], {
-    cwd: rootDir,
-    env: { ...process.env },
-    stdio: ["ignore", "inherit", "inherit"],
-  });
-  child.exited.then((code) => {
-    if (code !== 0 && code !== null) {
-      console.error(`[tunnel] cloudflared exited with code ${code}`);
+  const tunnelLogLevel = resolveTunnelLogLevel(options?.tunnelLogLevel);
+  const tunnelCommand = buildCloudflaredTunnelCommand(tunnelConfigPath, tunnelLogLevel);
+  const { commands, result } = concurrently(
+    [
+      {
+        command: tunnelCommand,
+        name: "tunnel",
+        cwd: rootDir,
+        env: { ...process.env },
+      },
+    ],
+    {
+      prefix: "[{name}]",
+      prefixColors: ["cyan"],
+      raw: false,
+      handleInput: false,
+      killOthersOn: ["failure"],
     }
+  );
+  let stopped = false;
+  result.catch((events) => {
+    if (stopped) return;
+    const tunnelEvent = Array.isArray(events) ? events.find((event) => event.command.name === "tunnel") : null;
+    const exitCode = tunnelEvent?.exitCode;
+    console.error(`[tunnel] cloudflared exited with code ${exitCode ?? "unknown"}`);
+  });
+  result.then(() => {
+    if (stopped) return;
+    console.error("[tunnel] cloudflared exited.");
   });
 
   return {
     publicBaseUrl,
-    stop: () => child.kill(),
+    stop: () => {
+      stopped = true;
+      commands[0]?.kill("SIGTERM");
+    },
   };
 }
