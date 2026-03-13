@@ -14,7 +14,7 @@
     "test": "bun run otavia test",
     "test:unit": "bun run otavia test:unit",
     "test:e2e": "bun run otavia test:e2e",
-    "deploy": "bun run otavia deploy",
+    "deploy": "bun run otavia deploy --yes",
     "aws:login": "bun run otavia aws login",
     "aws:logout": "bun run otavia aws logout"
   },

@@ -332,17 +332,23 @@ export async function deployCommand(
   console.log(`  → .otavia/cfn-packaged.yaml`);
 
   if (!options?.yes) {
-    process.stdout.write(`About to deploy stack ${stackName}. Continue? (y/N) `);
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    const answer = await new Promise<string>((res) => rl.question("", res));
-    rl.close();
-    if (!/^y(es)?$/i.test(answer.trim())) {
-      console.log("Deploy cancelled.");
-      process.exit(0);
+    const canPromptForConfirm = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+    if (!canPromptForConfirm) {
+      console.log("Non-interactive terminal detected, continue without prompt (same as --yes).");
+    } else {
+      process.stdout.write(`About to deploy stack ${stackName}. Continue? (y/N) `);
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const answer = await new Promise<string>((res) => rl.question("", res));
+      rl.close();
+      if (!/^y(es)?$/i.test(answer.trim())) {
+        console.log("Deploy cancelled.");
+        process.exit(0);
+      }
     }
   }
 
   console.log("\n=== Deploying CloudFormation stack ===");
+  console.log("  Streaming CloudFormation deploy output...");
   const regionArgs = awsEnv.AWS_REGION ? ["--region", awsEnv.AWS_REGION] : [];
   const deployProc = Bun.spawn(
     [
