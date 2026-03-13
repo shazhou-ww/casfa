@@ -390,6 +390,28 @@ function MessageMarkdown({ text }: { text: string }) {
         "& p:last-of-type": { mb: 0 },
         "& ul, & ol": { my: 0.4, pl: 2.5, fontSize: "0.82rem" },
         "& li": { mb: 0.15 },
+        "& table": {
+          width: "100%",
+          borderCollapse: "collapse",
+          border: "1px solid",
+          borderColor: "divider",
+          my: 0.6,
+          fontSize: "0.78rem",
+        },
+        "& thead": {
+          bgcolor: "action.selected",
+        },
+        "& th, & td": {
+          border: "1px solid",
+          borderColor: "divider",
+          px: 0.8,
+          py: 0.45,
+          textAlign: "left",
+          verticalAlign: "top",
+        },
+        "& th": {
+          fontWeight: 600,
+        },
         "& pre": {
           mt: 0.4,
           mb: 0.4,

@@ -7,7 +7,9 @@ import { listPrompts, listTools, mcpCall } from "../lib/mcp-client.ts";
 import { MCP_SERVERS_SETTINGS_KEY, parseMcpServers } from "../lib/mcp-types.ts";
 import type { MCPServerConfig } from "../lib/mcp-types.ts";
 import type { ModelState } from "../lib/model-types.ts";
+import { parseSystemPromptLanguage, SYSTEM_PROMPT_LANGUAGE_KEY } from "../lib/prompt-settings.ts";
 import systemPromptTextRaw from "./system-prompt.md?raw";
+import systemPromptZhRaw from "./system-prompt.zh-CN.md?raw";
 
 const MCP_DEBUG_PREFIX = "[agent-mcp-debug]";
 
@@ -476,10 +478,11 @@ export type BuildToolsAndPromptResult = {
 };
 
 export async function buildToolsAndPromptForThread(
-  _state: ModelState,
+  state: ModelState,
   threadId: string
 ): Promise<BuildToolsAndPromptResult> {
-  const systemPromptText = systemPromptTextRaw.trim();
+  const promptLanguage = parseSystemPromptLanguage(state.settings[SYSTEM_PROMPT_LANGUAGE_KEY]);
+  const systemPromptText = (promptLanguage === "zh-CN" ? systemPromptZhRaw : systemPromptTextRaw).trim();
 
   return {
     systemPromptText,
