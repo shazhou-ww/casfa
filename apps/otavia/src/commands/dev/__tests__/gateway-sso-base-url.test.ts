@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { applyResourceNameEnvVars, resolveGatewaySsoBaseUrl } from "../gateway";
+import { resolveRootRedirectMount } from "../mount-selection";
 
 describe("resolveGatewaySsoBaseUrl", () => {
   test("prefers configured SSO base URL from env", () => {
@@ -42,5 +43,23 @@ describe("applyResourceNameEnvVars", () => {
       "otavia-local-agent-pending-client-info"
     );
     expect(cells[0].env.S3_BUCKET_UPLOADS).toBe("otavia-local-agent-uploads");
+  });
+});
+
+describe("resolveRootRedirectMount", () => {
+  test("prefers configured mount when it is mounted", () => {
+    expect(resolveRootRedirectMount(["sso", "drive", "agent"], "drive")).toBe("drive");
+  });
+
+  test("falls back to first mount when configured mount is absent", () => {
+    expect(resolveRootRedirectMount(["sso", "agent"], "drive")).toBe("sso");
+  });
+
+  test("falls back to first mount when no preferred mount is configured", () => {
+    expect(resolveRootRedirectMount(["sso", "drive", "agent"])).toBe("sso");
+  });
+
+  test("returns empty string when there are no mounts", () => {
+    expect(resolveRootRedirectMount([])).toBe("");
   });
 });

@@ -12,13 +12,13 @@ function resolveMount(pathname: string, mounts: string[]): string | null {
 }
 
 export async function bootMainFrontend(
-  firstMount: string,
+  rootRedirectMount: string,
   mounts: string[],
   mountLoaders: MountLoaders
 ): Promise<void> {
   const mount = resolveMount(window.location.pathname, mounts);
   if (!mount) {
-    window.location.replace(`/${firstMount}/`);
+    window.location.replace(`/${rootRedirectMount}/`);
     return;
   }
   const desiredPrefix = `/${mount}/`;
@@ -28,7 +28,7 @@ export async function bootMainFrontend(
   }
   const load = mountLoaders[mount];
   if (!load) {
-    window.location.replace(`/${firstMount}/`);
+    window.location.replace(`/${rootRedirectMount}/`);
     return;
   }
   await load();
