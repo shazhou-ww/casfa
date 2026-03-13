@@ -51,7 +51,7 @@ export function createLoginRedirectRoutes(
       return c.redirect(returnUrl);
     }
     const requestScopedSsoBaseUrl = resolveSsoBaseUrlForRequest(ssoBaseUrl, baseUrl);
-    const url = new URL(`${requestScopedSsoBaseUrl}/login`);
+    const url = new URL(`${requestScopedSsoBaseUrl}/`);
     url.searchParams.set("return_url", returnUrl);
     return c.redirect(url.toString());
   });

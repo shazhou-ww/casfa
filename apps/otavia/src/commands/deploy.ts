@@ -167,7 +167,7 @@ async function buildFrontends(
 
     console.log(`  Building frontend [${mount}]...`);
     const proc = Bun.spawn(
-      ["bun", "x", "vite", "build", "--outDir", outDir, "--base", `/${mount}/`],
+      ["bun", "x", "vite", "build", "--logLevel", "error", "--outDir", outDir, "--base", `/${mount}/`],
       {
         cwd: frontendDir,
         stdout: "inherit",
@@ -178,6 +178,26 @@ async function buildFrontends(
     const exitCode = await proc.exited;
     if (exitCode !== 0) {
       throw new Error(`Vite build failed for ${mount} (exit code ${exitCode})`);
+    }
+
+    // Build non-HTML frontend entries (e.g. service worker) to explicit route targets.
+    for (const [entryKey, frontendEntry] of Object.entries(config.frontend.entries ?? {})) {
+      const entryFile = frontendEntry.entry ?? "";
+      if (entryFile.endsWith(".html")) continue;
+      const route = frontendEntry.routes?.[0];
+      if (!route || !route.startsWith("/") || route.includes("*")) continue;
+      const outFile = resolve(outDir, route.slice(1));
+      mkdirSync(dirname(outFile), { recursive: true });
+      console.log(`    Building frontend entry [${mount}/${entryKey}] -> ${route}`);
+      await build({
+        entryPoints: [resolve(frontendDir, entryFile)],
+        bundle: true,
+        platform: "browser",
+        format: "esm",
+        target: "es2020",
+        outfile: outFile,
+        sourcemap: true,
+      });
     }
   }
 }

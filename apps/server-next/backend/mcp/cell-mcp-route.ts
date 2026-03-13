@@ -4,22 +4,13 @@
  */
 
 import { createCellMcpServer } from "@casfa/cell-mcp";
-import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Context } from "hono";
 import { z } from "zod";
 import type { McpHandlerDeps } from "./handler.ts";
 import { executeTool } from "./handler.ts";
 import type { Env } from "../types.ts";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const skillContent = readFileSync(
-  resolve(__dirname, "skills", "casfa-file-management.md"),
-  "utf-8"
-);
+import skillContent from "./skills/casfa-file-management.md";
 
 type McpContext = {
   auth: NonNullable<Env["Variables"]["auth"]>;
