@@ -1,10 +1,9 @@
 /**
- * MCP meta-tools for the Service Worker: list_mcp_servers, get_mcp_tools, get_tool_usage, run_mcp_tool.
- * Progressive discovery (Level 0: servers, Level 1: tools per server, Level 2: usage per tool) + single run entry.
- * Replaces scenario-based list_mcp_scenarios / load_scenario / unload_scenario and serverId__toolName.
+ * MCP meta-tools for the Service Worker: list_mcp_servers, get_mcp_tools, load_tool.
+ * Progressive discovery (Level 0: servers, Level 1: tools per server, Level 2: load one tool schema).
  */
 
-import { getPrompt, listPrompts, listTools, mcpCall } from "../lib/mcp-client.ts";
+import { listPrompts, listTools, mcpCall } from "../lib/mcp-client.ts";
 import { MCP_SERVERS_SETTINGS_KEY, parseMcpServers } from "../lib/mcp-types.ts";
 import type { MCPServerConfig } from "../lib/mcp-types.ts";
 import type { ModelState } from "../lib/model-types.ts";
@@ -29,16 +28,15 @@ export type ListMcpServersResult = {
 
 export type GetMcpToolsResult = {
   serverId: string;
-  tools: Array<{ name: string; description?: string; inputSchema?: unknown }>;
+  tools: Array<{ name: string; description?: string }>;
   prompts?: Array<{ name: string; description?: string }>;
 };
 
-export type GetToolUsageResult = {
+export type LoadToolResult = {
+  result: "success";
   serverId: string;
   toolName: string;
-  description?: string;
-  inputSchema?: unknown;
-  promptText?: string;
+  loadedToolName: string;
 };
 
 /** OpenAI-format tool for request body (type + function with name, description, parameters). */
@@ -46,6 +44,91 @@ export type OpenAIFormatTool = {
   type: "function";
   function: { name: string; description: string; parameters: unknown };
 };
+
+type LoadedToolEntry = {
+  serverId: string;
+  toolName: string;
+  loadedToolName: string;
+  schema: OpenAIFormatTool;
+  loadedAt: number;
+  lastUsedAt: number;
+};
+
+const MAX_LOADED_TOOLS_PER_THREAD = 20;
+const loadedToolsByThread = new Map<string, Map<string, LoadedToolEntry>>();
+
+function toFunctionSafeName(value: string): string {
+  return value
+    .trim()
+    .replace(/[^a-zA-Z0-9_]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+}
+
+function stableShortHash(value: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36).slice(0, 6);
+}
+
+function buildLoadedToolName(serverId: string, toolName: string): string {
+  const safeServer = toFunctionSafeName(serverId) || "server";
+  const safeTool = toFunctionSafeName(toolName) || "tool";
+  const suffix = stableShortHash(`${serverId}::${toolName}`);
+  return `mcp__${safeServer}__${safeTool}__${suffix}`;
+}
+
+function normalizeSchemaParameters(inputSchema: unknown): unknown {
+  if (typeof inputSchema === "object" && inputSchema !== null && !Array.isArray(inputSchema)) {
+    return inputSchema;
+  }
+  return { type: "object", properties: {}, required: [] };
+}
+
+function getThreadLoadedMap(threadId: string): Map<string, LoadedToolEntry> {
+  const existing = loadedToolsByThread.get(threadId);
+  if (existing) return existing;
+  const created = new Map<string, LoadedToolEntry>();
+  loadedToolsByThread.set(threadId, created);
+  return created;
+}
+
+function pruneThreadLoadedTools(threadId: string): void {
+  const map = loadedToolsByThread.get(threadId);
+  if (!map) return;
+  if (map.size <= MAX_LOADED_TOOLS_PER_THREAD) return;
+  const entries = [...map.values()].sort((a, b) => a.lastUsedAt - b.lastUsedAt);
+  const toRemove = map.size - MAX_LOADED_TOOLS_PER_THREAD;
+  for (let i = 0; i < toRemove; i++) {
+    map.delete(entries[i].loadedToolName);
+  }
+}
+
+export function getLoadedToolSchemas(threadId: string): OpenAIFormatTool[] {
+  return [...(loadedToolsByThread.get(threadId)?.values() ?? [])]
+    .sort((a, b) => a.loadedAt - b.loadedAt)
+    .map((entry) => entry.schema);
+}
+
+function markLoadedToolUsed(threadId: string, loadedToolName: string): void {
+  const map = loadedToolsByThread.get(threadId);
+  if (!map) return;
+  const entry = map.get(loadedToolName);
+  if (!entry) return;
+  entry.lastUsedAt = Date.now();
+  map.set(loadedToolName, entry);
+}
+
+function lookupLoadedToolByFunctionName(
+  threadId: string,
+  loadedToolName: string
+): LoadedToolEntry | null {
+  return loadedToolsByThread.get(threadId)?.get(loadedToolName) ?? null;
+}
 
 // ----- Level 0: list_mcp_servers -----
 
@@ -93,7 +176,6 @@ export async function getMcpTools(state: ModelState, serverId: string): Promise<
     const tools = (toolsResult.tools ?? []).map((t) => ({
       name: t.name,
       description: t.description,
-      inputSchema: t.inputSchema,
     }));
     const prompts = (promptsResult.prompts ?? []).map((p) => ({
       name: p.name,
@@ -113,19 +195,21 @@ export async function getMcpTools(state: ModelState, serverId: string): Promise<
   }
 }
 
-// ----- Level 2: get_tool_usage -----
+// ----- Level 2: load_tool -----
 
-export async function getToolUsage(
+export async function loadTool(
   state: ModelState,
+  threadId: string,
   serverId: string,
   toolName: string
-): Promise<GetToolUsageResult | { error: string }> {
+): Promise<LoadToolResult | { error: string }> {
   const configs = parseMcpServers(state.settings[MCP_SERVERS_SETTINGS_KEY]);
   const config = configs.find((c) => c.id === serverId);
   if (!config) {
-    console.warn(`${MCP_DEBUG_PREFIX} get_tool_usage server not found`, {
+    console.warn(`${MCP_DEBUG_PREFIX} load_tool server not found`, {
       serverId,
       toolName,
+      threadId,
       configs: summarizeConfigs(configs),
     });
     return { error: "server not found: use exact serverId from list_mcp_servers" };
@@ -133,46 +217,59 @@ export async function getToolUsage(
   if (!config.url) return { error: "server has no url (http transport required)" };
 
   try {
-    console.info(`${MCP_DEBUG_PREFIX} get_tool_usage request`, {
+    console.info(`${MCP_DEBUG_PREFIX} load_tool request`, {
       serverId,
       serverName: config.name,
       toolName,
+      threadId,
       url: config.url,
     });
     const toolsResult = await listTools(config);
     const tool = (toolsResult.tools ?? []).find((t) => t.name === toolName);
     if (!tool) return { error: "tool not found" };
 
-    let promptText: string | undefined;
-    const promptsResult = await listPrompts(config).catch(() => ({ prompts: [] }));
-    const prompt = (promptsResult.prompts ?? []).find((p) => p.name === toolName || p.name === toolName.replace(/_/g, "-"));
-    if (prompt) {
-      const getResult = await getPrompt(config, prompt.name).catch(() => ({ messages: [] }));
-      const parts: string[] = [];
-      for (const msg of getResult.messages ?? []) {
-        if (msg.content && typeof msg.content === "object" && "type" in msg.content && (msg.content as { type: string }).type === "text" && "text" in msg.content) {
-          parts.push((msg.content as { text: string }).text);
-        }
-      }
-      promptText = parts.length > 0 ? parts.join("\n\n") : undefined;
-    }
-
-    const usage = {
-      serverId,
-      toolName,
-      description: tool.description,
-      inputSchema: tool.inputSchema,
-      promptText,
+    const loadedToolName = buildLoadedToolName(serverId, toolName);
+    const schema: OpenAIFormatTool = {
+      type: "function",
+      function: {
+        name: loadedToolName,
+        description: tool.description ?? `Run MCP tool ${toolName} on server ${serverId}.`,
+        parameters: normalizeSchemaParameters(tool.inputSchema),
+      },
     };
-    console.info(`${MCP_DEBUG_PREFIX} get_tool_usage response`, {
+    const threadMap = getThreadLoadedMap(threadId);
+    const now = Date.now();
+    threadMap.set(loadedToolName, {
       serverId,
       toolName,
-      hasPromptText: Boolean(promptText),
+      loadedToolName,
+      schema,
+      loadedAt: now,
+      lastUsedAt: now,
     });
-    return usage;
+    pruneThreadLoadedTools(threadId);
+
+    const loaded: LoadToolResult = {
+      result: "success",
+      serverId,
+      toolName,
+      loadedToolName,
+    };
+    console.info(`${MCP_DEBUG_PREFIX} load_tool response`, {
+      serverId,
+      toolName,
+      threadId,
+      loadedToolName,
+    });
+    return loaded;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`${MCP_DEBUG_PREFIX} get_tool_usage error`, { serverId, toolName, message });
+    console.error(`${MCP_DEBUG_PREFIX} load_tool error`, {
+      serverId,
+      toolName,
+      threadId,
+      message,
+    });
     return { error: message };
   }
 }
@@ -262,7 +359,8 @@ const GET_MCP_TOOLS_SCHEMA: OpenAIFormatTool = {
   type: "function",
   function: {
     name: "get_mcp_tools",
-    description: "List tools (and optional prompts) for a specific MCP server (Level 1 discovery). Prefer exact serverId from list_mcp_servers.",
+    description:
+      "List tools (name and description only, no schema) and optional prompts for a specific MCP server (Level 1 discovery). Prefer exact serverId from list_mcp_servers.",
     parameters: {
       type: "object" as const,
       properties: {
@@ -273,11 +371,12 @@ const GET_MCP_TOOLS_SCHEMA: OpenAIFormatTool = {
   },
 };
 
-const GET_TOOL_USAGE_SCHEMA: OpenAIFormatTool = {
+const LOAD_TOOL_SCHEMA: OpenAIFormatTool = {
   type: "function",
   function: {
-    name: "get_tool_usage",
-    description: "Get usage details (description, inputSchema, optional prompt text) for a specific tool on a server (Level 2 discovery). Use exact toolName from get_mcp_tools.",
+    name: "load_tool",
+    description:
+      "Load one MCP tool schema into the active context. After success, call the returned loadedToolName directly as a function.",
     parameters: {
       type: "object" as const,
       properties: {
@@ -289,38 +388,21 @@ const GET_TOOL_USAGE_SCHEMA: OpenAIFormatTool = {
   },
 };
 
-const RUN_MCP_TOOL_SCHEMA: OpenAIFormatTool = {
-  type: "function",
-  function: {
-    name: "run_mcp_tool",
-    description: "Execute a tool on an MCP server. Use list_mcp_servers and get_mcp_tools (or get_tool_usage) to discover exact serverId and toolName before calling.",
-    parameters: {
-      type: "object" as const,
-      properties: {
-        serverId: { type: "string" as const, description: "MCP server id" },
-        toolName: { type: "string" as const, description: "Tool name" },
-        arguments: { type: "object" as const, description: "Tool arguments (JSON object)" },
-      },
-      required: ["serverId", "toolName"] as string[],
-    },
-  },
-};
-
 export const metaToolSchemas: OpenAIFormatTool[] = [
   LIST_MCP_SERVERS_SCHEMA,
   GET_MCP_TOOLS_SCHEMA,
-  GET_TOOL_USAGE_SCHEMA,
-  RUN_MCP_TOOL_SCHEMA,
+  LOAD_TOOL_SCHEMA,
 ];
 
 // ----- Execute meta tool -----
 
-const META_TOOL_NAMES = ["list_mcp_servers", "get_mcp_tools", "get_tool_usage", "run_mcp_tool"] as const;
+const META_TOOL_NAMES = ["list_mcp_servers", "get_mcp_tools", "load_tool"] as const;
 
 export async function executeMetaTool(
   name: string,
   args: Record<string, unknown>,
-  state: ModelState
+  state: ModelState,
+  threadId: string
 ): Promise<string> {
   switch (name) {
     case "list_mcp_servers": {
@@ -332,18 +414,11 @@ export async function executeMetaTool(
       const result = await getMcpTools(state, serverId);
       return JSON.stringify(result);
     }
-    case "get_tool_usage": {
+    case "load_tool": {
       const serverId = typeof args.serverId === "string" ? args.serverId : "";
       const toolName = typeof args.toolName === "string" ? args.toolName : "";
-      const result = await getToolUsage(state, serverId, toolName);
+      const result = await loadTool(state, threadId, serverId, toolName);
       return JSON.stringify(result);
-    }
-    case "run_mcp_tool": {
-      const serverId = typeof args.serverId === "string" ? args.serverId : "";
-      const toolName = typeof args.toolName === "string" ? args.toolName : "";
-      const toolArgs = args.arguments != null && typeof args.arguments === "object" && !Array.isArray(args.arguments) ? (args.arguments as Record<string, unknown>) : undefined;
-      const result = await runMcpTool(state, serverId, toolName, toolArgs);
-      return result;
     }
     default:
       return JSON.stringify({ error: `unknown meta-tool: ${name}` });
@@ -356,11 +431,22 @@ export async function executeTool(
   name: string,
   argsJson: string,
   state: ModelState,
-  _threadId: string
+  threadId: string
 ): Promise<string> {
   if (!META_TOOL_NAMES.includes(name as (typeof META_TOOL_NAMES)[number])) {
-    console.warn(`${MCP_DEBUG_PREFIX} execute_tool unknown tool`, { name, threadId: _threadId });
-    return JSON.stringify({ error: `unknown tool: ${name}` });
+    const loaded = lookupLoadedToolByFunctionName(threadId, name);
+    if (!loaded) {
+      console.warn(`${MCP_DEBUG_PREFIX} execute_tool unknown tool`, { name, threadId });
+      return JSON.stringify({ error: `unknown tool: ${name}` });
+    }
+    let loadedArgs: Record<string, unknown> = {};
+    try {
+      loadedArgs = argsJson ? (JSON.parse(argsJson) as Record<string, unknown>) : {};
+    } catch {
+      return JSON.stringify({ error: "invalid arguments JSON" });
+    }
+    markLoadedToolUsed(threadId, name);
+    return runMcpTool(state, loaded.serverId, loaded.toolName, loadedArgs);
   }
   let args: Record<string, unknown> = {};
   try {
@@ -368,20 +454,20 @@ export async function executeTool(
   } catch {
     console.warn(`${MCP_DEBUG_PREFIX} execute_tool invalid arguments JSON`, {
       name,
-      threadId: _threadId,
+      threadId,
       argsJson,
     });
     return JSON.stringify({ error: "invalid arguments JSON" });
   }
   console.info(`${MCP_DEBUG_PREFIX} execute_tool`, {
     name,
-    threadId: _threadId,
+    threadId,
     args,
   });
-  return executeMetaTool(name, args, state);
+  return executeMetaTool(name, args, state, threadId);
 }
 
-// ----- Build tools for thread (only the four meta tools) -----
+// ----- Build tools for thread -----
 
 export type BuildToolsAndPromptResult = {
   systemPromptText?: string;
@@ -390,22 +476,23 @@ export type BuildToolsAndPromptResult = {
 
 export async function buildToolsAndPromptForThread(
   _state: ModelState,
-  _threadId: string
+  threadId: string
 ): Promise<BuildToolsAndPromptResult> {
   const systemPromptText = [
-    "You can use MCP meta tools: list_mcp_servers, get_mcp_tools, get_tool_usage, run_mcp_tool.",
-    "Think step-by-step internally before each action, but do not expose your hidden reasoning process.",
-    "For each user request, first make a short internal plan, then execute tools, then verify, then answer.",
-    "When the user asks to inspect files, run commands, or change state (e.g. delete/write/move), you MUST execute real tool calls before making claims.",
+    "You are an AI assistant.",
+    "Your primary goal is to help the user with a clear, correct, user-facing answer.",
+    "Do not guess when information is uncertain.",
+    "When information is missing or uncertain, use tools to retrieve evidence before answering.",
+    "If information cannot be retrieved, clearly state that the information or tool capability is insufficient.",
     "Never claim an operation succeeded unless a tool result in this turn confirms it.",
-    "If a mutation tool returns ambiguous output (for example {}), verify by follow-up read/list tool calls before claiming success.",
     "Use exact serverId from list_mcp_servers and exact toolName from get_mcp_tools.",
-    "If server/tool is invalid, report the error and retry with exact ids from tool outputs.",
+    "MCP meta tools available: list_mcp_servers, get_mcp_tools, load_tool.",
+    "For MCP execution: discover server and tool with meta tools, load schema via load_tool, then call returned loadedToolName directly.",
     "Keep responses concise and evidence-based.",
   ].join(" ");
 
   return {
     systemPromptText,
-    tools: [...metaToolSchemas],
+    tools: [...metaToolSchemas, ...getLoadedToolSchemas(threadId)],
   };
 }

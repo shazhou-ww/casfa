@@ -71,6 +71,114 @@ function messageToTurn(m: Message): ChatTurn | null {
   return { role: m.role as "user" | "assistant" | "system", content: text };
 }
 
+function messageToLlmHistoryTurns(m: Message): LlmMessage[] {
+  if (m.role !== "assistant") {
+    return [messageToTurn(m)].filter(Boolean) as LlmMessage[];
+  }
+
+  const text = m.content
+    .filter((c): c is TextContent => c.type === "text")
+    .map((c) => c.text)
+    .join("");
+  const toolCalls = m.content.filter((c): c is MessageContent & { type: "tool-call" } => c.type === "tool-call");
+  const toolResults = m.content.filter((c): c is MessageContent & { type: "tool-result" } => c.type === "tool-result");
+
+  if (toolCalls.length === 0) {
+    return [{ role: "assistant", content: text }];
+  }
+
+  const assistantTurn: AssistantTurnWithTools = {
+    role: "assistant",
+    content: text || null,
+    tool_calls: toolCalls.map((tc) => ({
+      id: tc.callId,
+      type: "function" as const,
+      function: { name: tc.name, arguments: tc.arguments },
+    })),
+  };
+  const toolTurns: ToolTurn[] = toolResults.map((tr) => ({
+    role: "tool",
+    tool_call_id: tr.callId,
+    content: tr.result,
+  }));
+  return [assistantTurn, ...toolTurns];
+}
+
+export type ContextConfiguration = {
+  systemPromptText?: string;
+  tools: OpenAIFormatTool[];
+};
+
+export type DerivedContext = {
+  messages: LlmMessage[];
+  tools: OpenAIFormatTool[];
+};
+
+const META_TOOL_NAME_SET = new Set<string>([
+  "list_mcp_servers",
+  "get_mcp_tools",
+  "load_tool",
+]);
+
+/**
+ * Pure function: derive runtime LLM context from messages + static/dynamic config + current time.
+ * Deduplicates tools by function name and always prepends system prompt when provided.
+ */
+export function deriveContext(messages: LlmMessage[], config: ContextConfiguration, _time: number): DerivedContext {
+  const dedupedToolByName = new Map<string, OpenAIFormatTool>();
+  for (const tool of config.tools) {
+    const name = tool.function?.name;
+    if (!name || dedupedToolByName.has(name)) continue;
+    dedupedToolByName.set(name, tool);
+  }
+
+  const toolResultByCallId = new Map<string, string>();
+  const loadToolCallIds: string[] = [];
+  for (const m of messages) {
+    if (m.role === "tool") {
+      toolResultByCallId.set(m.tool_call_id, m.content);
+      continue;
+    }
+    if (isAssistantWithTools(m)) {
+      for (const tc of m.tool_calls ?? []) {
+        if (tc.function.name === "load_tool") loadToolCallIds.push(tc.id);
+      }
+    }
+  }
+  const loadedToolNames = new Set<string>();
+  for (const callId of loadToolCallIds) {
+    const raw = toolResultByCallId.get(callId);
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw) as { result?: string; loadedToolName?: string };
+      if (parsed.result === "success" && typeof parsed.loadedToolName === "string" && parsed.loadedToolName.trim()) {
+        loadedToolNames.add(parsed.loadedToolName);
+      }
+    } catch {
+      /* ignore malformed tool result */
+    }
+  }
+
+  const selectedTools = [...dedupedToolByName.values()].filter((tool) => {
+    const name = tool.function.name;
+    return META_TOOL_NAME_SET.has(name) || loadedToolNames.has(name);
+  });
+
+  const baseMessages = [...messages];
+  const hasInjectedSystemAtHead =
+    config.systemPromptText != null &&
+    baseMessages[0]?.role === "system" &&
+    baseMessages[0].content === config.systemPromptText;
+  const derivedMessages: LlmMessage[] =
+    config.systemPromptText && !hasInjectedSystemAtHead
+      ? [{ role: "system", content: config.systemPromptText }, ...baseMessages]
+      : baseMessages;
+  return {
+    messages: derivedMessages,
+    tools: selectedTools,
+  };
+}
+
 /** Non-streaming: POST to provider /chat/completions, return assistant content. */
 export async function callLlm(
   provider: LLMProvider,
@@ -255,12 +363,7 @@ export async function runMessagesSend(
   await applyAndBroadcast({ kind: "messages.append", payload: { threadId, message: userMsg } });
 
   const threadMessages = (state.messagesByThread[threadId] ?? []).concat([userMsg]);
-  const threadTurns: ChatTurn[] = threadMessages.map((m) => messageToTurn(m)).filter(Boolean) as ChatTurn[];
-
-  const { systemPromptText, tools } = await buildToolsAndPromptForThread(state, threadId);
-  let messagesForApi: LlmMessage[] = systemPromptText
-    ? [{ role: "system", content: systemPromptText }, ...threadTurns]
-    : [...threadTurns];
+  let messagesForApi: LlmMessage[] = threadMessages.flatMap((m) => messageToLlmHistoryTurns(m));
 
   const tempMessageId = `stream_${threadId}_${Date.now()}`;
   const controller = new AbortController();
@@ -281,13 +384,15 @@ export async function runMessagesSend(
 
   try {
     while (true) {
-      const result = await callLlmStream(pm.provider, pm.modelId, messagesForApi, {
+      const toolsAndPrompt = await buildToolsAndPromptForThread(state, threadId);
+      const ctx = deriveContext(messagesForApi, toolsAndPrompt, Date.now());
+      const result = await callLlmStream(pm.provider, pm.modelId, ctx.messages, {
         signal: controller.signal,
         onChunk(text) {
           const chunk: StreamChunk = { type: "text", text };
           applyAndBroadcast({ kind: "stream.chunk", payload: { messageId: tempMessageId, threadId, chunk } });
         },
-        tools,
+        tools: ctx.tools,
       });
 
       if (result.content) {
