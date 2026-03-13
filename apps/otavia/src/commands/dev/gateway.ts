@@ -122,7 +122,8 @@ async function discoverCells(rootDir: string, otavia: OtaviaYaml, backendPort: n
     });
     const env = resolvedParamsToEnv(resolved as Record<string, string | unknown>);
     const ssoBaseUrl = resolveGatewaySsoBaseUrl(env.SSO_BASE_URL, backendPort, firstMount);
-    env.CELL_BASE_URL = `http://localhost:${backendPort}/${entry.mount}`;
+    env.CELL_BASE_URL =
+      entry.mount === "sso" ? ssoBaseUrl : `http://localhost:${backendPort}/${entry.mount}`;
     env.SSO_BASE_URL = ssoBaseUrl;
     cells.push({ mount: entry.mount, cellDir, packageName, config, env });
   }

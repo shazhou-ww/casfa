@@ -5,8 +5,15 @@
 import type { Context } from "hono";
 
 export function getRequestBaseUrl(c: Context): string {
-  const host = c.req.header("X-Forwarded-Host") ?? c.req.header("Host") ?? "";
-  const proto = c.req.header("X-Forwarded-Proto") ?? (host.includes("localhost") ? "http" : "https");
-  const base = `${proto}://${host}`.replace(/\/$/, "");
-  return base || "http://localhost";
+  const host = (c.req.header("X-Forwarded-Host") ?? c.req.header("Host") ?? "").trim();
+  if (!host) return "http://localhost";
+
+  const forwardedProto = (c.req.header("X-Forwarded-Proto") ?? "").trim();
+  const normalizedForwardedProto = forwardedProto.replace(/:$/, "").toLowerCase();
+  const proto =
+    normalizedForwardedProto === "http" || normalizedForwardedProto === "https"
+      ? normalizedForwardedProto
+      : (host.includes("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
+
+  return `${proto}://${host}`.replace(/\/$/, "");
 }
