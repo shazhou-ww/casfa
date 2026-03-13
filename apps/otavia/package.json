@@ -1,0 +1,29 @@
+{
+  "name": "@casfa/otavia",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./dev/main-frontend-runtime/main-entry": "./src/commands/dev/main-frontend-runtime/main-entry.ts",
+    "./dev/main-frontend-runtime/vite-config": "./src/commands/dev/main-frontend-runtime/vite-config.ts"
+  },
+  "bin": { "otavia": "src/cli.ts" },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src/"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "esbuild": "^0.24.0",
+    "hono": "^4.6.0",
+    "@aws-sdk/client-dynamodb": "^3.x",
+    "@aws-sdk/client-s3": "^3.x",
+    "yaml": "^2.5.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vite": "^7.x",
+    "@vitejs/plugin-react": "^4.x"
+  }
+}

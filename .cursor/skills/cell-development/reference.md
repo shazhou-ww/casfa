@@ -27,7 +27,7 @@
 - `S3_BUCKET_<KEY>`：每个 buckets 条目。
 - `FRONTEND_BUCKET`：前端静态资源 bucket。
 - `CELL_STAGE`：dev | test | cloud。
-- `CELL_BASE_URL`：仅 cloud，https://<domain.host>。
+- `CELL_BASE_URL`：仅 cloud，https://&lt;resolved host&gt;（由 domain.subdomain + params.DOMAIN_ROOT 拼出）。
 - dev/test 阶段：`DYNAMODB_ENDPOINT`、`S3_ENDPOINT` 由 PORT_BASE 推算。
 
 ## BackendEntry（cell-yaml-schema）
@@ -38,7 +38,9 @@
 
 ## DomainConfig
 
-- `host`：主域名。
+- 配置用 `subdomain` + params 的 `DOMAIN_ROOT` 拼出 host；不再支持 `domain.host`。
+- `subdomain`：子域片段（如 sso.casfa）。
+- 解析结果中的 `host`：完整主域名（subdomain + DOMAIN_ROOT 或 devbox + subdomain）。
 - `dns`：`"route53"` | `"cloudflare"` | 对象。Route53 需 `zone`；Cloudflare 需 `zoneId` + `apiToken`（或顶层 cloudflare.apiToken）。
 - 多域用 `domains`（别名 → config），deploy 时用 `--domain <alias>`。
 

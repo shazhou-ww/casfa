@@ -1,6 +1,6 @@
 name: my-app
 params:
-  DOMAIN_HOST: !Env DOMAIN_HOST
+  DOMAIN_ROOT: !Env DOMAIN_ROOT
   COGNITO_USER_POOL_ID: !Env COGNITO_USER_POOL_ID
 testing:
   unit: "**/*.test.ts"

@@ -5,9 +5,19 @@ import react from "@vitejs/plugin-react";
 import { createServer, defineConfig, mergeConfig, type UserConfig } from "vite";
 import type { BackendEntry } from "../config/cell-yaml-schema.js";
 import { loadCellConfig } from "../config/load-cell-yaml.js";
+import { loadDevboxConfig, DEVBOX_ROUTES_PATH, getCloudflareApiToken, getTunnelUuid } from "../config/devbox-config.js";
+import {
+  fetchCloudflareZonesWithId,
+  findZoneForHostname,
+  setCnameRecord,
+  waitForEdgeCertificate,
+  orderAdvancedCertificate,
+} from "../local/cloudflare-tunnel-dns.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import { ensureCognitoDevCallbackUrl } from "../local/cognito-dev.js";
+import { registerRoute, unregisterRoute } from "../local/devbox-routes.js";
 import {
+  exec,
   getContainerHostPort,
   isContainerRunning,
   isDockerRunning,
@@ -112,11 +122,119 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
   const envMap = loadEnvFiles(cellDir);
   const resolved = resolveConfig(config, envMap, "dev");
 
-  const portBase = parseInt(envMap.PORT_BASE ?? "7100", 10);
+  const portBase =
+    config.dev?.portBase ?? parseInt(envMap.PORT_BASE ?? "7100", 10);
   const httpPort = portBase + 1;
   const dynamodbPort = portBase + 2;
   const s3Port = portBase + 4;
   const frontendPort = portBase;
+
+  // When cell has domain but no devbox, dev host is empty → require devbox prepare
+  const hasDomain = !!(config.domain || (config.domains && Object.keys(config.domains).length > 0));
+  if (hasDomain && resolved.domain && !resolved.domain.host) {
+    console.error("Dev host is not set. Run 'cell devbox prepare' first.");
+    process.exit(1);
+  }
+
+  const devbox = loadDevboxConfig();
+  let devHostRegistered: string | null = null;
+  let routesPathForCleanup: string | null = null;
+  if (resolved.domain?.host) {
+    routesPathForCleanup = devbox?.proxyRegistryPath ?? DEVBOX_ROUTES_PATH;
+    registerRoute(resolved.domain.host, frontendPort, routesPathForCleanup);
+    devHostRegistered = resolved.domain.host;
+    const host = resolved.domain.host;
+    if (devbox?.tunnelId) {
+      const tunnelUuid = getTunnelUuid(devbox);
+      const tunnelTarget = tunnelUuid
+        ? `${tunnelUuid}.cfargotunnel.com`
+        : `${devbox.tunnelId}.cfargotunnel.com`;
+      const apiToken = getCloudflareApiToken({ devbox, envMap });
+      if (apiToken) {
+        const zones = await fetchCloudflareZonesWithId(apiToken);
+        const zone = findZoneForHostname(zones, host);
+        if (zone) {
+          const result = await setCnameRecord(apiToken, zone.id, host, tunnelTarget);
+          if (result.ok) {
+            console.log(`Tunnel DNS: CNAME ${host} -> ${tunnelTarget} (Cloudflare API)`);
+            const orderResult = await orderAdvancedCertificate(apiToken, zone.id, host);
+            if (orderResult.ok) {
+              console.log("Ordered Advanced Certificate for", host, "(CLI allocation).");
+            } else {
+              console.warn("Advanced Certificate order (CLI) failed:", orderResult.error, "- Total TLS may still issue on first request, or quota may be full.");
+            }
+            const skipCertWait = /^1|true|yes$/i.test(String(envMap.CELL_DEV_SKIP_CERT_WAIT ?? process.env.CELL_DEV_SKIP_CERT_WAIT ?? "").trim());
+            if (skipCertWait) {
+              console.log("Skipping certificate wait (CELL_DEV_SKIP_CERT_WAIT). You may see SSL errors until the edge certificate is ready or quota allows.");
+            } else {
+              console.log(
+                "Waiting for edge certificate (Total TLS); may take 2–3 minutes (up to 5 min). First request can trigger issuance; cert may appear in Dashboard → SSL/TLS → Edge Certificates."
+              );
+              console.log("Waiting 20s for DNS to propagate before probing...");
+              await new Promise((r) => setTimeout(r, 20_000));
+              const ready = await waitForEdgeCertificate(host, {
+                timeoutMs: 300_000,
+                pollIntervalMs: 5000,
+                onPoll: (attempt, elapsedMs) =>
+                  console.log(`  Checking certificate... (attempt ${attempt}, ${Math.round(elapsedMs / 1000)}s)`),
+                onFirstError: (e) => {
+                  const msg = String((e as Error)?.message ?? e);
+                  console.warn("  First probe error (will keep retrying):", msg);
+                  if (/unable to connect|connection|dns|ENOTFOUND|getaddrinfo/i.test(msg)) {
+                    console.warn(
+                      "  Hint: Run 'cell devbox start' in another terminal first. If already running, DNS may need 30–60s; wait and try again."
+                    );
+                    console.warn(
+                      "  If your plan's Advanced Certificate quota is full (Dashboard → SSL/TLS → Edge Certificates), set CELL_DEV_SKIP_CERT_WAIT=1 to skip this wait."
+                    );
+                  }
+                },
+              });
+              if (ready) {
+                console.log("Edge certificate ready.");
+              } else {
+                console.warn(
+                  "Certificate still pending; you may see SSL errors for a few minutes. Try opening the URL again shortly."
+                );
+                console.warn(
+                  "Note: Total TLS may not list this hostname in Dashboard; that is normal. The cert is issued on first request."
+                );
+                console.warn(
+                  "If your plan's Advanced Certificate quota is full, set CELL_DEV_SKIP_CERT_WAIT=1 next time to skip the wait."
+                );
+              }
+            }
+          } else {
+            console.warn("Tunnel DNS (API) failed:", result.error);
+          }
+        } else {
+          const zoneNames = zones.length ? zones.map((z) => z.name).join(", ") : "(none or token without Zone:Read)";
+          const devRoot = devbox?.devRoot ?? "?";
+          console.warn(
+            `Tunnel DNS: no zone found for ${host}. This hostname is under zone "${devRoot}" (from devbox devRoot). ` +
+              `Your Cloudflare zones: ${zoneNames}. ` +
+              `Add the zone "${devRoot}" to your Cloudflare account, or run "cell devbox prepare" and choose a devRoot that matches an existing zone.`
+          );
+        }
+      } else {
+        const { exitCode, stdout, stderr } = await exec([
+          "cloudflared", "tunnel", "route", "dns", devbox.tunnelId, host,
+        ]);
+        console.log(`Tunnel DNS: ${host} -> ${tunnelTarget} (cloudflared)`);
+        if (stdout) console.log(stdout);
+        if (stderr) console.warn(stderr);
+        if (exitCode !== 0 && !stderr.includes("already exists") && !stderr.includes("already registered")) {
+          console.warn("Tunnel DNS: cloudflared failed. Run 'cell devbox prepare' and add Cloudflare API token to create CNAME via API, or add CNAME manually in Cloudflare DNS.");
+        }
+      }
+    }
+  }
+
+  // Base URL for this app: from resolved (tunnel dev host) or env or localhost
+  const cellBaseUrl =
+    resolved.envVars.CELL_BASE_URL?.trim() ||
+    envMap.CELL_BASE_URL?.trim() ||
+    `http://localhost:${frontendPort}`;
 
   // DynamoDB
   if (resolved.tables.length > 0) {
@@ -261,7 +379,7 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
 
   // Cognito: ensure dev callback URL is registered (Cognito redirects through Vite proxy → backend)
   if (config.cognito && resolved.backend) {
-    const devCallback = `http://localhost:${frontendPort}/oauth/callback`;
+    const devCallback = `${cellBaseUrl.replace(/\/$/, "")}/oauth/callback`;
     await ensureCognitoDevCallbackUrl(config.cognito, devCallback, {
       resolvedEnvVars: resolved.envVars,
       profile: envMap.AWS_PROFILE,
@@ -281,7 +399,7 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
         ...process.env,
         ...resolved.envVars,
         PORT: String(httpPort),
-        CELL_BASE_URL: `http://localhost:${frontendPort}`,
+        CELL_BASE_URL: cellBaseUrl,
         CELL_STAGE: "dev",
       };
       console.log(`Starting backend [${name}] on port ${httpPort}...`);
@@ -310,6 +428,8 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
     const proxyConfig: UserConfig = defineConfig({
       server: {
         port: frontendPort,
+        host: "0.0.0.0",
+        allowedHosts: true,
         proxy,
       },
     });
@@ -328,7 +448,7 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
           ...(Object.keys(alias).length > 0 ? { alias } : undefined),
           conditions: ["bun"],
         },
-        server: { port: frontendPort, proxy },
+        server: { port: frontendPort, host: "0.0.0.0", allowedHosts: true, proxy },
         build: { outDir: "dist", emptyOutDir: true },
       });
       finalConfig = baseFromCell;
@@ -343,9 +463,16 @@ export async function devCommand(options?: { cellDir?: string; instance?: string
       logLevel: "warn",
     });
     await viteServer.listen();
+    if (cellBaseUrl) {
+      console.log("");
+      console.log("Open:", cellBaseUrl);
+    }
   }
 
   const cleanup = async () => {
+    if (devHostRegistered && routesPathForCleanup) {
+      unregisterRoute(devHostRegistered, routesPathForCleanup);
+    }
     if (viteServer) {
       await viteServer.close();
     }

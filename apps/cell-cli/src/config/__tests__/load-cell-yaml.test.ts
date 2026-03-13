@@ -152,17 +152,31 @@ cloudflare:
 `);
     expect(config.cloudflare).toEqual({ apiToken: { secret: "CLOUDFLARE_API_TOKEN" } });
   });
+
+  test("throws when domain.host is present (use domain.subdomain + DOMAIN_ROOT)", () => {
+    expect(() =>
+      parseCellYaml(`
+name: test
+params:
+  DOMAIN_ROOT: example.com
+domain:
+  host: app.example.com
+  dns: route53
+  zone: example.com
+`)
+    ).toThrow(/domain\.host is removed/);
+  });
 });
 
 describe("parseInstanceYaml / loadInstanceOverrides / loadCellConfig", () => {
   test("parseInstanceYaml: only params, literals and !Env/!Secret", () => {
     const out = parseInstanceYaml(`
 params:
-  DOMAIN_HOST: "staging.example.com"
+  DOMAIN_ROOT: "myapp.com"
   COGNITO_USER_POOL_ID: !Env COGNITO_POOL_ID
   API_KEY: !Secret API_KEY
 `);
-    expect(out.params.DOMAIN_HOST).toBe("staging.example.com");
+    expect(out.params.DOMAIN_ROOT).toBe("myapp.com");
     expect(out.params.COGNITO_USER_POOL_ID).toEqual({ env: "COGNITO_POOL_ID" });
     expect(out.params.API_KEY).toEqual({ secret: "API_KEY" });
   });
@@ -186,14 +200,14 @@ name: foo
     const fixtureDir = join(import.meta.dir, "fixtures", "instance");
     const config = loadCellConfig(fixtureDir);
     expect(config.name).toBe("my-app");
-    expect(config.params?.DOMAIN_HOST).toEqual({ env: "DOMAIN_HOST" });
+    expect(config.params?.DOMAIN_ROOT).toEqual({ env: "DOMAIN_ROOT" });
   });
 
   test("loadCellConfig with instance merges param overrides", () => {
     const fixtureDir = join(import.meta.dir, "fixtures", "instance");
     const config = loadCellConfig(fixtureDir, "staging");
     expect(config.name).toBe("my-app");
-    expect(config.params?.DOMAIN_HOST).toBe("staging.myapp.com");
+    expect(config.params?.DOMAIN_ROOT).toBe("myapp.com");
     expect(config.params?.COGNITO_USER_POOL_ID).toBe("us-east-1_staging123");
   });
 

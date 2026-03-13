@@ -1,13 +1,21 @@
 import { createInterface } from "node:readline";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { resolve, dirname } from "node:path";
 import { loadCellConfig } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import { generateTemplate } from "../generators/merge.js";
+import { loadStackYaml } from "../config/load-stack-yaml.js";
+import {
+  generatePlatformTemplate,
+  loadPlatformCells,
+  type PlatformCell,
+} from "../generators/merge-platform.js";
 import { loadEnvFiles } from "../utils/env.js";
 import { PreDeployCheckError, runPreDeployChecksFromDeploy } from "./deploy-checks.js";
 import { buildCommand } from "./build.js";
 import { createDnsProvider } from "../dns/dns-provider.js";
+import { build } from "esbuild";
+import { toPascalCase } from "../generators/types.js";
 
 interface AwsCliResult {
   exitCode: number;
@@ -224,6 +232,428 @@ async function fetchNewEvents(
   } catch {}
 }
 
+const PLATFORM_STACK_NAME_DEFAULT = "casfa-platform";
+
+async function buildPlatformBackends(rootDir: string, cells: PlatformCell[]): Promise<void> {
+  for (const cell of cells) {
+    if (!cell.resolved.backend) continue;
+    const backendDir = resolve(cell.cellDir, cell.resolved.backend.dir ?? ".");
+    const buildDir = resolve(rootDir, ".cell/build", cell.name);
+    for (const [name, entry] of Object.entries(cell.resolved.backend.entries)) {
+      const handlerPath = resolve(backendDir, entry.handler);
+      const outfile = resolve(buildDir, name, "index.cjs");
+      mkdirSync(dirname(outfile), { recursive: true });
+      console.log(`  Building backend [${cell.name}/${name}]...`);
+      await build({
+        entryPoints: [handlerPath],
+        bundle: true,
+        platform: "node",
+        target: "node20",
+        format: "cjs",
+        outfile,
+        sourcemap: true,
+        external: ["@aws-sdk/*"],
+        loader: { ".md": "text" },
+      });
+    }
+  }
+}
+
+async function deployPlatformCommand(
+  rootDir: string,
+  stack: NonNullable<ReturnType<typeof loadStackYaml>>,
+  _options?: Parameters<typeof deployCommand>[0]
+): Promise<void> {
+  const stackName = PLATFORM_STACK_NAME_DEFAULT;
+  const cfnDir = resolve(rootDir, ".cell");
+  mkdirSync(cfnDir, { recursive: true });
+
+  const cells = loadPlatformCells(rootDir, stack);
+  if (cells.length === 0) {
+    throw new Error("No cells loaded from stack.yaml (check pathPrefix and cell.yaml)");
+  }
+
+  const envMap = loadEnvFiles(rootDir, { stage: "cloud" });
+  const awsEnv: Record<string, string | undefined> = {};
+  if (envMap.AWS_PROFILE) awsEnv.AWS_PROFILE = envMap.AWS_PROFILE;
+  if (envMap.AWS_REGION) awsEnv.AWS_REGION = envMap.AWS_REGION;
+
+  const { exitCode } = await awsCli(
+    ["sts", "get-caller-identity", "--output", "json"],
+    awsEnv,
+    { pipeStderr: true }
+  );
+  if (exitCode !== 0) {
+    throw new Error(
+      "AWS credentials are not valid. Run: aws sso login (or set AWS_PROFILE/AWS_REGION in .env)"
+    );
+  }
+
+  console.log("\n=== Building ===");
+  await buildCommand({ cellDir: rootDir });
+  console.log("\n=== Building platform backends ===");
+  await buildPlatformBackends(rootDir, cells);
+
+  const stackDomain = stack.domain as { host?: string; zone?: string; dns?: { provider?: string }; hostedZoneId?: string } | undefined;
+  if (stackDomain?.host && stackDomain.dns?.provider === "route53") {
+    const zone = stackDomain.zone ?? stackDomain.host;
+    const { exitCode: hzCode, stdout: hzOut } = await awsCli(
+      [
+        "route53",
+        "list-hosted-zones-by-name",
+        "--dns-name",
+        zone,
+        "--max-items",
+        "1",
+        "--query",
+        "HostedZones[0].Id",
+        "--output",
+        "text",
+      ],
+      awsEnv
+    );
+    if (hzCode === 0 && hzOut?.trim()) {
+      stackDomain.hostedZoneId = hzOut.trim().replace("/hostedzone/", "");
+    }
+  }
+
+  console.log("\n=== Generating CloudFormation template ===");
+  let cfnTemplate = generatePlatformTemplate({
+    rootDir,
+    stack,
+    stackName,
+  });
+  const cfnPath = resolve(cfnDir, "cfn.yaml");
+  writeFileSync(cfnPath, cfnTemplate);
+  console.log("  → .cell/cfn.yaml");
+
+  const artifactBucket = `${stackName}-deploy-artifacts`;
+  await ensureS3Bucket(artifactBucket, awsEnv);
+
+  let template = cfnTemplate;
+  const hasBackend = cells.some((c) => c.resolved.backend);
+  if (hasBackend) {
+    console.log("\n=== Packaging Lambda code ===");
+    const pkgDir = resolve(cfnDir, "pkg");
+    mkdirSync(pkgDir, { recursive: true });
+    let firstReplace = true;
+    for (const cell of cells) {
+      if (!cell.resolved.backend) continue;
+      for (const [entryKey] of Object.entries(cell.resolved.backend.entries)) {
+        const buildDir = resolve(rootDir, ".cell/build", cell.name, entryKey);
+        const zipPath = resolve(pkgDir, `${cell.name}-${entryKey}.zip`);
+        console.log(`  Zipping ${cell.name}/${entryKey}...`);
+        await zipDirectory(buildDir, zipPath);
+        const hash = await fileHash(zipPath);
+        const s3Key = `build/${cell.name}/${entryKey}-${hash}.zip`;
+        console.log(`  Uploading ${s3Key} to s3://${artifactBucket}/...`);
+        const { exitCode: upCode } = await awsCli(
+          ["s3", "cp", zipPath, `s3://${artifactBucket}/${s3Key}`],
+          awsEnv
+        );
+        if (upCode !== 0) throw new Error(`Failed to upload ${s3Key}`);
+        if (firstReplace) {
+          template = template.replace(/S3Bucket: PLACEHOLDER/, `S3Bucket: ${artifactBucket}`);
+          firstReplace = false;
+        }
+        const placeholderKey = `build/${cell.name}/${entryKey}/code.zip`;
+        template = template.replace(
+          new RegExp(`S3Key: ${placeholderKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+          `S3Key: ${s3Key}`
+        );
+      }
+    }
+    const packagedPath = resolve(cfnDir, "cfn-packaged.yaml");
+    writeFileSync(packagedPath, template);
+    console.log("  → .cell/cfn-packaged.yaml");
+  }
+
+  const resolvedForChecks = cells[0].resolved;
+  if (stack.domain?.host) {
+    (resolvedForChecks as { domain?: { host: string } }).domain = {
+      ...resolvedForChecks.domain,
+      host: stack.domain.host,
+    } as typeof resolvedForChecks.domain;
+  }
+
+  let stackAlreadyExists = await stackExists(stackName, awsEnv);
+  console.log("\n=== Pre-deploy checks ===");
+  const runChecks = (exists: boolean) =>
+    runPreDeployChecksFromDeploy(
+      resolvedForChecks,
+      (args, env, opts) => awsCli(args, env, opts),
+      awsEnv,
+      exists,
+      rootDir
+    );
+  for (;;) {
+    stackAlreadyExists = await stackExists(stackName, awsEnv);
+    try {
+      await runChecks(stackAlreadyExists);
+      break;
+    } catch (e) {
+      if (e instanceof PreDeployCheckError && e.resolution) {
+        console.error("\n  ✗ Pre-deploy check failed\n");
+        console.error("  " + e.message.replace(/\n/g, "\n  "));
+        console.log("\n  Resolution: " + e.resolution.description);
+        const rl = createInterface({ input: process.stdin, output: process.stderr });
+        const answer = await new Promise<string>((res) =>
+          rl.question("\n  Apply this resolution? [y/N] ", res)
+        );
+        rl.close();
+        if (/^y(es)?$/i.test(answer.trim())) {
+          try {
+            await e.resolution.apply();
+            console.log("  Resolution applied. Re-running pre-deploy checks...\n");
+          } catch (applyErr) {
+            const msg = applyErr instanceof Error ? applyErr.message : String(applyErr);
+            console.error("\n  Failed to apply resolution: " + msg + "\n");
+            process.exit(1);
+          }
+        } else {
+          console.error("\n  Exiting without deploying.\n");
+          process.exit(1);
+        }
+      } else {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("\n  ✗ Pre-deploy check failed\n  " + msg.replace(/\n/g, "\n  ") + "\n");
+        process.exit(1);
+      }
+    }
+  }
+  console.log("  All checks passed.");
+
+  console.log("\n=== Deploying CloudFormation stack ===");
+  const templateFile = hasBackend ? resolve(cfnDir, "cfn-packaged.yaml") : cfnPath;
+  const sinceTimestamp = stackAlreadyExists
+    ? await getLatestEventTimestamp(stackName, awsEnv)
+    : new Date().toISOString();
+  const seenEvents = new Set<string>();
+  const inProgress = new Map<string, number>();
+
+  const deployProc = Bun.spawn(
+    [
+      "aws",
+      "cloudformation",
+      "deploy",
+      "--template-file",
+      templateFile,
+      "--stack-name",
+      stackName,
+      "--capabilities",
+      "CAPABILITY_IAM",
+      "CAPABILITY_AUTO_EXPAND",
+      "--no-fail-on-empty-changeset",
+    ],
+    { cwd: rootDir, env: { ...process.env, ...awsEnv }, stdout: "pipe", stderr: "pipe" }
+  );
+  let deployDone = false;
+  deployProc.exited.then(() => {
+    deployDone = true;
+  });
+  let lastPollAt = 0;
+  while (!deployDone) {
+    if (Date.now() - lastPollAt >= 3000) {
+      await fetchNewEvents(stackName, awsEnv, seenEvents, sinceTimestamp, inProgress);
+      lastPollAt = Date.now();
+    }
+    showWaitingLine(inProgress);
+    await Bun.sleep(1000);
+  }
+  clearWaitingLine();
+  await fetchNewEvents(stackName, awsEnv, seenEvents, sinceTimestamp, inProgress);
+  const deployExitCode = await deployProc.exited;
+  if (deployExitCode !== 0) {
+    const stderr = await new Response(deployProc.stderr).text();
+    console.error(stderr);
+    console.error("\nCloudFormation deploy failed");
+    process.exit(1);
+  }
+
+  const { exitCode: descCode, stdout: descOut } = await awsCli(
+    [
+      "cloudformation",
+      "describe-stacks",
+      "--stack-name",
+      stackName,
+      "--query",
+      "Stacks[0].Outputs",
+      "--output",
+      "json",
+    ],
+    awsEnv
+  );
+  if (descCode !== 0) {
+    console.error("Failed to get stack outputs");
+    process.exit(1);
+  }
+  const outputsArr = (JSON.parse(descOut || "[]") as Array<{ OutputKey: string; OutputValue: string }>);
+  const outputs: Record<string, string> = {};
+  for (const { OutputKey, OutputValue } of outputsArr) {
+    outputs[OutputKey] = OutputValue;
+    console.log(`  ${OutputKey}: ${OutputValue}`);
+  }
+
+  const frontendBucket = outputs.FrontendBucketName;
+  const distributionId = outputs.FrontendDistributionId;
+
+  if (frontendBucket) {
+    console.log("\n=== Uploading frontend ===");
+    for (const cell of cells) {
+      const pathPrefixTrimmed = cell.pathPrefix.replace(/^\/|\/+$/g, "") || "";
+      if (!pathPrefixTrimmed) continue;
+      const srcDir = resolve(rootDir, "dist", pathPrefixTrimmed);
+      if (!existsSync(srcDir)) {
+        console.warn(`  Skipping ${cell.name}: dist/${pathPrefixTrimmed} not found (run 'cell build' first)`);
+        continue;
+      }
+      console.log(`  Syncing dist/${pathPrefixTrimmed} → s3://${frontendBucket}/${pathPrefixTrimmed}/`);
+      const { exitCode: syncCode } = await awsCli(
+        ["s3", "sync", srcDir, `s3://${frontendBucket}/${pathPrefixTrimmed}/`, "--delete"],
+        awsEnv
+      );
+      if (syncCode !== 0) {
+        console.error(`Failed to sync frontend for ${cell.name}`);
+        process.exit(1);
+      }
+    }
+  }
+
+  if (distributionId) {
+    console.log("\n=== Invalidating CloudFront ===");
+    const { exitCode: invCode } = await awsCli(
+      ["cloudfront", "create-invalidation", "--distribution-id", distributionId, "--paths", "/*"],
+      awsEnv
+    );
+    if (invCode !== 0) {
+      console.error("CloudFront invalidation failed");
+      process.exit(1);
+    }
+    console.log("  Invalidation created");
+  }
+
+  if (stack.domain?.host) {
+    const dnsProvider = createDnsProvider({
+      ...resolvedForChecks,
+      domain: { ...resolvedForChecks.domain, host: stack.domain.host } as typeof resolvedForChecks.domain,
+    });
+    const { exitCode: cfCode, stdout: cfOut } = await awsCli(
+      [
+        "cloudformation",
+        "describe-stack-resources",
+        "--stack-name",
+        stackName,
+        "--logical-resource-id",
+        "FrontendCloudFront",
+        "--query",
+        "StackResources[0].PhysicalResourceId",
+        "--output",
+        "text",
+      ],
+      awsEnv,
+      { pipeStderr: true }
+    );
+    if (cfCode === 0 && cfOut?.trim()) {
+      const distId = cfOut.trim();
+      const { exitCode: distCode, stdout: distOut } = await awsCli(
+        [
+          "cloudfront",
+          "get-distribution",
+          "--id",
+          distId,
+          "--query",
+          "Distribution.DomainName",
+          "--output",
+          "text",
+        ],
+        awsEnv,
+        { pipeStderr: true }
+      );
+      if (distCode === 0 && distOut?.trim()) {
+        await dnsProvider.ensureDnsRecords(stack.domain.host, distOut.trim());
+      }
+    }
+  }
+
+  // Sync Cognito callback URL for platform (single domain + path: https://domain/sso/oauth/callback)
+  const ssoCell = cells.find((c) => c.name === "sso");
+  if (ssoCell?.resolved && stack.domain?.host) {
+    const ssoResolved = ssoCell.resolved;
+    const userPoolId = ssoResolved.envVars.COGNITO_USER_POOL_ID ?? "";
+    const clientId = ssoResolved.envVars.COGNITO_CLIENT_ID ?? "";
+    const cognitoRegion = ssoResolved.envVars.COGNITO_REGION ?? undefined;
+    const ssoPathPrefix = ssoCell.pathPrefix.replace(/\/+$/, "") || "/sso";
+    const platformCallback = `https://${stack.domain.host}${ssoPathPrefix}/oauth/callback`;
+    const platformLogout = `https://${stack.domain.host}`;
+
+    if (userPoolId && clientId) {
+      console.log("\n=== Syncing Cognito callback URLs (platform) ===");
+      const cognitoEnv = {
+        ...awsEnv,
+        ...(cognitoRegion ? { AWS_DEFAULT_REGION: cognitoRegion } : {}),
+      };
+      const { exitCode: descCode, stdout: clientJson } = await awsCli(
+        [
+          "cognito-idp",
+          "describe-user-pool-client",
+          "--user-pool-id",
+          userPoolId,
+          "--client-id",
+          clientId,
+          "--query",
+          "UserPoolClient",
+          "--output",
+          "json",
+        ],
+        cognitoEnv
+      );
+      if (descCode === 0 && clientJson) {
+        const client = JSON.parse(clientJson) as Record<string, unknown>;
+        const callbacks = (client.CallbackURLs as string[]) ?? [];
+        const logouts = (client.LogoutURLs as string[]) ?? [];
+        let changed = false;
+        if (!callbacks.includes(platformCallback)) {
+          callbacks.push(platformCallback);
+          changed = true;
+        }
+        if (!logouts.includes(platformLogout)) {
+          logouts.push(platformLogout);
+          changed = true;
+        }
+        if (changed) {
+          delete client.ClientSecret;
+          delete client.LastModifiedDate;
+          delete client.CreationDate;
+          client.CallbackURLs = callbacks;
+          client.LogoutURLs = logouts;
+          const tmpFile = resolve(rootDir, ".cell/cognito-client-update.json");
+          writeFileSync(tmpFile, JSON.stringify(client));
+          const { exitCode: updateCode } = await awsCli(
+            ["cognito-idp", "update-user-pool-client", "--cli-input-json", `file://${tmpFile}`],
+            cognitoEnv
+          );
+          if (updateCode !== 0) {
+            console.error("  Failed to update Cognito callback URLs");
+          } else {
+            console.log(`  Added callback: ${platformCallback}`);
+            console.log(`  Added logout:   ${platformLogout}`);
+          }
+        } else {
+          console.log("  Platform callback URL already configured");
+        }
+      }
+    }
+  }
+
+  console.log("\n=== Deploy complete! ===");
+  if (stack.domain?.host) {
+    console.log(`  Domain: https://${stack.domain.host}`);
+  }
+  if (outputs.FrontendUrl) {
+    console.log(`  CloudFront URL: ${outputs.FrontendUrl}`);
+  }
+}
+
 export async function deployCommand(options?: {
   cellDir?: string;
   /** Instance name: use cell.<instance>.yaml param overrides */
@@ -232,7 +662,14 @@ export async function deployCommand(options?: {
   /** Target domain(s) for this deploy (required when domains are configured) */
   domains?: string[];
 }): Promise<void> {
-  const cellDir = resolve(options?.cellDir ?? process.cwd());
+  const cwd = process.cwd();
+  const stack = loadStackYaml(cwd);
+  if (stack) {
+    await deployPlatformCommand(cwd, stack, options);
+    return;
+  }
+
+  const cellDir = resolve(options?.cellDir ?? cwd);
   const config = loadCellConfig(cellDir, options?.instance);
   const envMap = loadEnvFiles(cellDir, { stage: "cloud" });
   const resolved = resolveConfig(config, envMap, "cloud");

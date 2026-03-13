@@ -19,6 +19,12 @@
     "check": "tsc --noEmit && biome check .",
     "prepublishOnly": "bun run build"
   },
+  "buildConfig": {
+    "bunFlags": [
+      "--target=browser",
+      "--production"
+    ]
+  },
   "dependencies": {
     "@mui/icons-material": "^5.16.0",
     "@mui/material": "^5.16.0",

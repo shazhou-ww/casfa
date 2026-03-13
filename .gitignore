@@ -21,6 +21,8 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .env.test.local
 .env.production.local
 .env.local
+.env.casfa-dev
+.env.backup
 
 # npm config (may contain tokens)
 .npmrc
@@ -52,6 +54,12 @@ tsconfig.build.json
 
 # cell-cli build output (and cell app local state)
 .cell
+
+# otavia build output
+.otavia
+
+# Cloudflare Tunnel credentials (do not commit)
+.cloudflared/credentials.json
 
 # Vim swap files
 *.swp

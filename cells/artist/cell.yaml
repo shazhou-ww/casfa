@@ -1,0 +1,60 @@
+name: artist
+
+backend:
+  dir: backend
+  runtime: nodejs20.x
+  entries:
+    mcp:
+      handler: lambda.ts
+      app: dev-app.ts
+      timeout: 90
+      memory: 1024
+      routes:
+        - /api/*
+        - /oauth/login
+        - /oauth/logout
+        - /oauth/register
+        - /oauth/client-info
+        - /oauth/token
+        - /.well-known/*
+        - /mcp
+
+frontend:
+  dir: frontend
+  entries:
+    main:
+      entry: index.html
+      routes: ["/*"]
+
+# Default instance: casfa.shazhou.me (Route53). Symbiont: cell.symbiont.yaml.
+params:
+  - AUTH
+  - BFL_API_KEY
+
+oauth:
+  enabled: true
+  role: both
+  scopes:
+    - use_mcp
+
+tables:
+  grants:
+    keys:
+      pk: S
+      sk: S
+    gsi:
+      user-hash-index:
+        keys:
+          gsi1pk: S
+          gsi1sk: S
+        projection: ALL
+      user-refresh-index:
+        keys:
+          gsi2pk: S
+          gsi2sk: S
+        projection: ALL
+  pending_client_info:
+    keys: { pk: S }
+
+testing:
+  unit: backend/

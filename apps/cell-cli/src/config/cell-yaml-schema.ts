@@ -105,9 +105,10 @@ export interface ResolvedCloudflareConfig {
 }
 
 export interface DomainConfig {
+  /** Relative subdomain (e.g. sso.casfa, drive.casfa). Full host is <subdomain>.<DOMAIN_ROOT> in cloud, <subdomain>.<devboxName>.<devRoot> in dev. */
+  subdomain: ResolvedValue;
   /** Root domain (e.g. example.com). Optional when domain.dns is object: Route53 uses dns.zone, Cloudflare derives from host. */
   zone?: ResolvedValue;
-  host: ResolvedValue;
   /**
    * DNS provider: "route53" (default) or "cloudflare", or an object { provider, zone?, zoneId?, apiToken? }.
    * Route53: set zone (root domain). Cloudflare: set zoneId + apiToken; zone is derived from host.
@@ -126,7 +127,10 @@ export type ResolvedDomainConfig = {
   /** Alias used in CLI: cell deploy --domain <alias>, cell domain list */
   alias: string;
   zone: string;
+  /** Full host (subdomain + root), set during resolve. */
   host: string;
+  /** Resolved subdomain (e.g. sso.casfa). */
+  subdomain: string;
   dns?: "route53" | "cloudflare";
   certificate?: string;
   hostedZoneId?: string;
@@ -145,8 +149,12 @@ export interface NetworkConfig {
 
 export interface CellConfig {
   name: string;
+  /** Optional path prefix when served under a single domain (e.g. /sso, /agent). Used with platform mode. */
+  pathPrefix?: string;
   /** Required for cloud deploy when using buckets or frontend. Combined as key-name-suffix for bucket names (e.g. frontend-sso-casfa-shazhou-me) to avoid global S3 collisions. */
   bucketNameSuffix?: string;
+  /** Local dev: port base for this cell (e.g. 7100). Used by devbox tunnel routing and cell dev. */
+  dev?: { portBase?: number };
   backend?: BackendConfig;
   frontend?: FrontendConfig;
   static?: StaticMapping[];

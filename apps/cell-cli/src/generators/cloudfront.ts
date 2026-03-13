@@ -204,3 +204,205 @@ export function generateCloudFront(config: ResolvedConfig): CfnFragment {
 
   return { Resources: resources, Outputs: outputs, Conditions: conditions };
 }
+
+/** Options for platform CloudFront: one distribution with path behaviors to multiple API origins */
+export interface CloudFrontPlatformOptions {
+  stackName: string;
+  domainHost: string;
+  pathBehaviors: Array<{ pathPattern: string; originId: string }>;
+  hasCertificate?: boolean;
+  hostedZoneId?: string;
+  certificateArn?: string;
+}
+
+/**
+ * Generate CloudFront for platform: one S3 origin (default), one origin per API Gateway (path behaviors).
+ * Path patterns like /sso/*, /agent/* route to respective API origins; default serves S3 frontend.
+ */
+export function generateCloudFrontPlatform(options: CloudFrontPlatformOptions): CfnFragment {
+  const {
+    stackName,
+    domainHost,
+    pathBehaviors,
+    hasCertificate = false,
+    hostedZoneId,
+    certificateArn,
+  } = options;
+
+  const resources: Record<string, unknown> = {};
+  const outputs: Record<string, unknown> = {};
+  const conditions: Record<string, unknown> = {};
+
+  let certificateRef: unknown;
+  const autoCert = !certificateArn && !!domainHost && !!hostedZoneId;
+  if (autoCert) {
+    resources.AcmCertificate = {
+      Type: "AWS::CertificateManager::Certificate",
+      Properties: {
+        DomainName: domainHost,
+        ValidationMethod: "DNS",
+        DomainValidationOptions: [
+          { DomainName: domainHost, HostedZoneId: hostedZoneId },
+        ],
+      },
+    };
+    certificateRef = { Ref: "AcmCertificate" };
+  } else if (certificateArn) {
+    certificateRef = certificateArn;
+  }
+
+  const useCustomDomain = !!domainHost && (autoCert || !!certificateArn);
+  conditions.UseCustomDomain = {
+    "Fn::Not": [{ "Fn::Equals": [useCustomDomain ? domainHost : "", ""] }],
+  };
+
+  resources.FrontendOAC = {
+    Type: "AWS::CloudFront::OriginAccessControl",
+    Properties: {
+      OriginAccessControlConfig: {
+        Name: `${stackName}-frontend-oac`,
+        OriginAccessControlOriginType: "s3",
+        SigningBehavior: "always",
+        SigningProtocol: "sigv4",
+      },
+    },
+  };
+
+  // SPA rewrite: / → /index.html, /pathPrefix → /pathPrefix/index.html for multi-path frontend
+  resources.SpaRewriteFunction = {
+    Type: "AWS::CloudFront::Function",
+    Properties: {
+      Name: `${stackName}-spa-rewrite`,
+      AutoPublish: true,
+      FunctionCode: [
+        "function handler(event) {",
+        "  var uri = event.request.uri;",
+        "  if (uri !== '/' && uri.lastIndexOf('.') <= uri.lastIndexOf('/')) {",
+        "    event.request.uri = uri.replace(/\\/?$/, '/') + 'index.html';",
+        "  } else if (uri === '/') {",
+        "    event.request.uri = '/index.html';",
+        "  }",
+        "  return event.request;",
+        "}",
+      ].join("\n"),
+      FunctionConfig: {
+        Comment: "SPA fallback: rewrite non-file paths to .../index.html",
+        Runtime: "cloudfront-js-2.0",
+      },
+    },
+  };
+
+  const origins: unknown[] = [
+    {
+      Id: "S3Frontend",
+      DomainName: { "Fn::GetAtt": ["FrontendBucket", "RegionalDomainName"] },
+      OriginAccessControlId: { "Fn::GetAtt": ["FrontendOAC", "Id"] },
+      S3OriginConfig: { OriginAccessIdentity: "" },
+    },
+  ];
+
+  for (const b of pathBehaviors) {
+    origins.push({
+      Id: b.originId,
+      DomainName: {
+        "Fn::Sub": `\${${b.originId}}.execute-api.\${AWS::Region}.amazonaws.com`,
+      },
+      CustomOriginConfig: {
+        HTTPSPort: 443,
+        OriginProtocolPolicy: "https-only",
+      },
+    });
+  }
+
+  const cacheBehaviors = pathBehaviors.map((b) => ({
+    PathPattern: b.pathPattern,
+    TargetOriginId: b.originId,
+    ViewerProtocolPolicy: "https-only" as const,
+    AllowedMethods: [...ALL_METHODS],
+    Compress: true,
+    CachePolicyId: CACHING_DISABLED_POLICY,
+    OriginRequestPolicyId: ALL_VIEWER_EXCEPT_HOST,
+  }));
+
+  resources.FrontendCloudFront = {
+    Type: "AWS::CloudFront::Distribution",
+    Properties: {
+      DistributionConfig: {
+        Enabled: true,
+        DefaultRootObject: "index.html",
+        Origins: origins,
+        DefaultCacheBehavior: {
+          TargetOriginId: "S3Frontend",
+          ViewerProtocolPolicy: "redirect-to-https",
+          AllowedMethods: ["GET", "HEAD", "OPTIONS"],
+          Compress: true,
+          CachePolicyId: CACHING_OPTIMIZED_POLICY,
+          FunctionAssociations: [
+            {
+              EventType: "viewer-request",
+              FunctionARN: { "Fn::GetAtt": ["SpaRewriteFunction", "FunctionARN"] },
+            },
+          ],
+        },
+        CacheBehaviors: cacheBehaviors,
+        Aliases: {
+          "Fn::If": ["UseCustomDomain", [domainHost], { Ref: "AWS::NoValue" }],
+        },
+        ViewerCertificate: {
+          "Fn::If": [
+            "UseCustomDomain",
+            {
+              AcmCertificateArn: certificateRef,
+              SslSupportMethod: "sni-only",
+              MinimumProtocolVersion: "TLSv1.2_2021",
+            },
+            { CloudFrontDefaultCertificate: true },
+          ],
+        },
+      },
+    },
+  };
+
+  resources.FrontendBucketPolicy = {
+    Type: "AWS::S3::BucketPolicy",
+    DependsOn: "FrontendCloudFront",
+    Properties: {
+      Bucket: { Ref: "FrontendBucket" },
+      PolicyDocument: {
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Sid: "AllowCloudFrontOAC",
+            Effect: "Allow",
+            Principal: { Service: "cloudfront.amazonaws.com" },
+            Action: "s3:GetObject",
+            Resource: { "Fn::Sub": "${FrontendBucket.Arn}/*" },
+            Condition: {
+              StringEquals: {
+                "AWS:SourceArn": {
+                  "Fn::Sub":
+                    "arn:aws:cloudfront::${AWS::AccountId}:distribution/${FrontendCloudFront}",
+                },
+              },
+            },
+          },
+        ],
+      },
+    },
+  };
+
+  outputs.FrontendUrl = {
+    Description: "CloudFront URL",
+    Value: { "Fn::Sub": "https://${FrontendCloudFront.DomainName}" },
+  };
+  outputs.FrontendBucketName = {
+    Description: "S3 bucket for frontend assets",
+    Value: { Ref: "FrontendBucket" },
+  };
+  outputs.FrontendDistributionId = {
+    Description: "CloudFront distribution ID (for cache invalidation)",
+    Value: { Ref: "FrontendCloudFront" },
+  };
+
+  return { Resources: resources, Outputs: outputs, Conditions: conditions };
+}
