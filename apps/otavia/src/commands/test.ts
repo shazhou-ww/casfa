@@ -280,7 +280,7 @@ export async function testE2eCommand(rootDir: string): Promise<void> {
     for (const { mount, cellDir, config, e2ePattern, params } of e2eCells) {
       const merged = mergeParams(otavia.params, params);
       assertDeclaredParamsProvided(config.params, merged, mount);
-      const envMap = loadEnvForCell(root, cellDir);
+      const envMap = loadEnvForCell(root, cellDir, { stage: "test" });
       const resolved = resolveParams(merged as Record<string, unknown>, envMap, {
         onMissingParam: "placeholder",
       });

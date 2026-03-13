@@ -26,7 +26,7 @@ params:
     `
 name: sso
 params:
-  FOO: bar
+  - FOO
 tables:
   users:
     keys: { pk: S, sk: S }
@@ -72,6 +72,17 @@ describe("generateTemplate", () => {
       const yaml = generateTemplate(rootDir);
       expect(yaml).toContain("FrontendBucket");
       expect(yaml).toContain("AWS::CloudFront::Distribution");
+    } finally {
+      fs.rmSync(rootDir, { recursive: true });
+    }
+  });
+
+  test("derives CloudFront API behaviors from backend entry routes", () => {
+    const rootDir = createMinimalOtaviaRoot();
+    try {
+      const yaml = generateTemplate(rootDir);
+      expect(yaml).toContain("PathPattern: /sso/api/*");
+      expect(yaml).not.toContain("PathPattern: /sso/*");
     } finally {
       fs.rmSync(rootDir, { recursive: true });
     }

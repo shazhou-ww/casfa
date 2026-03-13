@@ -99,8 +99,10 @@ export function generateCloudFrontDistribution(options: GenerateCloudFrontOption
     },
   ];
 
+  const seenApiOrigins = new Set<string>();
   for (const b of pathBehaviors) {
-    if (b.isApi) {
+    if (b.isApi && !seenApiOrigins.has(b.originId)) {
+      seenApiOrigins.add(b.originId);
       origins.push({
         Id: b.originId,
         DomainName: {

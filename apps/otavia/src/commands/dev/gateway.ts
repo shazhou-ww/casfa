@@ -116,7 +116,7 @@ async function discoverCells(rootDir: string, otavia: OtaviaYaml, backendPort: n
     const config = loadCellConfig(cellDir);
     const merged = mergeParams(otavia.params, entry.params);
     assertDeclaredParamsProvided(config.params, merged, entry.mount);
-    const envMap = loadEnvForCell(rootDir, cellDir);
+    const envMap = loadEnvForCell(rootDir, cellDir, { stage: "dev" });
     const resolved = resolveParams(merged as Record<string, unknown>, envMap, {
       onMissingParam: "placeholder",
     });

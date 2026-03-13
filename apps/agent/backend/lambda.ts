@@ -80,18 +80,28 @@ const app = createApp({
 
 const honoHandler = handle(app);
 
-function normalizeEventPath(event: { rawPath?: string }): void {
+function resolveMountPrefix(baseUrl: string): string {
+  try {
+    const p = new URL(baseUrl).pathname.replace(/\/$/, "");
+    return p || "";
+  } catch {
+    return "";
+  }
+}
+
+function normalizeEventPath(event: { rawPath?: string }, mountPrefix: string): void {
   const raw = event.rawPath;
   if (!raw || !raw.startsWith("/")) return;
-  const segments = raw.split("/").filter(Boolean);
-  if (segments.length >= 2 && segments[0] !== "api" && segments[1] === "api") {
-    (event as { rawPath: string }).rawPath = `/${segments.slice(1).join("/")}`;
+  if (mountPrefix && (raw === mountPrefix || raw.startsWith(`${mountPrefix}/`))) {
+    const normalized = raw.slice(mountPrefix.length) || "/";
+    (event as { rawPath: string }).rawPath = normalized.startsWith("/") ? normalized : `/${normalized}`;
   }
 }
 
 export const handler = async (event: unknown, context: unknown) => {
+  const mountPrefix = resolveMountPrefix(config.baseUrl);
   if (event && typeof event === "object" && "rawPath" in event) {
-    normalizeEventPath(event as { rawPath: string });
+    normalizeEventPath(event as { rawPath: string }, mountPrefix);
   }
   return honoHandler(
     event as Parameters<typeof honoHandler>[0],

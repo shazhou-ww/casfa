@@ -96,7 +96,7 @@ function loadOtaviaAndResolveParams(rootDir: string) {
     const cellDir = resolveCellDir(rootDir, entry.package);
     if (!existsSync(resolve(cellDir, "cell.yaml"))) continue;
     const config = loadCellConfig(cellDir);
-    const envMap = loadEnvForCell(rootDir, cellDir, { stage: "cloud" });
+    const envMap = loadEnvForCell(rootDir, cellDir, { stage: "deploy" });
     const merged = mergeParams(otavia.params, entry.params) as Record<string, unknown>;
     assertDeclaredParamsProvided(config.params, merged, entry.mount);
     resolveParams(merged, envMap, { onMissingParam: "throw" });
@@ -332,6 +332,10 @@ export async function deployCommand(
       packagedPath,
       "--stack-name",
       stackName,
+      "--s3-bucket",
+      deployBucketName,
+      "--s3-prefix",
+      "cloudformation",
       "--capabilities",
       "CAPABILITY_IAM",
       "CAPABILITY_AUTO_EXPAND",
