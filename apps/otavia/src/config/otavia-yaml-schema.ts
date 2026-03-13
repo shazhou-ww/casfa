@@ -26,6 +26,8 @@ export interface CellEntry {
  */
 export interface OtaviaYaml {
   stackName: string;
+  /** Optional default cell for "/" redirect (fallback: first cell mount). */
+  defaultCell?: string;
   /** mount -> package (for display/serialization). Use cellsList for iteration. */
   cells: Record<string, string>;
   /** Ordered list of { mount, package }; first is default/first cell. */

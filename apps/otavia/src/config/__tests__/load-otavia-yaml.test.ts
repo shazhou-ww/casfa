@@ -49,6 +49,28 @@ params:
     }
   });
 
+  test("parses defaultCell when configured", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-test-"));
+    try {
+      writeYaml(
+        tmp,
+        `
+stackName: my-stack
+defaultCell: drive
+cells:
+  sso: "@casfa/sso"
+  drive: "@casfa/drive"
+domain:
+  host: example.com
+`
+      );
+      const result = loadOtaviaYaml(tmp);
+      expect(result.defaultCell).toBe("drive");
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
+    }
+  });
+
   test("parses cells as object (mount -> package)", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-test-"));
     try {
@@ -68,6 +90,43 @@ domain:
       expect(result.cellsList).toEqual([
         { mount: "sso", package: "@casfa/sso" },
         { mount: "drive", package: "@casfa/drive" },
+      ]);
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
+    }
+  });
+
+  test("parses cells object values as { package, params }", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-test-"));
+    try {
+      writeYaml(
+        tmp,
+        `
+stackName: my-stack
+cells:
+  sso:
+    package: "@casfa/sso"
+    params:
+      issuer: "https://issuer.example.com"
+  drive:
+    package: "@casfa/drive"
+domain:
+  host: example.com
+`
+      );
+      const result = loadOtaviaYaml(tmp);
+      expect(result.cells).toEqual({ sso: "@casfa/sso", drive: "@casfa/drive" });
+      expect(result.cellsList).toEqual([
+        {
+          mount: "sso",
+          package: "@casfa/sso",
+          params: { issuer: "https://issuer.example.com" },
+        },
+        {
+          mount: "drive",
+          package: "@casfa/drive",
+          params: undefined,
+        },
       ]);
     } finally {
       fs.rmSync(tmp, { recursive: true });
@@ -309,6 +368,46 @@ domain: {}
     } finally {
       fs.rmSync(tmpNoDomain, { recursive: true });
       fs.rmSync(tmpNoHost, { recursive: true });
+    }
+  });
+
+  test("throws when defaultCell is not a string", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-test-"));
+    try {
+      writeYaml(
+        tmp,
+        `
+stackName: s
+defaultCell: 123
+cells: [sso]
+domain:
+  host: x.com
+`
+      );
+      expect(() => loadOtaviaYaml(tmp)).toThrow("otavia.yaml: defaultCell must be a string");
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
+    }
+  });
+
+  test("throws when defaultCell is not in cells", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-test-"));
+    try {
+      writeYaml(
+        tmp,
+        `
+stackName: s
+defaultCell: drive
+cells: [sso]
+domain:
+  host: x.com
+`
+      );
+      expect(() => loadOtaviaYaml(tmp)).toThrow(
+        'otavia.yaml: defaultCell "drive" must match one of configured cell mounts'
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
     }
   });
 });

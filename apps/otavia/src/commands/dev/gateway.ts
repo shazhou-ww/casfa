@@ -27,6 +27,7 @@ import {
   extractProtectedResourcePathFromWellKnown,
   getRequestOrigin,
 } from "./well-known.js";
+import { resolveRootRedirectMount } from "./mount-selection.js";
 
 const DYNAMODB_PORT = 8000;
 const MINIO_PORT = 9000;
@@ -295,9 +296,13 @@ export async function runGatewayDev(
 
   const gatewayApp = new Hono();
   const firstMount = otavia.cellsList[0]?.mount ?? "";
+  const rootRedirectMount = resolveRootRedirectMount(
+    otavia.cellsList.map((cell) => cell.mount),
+    otavia.defaultCell
+  );
   const oauthDiscoveryRegistry = createOAuthDiscoveryRegistry(cells);
 
-  gatewayApp.get("/", (c) => c.redirect(`/${firstMount}/`, 301));
+  gatewayApp.get("/", (c) => c.redirect(`/${rootRedirectMount}/`, 301));
 
   gatewayApp.get("/.well-known/oauth-authorization-server", (c) => {
     return c.json({ error: "not_found", message: "issuer path suffix is required" }, 404);

@@ -98,15 +98,31 @@ function parseCells(data: unknown): { cells: Record<string, string>; cellsList: 
       throw new Error("otavia.yaml: cells object must have at least one entry");
     }
     const cellsList: CellRef[] = [];
-    for (const [mountRaw, pkg] of entries) {
+    for (const [mountRaw, cellDef] of entries) {
       const mount = mountRaw.trim();
       if (typeof mount !== "string" || mount === "") {
         throw new Error("otavia.yaml: cells keys (mount) must be non-empty strings");
       }
-      if (typeof pkg !== "string" || pkg === "") {
-        throw new Error(`otavia.yaml: cells["${mount}"] must be a non-empty package name string`);
+      if (typeof cellDef === "string") {
+        const packageName = cellDef.trim();
+        if (!packageName) {
+          throw new Error(`otavia.yaml: cells["${mount}"] must be a non-empty package name string`);
+        }
+        cellsList.push({ mount, package: packageName });
+        continue;
       }
-      cellsList.push({ mount, package: pkg.trim() });
+      if (cellDef == null || typeof cellDef !== "object" || Array.isArray(cellDef)) {
+        throw new Error(
+          `otavia.yaml: cells["${mount}"] must be a package string or object { package, params? }`
+        );
+      }
+      const record = cellDef as Record<string, unknown>;
+      const packageName = typeof record.package === "string" ? record.package.trim() : "";
+      if (!packageName) {
+        throw new Error(`otavia.yaml: cells["${mount}"].package must be a non-empty string`);
+      }
+      const params = normalizeParams(record.params, `otavia.yaml: cells["${mount}"].params`);
+      cellsList.push({ mount, package: packageName, params });
     }
     const cells = Object.fromEntries(cellsList.map((c) => [c.mount, c.package]));
     return { cells, cellsList };
@@ -134,6 +150,23 @@ export function loadOtaviaYaml(rootDir: string): OtaviaYaml {
   }
 
   const { cells, cellsList } = parseCells(data.cells);
+  let defaultCell: string | undefined;
+  if (data.defaultCell != null) {
+    if (typeof data.defaultCell !== "string") {
+      throw new Error("otavia.yaml: defaultCell must be a string");
+    }
+    const normalized = data.defaultCell.trim();
+    if (!normalized) {
+      throw new Error("otavia.yaml: defaultCell must be a string");
+    }
+    const mountSet = new Set(cellsList.map((cell) => cell.mount));
+    if (!mountSet.has(normalized)) {
+      throw new Error(
+        `otavia.yaml: defaultCell "${normalized}" must match one of configured cell mounts`
+      );
+    }
+    defaultCell = normalized;
+  }
 
   if (data.domain == null || typeof data.domain !== "object") {
     throw new Error("otavia.yaml: missing domain");
@@ -148,6 +181,7 @@ export function loadOtaviaYaml(rootDir: string): OtaviaYaml {
 
   const result: OtaviaYaml = {
     stackName: data.stackName as string,
+    defaultCell,
     cells,
     cellsList,
     domain: {

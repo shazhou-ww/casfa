@@ -1,4 +1,5 @@
 stackName: otavia-beta
+defaultCell: drive
 params:
   COGNITO_REGION: "us-east-1"
   COGNITO_USER_POOL_ID: "us-east-1_gMTKxXOKo"
@@ -12,24 +13,24 @@ params:
     ssoBaseUrl: !Env SSO_BASE_URL
   BFL_API_KEY: !Secret BFL_API_KEY
 cells:
-  - package: "@casfa/sso"
-    mount: "sso"
+  sso:
+    package: "@casfa/sso"
     params:
       COGNITO_REGION: !Param COGNITO_REGION
       COGNITO_USER_POOL_ID: !Param COGNITO_USER_POOL_ID
       COGNITO_CLIENT_ID: !Param COGNITO_CLIENT_ID
       COGNITO_HOSTED_UI_URL: !Param COGNITO_HOSTED_UI_URL
-  - package: "@casfa/drive"
-    mount: "drive"
+  drive:
+    package: "@casfa/drive"
     params:
       AUTH: !Param AUTH
       MAX_BRANCH_TTL_MS: !Param MAX_BRANCH_TTL_MS
-  - package: "@casfa/agent"
-    mount: "agent"
+  agent:
+    package: "@casfa/agent"
     params:
       AUTH: !Param AUTH
-  - package: "@casfa/artist"
-    mount: "artist"
+  artist:
+    package: "@casfa/artist"
     params:
       AUTH: !Param AUTH
       BFL_API_KEY: !Param BFL_API_KEY
