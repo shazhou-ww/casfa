@@ -1,5 +1,5 @@
 /**
- * AWS Lambda entry for Image Workshop MCP (Streamable HTTP).
+ * AWS Lambda entry for Artist MCP (Streamable HTTP).
  */
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
@@ -65,7 +65,7 @@ const app = createApp({
 
 const honoHandler = handle(app);
 
-/** Strip path prefix so /image-workshop/api/... becomes /api/... (platform single-domain path). */
+/** Strip path prefix so /artist/api/... becomes /api/... (platform single-domain path). */
 function normalizeEventPath(event: { rawPath?: string }): void {
   const raw = event.rawPath;
   if (!raw || !raw.startsWith("/")) return;

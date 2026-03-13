@@ -1,8 +1,8 @@
 cells:
   - sso
-  - server-next
+  - drive
   - agent
-  - image-workshop
+  - artist
 domain:
   host: casfa.shazhou.me
   dns:

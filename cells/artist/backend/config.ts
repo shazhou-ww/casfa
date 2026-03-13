@@ -1,5 +1,5 @@
 /**
- * Image-workshop backend config. Aligned with server-next for auth/delegate/SSO.
+ * Artist backend config. Aligned with drive for auth/delegate/SSO.
  * All stages use the same env var names; only values differ.
  */
 export const ENV_NAMES = {
@@ -67,7 +67,7 @@ function parseAuthParam(raw: string | undefined): AuthParam | undefined {
 }
 
 /**
- * When CELL_BASE_URL is path-based (e.g. http://localhost:8900/image-workshop), return origin + '/sso'.
+ * When CELL_BASE_URL is path-based (e.g. http://localhost:8900/artist), return origin + '/sso'.
  * Otherwise return undefined so subdomain-based derivation can apply.
  */
 function deriveSsoBaseUrlForPath(baseUrl: string): string | undefined {
@@ -131,9 +131,9 @@ export function loadConfig(): ServerConfig {
     auth,
     ssoBaseUrl: ssoBaseUrl || undefined,
     dynamodbEndpoint: process.env.DYNAMODB_ENDPOINT,
-    dynamodbTableGrants: process.env.DYNAMODB_TABLE_GRANTS ?? `image-workshop-${stage}-grants`,
+    dynamodbTableGrants: process.env.DYNAMODB_TABLE_GRANTS ?? `artist-${stage}-grants`,
     dynamodbTablePendingClientInfo:
-      process.env.DYNAMODB_TABLE_PENDING_CLIENT_INFO ?? `image-workshop-${stage}-pending_client_info`,
+      process.env.DYNAMODB_TABLE_PENDING_CLIENT_INFO ?? `artist-${stage}-pending_client_info`,
     logLevel: process.env.LOG_LEVEL,
   };
 }

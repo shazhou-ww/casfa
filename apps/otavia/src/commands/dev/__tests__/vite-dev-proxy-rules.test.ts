@@ -75,7 +75,7 @@ describe("buildMainDevGeneratedConfig", () => {
             {
               mount: "agent",
               routePath: "/agent/sw.js",
-              sourcePath: "/repo/apps/agent/frontend/sw.ts",
+              sourcePath: "/repo/cells/agent/frontend/sw.ts",
             },
           ],
           frontendRouteRules: [],
@@ -89,7 +89,7 @@ describe("buildMainDevGeneratedConfig", () => {
     expect(generated.frontendModuleProxyRules).toEqual([
       {
         path: "/agent/sw.js",
-        sourcePath: "/repo/apps/agent/frontend/sw.ts",
+        sourcePath: "/repo/cells/agent/frontend/sw.ts",
       },
     ]);
     expect(generated.routeRules).toEqual(
@@ -193,11 +193,11 @@ describe("deriveFrontendModuleProxySpecs", () => {
       },
     } as any;
 
-    expect(deriveFrontendModuleProxySpecs("agent", "/repo/apps/agent", config)).toEqual([
+    expect(deriveFrontendModuleProxySpecs("agent", "/repo/cells/agent", config)).toEqual([
       {
         mount: "agent",
         routePath: "/agent/sw.js",
-        sourcePath: "/repo/apps/agent/frontend/sw.ts",
+        sourcePath: "/repo/cells/agent/frontend/sw.ts",
       },
     ]);
   });
@@ -213,7 +213,7 @@ describe("deriveFrontendModuleProxySpecs", () => {
       },
     } as any;
 
-    expect(() => deriveFrontendModuleProxySpecs("broken", "/repo/apps/broken", config)).toThrow(
+    expect(() => deriveFrontendModuleProxySpecs("broken", "/repo/cells/broken", config)).toThrow(
       'Invalid module frontend route "/workers/*" for mount "broken": wildcard routes are only supported for HTML entries'
     );
   });

@@ -1,5 +1,5 @@
 /**
- * Agent backend config. Same env var names as server-next/image-workshop; table names default to agent-${stage}-*.
+ * Agent backend config. Same env var names as drive/artist; table names default to agent-${stage}-*.
  */
 export const ENV_NAMES = {
   PORT: "PORT",

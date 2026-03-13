@@ -1,4 +1,4 @@
-name: casfa-next
+name: drive
 
 backend:
   dir: backend

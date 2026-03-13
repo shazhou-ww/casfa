@@ -1,6 +1,6 @@
 import type { Auth } from "@casfa/cell-cognito-server";
 import { Hono } from "hono";
-import { createImageWorkshopMcpRoute } from "../index";
+import { createArtistMcpRoute } from "../index";
 
 function authCheck(c: { get: (key: string) => Auth | null | undefined }): boolean {
   const auth = c.get("auth");
@@ -20,7 +20,7 @@ function onUnauthorized(c: { get: (key: string) => Auth | null | undefined; json
 export function createMcpRoutes() {
   const routes = new Hono();
 
-  const mcpRoute = createImageWorkshopMcpRoute({ authCheck, onUnauthorized });
+  const mcpRoute = createArtistMcpRoute({ authCheck, onUnauthorized });
   routes.route("/", mcpRoute);
 
   routes.get("/mcp", (c) => {

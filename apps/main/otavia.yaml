@@ -19,7 +19,7 @@ cells:
       COGNITO_USER_POOL_ID: !Param COGNITO_USER_POOL_ID
       COGNITO_CLIENT_ID: !Param COGNITO_CLIENT_ID
       COGNITO_HOSTED_UI_URL: !Param COGNITO_HOSTED_UI_URL
-  - package: "@casfa/server-next"
+  - package: "@casfa/drive"
     mount: "drive"
     params:
       AUTH: !Param AUTH
@@ -28,8 +28,8 @@ cells:
     mount: "agent"
     params:
       AUTH: !Param AUTH
-  - package: "@casfa/image-workshop"
-    mount: "workshop"
+  - package: "@casfa/artist"
+    mount: "artist"
     params:
       AUTH: !Param AUTH
       BFL_API_KEY: !Param BFL_API_KEY

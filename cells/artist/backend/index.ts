@@ -1,5 +1,5 @@
 /**
- * Image Workshop MCP Server — tool logic and server creation.
+ * Artist MCP Server — tool logic and server creation.
  * Uses @casfa/cell-mcp for HTTP MCP; stdio (if any) can still use the same handleFluxImage + schema.
  */
 import { createCellMcpServer } from "@casfa/cell-mcp";
@@ -80,15 +80,15 @@ export async function handleFluxImage(
 type Env = Record<string, unknown>;
 
 /**
- * Create the Image Workshop MCP route (POST /mcp).
+ * Create the Artist MCP route (POST /mcp).
  * Pass authCheck and onUnauthorized from your app so MCP is protected.
  */
-export function createImageWorkshopMcpRoute(options: {
+export function createArtistMcpRoute(options: {
   authCheck?: (c: Context<Env>) => boolean | Promise<boolean>;
   onUnauthorized?: (c: Context<Env>) => Response;
 }) {
   const cellMcp = createCellMcpServer({
-    name: "image-workshop",
+    name: "artist",
     version: "0.1.0",
     authCheck: options.authCheck,
     onUnauthorized: options.onUnauthorized,
