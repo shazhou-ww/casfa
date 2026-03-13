@@ -87,4 +87,51 @@ describe("generateTemplate", () => {
       fs.rmSync(rootDir, { recursive: true });
     }
   });
+
+  test("uses defaultCell as CloudFront root redirect target", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "otavia-deploy-test-"));
+    fs.writeFileSync(
+      path.join(tmp, "otavia.yaml"),
+      `
+stackName: test-stack
+defaultCell: drive
+cells:
+  sso: "@casfa/sso"
+  drive: "@casfa/drive"
+domain:
+  host: example.com
+`,
+      "utf-8"
+    );
+    const ssoDir = path.join(tmp, "apps", "sso");
+    fs.mkdirSync(ssoDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(ssoDir, "cell.yaml"),
+      `
+name: sso
+backend:
+  runtime: nodejs20.x
+  entries:
+    api:
+      handler: index.ts
+      timeout: 30
+      memory: 256
+      routes:
+        - /api/*
+`,
+      "utf-8"
+    );
+    const driveDir = path.join(tmp, "apps", "drive");
+    fs.mkdirSync(driveDir, { recursive: true });
+    fs.writeFileSync(path.join(driveDir, "cell.yaml"), "name: drive\n", "utf-8");
+    try {
+      const yaml = generateTemplate(tmp);
+      expect(yaml).toContain('var rootRedirectPath = "/drive/";');
+      expect(yaml).toContain("statusCode: 302");
+      expect(yaml).toContain("location: { value: rootRedirectPath }");
+      expect(yaml).not.toContain("event.request.uri = '/index.html';");
+    } finally {
+      fs.rmSync(tmp, { recursive: true });
+    }
+  });
 });
