@@ -197,6 +197,7 @@ async function buildFrontends(
         target: "es2020",
         outfile: outFile,
         sourcemap: true,
+        loader: { ".md": "text" },
       });
     }
   }
