@@ -11,6 +11,8 @@ backend:
       memory: 1024
       routes:
         - /api/*
+        - /branch/*
+        - /branch-restricted/*
         - /oauth/login
         - /oauth/logout
         - /oauth/register

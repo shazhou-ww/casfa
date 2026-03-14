@@ -126,19 +126,33 @@ export const discoverFrom401Response = discoverFrom401;
 export async function discoverFromConfig(config: MCPServerConfig): Promise<OAuthDiscoveryResult> {
   const baseUrl = config.url?.replace(/\/$/, "") ?? "";
   if (!baseUrl) throw new Error("MCP server URL required for OAuth discovery");
-  const candidates = [
-    baseUrl,
-    `${baseUrl}/.well-known/oauth-protected-resource`,
-    `${baseUrl}/.well-known/oauth-protected-resource/`,
-  ];
-  for (const url of candidates) {
-    try {
-      const res = await fetch(url, { method: "GET", credentials: "omit" });
-      if (res.status === 401) return discoverFrom401(res, baseUrl);
-      if (res.ok) {
-        const meta = (await res.json()) as OAuthProtectedResourceMetadata;
-        const authServers = meta.authorization_servers;
-        if (!authServers?.length) continue;
+  // Prefer RFC9728 well-known discovery first. Some MCP endpoints intentionally
+  // reject GET /mcp (405) and only support POST JSON-RPC.
+  try {
+    const meta = await fetchResourceMetadataFromWellKnown(baseUrl);
+    const authServers = meta.authorization_servers;
+    if (authServers?.length) {
+      const asMetadata = await fetchAuthorizationServerMetadata(authServers[0]);
+      return {
+        resourceMetadata: meta,
+        asMetadata,
+        resourceUrl: baseUrl,
+        asBaseUrl: authServers[0],
+      };
+    }
+  } catch {
+    /* fall through to probing resource endpoint */
+  }
+
+  // Fallback: probe MCP resource endpoint for non-standard deployments where
+  // metadata is returned directly or via WWW-Authenticate on 401.
+  try {
+    const res = await fetch(baseUrl, { method: "GET", credentials: "omit" });
+    if (res.status === 401) return discoverFrom401(res, baseUrl);
+    if (res.ok) {
+      const meta = (await res.json()) as OAuthProtectedResourceMetadata;
+      const authServers = meta.authorization_servers;
+      if (authServers?.length) {
         const asMetadata = await fetchAuthorizationServerMetadata(authServers[0]);
         return {
           resourceMetadata: meta,
@@ -147,10 +161,11 @@ export async function discoverFromConfig(config: MCPServerConfig): Promise<OAuth
           asBaseUrl: authServers[0],
         };
       }
-    } catch {
-      /* try next */
     }
+  } catch {
+    /* noop */
   }
+
   throw new Error(`OAuth discovery failed for ${baseUrl}`);
 }
 
