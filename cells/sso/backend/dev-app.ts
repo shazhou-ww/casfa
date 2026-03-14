@@ -19,6 +19,7 @@ const cognitoConfig: CognitoConfig = {
   region: config.cognito.region,
   userPoolId: config.cognito.userPoolId,
   clientId: config.cognito.clientId,
+  clientSecret: config.cognito.clientSecret,
   hostedUiUrl: config.cognito.hostedUiUrl,
 };
 
