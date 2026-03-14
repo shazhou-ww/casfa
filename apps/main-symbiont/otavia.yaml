@@ -1,0 +1,48 @@
+stackName: otavia-beta
+defaultCell: drive
+params:
+  COGNITO_REGION: "us-east-1"
+  COGNITO_USER_POOL_ID: "us-east-1_vgPkJO4J1"
+  COGNITO_CLIENT_ID: "4h1hrrfgeme2s1emr2kc442sin"
+  COGNITO_HOSTED_UI_URL: "https://mitsein-auth.auth.us-east-1.amazoncognito.com"
+  MAX_BRANCH_TTL_MS: "86400000"
+  SSO_BASE_URL: !Env SSO_BASE_URL
+  AUTH:
+    cognitoRegion: "us-east-1"
+    cognitoUserPoolId: "us-east-1_gMTKxXOKo"
+    ssoBaseUrl: !Env SSO_BASE_URL
+  BFL_API_KEY: !Secret BFL_API_KEY
+  COGNITO_CLIENT_SECRET: !Secret COGNITO_CLIENT_SECRET
+cells:
+  sso:
+    package: "@casfa/sso"
+    params:
+      COGNITO_REGION: !Param COGNITO_REGION
+      COGNITO_USER_POOL_ID: !Param COGNITO_USER_POOL_ID
+      COGNITO_CLIENT_ID: !Param COGNITO_CLIENT_ID
+      COGNITO_CLIENT_SECRET: !Param COGNITO_CLIENT_SECRET
+      COGNITO_HOSTED_UI_URL: !Param COGNITO_HOSTED_UI_URL
+  drive:
+    package: "@casfa/drive"
+    params:
+      AUTH: !Param AUTH
+      MAX_BRANCH_TTL_MS: !Param MAX_BRANCH_TTL_MS
+  agent:
+    package: "@casfa/agent"
+    params:
+      AUTH: !Param AUTH
+  artist:
+    package: "@casfa/artist"
+    params:
+      AUTH: !Param AUTH
+      BFL_API_KEY: !Param BFL_API_KEY
+domain:
+  host: casfa.test.symbiontlab.me
+  dns:
+    provider: cloudflare
+    zone: symbiontlab.me
+    zoneId: 977caaf5ca4e44095ddc837213633597
+oauth:
+  callback:
+    cell: sso
+    path: /oauth/callback
