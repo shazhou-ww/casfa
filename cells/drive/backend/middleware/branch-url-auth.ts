@@ -22,17 +22,20 @@ export type BranchUrlAuthDeps = {
 export function createBranchUrlAuthMiddleware(deps: BranchUrlAuthDeps) {
   return async function branchUrlAuth(c: Context<Env>, next: Next) {
     const path = c.req.path;
-    if (!path.startsWith("/branch/")) {
-      return next();
-    }
     const parts = path.split("/").filter((s) => s.length > 0);
-    // /branch/:branchId/:verification/... -> parts = ["branch", branchId, verification, ...]
-    if (parts.length < 4 || parts[0] !== "branch") {
+    // Supports both:
+    // - /branch/:branchId/:verification/...
+    // - /<mount>/branch/:branchId/:verification/...
+    const branchIndex = parts.indexOf("branch");
+    if (branchIndex < 0) {
       return next();
     }
-    const branchId = parts[1]!;
-    const verification = parts[2]!;
-    const restPath = "/" + parts.slice(3).join("/");
+    if (parts.length < branchIndex + 4) {
+      return next();
+    }
+    const branchId = parts[branchIndex + 1]!;
+    const verification = parts[branchIndex + 2]!;
+    const restPath = "/" + parts.slice(branchIndex + 3).join("/");
 
     const branch = await deps.branchStore.getBranch(branchId);
     if (
