@@ -29,7 +29,7 @@ import {
 } from "./well-known.js";
 import { resolveRootRedirectMount } from "./mount-selection.js";
 
-const DYNAMODB_PORT = 8000;
+const DYNAMODB_PORT = 9001;
 const MINIO_PORT = 9000;
 const DYNAMODB_CONTAINER = "otavia-dynamodb-dev";
 const MINIO_CONTAINER = "otavia-minio-dev";

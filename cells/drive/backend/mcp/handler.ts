@@ -17,7 +17,7 @@ import {
   getNodeDecoded,
   resolvePath,
 } from "../services/root-resolver.ts";
-import { addOrReplaceAtPath, removeEntryAtPath } from "../services/tree-mutations.ts";
+import { ensurePathThenAddOrReplace, removeEntryAtPath } from "../services/tree-mutations.ts";
 import type { Env } from "../types.ts";
 import { encodeCrockfordBase32 } from "../utils/crockford-base32.ts";
 import { prependUtf8BomIfText } from "../utils/utf8-bom.ts";
@@ -501,7 +501,7 @@ export async function executeTool(
         const emptyDictKey = hashToKey(emptyDict.hash);
         await deps.cas.putNode(emptyDictKey, streamFromBytes(emptyDict.bytes));
         deps.recordNewKey?.(realmId, emptyDictKey);
-        const newRootKey = await addOrReplaceAtPath(
+        const newRootKey = await ensurePathThenAddOrReplace(
           deps.cas,
           deps.key,
           rootKey,
@@ -599,7 +599,7 @@ export async function executeTool(
           ? (k: string) => deps.recordNewKey!(realmId, k)
           : undefined;
         let newRootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, fromStr, onNodePut);
-        newRootKey = await addOrReplaceAtPath(
+        newRootKey = await ensurePathThenAddOrReplace(
           deps.cas,
           deps.key,
           newRootKey,
@@ -656,7 +656,7 @@ export async function executeTool(
         const onNodePut = deps.recordNewKey
           ? (k: string) => deps.recordNewKey!(realmId, k)
           : undefined;
-        const newRootKey = await addOrReplaceAtPath(
+        const newRootKey = await ensurePathThenAddOrReplace(
           deps.cas,
           deps.key,
           rootKey,
@@ -721,7 +721,7 @@ export async function executeTool(
         const onNodePut = deps.recordNewKey
           ? (k: string) => deps.recordNewKey!(realmId, k)
           : undefined;
-        const newRootKey = await addOrReplaceAtPath(
+        const newRootKey = await ensurePathThenAddOrReplace(
           deps.cas,
           deps.key,
           rootKey,
