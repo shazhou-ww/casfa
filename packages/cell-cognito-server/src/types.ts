@@ -2,6 +2,7 @@ export type CognitoConfig = {
   region: string;
   userPoolId: string;
   clientId: string;
+  clientSecret?: string;
   hostedUiUrl: string;
 };
 
