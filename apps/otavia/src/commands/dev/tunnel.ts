@@ -16,6 +16,9 @@ export type TunnelHandle = {
 const TUNNEL_LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 type TunnelLogLevel = (typeof TUNNEL_LOG_LEVELS)[number];
 const DEFAULT_TUNNEL_LOG_LEVEL: TunnelLogLevel = "warn";
+const TUNNEL_PROTOCOLS = ["auto", "quic", "http2"] as const;
+type TunnelProtocol = (typeof TUNNEL_PROTOCOLS)[number];
+const DEFAULT_TUNNEL_PROTOCOL: TunnelProtocol = "quic";
 
 export function extractTunnelHostFromConfig(configContent: string): string | null {
   const parsed = parseYaml(configContent) as TunnelConfig | null;
@@ -61,16 +64,34 @@ export function resolveTunnelLogLevel(level?: string): TunnelLogLevel {
   );
 }
 
+export function resolveTunnelProtocol(protocol?: string): TunnelProtocol {
+  const normalized = (protocol ?? process.env.OTAVIA_TUNNEL_PROTOCOL ?? DEFAULT_TUNNEL_PROTOCOL)
+    .trim()
+    .toLowerCase();
+  if (TUNNEL_PROTOCOLS.includes(normalized as TunnelProtocol)) {
+    return normalized as TunnelProtocol;
+  }
+  throw new Error(
+    `Invalid tunnel protocol "${normalized}". Expected one of: ${TUNNEL_PROTOCOLS.join(", ")}.`
+  );
+}
+
 export function buildCloudflaredTunnelCommand(
   tunnelConfigPath: string,
-  tunnelLogLevel: TunnelLogLevel
+  tunnelLogLevel: TunnelLogLevel,
+  tunnelProtocol: TunnelProtocol
 ): string {
-  return `cloudflared tunnel --loglevel ${tunnelLogLevel} --config ${JSON.stringify(tunnelConfigPath)} run`;
+  return `cloudflared tunnel --loglevel ${tunnelLogLevel} --protocol ${tunnelProtocol} --config ${JSON.stringify(tunnelConfigPath)} run`;
 }
 
 export async function startTunnel(
   rootDir: string,
-  options?: { tunnelConfigPath?: string; tunnelHost?: string; tunnelLogLevel?: string }
+  options?: {
+    tunnelConfigPath?: string;
+    tunnelHost?: string;
+    tunnelLogLevel?: string;
+    tunnelProtocol?: string;
+  }
 ): Promise<TunnelHandle> {
   const tunnelConfigPath = options?.tunnelConfigPath ?? defaultTunnelConfigPath(rootDir);
   if (!existsSync(tunnelConfigPath)) {
@@ -100,7 +121,8 @@ export async function startTunnel(
   }
   const publicBaseUrl = normalizeTunnelPublicBaseUrl(host);
   const tunnelLogLevel = resolveTunnelLogLevel(options?.tunnelLogLevel);
-  const tunnelCommand = buildCloudflaredTunnelCommand(tunnelConfigPath, tunnelLogLevel);
+  const tunnelProtocol = resolveTunnelProtocol(options?.tunnelProtocol);
+  const tunnelCommand = buildCloudflaredTunnelCommand(tunnelConfigPath, tunnelLogLevel, tunnelProtocol);
   const { commands, result } = concurrently(
     [
       {

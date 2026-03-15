@@ -4,6 +4,7 @@ import {
   extractTunnelHostFromConfig,
   normalizeTunnelPublicBaseUrl,
   resolveTunnelLogLevel,
+  resolveTunnelProtocol,
 } from "../tunnel";
 
 describe("extractTunnelHostFromConfig", () => {
@@ -65,8 +66,28 @@ describe("resolveTunnelLogLevel", () => {
 
 describe("buildCloudflaredTunnelCommand", () => {
   test("builds command with quoted config path and log level", () => {
-    expect(buildCloudflaredTunnelCommand("/tmp/dev config.yml", "warn")).toBe(
-      'cloudflared tunnel --loglevel warn --config "/tmp/dev config.yml" run'
+    expect(buildCloudflaredTunnelCommand("/tmp/dev config.yml", "warn", "quic")).toBe(
+      'cloudflared tunnel --loglevel warn --protocol quic --config "/tmp/dev config.yml" run'
+    );
+  });
+});
+
+describe("resolveTunnelProtocol", () => {
+  test("defaults to quic", () => {
+    expect(resolveTunnelProtocol()).toBe("quic");
+  });
+
+  test("normalizes mixed-case protocol", () => {
+    expect(resolveTunnelProtocol("Http2")).toBe("http2");
+  });
+
+  test("allows auto protocol", () => {
+    expect(resolveTunnelProtocol("auto")).toBe("auto");
+  });
+
+  test("throws on invalid protocol", () => {
+    expect(() => resolveTunnelProtocol("ws")).toThrow(
+      'Invalid tunnel protocol "ws". Expected one of: auto, quic, http2.'
     );
   });
 });

@@ -51,11 +51,17 @@ program.command("dev")
   .option("--tunnel", "Auto-start cloudflared tunnel and use tunnel host URLs")
   .option("--tunnel-host <host>", "Tunnel hostname or full URL used as public base URL")
   .option("--tunnel-config <path>", "Path to cloudflared config.yml")
+  .option("--tunnel-protocol <protocol>", "Tunnel transport protocol: quic, http2, or auto")
   .action(
     async (
       _args: unknown,
       cmd: {
-        opts: () => { tunnel?: boolean; tunnelHost?: string; tunnelConfig?: string };
+        opts: () => {
+          tunnel?: boolean;
+          tunnelHost?: string;
+          tunnelConfig?: string;
+          tunnelProtocol?: string;
+        };
       }
     ) => {
       const opts = cmd.opts();
@@ -63,6 +69,7 @@ program.command("dev")
         tunnel: opts.tunnel,
         tunnelHost: opts.tunnelHost,
         tunnelConfig: opts.tunnelConfig,
+        tunnelProtocol: opts.tunnelProtocol,
       });
     }
   );
