@@ -41,7 +41,17 @@ export type TestHelpers = {
   createBranch(
     userToken: string,
     realmId: string,
-    body: { mountPath: string; ttl?: number; parentBranchId?: string }
+    body: {
+      mountPath: string;
+      ttl?: number;
+      parentBranchId?: string;
+      initialTransfers?: {
+        source: string;
+        target: string;
+        mapping: Record<string, string>;
+        mode?: "replace" | "fail_if_exists" | "merge_dir";
+      };
+    }
   ): Promise<{
     branchId: string;
     accessToken: string;
@@ -113,7 +123,17 @@ function createHelpers(url: string): TestHelpers {
   const createBranch = async (
     userToken: string,
     realmId: string,
-    body: { mountPath: string; ttl?: number; parentBranchId?: string }
+    body: {
+      mountPath: string;
+      ttl?: number;
+      parentBranchId?: string;
+      initialTransfers?: {
+        source: string;
+        target: string;
+        mapping: Record<string, string>;
+        mode?: "replace" | "fail_if_exists" | "merge_dir";
+      };
+    }
   ): Promise<{
     branchId: string;
     accessToken: string;

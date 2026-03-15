@@ -64,7 +64,6 @@ function itemToBranch(item: Record<string, unknown>): Branch {
     branchId: (item.branchId ?? item.delegateId) as string,
     realmId: item.realmId as string,
     parentId: item.parentId as string | null,
-    mountPath: (item.mountPath as string) ?? "",
     expiresAt,
   };
   if (
@@ -85,7 +84,6 @@ function branchToItem(branch: Branch): Record<string, unknown> {
     branchId: branch.branchId,
     realmId: branch.realmId,
     parentId: branch.parentId,
-    mountPath: branch.mountPath,
     lifetime: "limited",
     accessTokenHash: "",
     expiresAt: branch.expiresAt,
@@ -238,7 +236,6 @@ export function createDynamoBranchStore(config: DynamoBranchStoreConfig): Branch
         branchId,
         realmId,
         parentId: null,
-        mountPath: "",
         expiresAt: 0,
       });
       try {

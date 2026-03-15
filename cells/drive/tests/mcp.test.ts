@@ -37,11 +37,14 @@ describe("MCP", () => {
     expect((data.result?.tools ?? []).length).toBeGreaterThan(0);
   });
 
-  it("tools/call branches_list returns content", async () => {
+  it("tools/call create_branch returns branch info", async () => {
     const token = await ctx.helpers.createUserToken(realmId);
+    await ctx.helpers.authRequest(token, "POST", `/api/realm/${realmId}/fs/mkdir`, {
+      path: "mcp-test-branch",
+    });
     const res = await ctx.helpers.mcpRequest(token, "tools/call", {
-      name: "branches_list",
-      arguments: {},
+      name: "create_branch",
+      arguments: { mountPath: "mcp-test-branch" },
     });
     expect(res.status).toBe(200);
     const data = (await res.json()) as {
@@ -50,8 +53,9 @@ describe("MCP", () => {
     expect(data.result?.content).toBeDefined();
     const text = data.result?.content?.[0]?.text;
     expect(text).toBeDefined();
-    const parsed = JSON.parse(text!) as { branches?: unknown[] };
-    expect(Array.isArray(parsed.branches)).toBe(true);
+    const parsed = JSON.parse(text!) as { branchId?: string; accessToken?: string };
+    expect(typeof parsed.branchId).toBe("string");
+    expect(typeof parsed.accessToken).toBe("string");
   });
 
   it("tools/call fs_ls returns entries", async () => {

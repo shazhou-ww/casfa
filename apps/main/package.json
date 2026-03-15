@@ -21,6 +21,7 @@
   "dependencies": {
     "@casfa/agent": "workspace:*",
     "@casfa/artist": "workspace:*",
+    "@casfa/gateway": "workspace:*",
     "@casfa/otavia": "workspace:*",
     "@casfa/drive": "workspace:*",
     "@casfa/sso": "workspace:*",

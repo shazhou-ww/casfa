@@ -18,6 +18,10 @@ export const fluxImageInputSchema = z.object({
       "Casfa branch root URL (accessUrlPrefix from branch_create). Single URL for branch-scoped requests; no token needed."
     ),
   prompt: z.string().describe("Text prompt for FLUX image generation."),
+  outputPath: z
+    .string()
+    .transform((value, ctx) => parseInputImagePath(value, ctx))
+    .describe("Relative file path in branch for generated output image."),
   width: z
     .number()
     .int()
@@ -90,6 +94,10 @@ export const fluxImageEditInputSchema = z.object({
     .transform((value, ctx) => parseInputImagePath(value, ctx))
     .describe("Relative file path in branch used as input image."),
   prompt: z.string().describe("Edit prompt for FLUX image edit."),
+  outputPath: z
+    .string()
+    .transform((value, ctx) => parseInputImagePath(value, ctx))
+    .describe("Relative file path in branch for edited output image."),
   seed: z.number().int().optional().describe("Seed for reproducible results."),
   safety_tolerance: z
     .number()
@@ -109,7 +117,7 @@ function contentTypeForFormat(format: "jpeg" | "png"): string {
 
 export async function handleFluxImage(
   args: FluxImageArgs
-): Promise<{ key: string; completed: string }> {
+): Promise<{ key: string; completed: string; path: string }> {
   const bfl = createBflClient();
   const casfa = createCasfaBranchClient({ branchRootUrl: args.casfaBranchUrl });
 
@@ -123,7 +131,8 @@ export async function handleFluxImage(
   });
 
   const format = args.output_format ?? "jpeg";
-  const setRootResult = await casfa.setRootToFile(
+  const uploadResult = await casfa.uploadFile(
+    args.outputPath,
     imageBytes,
     contentTypeForFormat(format)
   );
@@ -131,14 +140,15 @@ export async function handleFluxImage(
   const completeResult = await casfa.completeBranch();
 
   return {
-    key: setRootResult.key,
+    key: uploadResult.key,
+    path: uploadResult.path,
     completed: completeResult.completed,
   };
 }
 
 export async function handleFluxImageEdit(
   args: FluxImageEditArgs
-): Promise<{ key: string; completed: string }> {
+): Promise<{ key: string; completed: string; path: string }> {
   const bfl = createBflClient();
   const casfa = createCasfaBranchClient({ branchRootUrl: args.casfaBranchUrl });
 
@@ -158,11 +168,16 @@ export async function handleFluxImageEdit(
   });
 
   const format = args.output_format ?? "jpeg";
-  const setRootResult = await casfa.setRootToFile(imageBytes, contentTypeForFormat(format));
+  const uploadResult = await casfa.uploadFile(
+    args.outputPath,
+    imageBytes,
+    contentTypeForFormat(format)
+  );
   const completeResult = await casfa.completeBranch();
 
   return {
-    key: setRootResult.key,
+    key: uploadResult.key,
+    path: uploadResult.path,
     completed: completeResult.completed,
   };
 }
@@ -218,7 +233,7 @@ export function createArtistMcpRoute(options: {
     "flux_image",
     {
       description:
-        "Generate an image from a text prompt using BFL FLUX, set it as the Casfa branch root (single file), then complete the branch (merge into parent at the branch's mountPath). Branch must be created with a non-existent mountPath (null root). Input: casfaBranchUrl (use accessUrlPrefix from branch_create; no token needed); prompt; optional width, height, seed, safety_tolerance, output_format. Output: success, completed (branchId merged), key (CAS node key of the image).",
+        "Generate an image from a text prompt using BFL FLUX and write it to outputPath in the target Casfa branch, then complete the branch. Input: casfaBranchUrl, outputPath, prompt; optional width, height, seed, safety_tolerance, output_format. Output: success, completed, key, path.",
       inputSchema: fluxImageInputSchema,
     },
     async (args: FluxImageArgs) => {
@@ -233,6 +248,7 @@ export function createArtistMcpRoute(options: {
                   success: true,
                   completed: result.completed,
                   key: result.key,
+                  path: result.path,
                 },
                 null,
                 2
@@ -256,7 +272,7 @@ export function createArtistMcpRoute(options: {
     "flux_image_edit",
     {
       description:
-        "Edit an existing image from Casfa branch using BFL FLUX Kontext, set output as branch root, then complete branch. Input: casfaBranchUrl, inputImagePath, prompt, optional seed/safety_tolerance/output_format. Output: success, completed, key.",
+        "Edit an existing image from Casfa branch using BFL FLUX Kontext and write output to outputPath, then complete branch. Input: casfaBranchUrl, inputImagePath, outputPath, prompt, optional seed/safety_tolerance/output_format. Output: success, completed, key, path.",
       inputSchema: fluxImageEditInputSchema,
     },
     async (args: FluxImageEditArgs) => {
@@ -271,6 +287,7 @@ export function createArtistMcpRoute(options: {
                   success: true,
                   completed: result.completed,
                   key: result.key,
+                  path: result.path,
                 },
                 null,
                 2

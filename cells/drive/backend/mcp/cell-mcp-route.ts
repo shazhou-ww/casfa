@@ -27,13 +27,20 @@ export function createServerNextMcpRoute(deps: McpHandlerDeps) {
   });
 
   // Zod schemas for each tool (optional fields omitted or optional())
-  const branchesList = z.object({});
   const branchCreate = z.object({
     mountPath: z.string(),
     ttl: z.number().optional(),
     parentBranchId: z.string().optional(),
   });
-  const branchComplete = z.object({});
+  const branchClose = z.object({
+    branchId: z.string().optional(),
+  });
+  const branchTransferPaths = z.object({
+    source: z.string(),
+    target: z.string(),
+    mapping: z.record(z.string(), z.string()),
+    mode: z.enum(["replace", "fail_if_exists", "merge_dir"]).optional(),
+  });
   const fsMkdir = z.object({ path: z.string() });
   const fsLs = z.object({ path: z.string().optional() });
   const fsStat = z.object({ path: z.string() });
@@ -48,10 +55,10 @@ export function createServerNextMcpRoute(deps: McpHandlerDeps) {
   });
 
   const tools: Array<{ name: string; description: string; schema: z.ZodType<Record<string, unknown>> }> = [
-    { name: "branches_list", description: "List branches in the realm. For Worker auth returns only the current branch.", schema: branchesList },
-    { name: "branch_create", description: "Create a branch. Without parentBranchId creates under realm root (requires branch_manage). With parentBranchId creates sub-branch (Worker only, parent must be own branch). If mountPath does not exist, the new branch starts with a null root (no root node); use this for artist flux_image so the image becomes the branch root. Returns branchId, accessToken, expiresAt, and accessUrlPrefix (single URL for branch-scoped requests; use as casfaBranchUrl in flux_image, no token needed).", schema: branchCreate },
-    { name: "branch_complete", description: "Complete the current branch (Worker only): merge into parent and invalidate this branch.", schema: branchComplete },
-    { name: "fs_mkdir", description: "Create a directory at the given path. Parent path must exist. Required for creating a path before branch_create (e.g. create 'images' then create branch with mountPath 'images').", schema: fsMkdir },
+    { name: "create_branch", description: "Create a branch. Without parentBranchId creates under realm root (requires branch_manage). With parentBranchId creates sub-branch (Worker only, parent must be own branch). If mountPath does not exist, the new branch starts with a null root (no root node); use this for artist flux_image so the image becomes the branch root. Returns branchId, accessToken, expiresAt, and accessUrlPrefix (single URL for branch-scoped requests; use as casfaBranchUrl in flux_image, no token needed).", schema: branchCreate },
+    { name: "close_branch", description: "Close current branch (Worker) or specified branch (user/delegate with branch_manage).", schema: branchClose },
+    { name: "transfer_paths", description: "Transfer mapped paths from one branch to another branch atomically.", schema: branchTransferPaths },
+    { name: "fs_mkdir", description: "Create a directory at the given path. Parent path must exist. Required for creating a path before create_branch (e.g. create 'images' then create branch with mountPath 'images').", schema: fsMkdir },
     { name: "fs_ls", description: "List direct children of a directory at the given path.", schema: fsLs },
     { name: "fs_stat", description: "Get metadata (kind, size, contentType) for a file or directory.", schema: fsStat },
     { name: "fs_read", description: "Read text content of a file (single-block, ≤4MB).", schema: fsRead },

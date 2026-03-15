@@ -8,7 +8,6 @@ import { streamFromBytes } from "@casfa/cas";
 import { encodeDictNode, encodeFileNode, hashToKey } from "@casfa/core";
 import type { Context } from "hono";
 import type { ServerConfig } from "../config.ts";
-import { completeBranch } from "../services/branch-complete.ts";
 import type { RootResolverDeps } from "../services/root-resolver.ts";
 import {
   ensureEmptyRoot,
@@ -18,7 +17,10 @@ import {
   resolvePath,
 } from "../services/root-resolver.ts";
 import { addOrReplaceAtPath, removeEntryAtPath } from "../services/tree-mutations.ts";
+import { validateTransferSpec } from "../services/transfer-paths.ts";
+import { executeTransfer } from "../services/transfer-paths.ts";
 import type { Env } from "../types.ts";
+import type { TransferSpec } from "../types/transfer.ts";
 import { encodeCrockfordBase32 } from "../utils/crockford-base32.ts";
 import { prependUtf8BomIfText } from "../utils/utf8-bom.ts";
 import skillContent from "./skills/casfa-file-management.md";
@@ -110,16 +112,7 @@ async function getRootForMcpWrite(
 
 const MCP_TOOLS = [
   {
-    name: "branches_list",
-    description: "List branches in the realm. For Worker auth returns only the current branch.",
-    inputSchema: {
-      type: "object" as const,
-      properties: {},
-      required: [] as string[],
-    },
-  },
-  {
-    name: "branch_create",
+    name: "create_branch",
     description:
       "Create a branch. Without parentBranchId creates under realm root (requires branch_manage). With parentBranchId creates sub-branch (Worker only, parent must be own branch). If mountPath does not exist, the new branch starts with a null root (no root node); use this for artist flux_image so the image becomes the branch root. Returns branchId, accessToken, expiresAt, and accessUrlPrefix (single URL for branch-scoped requests; use as casfaBranchUrl in flux_image, no token needed).",
     inputSchema: {
@@ -131,24 +124,51 @@ const MCP_TOOLS = [
           type: "string" as const,
           description: "Optional parent branch (Worker only)",
         },
+        initialTransfers: {
+          type: "object" as const,
+          description:
+            "Optional transfer spec applied at create time for preflight validation. Execution will be wired in transfer_paths flow.",
+        },
       },
       required: ["mountPath"] as string[],
     },
   },
   {
-    name: "branch_complete",
-    description:
-      "Complete the current branch (Worker only): merge into parent and invalidate this branch.",
+    name: "close_branch",
+    description: "Close current branch (Worker) or specified branch (user/delegate with branch_manage).",
     inputSchema: {
       type: "object" as const,
-      properties: {},
+      properties: {
+        branchId: { type: "string" as const, description: "Optional branch id; default me for worker" },
+      },
       required: [] as string[],
+    },
+  },
+  {
+    name: "transfer_paths",
+    description:
+      "Transfer mapped paths from one branch to another branch atomically. Supports mode replace/fail_if_exists/merge_dir.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        source: { type: "string" as const, description: "Source branch id" },
+        target: { type: "string" as const, description: "Target branch id" },
+        mapping: {
+          type: "object" as const,
+          description: "Path mapping object where key is sourcePath and value is targetPath",
+        },
+        mode: {
+          type: "string" as const,
+          description: "replace | fail_if_exists | merge_dir",
+        },
+      },
+      required: ["source", "target", "mapping"] as string[],
     },
   },
   {
     name: "fs_mkdir",
     description:
-      "Create a directory at the given path. Parent path must exist. Required for creating a path before branch_create (e.g. create 'images' then create branch with mountPath 'images').",
+      "Create a directory at the given path. Parent path must exist. Required for creating a path before create_branch (e.g. create 'images' then create branch with mountPath 'images').",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -315,46 +335,7 @@ export async function executeTool(
   }
 
   try {
-    if (name === "branches_list") {
-      const realmId = getRealmId(auth);
-      if (auth.type === "worker") {
-        const branch = await deps.branchStore.getBranch(auth.branchId);
-        if (!branch) {
-          return err("Branch not found");
-        }
-        return ok([
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                branches: [
-                  {
-                    branchId: branch.branchId,
-                    mountPath: branch.mountPath,
-                    parentId: branch.parentId,
-                    expiresAt: branch.expiresAt,
-                  },
-                ],
-              }),
-            },
-          ]);
-      }
-      const branches = await deps.branchStore.listBranches(realmId);
-      return ok([
-          {
-            type: "text" as const,
-            text: JSON.stringify({
-              branches: branches.map((b) => ({
-                branchId: b.branchId,
-                mountPath: b.mountPath,
-                parentId: b.parentId,
-                expiresAt: b.expiresAt,
-              })),
-            }),
-            },
-          ]);
-    }
-
-    if (name === "branch_create") {
+    if (name === "create_branch") {
       const mountPath =
         typeof args.mountPath === "string" ? args.mountPath.trim().replace(/^\/+|\/+$/g, "") : "";
       if (!mountPath) {
@@ -369,6 +350,13 @@ export async function executeTool(
         typeof args.parentBranchId === "string"
           ? args.parentBranchId.trim() || undefined
           : undefined;
+      const initialTransfers =
+        typeof args.initialTransfers === "object" && args.initialTransfers !== null
+          ? (args.initialTransfers as TransferSpec)
+          : undefined;
+      if (initialTransfers) {
+        validateTransferSpec(initialTransfers);
+      }
       const realmId = getRealmId(auth);
 
       if (!parentBranchId) {
@@ -461,17 +449,58 @@ export async function executeTool(
       ]);
     }
 
-    if (name === "branch_complete") {
-      if (auth.type !== "worker") {
-        return err("Only Worker can complete a branch");
+    if (name === "close_branch") {
+      const requestedBranchId =
+        typeof args.branchId === "string" && args.branchId.trim().length > 0
+          ? args.branchId.trim()
+          : "me";
+      if (auth.type === "worker") {
+        if (requestedBranchId !== "me" && requestedBranchId !== auth.branchId) {
+          return err("Can only close own branch");
+        }
+        const branch = await deps.branchStore.getBranch(auth.branchId);
+        if (!branch) {
+          return ok([{ type: "text" as const, text: JSON.stringify({ closed: auth.branchId }) }]);
+        }
+        await deps.branchStore.removeBranch(auth.branchId);
+        return ok([{ type: "text" as const, text: JSON.stringify({ closed: auth.branchId }) }]);
       }
-      try {
-        const result = await completeBranch(auth.branchId, deps);
-        return ok([{ type: "text" as const, text: JSON.stringify(result) }]);
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        return err(message);
+      if (!hasBranchManage(auth)) {
+        return err("branch_manage or user required");
       }
+      const realmId = getRealmId(auth);
+      const branchId = requestedBranchId;
+      const branch = await deps.branchStore.getBranch(branchId);
+      if (!branch || branch.realmId !== realmId) {
+        return ok([{ type: "text" as const, text: JSON.stringify({ closed: branchId }) }]);
+      }
+      await deps.branchStore.removeBranch(branchId);
+      return ok([{ type: "text" as const, text: JSON.stringify({ closed: branchId }) }]);
+    }
+
+    if (name === "transfer_paths") {
+      const spec = {
+        source: typeof args.source === "string" ? args.source : "",
+        target: typeof args.target === "string" ? args.target : "",
+        mapping:
+          typeof args.mapping === "object" && args.mapping !== null
+            ? (args.mapping as Record<string, string>)
+            : {},
+        mode:
+          typeof args.mode === "string" && args.mode.length > 0
+            ? (args.mode as "replace" | "fail_if_exists" | "merge_dir")
+            : undefined,
+      };
+      const normalized = validateTransferSpec(spec);
+      if (auth.type === "worker") {
+        if (normalized.target !== auth.branchId || normalized.source !== auth.branchId) {
+          return err("Worker can only transfer within own branch");
+        }
+      } else if (!hasBranchManage(auth)) {
+        return err("branch_manage or user required");
+      }
+      const result = await executeTransfer(normalized, deps);
+      return ok([{ type: "text" as const, text: JSON.stringify(result) }]);
     }
 
     if (name === "fs_mkdir") {

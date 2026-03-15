@@ -1,0 +1,52 @@
+name: gateway
+
+backend:
+  dir: backend
+  runtime: nodejs20.x
+  entries:
+    api:
+      handler: lambda.ts
+      app: dev-app.ts
+      timeout: 30
+      memory: 1024
+      routes:
+        - /api/*
+        - /oauth/*
+        - /.well-known/*
+        - /mcp
+
+frontend:
+  dir: frontend
+  entries:
+    main:
+      entry: index.html
+      routes: ["/*"]
+
+tables:
+  servers:
+    keys: { pk: S, sk: S }
+  server_oauth_states:
+    keys: { pk: S, sk: S }
+  grants:
+    keys: { pk: S, sk: S }
+    gsi:
+      user-hash-index:
+        keys: { gsi1pk: S, gsi1sk: S }
+        projection: ALL
+      user-refresh-index:
+        keys: { gsi2pk: S, gsi2sk: S }
+        projection: ALL
+  pending_client_info:
+    keys: { pk: S }
+
+params:
+  - AUTH
+
+oauth:
+  enabled: true
+  role: both
+  scopes:
+    - use_mcp
+
+testing:
+  unit: backend/

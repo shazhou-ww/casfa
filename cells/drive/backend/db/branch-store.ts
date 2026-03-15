@@ -58,7 +58,6 @@ export function createMemoryBranchStore(): BranchStore {
         branchId,
         realmId,
         parentId: null,
-        mountPath: "",
         expiresAt: 0,
       });
       realmRootBranchId.set(realmId, branchId);

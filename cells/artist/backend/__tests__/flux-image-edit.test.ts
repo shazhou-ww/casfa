@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 describe("handleFluxImageEdit", () => {
-  it("calls BFL kontext and writes result to casfa branch root", async () => {
+  it("calls BFL kontext and writes result to outputPath", async () => {
     process.env.BFL_API_KEY = "test-key";
     const calls: Array<{ url: string; method: string; bodyText?: string }> = [];
     globalThis.setTimeout = ((cb: (...args: unknown[]) => void) => {
@@ -43,8 +43,8 @@ describe("handleFluxImageEdit", () => {
       if (url === "https://img.test/out.png") {
         return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
       }
-      if (url.endsWith("/api/realm/me/root") && method === "PUT") {
-        return Response.json({ path: "", key: "cas:key:new" }, { status: 201 });
+      if (url.endsWith("/api/realm/me/files/outputs%2Fedited.png") && method === "PUT") {
+        return Response.json({ path: "outputs/edited.png", key: "cas:key:new" }, { status: 201 });
       }
       if (url.endsWith("/api/realm/me/branches/me/complete") && method === "POST") {
         return Response.json({ completed: "branch-1" }, { status: 200 });
@@ -56,6 +56,7 @@ describe("handleFluxImageEdit", () => {
     const result = await handleFluxImageEdit({
       casfaBranchUrl: "http://localhost:7100/drive/branch/b1/v1",
       inputImagePath: "inputs/source image.png",
+      outputPath: "outputs/edited.png",
       prompt: "make it watercolor style",
       output_format: "png",
     });
@@ -63,6 +64,7 @@ describe("handleFluxImageEdit", () => {
     expect(result).toEqual({
       key: "cas:key:new",
       completed: "branch-1",
+      path: "outputs/edited.png",
     });
 
     const kontextCall = calls.find(

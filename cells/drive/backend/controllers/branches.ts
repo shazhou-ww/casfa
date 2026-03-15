@@ -8,8 +8,10 @@ import { completeBranch } from "../services/branch-complete.ts";
 import type { RootResolverDeps } from "../services/root-resolver.ts";
 import { ensureEmptyRoot, resolvePath } from "../services/root-resolver.ts";
 import type { Branch } from "../types/branch.ts";
+import type { TransferSpec } from "../types/transfer.ts";
 import type { Env } from "../types.ts";
 import { encodeCrockfordBase32 } from "../utils/crockford-base32.ts";
+import { executeTransfer, validateTransferSpec } from "../services/transfer-paths.ts";
 
 function base64urlEncode(s: string): string {
   const bytes = new TextEncoder().encode(s);
@@ -66,9 +68,12 @@ export function createBranchesController(deps: BranchesControllerDeps) {
         return c.json({ error: "FORBIDDEN", message: "Auth required" }, 403);
       }
       try {
-        const body = await parseBody<{ mountPath: string; ttl?: number; parentBranchId?: string }>(
-          c
-        );
+        const body = await parseBody<{
+          mountPath: string;
+          ttl?: number;
+          parentBranchId?: string;
+          initialTransfers?: TransferSpec;
+        }>(c);
         const mountPath =
           typeof body.mountPath === "string" ? body.mountPath.trim().replace(/^\/+|\/+$/g, "") : "";
         if (!mountPath) {
@@ -82,6 +87,9 @@ export function createBranchesController(deps: BranchesControllerDeps) {
           typeof body.parentBranchId === "string"
             ? body.parentBranchId.trim() || undefined
             : undefined;
+        if (body.initialTransfers !== undefined) {
+          validateTransferSpec(body.initialTransfers);
+        }
 
         const realmId = auth.type === "user" ? auth.userId : auth.realmId;
 
@@ -260,6 +268,37 @@ export function createBranchesController(deps: BranchesControllerDeps) {
       return c.json({ revoked: branchId }, 200);
     },
 
+    async close(c: Context<Env>) {
+      const auth = c.get("auth");
+      if (!auth) {
+        return c.json({ error: "FORBIDDEN", message: "Auth required" }, 403);
+      }
+      const branchId = c.req.param("branchId");
+      if (!branchId) {
+        return c.json({ error: "BAD_REQUEST", message: "branchId required" }, 400);
+      }
+      if (auth.type === "worker") {
+        if (auth.branchId !== branchId && branchId !== "me") {
+          return c.json({ error: "FORBIDDEN", message: "Can only close own branch" }, 403);
+        }
+        const selfBranchId = branchId === "me" ? auth.branchId : branchId;
+        const branch = await deps.branchStore.getBranch(selfBranchId);
+        if (!branch) return c.json({ closed: selfBranchId }, 200);
+        await deps.branchStore.removeBranch(selfBranchId);
+        return c.json({ closed: selfBranchId }, 200);
+      }
+      if (!hasBranchManage(auth)) {
+        return c.json({ error: "FORBIDDEN", message: "branch_manage or user required" }, 403);
+      }
+      const realmId = auth.type === "user" ? auth.userId : auth.realmId;
+      const branch = await deps.branchStore.getBranch(branchId);
+      if (!branch || branch.realmId !== realmId) {
+        return c.json({ closed: branchId }, 200);
+      }
+      await deps.branchStore.removeBranch(branchId);
+      return c.json({ closed: branchId }, 200);
+    },
+
     async complete(c: Context<Env>) {
       const auth = c.get("auth");
       if (!auth || auth.type !== "worker") {
@@ -287,6 +326,49 @@ export function createBranchesController(deps: BranchesControllerDeps) {
           return c.json({ error: "NOT_FOUND", message }, 404);
         }
         if (message.includes("Cannot complete root") || message.includes("Invalid mount path")) {
+          return c.json({ error: "BAD_REQUEST", message }, 400);
+        }
+        throw err;
+      }
+    },
+
+    async transferPaths(c: Context<Env>) {
+      const auth = c.get("auth");
+      if (!auth) {
+        return c.json({ error: "FORBIDDEN", message: "Auth required" }, 403);
+      }
+      try {
+        const body = await parseBody<TransferSpec>(c);
+        const normalized = validateTransferSpec(body);
+        const targetBranchId = c.req.param("branchId");
+        if (!targetBranchId) {
+          return c.json({ error: "BAD_REQUEST", message: "branchId required" }, 400);
+        }
+        if (normalized.target !== targetBranchId) {
+          return c.json({ error: "BAD_REQUEST", message: "target must equal path branchId" }, 400);
+        }
+        if (auth.type === "worker") {
+          if (auth.branchId !== targetBranchId || normalized.source !== auth.branchId) {
+            return c.json(
+              { error: "FORBIDDEN", message: "Worker can only transfer within own branch" },
+              403
+            );
+          }
+        } else if (!hasBranchManage(auth)) {
+          return c.json({ error: "FORBIDDEN", message: "branch_manage or user required" }, 403);
+        }
+        const result = await executeTransfer(normalized, deps);
+        return c.json(result, 200);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "transfer_paths failed";
+        if (
+          message.includes("required") ||
+          message.includes("must not") ||
+          message.includes("exists") ||
+          message.includes("not found") ||
+          message.includes("same realm") ||
+          message.includes("not implemented")
+        ) {
           return c.json({ error: "BAD_REQUEST", message }, 400);
         }
         throw err;

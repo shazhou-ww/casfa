@@ -1,5 +1,5 @@
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
-import { Box, Button, ButtonGroup, Paper, Tooltip, Typography } from "@mui/material";
+import { Box, IconButton, Paper, Tooltip, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -449,18 +449,30 @@ function ToolCallCard({
 }) {
   const [open, setOpen] = useState(false);
   const displayName = formatToolDisplayName(block.name, serverNameBySafeId);
+  const toolCopyText = toolBlockToCopyText(block, displayName);
   return (
     <Box
       sx={{
+        position: "relative",
         borderRadius: 1,
         overflow: "hidden",
         bgcolor: (theme) => toolBubbleBg(theme.palette.mode),
+        "& .tool-copy-btn": {
+          opacity: 0,
+          pointerEvents: "none",
+          transition: "opacity 0.2s ease",
+        },
+        "&:hover .tool-copy-btn": {
+          opacity: 1,
+          pointerEvents: "auto",
+        },
       }}
     >
       <Box
         onClick={() => setOpen((v) => !v)}
         role="button"
         sx={{
+          position: "relative",
           px: 0.75,
           py: 0.5,
           display: "flex",
@@ -469,12 +481,14 @@ function ToolCallCard({
           userSelect: "none",
           gap: 0.5,
           borderRadius: 1,
+          pr: 3.8,
           transition: "background-color 0.12s ease",
           "&:hover": {
             bgcolor: (theme) => toolBubbleHoverBg(theme.palette.mode),
           },
         }}
       >
+        <HoverCopyButton className="tool-copy-btn" text={toolCopyText} top={13} right={6} centerY />
         <CollapseSign open={open} />
         <Typography variant="caption" sx={{ fontFamily: "monospace", fontSize: "0.72rem" }}>
           {displayName}
@@ -482,9 +496,9 @@ function ToolCallCard({
       </Box>
       {open && (
         <Box sx={{ p: 0.75 }}>
-          <YamlTreeView raw={block.request} rootLabel="request" />
+          <ToolIoBubble label="request" raw={block.request} />
           <Box sx={{ mt: 0.35 }}>
-            <YamlTreeView raw={block.response ?? ""} rootLabel="response" />
+            <ToolIoBubble label="response" raw={block.response ?? ""} />
           </Box>
         </Box>
       )}
@@ -505,6 +519,85 @@ async function copyText(text: string): Promise<void> {
   textarea.select();
   document.execCommand("copy");
   document.body.removeChild(textarea);
+}
+
+function HoverCopyButton({
+  className,
+  text,
+  light = false,
+  top = 6,
+  right = 6,
+  centerY = false,
+}: {
+  className: string;
+  text: string;
+  light?: boolean;
+  top?: number;
+  right?: number;
+  centerY?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1200);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  return (
+    <Box
+      className={className}
+      sx={{
+        position: "absolute",
+        top,
+        right,
+        zIndex: 2,
+        ...(centerY ? { transform: "translateY(-50%)" } : {}),
+      }}
+    >
+      <Tooltip title={copied ? "已复制" : "复制"}>
+        <IconButton
+          size="small"
+          onClick={(event) => {
+            event.stopPropagation();
+            void copyText(text).then(() => setCopied(true));
+          }}
+          sx={{
+            width: 22,
+            height: 22,
+            color: light ? "primary.contrastText" : "text.primary",
+            bgcolor: light ? "rgba(255,255,255,0.16)" : "action.hover",
+            "&:hover": {
+              bgcolor: light ? "rgba(255,255,255,0.24)" : "action.selected",
+            },
+          }}
+        >
+          <ContentCopyRoundedIcon sx={{ fontSize: 14 }} />
+        </IconButton>
+      </Tooltip>
+    </Box>
+  );
+}
+
+function toolBlockToCopyText(block: ToolCallBlock, displayName: string): string {
+  return [
+    `tool call: ${displayName}`,
+    `request:\n${formatJsonIfPossible(block.request)}`,
+    `response:\n${formatJsonIfPossible(block.response ?? "")}`,
+  ].join("\n\n");
+}
+
+function ToolIoBubble({ label, raw }: { label: "request" | "response"; raw: string }) {
+  return (
+    <Box
+      sx={{
+        borderRadius: 0.75,
+        px: 0.25,
+        py: 0.25,
+      }}
+    >
+      <YamlTreeView raw={raw} rootLabel={label} />
+    </Box>
+  );
 }
 
 function messageToCopyText(message: Message): string {
@@ -531,12 +624,6 @@ export function MessageList({ messages }: { messages: Message[] }) {
   const serverNameBySafeId = new Map(
     mcpServers.map((server) => [toFunctionSafeName(server.id), server.name ?? server.id] as const)
   );
-  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
-  useEffect(() => {
-    if (!copiedMessageId) return;
-    const timer = window.setTimeout(() => setCopiedMessageId(null), 1500);
-    return () => window.clearTimeout(timer);
-  }, [copiedMessageId]);
 
   if (messages.length === 0) {
     return (
@@ -551,7 +638,6 @@ export function MessageList({ messages }: { messages: Message[] }) {
         (() => {
           const isUser = m.role === "user";
           const blocks = groupContentParts(m.content);
-          const copied = copiedMessageId === m.messageId;
           return (
             <Paper
               key={m.messageId}
@@ -574,39 +660,7 @@ export function MessageList({ messages }: { messages: Message[] }) {
                 },
               }}
             >
-              <Box className="message-toolbar" sx={{ position: "absolute", top: 6, right: 6, zIndex: 1 }}>
-                <Tooltip title={copied ? "已复制" : "复制"}>
-                  <ButtonGroup
-                    size="small"
-                    variant="outlined"
-                    sx={{
-                      "& .MuiButton-root": {
-                        minWidth: 22,
-                        width: 22,
-                        height: 22,
-                        p: 0,
-                        color: isUser ? "primary.contrastText" : "text.primary",
-                        bgcolor: isUser ? "rgba(255,255,255,0.16)" : "action.hover",
-                        borderColor: isUser ? "rgba(255,255,255,0.35)" : "divider",
-                        "&:hover": {
-                          bgcolor: isUser ? "rgba(255,255,255,0.24)" : "action.selected",
-                          borderColor: isUser ? "rgba(255,255,255,0.45)" : "divider",
-                        },
-                      },
-                    }}
-                  >
-                    <Button
-                      onClick={() => {
-                        void copyText(messageToCopyText(m)).then(() => {
-                          setCopiedMessageId(m.messageId);
-                        });
-                      }}
-                    >
-                      <ContentCopyRoundedIcon sx={{ fontSize: 14 }} />
-                    </Button>
-                  </ButtonGroup>
-                </Tooltip>
-              </Box>
+              <HoverCopyButton className="message-toolbar" text={messageToCopyText(m)} light={isUser} top={15} right={10} centerY />
               <Typography variant="caption" sx={{ opacity: 0.8, display: "block", mb: 0.5 }}>
                 {m.role}
               </Typography>

@@ -58,6 +58,52 @@ describe("Branches / Worker", () => {
     expect(data.accessToken).toBeDefined();
   });
 
+  it("create branch accepts initialTransfers with valid mapping", async () => {
+    const token = await ctx.helpers.createUserToken(realmId);
+    await ctx.helpers.authRequest(token, "POST", `/api/realm/${realmId}/fs/mkdir`, {
+      path: "initTransfersOk",
+    });
+    const sourceBranch = await ctx.helpers.createBranch(token, realmId, {
+      mountPath: "initTransfersOk",
+    });
+    const res = await ctx.helpers.authRequest(token, "POST", `/api/realm/${realmId}/branches`, {
+      mountPath: "initTransfersOk",
+      initialTransfers: {
+        source: sourceBranch.branchId,
+        target: "to-be-overridden-at-runtime",
+        mapping: {
+          "a.png": "inputs/a.png",
+        },
+        mode: "replace",
+      },
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("create branch rejects initialTransfers target parent-child conflict", async () => {
+    const token = await ctx.helpers.createUserToken(realmId);
+    await ctx.helpers.authRequest(token, "POST", `/api/realm/${realmId}/fs/mkdir`, {
+      path: "initTransfersBad",
+    });
+    const sourceBranch = await ctx.helpers.createBranch(token, realmId, {
+      mountPath: "initTransfersBad",
+    });
+    const res = await ctx.helpers.authRequest(token, "POST", `/api/realm/${realmId}/branches`, {
+      mountPath: "initTransfersBad",
+      initialTransfers: {
+        source: sourceBranch.branchId,
+        target: "to-be-overridden-at-runtime",
+        mapping: {
+          "a.png": "out",
+          "b.png": "out/sub/b.png",
+        },
+      },
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { message?: string };
+    expect(body.message).toContain("ancestor/descendant");
+  });
+
   it("worker token can list own branch", async () => {
     const token = await ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(token, "POST", `/api/realm/${realmId}/fs/mkdir`, {

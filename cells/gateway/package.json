@@ -1,0 +1,52 @@
+{
+  "name": "@casfa/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./backend": "./backend/app.ts",
+    "./backend/*": "./backend/*",
+    "./frontend": "./frontend/main.tsx",
+    "./frontend/*": "./frontend/*",
+    "./cell.yaml": "./cell.yaml"
+  },
+  "scripts": {
+    "aws:login": "cell aws login",
+    "aws:logout": "cell aws logout",
+    "clean": "cell clean",
+    "setup": "cell setup",
+    "dev": "cell dev",
+    "build": "cell build",
+    "deploy": "cell deploy",
+    "typecheck": "cell typecheck",
+    "test": "cell test",
+    "test:unit": "cell test:unit",
+    "test:e2e": "cell test:e2e",
+    "lint": "cell lint"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.700.0",
+    "@aws-sdk/lib-dynamodb": "^3.700.0",
+    "@casfa/cell-auth-webui": "workspace:*",
+    "@casfa/cell-auth-server": "workspace:*",
+    "@casfa/cell-cognito-server": "workspace:*",
+    "@casfa/cell-delegates-server": "workspace:*",
+    "@casfa/cell-mcp": "workspace:*",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@mui/icons-material": "^7.3.8",
+    "@mui/material": "^7.3.8",
+    "hono": "^4.6.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.22.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@casfa/cell-cli": "workspace:*",
+    "@types/bun": "latest",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "typescript": "^5.8.3"
+  }
+}
