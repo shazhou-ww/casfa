@@ -56,6 +56,24 @@ bun run deploy
   1. 使用 BFL FLUX API 生成图片。
   2. 将图片写入 branch 根（PUT /api/realm/me/root），再 complete branch。
 
+## Tool: `flux_image_edit`
+
+- **入参**
+  - `casfaBranchUrl`（必填）：Casfa branch 根 URL（`accessUrlPrefix`）。
+  - `inputImagePath`（必填）：branch 内输入图片相对路径（例如 `inputs/ref.png`）。
+  - `prompt`（必填）：编辑提示词。
+  - 可选：`seed`、`safety_tolerance`、`output_format`。
+
+- **出参（成功）**
+  - `success`: `true`
+  - `completed`: 被合并的 branchId。
+  - `key`: 输出图片 CAS 节点 key。
+
+- **流程**
+  1. 基于 `inputImagePath` 生成 branch 内输入图 URL（优先短期受限 URL，失败则回退普通 branch URL）。
+  2. 调用 BFL `flux-kontext-pro` 进行 image-to-image。
+  3. 将输出写入 branch 根并 complete。
+
 ## 工程结构
 
 - `backend/app.ts`：`createApp(deps)`，SSO 重定向、delegate OAuth、delegates API、MCP 路由。

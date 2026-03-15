@@ -20,6 +20,14 @@ export type BflGenerateParams = {
   output_format?: "jpeg" | "png";
 };
 
+export type BflGenerateEditParams = {
+  prompt: string;
+  input_image: string;
+  seed?: number;
+  safety_tolerance?: number;
+  output_format?: "jpeg" | "png";
+};
+
 type BflSubmitResponse = {
   id?: string;
   polling_url: string;
@@ -48,6 +56,64 @@ export function createBflClient(options?: Partial<BflFluxOptions>) {
   const baseUrl = (options?.baseUrl ?? getEnv("BFL_BASE_URL") ?? DEFAULT_BASE).replace(/\/$/, "");
   const modelPath = options?.modelPath ?? DEFAULT_MODEL;
   const endpoint = `${baseUrl}${modelPath}`;
+  const kontextEndpoint = `${baseUrl}/v1/flux-kontext-pro`;
+
+  async function submitPollAndDownload(
+    submitUrl: string,
+    body: Record<string, unknown>,
+    apiKeyValue: string
+  ): Promise<Uint8Array> {
+    const submitRes = await fetch(submitUrl, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "Content-Type": "application/json",
+        "x-key": apiKeyValue,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!submitRes.ok) {
+      const text = await submitRes.text();
+      throw new Error(`BFL submit failed ${submitRes.status}: ${text}`);
+    }
+    const submitJson = (await submitRes.json()) as BflSubmitResponse;
+    const pollingUrl = submitJson.polling_url;
+    if (!pollingUrl) {
+      throw new Error("BFL response missing polling_url");
+    }
+
+    let pollRes: BflPollResponse;
+    let attempts = 0;
+    const maxAttempts = 120;
+    const intervalMs = 1000;
+    do {
+      await new Promise((r) => setTimeout(r, intervalMs));
+      const poll = await fetch(pollingUrl, {
+        method: "GET",
+        headers: { accept: "application/json", "x-key": apiKeyValue },
+      });
+      if (!poll.ok) {
+        throw new Error(`BFL poll failed ${poll.status}: ${await poll.text()}`);
+      }
+      pollRes = (await poll.json()) as BflPollResponse;
+      attempts++;
+      if (pollRes.status === "Failed") {
+        throw new Error(`BFL generation failed: ${pollRes.error ?? "unknown"}`);
+      }
+      if (pollRes.status === "Ready") break;
+    } while (attempts < maxAttempts);
+
+    if (pollRes.status !== "Ready" || !pollRes.result?.sample) {
+      throw new Error("BFL generation did not complete with image URL");
+    }
+    const imageUrl = pollRes.result.sample;
+    const imageRes = await fetch(imageUrl);
+    if (!imageRes.ok) {
+      throw new Error(`BFL image download failed ${imageRes.status}`);
+    }
+    const buf = await imageRes.arrayBuffer();
+    return new Uint8Array(buf);
+  }
 
   return {
     /**
@@ -66,57 +132,24 @@ export function createBflClient(options?: Partial<BflFluxOptions>) {
       if (params.seed !== undefined) body.seed = params.seed;
       if (params.safety_tolerance !== undefined) body.safety_tolerance = params.safety_tolerance;
       if (params.output_format) body.output_format = params.output_format;
+      return submitPollAndDownload(endpoint, body, apiKey);
+    },
 
-      const submitRes = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "Content-Type": "application/json",
-          "x-key": apiKey,
-        },
-        body: JSON.stringify(body),
-      });
-      if (!submitRes.ok) {
-        const text = await submitRes.text();
-        throw new Error(`BFL submit failed ${submitRes.status}: ${text}`);
+    /**
+     * Edit image with FLUX Kontext model (image-to-image).
+     */
+    async generateImageEdit(params: BflGenerateEditParams): Promise<Uint8Array> {
+      if (!apiKey) {
+        throw new Error("BFL_API_KEY is not set (env or options.apiKey)");
       }
-      const submitJson = (await submitRes.json()) as BflSubmitResponse;
-      const pollingUrl = submitJson.polling_url;
-      if (!pollingUrl) {
-        throw new Error("BFL response missing polling_url");
-      }
-
-      let pollRes: BflPollResponse;
-      let attempts = 0;
-      const maxAttempts = 120;
-      const intervalMs = 1000;
-      do {
-        await new Promise((r) => setTimeout(r, intervalMs));
-        const poll = await fetch(pollingUrl, {
-          method: "GET",
-          headers: { accept: "application/json", "x-key": apiKey },
-        });
-        if (!poll.ok) {
-          throw new Error(`BFL poll failed ${poll.status}: ${await poll.text()}`);
-        }
-        pollRes = (await poll.json()) as BflPollResponse;
-        attempts++;
-        if (pollRes.status === "Failed") {
-          throw new Error(`BFL generation failed: ${pollRes.error ?? "unknown"}`);
-        }
-        if (pollRes.status === "Ready") break;
-      } while (attempts < maxAttempts);
-
-      if (pollRes.status !== "Ready" || !pollRes.result?.sample) {
-        throw new Error("BFL generation did not complete with image URL");
-      }
-      const imageUrl = pollRes.result.sample;
-      const imageRes = await fetch(imageUrl);
-      if (!imageRes.ok) {
-        throw new Error(`BFL image download failed ${imageRes.status}`);
-      }
-      const buf = await imageRes.arrayBuffer();
-      return new Uint8Array(buf);
+      const body: Record<string, unknown> = {
+        prompt: params.prompt,
+        input_image: params.input_image,
+      };
+      if (params.seed !== undefined) body.seed = params.seed;
+      if (params.safety_tolerance !== undefined) body.safety_tolerance = params.safety_tolerance;
+      if (params.output_format) body.output_format = params.output_format;
+      return submitPollAndDownload(kontextEndpoint, body, apiKey);
     },
   };
 }

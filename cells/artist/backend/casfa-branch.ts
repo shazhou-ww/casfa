@@ -24,6 +24,14 @@ export function createCasfaBranchClient(options?: Partial<CasfaBranchOptions>) {
     return `${branchRootUrl}${p}`;
   }
 
+  function encodePathSegments(path: string): string {
+    return path
+      .split("/")
+      .filter((segment) => segment.length > 0)
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+  }
+
   return {
     /**
      * Set branch root to the given file content (single file node as root). Use for branches
@@ -90,6 +98,39 @@ export function createCasfaBranchClient(options?: Partial<CasfaBranchOptions>) {
       }
       const json = (await res.json()) as { path: string; key: string };
       return json;
+    },
+
+    /**
+     * Build branch-scoped readable file URL for image input.
+     */
+    getFileReadUrl(path: string): string {
+      if (!branchRootUrl) throw new Error("branchRootUrl is required (options or CASFA_BRANCH_URL)");
+      return apiUrl(`/api/realm/me/files/${encodePathSegments(path)}`);
+    },
+
+    /**
+     * Try to request a short-lived restricted file URL from drive.
+     * If drive has not enabled this endpoint, callers should fallback to getFileReadUrl().
+     */
+    async getRestrictedFileUrl(path: string): Promise<string> {
+      if (!branchRootUrl) throw new Error("branchRootUrl is required (options or CASFA_BRANCH_URL)");
+      const res = await fetch(apiUrl("/api/realm/me/branches/me/restricted-file-access"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
+      });
+      if (!res.ok) {
+        throw new Error(`Casfa restricted file access failed ${res.status}`);
+      }
+      const payload = (await res.json()) as {
+        restrictedUrl?: string;
+        url?: string;
+      };
+      const candidate = payload.restrictedUrl ?? payload.url;
+      if (!candidate) {
+        throw new Error("Casfa restricted file access missing restrictedUrl");
+      }
+      return candidate;
     },
 
     /**
