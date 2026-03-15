@@ -26,7 +26,7 @@ export function resolveDevPublicBaseUrl(options: {
  */
 export async function devCommand(
   rootDir: string,
-  options?: { tunnel?: boolean; tunnelHost?: string; tunnelConfig?: string }
+  options?: { tunnel?: boolean; tunnelHost?: string; tunnelConfig?: string; tunnelProtocol?: string }
 ): Promise<void> {
   const root = resolve(rootDir);
   const aws = await checkAwsCredentials(root);
@@ -55,6 +55,7 @@ export async function devCommand(
     tunnelHandle = await startTunnel(root, {
       tunnelConfigPath: options.tunnelConfig,
       tunnelHost: options.tunnelHost,
+      tunnelProtocol: options.tunnelProtocol,
     });
     publicBaseUrl = tunnelHandle.publicBaseUrl;
     console.log(`[tunnel] Started. Public base URL: ${publicBaseUrl}`);
