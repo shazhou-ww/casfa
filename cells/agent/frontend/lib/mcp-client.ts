@@ -50,7 +50,9 @@ async function mcpRequest<T>(
 
   if (res.status === 401) {
     await removeMCPToken(serverId);
-    useAgentStore.getState().addMcpServerNeedingLogin(serverId);
+    // Compatibility: this method was removed from store; keep 401 behavior without crashing.
+    const store = useAgentStore.getState() as { addMcpServerNeedingLogin?: (id: string) => void };
+    store.addMcpServerNeedingLogin?.(serverId);
     throw new MCPAuthRequiredError("MCP server returned 401", res, serverUrl, serverId);
   }
   if (!res.ok) {

@@ -37,6 +37,40 @@ export type OAuthDiscoveryResult = {
   asBaseUrl: string;
 };
 
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+/**
+ * In HTTPS pages (e.g. tunnel), non-loopback HTTP OAuth metadata causes mixed-content blocking.
+ * Upgrade discovered URLs to HTTPS defensively for browser-side discovery.
+ */
+function maybeUpgradeToHttps(rawUrl: string): string {
+  try {
+    const u = new URL(rawUrl);
+    if (u.protocol !== "http:") return rawUrl;
+    if (isLoopbackHost(u.hostname)) return rawUrl;
+    if (typeof window === "undefined") return rawUrl;
+    if (window.location.protocol !== "https:") return rawUrl;
+    u.protocol = "https:";
+    return u.toString().replace(/\/$/, "");
+  } catch {
+    return rawUrl;
+  }
+}
+
+function normalizeAsMetadata(metadata: OAuthAuthorizationServerMetadata): OAuthAuthorizationServerMetadata {
+  return {
+    ...metadata,
+    ...(metadata.issuer ? { issuer: maybeUpgradeToHttps(metadata.issuer) } : {}),
+    authorization_endpoint: maybeUpgradeToHttps(metadata.authorization_endpoint),
+    token_endpoint: maybeUpgradeToHttps(metadata.token_endpoint),
+    ...(metadata.registration_endpoint
+      ? { registration_endpoint: maybeUpgradeToHttps(metadata.registration_endpoint) }
+      : {}),
+  };
+}
+
 /** Parse WWW-Authenticate header for resource_metadata (RFC 9728). */
 export function parseWwwAuthenticateResourceMetadata(wwwAuth: string | null): string | null {
   if (!wwwAuth) return null;
@@ -53,8 +87,9 @@ export async function fetchResourceMetadata(url: string): Promise<OAuthProtected
 
 /** Try OIDC and RFC8414 well-known paths for AS metadata. */
 export async function fetchAuthorizationServerMetadata(issuerUrl: string): Promise<OAuthAuthorizationServerMetadata> {
-  const base = issuerUrl.replace(/\/$/, "");
-  const rfc8414Url = buildOAuthAuthorizationServerMetadataUrl(issuerUrl);
+  const normalizedIssuer = maybeUpgradeToHttps(issuerUrl);
+  const base = normalizedIssuer.replace(/\/$/, "");
+  const rfc8414Url = buildOAuthAuthorizationServerMetadataUrl(normalizedIssuer);
   const candidates = [
     rfc8414Url,
     `${base}/.well-known/openid-configuration`,
@@ -63,12 +98,12 @@ export async function fetchAuthorizationServerMetadata(issuerUrl: string): Promi
   for (const url of candidates) {
     try {
       const res = await fetch(url, { method: "GET", credentials: "omit" });
-      if (res.ok) return (await res.json()) as OAuthAuthorizationServerMetadata;
+      if (res.ok) return normalizeAsMetadata((await res.json()) as OAuthAuthorizationServerMetadata);
     } catch {
       /* try next */
     }
   }
-  throw new Error(`Could not fetch AS metadata from ${issuerUrl}`);
+  throw new Error(`Could not fetch AS metadata from ${normalizedIssuer}`);
 }
 
 /** Discover from 401 response: WWW-Authenticate -> resource_metadata -> AS metadata. */
@@ -87,7 +122,7 @@ export async function discoverFrom401(response: Response, serverUrl: string): Pr
   }
   const authServers = resourceMetadata.authorization_servers;
   if (!authServers?.length) throw new Error("No authorization_servers in resource metadata");
-  const asBaseUrl = authServers[0];
+  const asBaseUrl = maybeUpgradeToHttps(authServers[0]);
   const asMetadata = await fetchAuthorizationServerMetadata(asBaseUrl);
   return {
     resourceMetadata,
@@ -132,12 +167,13 @@ export async function discoverFromConfig(config: MCPServerConfig): Promise<OAuth
     const meta = await fetchResourceMetadataFromWellKnown(baseUrl);
     const authServers = meta.authorization_servers;
     if (authServers?.length) {
-      const asMetadata = await fetchAuthorizationServerMetadata(authServers[0]);
+      const asBaseUrl = maybeUpgradeToHttps(authServers[0]);
+      const asMetadata = await fetchAuthorizationServerMetadata(asBaseUrl);
       return {
         resourceMetadata: meta,
         asMetadata,
         resourceUrl: baseUrl,
-        asBaseUrl: authServers[0],
+        asBaseUrl,
       };
     }
   } catch {
@@ -153,12 +189,13 @@ export async function discoverFromConfig(config: MCPServerConfig): Promise<OAuth
       const meta = (await res.json()) as OAuthProtectedResourceMetadata;
       const authServers = meta.authorization_servers;
       if (authServers?.length) {
-        const asMetadata = await fetchAuthorizationServerMetadata(authServers[0]);
+        const asBaseUrl = maybeUpgradeToHttps(authServers[0]);
+        const asMetadata = await fetchAuthorizationServerMetadata(asBaseUrl);
         return {
           resourceMetadata: meta,
           asMetadata,
           resourceUrl: baseUrl,
-          asBaseUrl: authServers[0],
+          asBaseUrl,
         };
       }
     }
