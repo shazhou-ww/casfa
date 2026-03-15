@@ -117,7 +117,7 @@ export type DerivedContext = {
 const META_TOOL_NAME_SET = new Set<string>([
   "list_mcp_servers",
   "get_mcp_tools",
-  "load_tool",
+  "load_tools",
 ]);
 
 /**
@@ -133,7 +133,7 @@ export function deriveContext(messages: LlmMessage[], config: ContextConfigurati
   }
 
   const toolResultByCallId = new Map<string, string>();
-  const loadToolCallIds: string[] = [];
+  const loadToolsCallIds: string[] = [];
   for (const m of messages) {
     if (m.role === "tool") {
       toolResultByCallId.set(m.tool_call_id, m.content);
@@ -141,18 +141,29 @@ export function deriveContext(messages: LlmMessage[], config: ContextConfigurati
     }
     if (isAssistantWithTools(m)) {
       for (const tc of m.tool_calls ?? []) {
-        if (tc.function.name === "load_tool") loadToolCallIds.push(tc.id);
+        if (tc.function.name === "load_tools" || tc.function.name === "load_tool") loadToolsCallIds.push(tc.id);
       }
     }
   }
   const loadedToolNames = new Set<string>();
-  for (const callId of loadToolCallIds) {
+  for (const callId of loadToolsCallIds) {
     const raw = toolResultByCallId.get(callId);
     if (!raw) continue;
     try {
-      const parsed = JSON.parse(raw) as { result?: string; loadedToolName?: string };
+      const parsed = JSON.parse(raw) as {
+        result?: string;
+        loadedToolName?: string;
+        results?: Array<{ result?: string; loadedToolName?: string }>;
+      };
+      // Backward compatibility for old single-load shape.
       if (parsed.result === "success" && typeof parsed.loadedToolName === "string" && parsed.loadedToolName.trim()) {
         loadedToolNames.add(parsed.loadedToolName);
+      }
+      // New batch-load shape.
+      for (const item of parsed.results ?? []) {
+        if (item.result === "success" && typeof item.loadedToolName === "string" && item.loadedToolName.trim()) {
+          loadedToolNames.add(item.loadedToolName);
+        }
       }
     } catch {
       /* ignore malformed tool result */

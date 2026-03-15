@@ -1,6 +1,6 @@
 /**
- * MCP meta-tools for the Service Worker: list_mcp_servers, get_mcp_tools, load_tool.
- * Progressive discovery (Level 0: servers, Level 1: tools per server, Level 2: load one tool schema).
+ * MCP meta-tools for the Service Worker: list_mcp_servers, get_mcp_tools, load_tools.
+ * Progressive discovery (Level 0: servers, Level 1: tools per server, Level 2: load tool schemas).
  */
 
 import { listPrompts, listTools, mcpCall } from "../lib/mcp-client.ts";
@@ -29,17 +29,31 @@ export type ListMcpServersResult = {
   }>;
 };
 
-export type GetMcpToolsResult = {
+export type GetMcpToolsServerResult = {
   serverId: string;
   tools: Array<{ name: string; description?: string }>;
   prompts?: Array<{ name: string; description?: string }>;
+  error?: string;
 };
 
-export type LoadToolResult = {
+export type GetMcpToolsResult = {
+  servers: GetMcpToolsServerResult[];
+};
+
+export type LoadToolsItem = {
+  serverId: string;
+  toolName: string;
+};
+
+export type LoadToolsItemResult = {
   result: "success";
   serverId: string;
   toolName: string;
   loadedToolName: string;
+};
+
+export type LoadToolsResult = {
+  results: Array<LoadToolsItemResult | { result: "error"; serverId: string; toolName: string; error: string }>;
 };
 
 /** OpenAI-format tool for request body (type + function with name, description, parameters). */
@@ -157,7 +171,7 @@ export async function listMcpServers(state: ModelState): Promise<ListMcpServersR
 
 // ----- Level 1: get_mcp_tools -----
 
-export async function getMcpTools(state: ModelState, serverId: string): Promise<GetMcpToolsResult | { error: string }> {
+async function getMcpToolsForServer(state: ModelState, serverId: string): Promise<GetMcpToolsServerResult> {
   const configs = parseMcpServers(state.settings[MCP_SERVERS_SETTINGS_KEY]);
   const config = configs.find((c) => c.id === serverId);
   if (!config) {
@@ -165,9 +179,21 @@ export async function getMcpTools(state: ModelState, serverId: string): Promise<
       serverId,
       configs: summarizeConfigs(configs),
     });
-    return { error: "server not found: use exact serverId from list_mcp_servers" };
+    return {
+      serverId,
+      tools: [],
+      prompts: [],
+      error: "server not found: use exact serverId from list_mcp_servers",
+    };
   }
-  if (!config.url) return { error: "server has no url (http transport required)" };
+  if (!config.url) {
+    return {
+      serverId,
+      tools: [],
+      prompts: [],
+      error: "server has no url (http transport required)",
+    };
+  }
 
   try {
     console.info(`${MCP_DEBUG_PREFIX} get_mcp_tools request`, {
@@ -190,37 +216,49 @@ export async function getMcpTools(state: ModelState, serverId: string): Promise<
       promptCount: prompts.length,
       toolNames: tools.map((t) => t.name),
     });
-    return { serverId, tools, prompts };
+    return { serverId, tools, prompts, error: undefined };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`${MCP_DEBUG_PREFIX} get_mcp_tools error`, { serverId, message });
-    return { error: message };
+    return {
+      serverId,
+      tools: [],
+      prompts: [],
+      error: message,
+    };
   }
 }
 
-// ----- Level 2: load_tool -----
+export async function getMcpTools(state: ModelState, serverIds: string[]): Promise<GetMcpToolsResult | { error: string }> {
+  const dedupedServerIds = [...new Set(serverIds.map((id) => id.trim()).filter(Boolean))];
+  if (dedupedServerIds.length === 0) return { error: "serverIds is required and must be a non-empty string array" };
+  const servers = await Promise.all(dedupedServerIds.map((serverId) => getMcpToolsForServer(state, serverId)));
+  return { servers };
+}
 
-export async function loadTool(
+// ----- Level 2: load_tools -----
+
+async function loadSingleTool(
   state: ModelState,
   threadId: string,
   serverId: string,
   toolName: string
-): Promise<LoadToolResult | { error: string }> {
+): Promise<LoadToolsItemResult | { result: "error"; serverId: string; toolName: string; error: string }> {
   const configs = parseMcpServers(state.settings[MCP_SERVERS_SETTINGS_KEY]);
   const config = configs.find((c) => c.id === serverId);
   if (!config) {
-    console.warn(`${MCP_DEBUG_PREFIX} load_tool server not found`, {
+    console.warn(`${MCP_DEBUG_PREFIX} load_tools server not found`, {
       serverId,
       toolName,
       threadId,
       configs: summarizeConfigs(configs),
     });
-    return { error: "server not found: use exact serverId from list_mcp_servers" };
+    return { result: "error", serverId, toolName, error: "server not found: use exact serverId from list_mcp_servers" };
   }
-  if (!config.url) return { error: "server has no url (http transport required)" };
+  if (!config.url) return { result: "error", serverId, toolName, error: "server has no url (http transport required)" };
 
   try {
-    console.info(`${MCP_DEBUG_PREFIX} load_tool request`, {
+    console.info(`${MCP_DEBUG_PREFIX} load_tools request`, {
       serverId,
       serverName: config.name,
       toolName,
@@ -229,7 +267,7 @@ export async function loadTool(
     });
     const toolsResult = await listTools(config);
     const tool = (toolsResult.tools ?? []).find((t) => t.name === toolName);
-    if (!tool) return { error: "tool not found" };
+    if (!tool) return { result: "error", serverId, toolName, error: "tool not found" };
 
     const loadedToolName = buildLoadedToolName(serverId, toolName);
     const schema: OpenAIFormatTool = {
@@ -252,13 +290,13 @@ export async function loadTool(
     });
     pruneThreadLoadedTools(threadId);
 
-    const loaded: LoadToolResult = {
+    const loaded: LoadToolsItemResult = {
       result: "success",
       serverId,
       toolName,
       loadedToolName,
     };
-    console.info(`${MCP_DEBUG_PREFIX} load_tool response`, {
+    console.info(`${MCP_DEBUG_PREFIX} load_tools response`, {
       serverId,
       toolName,
       threadId,
@@ -267,14 +305,32 @@ export async function loadTool(
     return loaded;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`${MCP_DEBUG_PREFIX} load_tool error`, {
+    console.error(`${MCP_DEBUG_PREFIX} load_tools error`, {
       serverId,
       toolName,
       threadId,
       message,
     });
-    return { error: message };
+    return { result: "error", serverId, toolName, error: message };
   }
+}
+
+export async function loadTools(
+  state: ModelState,
+  threadId: string,
+  tools: LoadToolsItem[]
+): Promise<LoadToolsResult | { error: string }> {
+  const dedupedTools = [
+    ...new Map(
+      tools
+        .map((item) => ({ serverId: item.serverId.trim(), toolName: item.toolName.trim() }))
+        .filter((item) => item.serverId && item.toolName)
+        .map((item) => [`${item.serverId}::${item.toolName}`, item] as const)
+    ).values(),
+  ];
+  if (dedupedTools.length === 0) return { error: "tools is required and must include at least one valid {serverId, toolName}" };
+  const results = await Promise.all(dedupedTools.map((item) => loadSingleTool(state, threadId, item.serverId, item.toolName)));
+  return { results };
 }
 
 // ----- run_mcp_tool -----
@@ -353,7 +409,8 @@ const LIST_MCP_SERVERS_SCHEMA: OpenAIFormatTool = {
   type: "function",
   function: {
     name: "list_mcp_servers",
-    description: "List all configured MCP servers that have a URL (Level 0 discovery). Use get_mcp_tools(serverId) to list tools for a server.",
+    description:
+      "List all configured MCP servers that have a URL (Level 0 discovery). Use get_mcp_tools(serverIds) to list tools for one or more servers.",
     parameters: { type: "object" as const, properties: {} as Record<string, never>, required: [] as string[] },
   },
 };
@@ -363,30 +420,46 @@ const GET_MCP_TOOLS_SCHEMA: OpenAIFormatTool = {
   function: {
     name: "get_mcp_tools",
     description:
-      "List tools (name and description only, no schema) and optional prompts for a specific MCP server (Level 1 discovery). Prefer exact serverId from list_mcp_servers.",
+      "Batch list tools (name/description only) and optional prompts for MCP servers (Level 1 discovery). Prefer exact serverIds from list_mcp_servers. If multiple servers are relevant in this turn, pass them together in one call instead of multiple single-server calls.",
     parameters: {
       type: "object" as const,
       properties: {
-        serverId: { type: "string" as const, description: "MCP server id from list_mcp_servers" },
+        serverIds: {
+          type: "array" as const,
+          description:
+            "One or more MCP server ids from list_mcp_servers. Include all candidate servers for this turn in a single request whenever possible.",
+          items: { type: "string" as const },
+        },
       },
-      required: ["serverId"] as string[],
+      required: ["serverIds"] as string[],
     },
   },
 };
 
-const LOAD_TOOL_SCHEMA: OpenAIFormatTool = {
+const LOAD_TOOLS_SCHEMA: OpenAIFormatTool = {
   type: "function",
   function: {
-    name: "load_tool",
+    name: "load_tools",
     description:
-      "Load one MCP tool schema into the active context. After success, call the returned loadedToolName directly as a function.",
+      "Batch load MCP tool schemas into the active context. If you need multiple tools, load them in one call instead of repeated single-tool calls. After success, call each returned loadedToolName directly.",
     parameters: {
       type: "object" as const,
       properties: {
-        serverId: { type: "string" as const, description: "MCP server id" },
-        toolName: { type: "string" as const, description: "Tool name from get_mcp_tools" },
+        tools: {
+          type: "array" as const,
+          description:
+            "Tools to load into current thread context. Include all tools needed for this turn in one request whenever possible.",
+          items: {
+            type: "object" as const,
+            properties: {
+              serverId: { type: "string" as const, description: "MCP server id" },
+              toolName: { type: "string" as const, description: "Tool name from get_mcp_tools result" },
+            },
+            required: ["serverId", "toolName"] as string[],
+          },
+        },
       },
-      required: ["serverId", "toolName"] as string[],
+      required: ["tools"] as string[],
     },
   },
 };
@@ -394,12 +467,12 @@ const LOAD_TOOL_SCHEMA: OpenAIFormatTool = {
 export const metaToolSchemas: OpenAIFormatTool[] = [
   LIST_MCP_SERVERS_SCHEMA,
   GET_MCP_TOOLS_SCHEMA,
-  LOAD_TOOL_SCHEMA,
+  LOAD_TOOLS_SCHEMA,
 ];
 
 // ----- Execute meta tool -----
 
-const META_TOOL_NAMES = ["list_mcp_servers", "get_mcp_tools", "load_tool"] as const;
+const META_TOOL_NAMES = ["list_mcp_servers", "get_mcp_tools", "load_tools", "load_tool"] as const;
 
 export async function executeMetaTool(
   name: string,
@@ -413,14 +486,26 @@ export async function executeMetaTool(
       return JSON.stringify(result);
     }
     case "get_mcp_tools": {
-      const serverId = typeof args.serverId === "string" ? args.serverId : "";
-      const result = await getMcpTools(state, serverId);
+      const serverIds = Array.isArray(args.serverIds) ? args.serverIds.filter((id): id is string => typeof id === "string") : [];
+      const result = await getMcpTools(state, serverIds);
+      return JSON.stringify(result);
+    }
+    case "load_tools": {
+      const tools = Array.isArray(args.tools)
+        ? args.tools
+            .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+            .map((item) => ({
+              serverId: typeof item.serverId === "string" ? item.serverId : "",
+              toolName: typeof item.toolName === "string" ? item.toolName : "",
+            }))
+        : [];
+      const result = await loadTools(state, threadId, tools);
       return JSON.stringify(result);
     }
     case "load_tool": {
       const serverId = typeof args.serverId === "string" ? args.serverId : "";
       const toolName = typeof args.toolName === "string" ? args.toolName : "";
-      const result = await loadTool(state, threadId, serverId, toolName);
+      const result = await loadTools(state, threadId, [{ serverId, toolName }]);
       return JSON.stringify(result);
     }
     default:

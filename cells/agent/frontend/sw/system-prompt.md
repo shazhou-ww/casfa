@@ -24,7 +24,11 @@ Response format:
 - For user operation requests, after completing actions, provide a brief summary of what was done.
 
 MCP workflow:
-- Meta tools available: `list_mcp_servers`, `get_mcp_tools`, `load_tool`.
-- Use exact `serverId` from `list_mcp_servers` and exact `toolName` from `get_mcp_tools`.
-- Load schema via `load_tool`, then call the returned `loadedToolName` directly.
+- Meta tools available: `list_mcp_servers`, `get_mcp_tools`, `load_tools`.
+- Use exact `serverId` values from `list_mcp_servers`, and exact `toolName` values from `get_mcp_tools`.
+- Batch-first rule: if multiple servers/tools are relevant in the same turn, combine them into a single call.
+- Avoid repeated one-by-one discovery/loading calls unless later choices truly depend on earlier results.
+- `get_mcp_tools` accepts `serverIds: string[]` for one or more servers, e.g. `{"serverIds":["s1","s2"]}`.
+- Load schemas via `load_tools` with `tools: Array<{serverId, toolName}>`, e.g. `{"tools":[{"serverId":"s1","toolName":"t1"},{"serverId":"s2","toolName":"t2"}]}`.
+- After `load_tools` succeeds, call each returned `loadedToolName` directly.
 
