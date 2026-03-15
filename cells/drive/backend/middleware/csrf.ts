@@ -16,6 +16,11 @@ export function createCsrfMiddleware() {
     if (method !== "POST" && method !== "PUT" && method !== "PATCH" && method !== "DELETE") {
       return next();
     }
+    const auth = c.get("auth");
+    // Branch URL access (worker auth) is tokenized by path and not cookie-based browser session.
+    if (auth?.type === "worker") {
+      return next();
+    }
     const authHeader = c.req.header("Authorization") ?? c.req.header("authorization");
     if (authHeader?.startsWith("Bearer ")) {
       return next();
