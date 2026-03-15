@@ -269,30 +269,59 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
 
   sendAction(action, id) {
     return (async () => {
+      if (id != null) {
+        return await new Promise<unknown>(async (resolve, reject) => {
+          const startPendingAndSend = async (canRetry: boolean) => {
+            const port = await ensureSwPort(get);
+            if (!port) throw new Error("SW not connected");
+            let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+              timeoutId = null;
+              if (!pendingById.has(id)) return;
+              clearPending(id);
+              // SW hot-update can invalidate the current MessagePort.
+              // Drop stale port so next send reconnects to the latest controller.
+              get().setSwPort(null);
+              if (canRetry) {
+                void startPendingAndSend(false).catch((error) => {
+                  reject(error instanceof Error ? error : new Error(String(error)));
+                });
+                return;
+              }
+              reject(new Error("SW response timeout"));
+            }, ACTION_RESPONSE_TIMEOUT_MS);
+            pendingById.set(id, {
+              resolve: (v) => {
+                if (timeoutId != null) clearTimeout(timeoutId);
+                resolve(v);
+              },
+              reject: (e) => {
+                if (timeoutId != null) clearTimeout(timeoutId);
+                reject(e);
+              },
+            });
+            try {
+              send(port, { type: "action", id, action });
+            } catch (err) {
+              if (timeoutId != null) clearTimeout(timeoutId);
+              clearPending(id);
+              get().setSwPort(null);
+              if (canRetry) {
+                await startPendingAndSend(false);
+                return;
+              }
+              throw err;
+            }
+          };
+
+          try {
+            await startPendingAndSend(true);
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
+        });
+      }
       const port = await ensureSwPort(get);
       if (!port) throw new Error("SW not connected");
-      if (id != null) {
-        return await new Promise<unknown>((resolve, reject) => {
-        let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
-          timeoutId = null;
-          if (pendingById.has(id)) {
-            clearPending(id);
-            reject(new Error("SW response timeout"));
-          }
-        }, ACTION_RESPONSE_TIMEOUT_MS);
-        pendingById.set(id, {
-          resolve: (v) => {
-            if (timeoutId != null) clearTimeout(timeoutId);
-            resolve(v);
-          },
-          reject: (e) => {
-            if (timeoutId != null) clearTimeout(timeoutId);
-            reject(e);
-          },
-        });
-        send(port, { type: "action", id, action });
-      });
-      }
       send(port, { type: "action", action });
       return undefined;
     })();

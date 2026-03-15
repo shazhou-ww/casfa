@@ -89,13 +89,36 @@ function Root() {
 
   useEffect(() => {
     if (!ready) return;
-    connectToSW(getCsrfTokenFromCookie())
-      .then((port) => {
-        setSwPort(port);
-        void fetchThreads().catch(() => {});
-        void fetchSettings().catch(() => {});
-      })
-      .catch(() => {});
+    let disposed = false;
+    const connectAndSync = () => {
+      connectToSW(getCsrfTokenFromCookie())
+        .then((port) => {
+          if (disposed) {
+            try {
+              port.close();
+            } catch {
+              // ignore close errors on stale reconnect
+            }
+            return;
+          }
+          setSwPort(port);
+          void fetchThreads().catch(() => {});
+          void fetchSettings().catch(() => {});
+        })
+        .catch(() => {});
+    };
+
+    connectAndSync();
+
+    const onControllerChange = () => {
+      connectAndSync();
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+
+    return () => {
+      disposed = true;
+      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+    };
   }, [ready, setSwPort, fetchThreads, fetchSettings]);
 
   if (!ready) {
