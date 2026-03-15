@@ -31,6 +31,7 @@
     "@casfa/cell-auth-server": "workspace:*",
     "@casfa/cell-cognito-server": "workspace:*",
     "@casfa/cell-delegates-server": "workspace:*",
+    "@casfa/cell-delegates-webui": "workspace:*",
     "@casfa/cell-mcp": "workspace:*",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",

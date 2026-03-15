@@ -11,11 +11,13 @@ type CookieUser = {
 
 type AuthConfig = {
   ssoBaseUrl?: string | null;
+  baseUrl?: string | null;
 };
 
 let authClientInstance: AuthClient | null = null;
 let apiFetchInstance: ((path: string, init: RequestInit | null) => Promise<Response>) | null = null;
 let cookieUser: CookieUser | null = null;
+let baseUrlValue: string | undefined = undefined;
 
 function getMountBasePath(): string {
   if (typeof window === "undefined") return "";
@@ -45,6 +47,7 @@ export async function initAuth(): Promise<void> {
   if (!infoRes.ok) throw new Error("Failed to load auth config");
   const info = (await infoRes.json()) as AuthConfig;
   const ssoBaseUrl = info.ssoBaseUrl ?? undefined;
+  baseUrlValue = info.baseUrl ?? undefined;
   if (!ssoBaseUrl) throw new Error("SSO not configured");
 
   authClientInstance = createAuthClient({
@@ -60,6 +63,10 @@ export async function initAuth(): Promise<void> {
     ssoBaseUrl,
     ssoRefreshPath: "/oauth/refresh",
   });
+}
+
+export function getBaseUrl(): string | undefined {
+  return baseUrlValue;
 }
 
 export function redirectToLogin(returnUrl: string): void {

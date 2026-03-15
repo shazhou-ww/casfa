@@ -109,59 +109,6 @@ export function createApp(deps: AppDeps) {
     })
   );
 
-  // Bridge standard OAuth authorize (GET with query) to delegate authorize (POST JSON),
-  // so MCP OAuth clients that expect RFC-style authorization_endpoint can work.
-  app.get("/oauth/authorize", async (c) => {
-    const auth = requireUser(c);
-    if (!auth) {
-      const currentUrl = new URL(c.req.url).toString();
-      return c.redirect(`/oauth/login?return_url=${encodeURIComponent(currentUrl)}`);
-    }
-
-    const responseType = c.req.query("response_type") ?? "code";
-    const redirectUri = c.req.query("redirect_uri") ?? "";
-    const state = c.req.query("state") ?? "";
-    const codeChallenge = c.req.query("code_challenge") ?? "";
-    const codeChallengeMethod = c.req.query("code_challenge_method") ?? "S256";
-    const scope = c.req.query("scope") ?? "";
-    const clientId = c.req.query("client_id") ?? "";
-
-    if (responseType !== "code" || !redirectUri || !state || !codeChallenge) {
-      return c.json({ error: "invalid_request", message: "missing oauth authorize parameters" }, 400);
-    }
-
-    const authorizeReq = new Request(new URL("/api/oauth/delegate/authorize", c.req.url).toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: c.req.header("cookie") ?? "",
-        Authorization: c.req.header("authorization") ?? "",
-      },
-      body: JSON.stringify({
-        client_name: clientId || "MCP Client",
-        redirect_uri: redirectUri,
-        state,
-        code_challenge: codeChallenge,
-        code_challenge_method: codeChallengeMethod,
-        scope,
-      }),
-    });
-    const authorizeRes = await app.fetch(authorizeReq, c.env);
-    if (authorizeRes.status === 401) {
-      const currentUrl = new URL(c.req.url).toString();
-      return c.redirect(`/oauth/login?return_url=${encodeURIComponent(currentUrl)}`);
-    }
-    if (!authorizeRes.ok) {
-      const text = await authorizeRes.text();
-      return c.text(`OAuth authorize failed: ${authorizeRes.status} ${text}`, 400);
-    }
-    const payload = (await authorizeRes.json()) as { redirect_url?: string };
-    if (!payload.redirect_url) {
-      return c.text("OAuth authorize response missing redirect_url", 400);
-    }
-    return c.redirect(payload.redirect_url);
-  });
-
   const mcpRoutes = createGatewayMcpRoutes({
     serverRegistry: deps.serverRegistry,
     oauthStateStore: deps.oauthStateStore,

@@ -11,7 +11,12 @@ backend:
       memory: 1024
       routes:
         - /api/*
-        - /oauth/*
+        - /oauth/login
+        - /oauth/logout
+        - /oauth/register
+        - /oauth/client-info
+        - /oauth/token
+        - /oauth/mcp-client-metadata
         - /.well-known/*
         - /mcp
 

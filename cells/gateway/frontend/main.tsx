@@ -1,9 +1,10 @@
 import { Box, CircularProgress, CssBaseline, createTheme, ThemeProvider } from "@mui/material";
+import { DelegateOAuthConsentPage } from "@casfa/cell-delegates-webui";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { App } from "./App";
-import { initAuth } from "./lib/auth";
+import { apiFetch, getBaseUrl, initAuth, useCookieAuthCheck, withMountPath } from "./lib/auth";
 
 const theme = createTheme({
   palette: {
@@ -67,8 +68,31 @@ function Root() {
 
   return (
     <BrowserRouter basename={resolveBasename()}>
-      <App />
+      <Routes>
+        <Route path="/oauth/authorize" element={<DelegateOAuthAuthorizeRoute />} />
+        <Route path="*" element={<App />} />
+      </Routes>
     </BrowserRouter>
+  );
+}
+
+const SCOPE_DESCRIPTIONS: Record<string, string> = {
+  use_mcp: "Use MCP interface",
+  manage_delegates: "Manage delegates",
+};
+
+function DelegateOAuthAuthorizeRoute() {
+  const { loading, isLoggedIn } = useCookieAuthCheck();
+  return (
+    <DelegateOAuthConsentPage
+      authorizeUrl={withMountPath("/api/oauth/delegate/authorize")}
+      loginUrl={withMountPath("/oauth/login")}
+      clientInfoUrl={getBaseUrl() ?? ""}
+      loading={loading}
+      isLoggedIn={isLoggedIn}
+      fetch={apiFetch}
+      scopeDescriptions={SCOPE_DESCRIPTIONS}
+    />
   );
 }
 
