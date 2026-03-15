@@ -13,7 +13,7 @@ import {
   getEffectiveDelegateId,
   resolvePath,
 } from "../services/root-resolver.ts";
-import { addOrReplaceAtPath, removeEntryAtPath } from "../services/tree-mutations.ts";
+import { ensurePathThenAddOrReplace, removeEntryAtPath } from "../services/tree-mutations.ts";
 import type { Env } from "../types.ts";
 
 function hasFileWrite(auth: NonNullable<Env["Variables"]["auth"]>): boolean {
@@ -86,7 +86,7 @@ export function createFsController(deps: FsControllerDeps) {
         const emptyDictKey = hashToKey(emptyDict.hash);
         await deps.cas.putNode(emptyDictKey, streamFromBytes(emptyDict.bytes));
         deps.recordNewKey?.(realmId, emptyDictKey);
-        const newRootKey = await addOrReplaceAtPath(
+        const newRootKey = await ensurePathThenAddOrReplace(
           deps.cas,
           deps.key,
           rootKey,
@@ -178,7 +178,7 @@ export function createFsController(deps: FsControllerDeps) {
           ? (k: string) => deps.recordNewKey!(realmId, k)
           : undefined;
         rootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, fromStr, onNodePut);
-        rootKey = await addOrReplaceAtPath(deps.cas, deps.key, rootKey, toStr, nodeKey, onNodePut);
+        rootKey = await ensurePathThenAddOrReplace(deps.cas, deps.key, rootKey, toStr, nodeKey, onNodePut);
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, rootKey);
         return c.json({ from: fromStr, to: toStr }, 200);
@@ -221,7 +221,7 @@ export function createFsController(deps: FsControllerDeps) {
         const onNodePut = deps.recordNewKey
           ? (k: string) => deps.recordNewKey!(realmId, k)
           : undefined;
-        const newRootKey = await addOrReplaceAtPath(
+        const newRootKey = await ensurePathThenAddOrReplace(
           deps.cas,
           deps.key,
           rootKey,

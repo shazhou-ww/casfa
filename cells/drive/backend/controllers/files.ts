@@ -14,7 +14,7 @@ import {
   getNodeDecoded,
   resolvePath,
 } from "../services/root-resolver.ts";
-import { addOrReplaceAtPath } from "../services/tree-mutations.ts";
+import { ensurePathThenAddOrReplace } from "../services/tree-mutations.ts";
 import { withMutex } from "../services/upload-mutex.ts";
 import type { Env } from "../types.ts";
 
@@ -371,7 +371,7 @@ export function createFilesController(deps: FilesControllerDeps) {
           const onNodePut = deps.recordNewKey
             ? (k: string) => deps.recordNewKey!(realmId, k)
             : undefined;
-          const newRootKey = await addOrReplaceAtPath(
+          const newRootKey = await ensurePathThenAddOrReplace(
             deps.cas,
             deps.key,
             rootKey,

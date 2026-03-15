@@ -8,6 +8,7 @@ export type SsoConfig = {
     region: string;
     userPoolId: string;
     clientId: string;
+    clientSecret?: string;
     hostedUiUrl: string;
   };
   cookie: {
@@ -87,6 +88,7 @@ export function loadConfigFromEnv(env: Record<string, string>): SsoConfig {
       region: get("COGNITO_REGION", "us-east-1"),
       userPoolId: get("COGNITO_USER_POOL_ID"),
       clientId: get("COGNITO_CLIENT_ID"),
+      clientSecret: get("COGNITO_CLIENT_SECRET") || undefined,
       hostedUiUrl: get("COGNITO_HOSTED_UI_URL"),
     },
     cookie: {
