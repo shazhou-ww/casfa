@@ -15,7 +15,7 @@ export const fluxImageInputSchema = z.object({
     .string()
     .url()
     .describe(
-      "Casfa branch root URL (accessUrlPrefix from branch_create). Single URL for branch-scoped requests; no token needed."
+      "Casfa branch root URL injected by gateway runtime for branch-scoped requests."
     ),
   prompt: z.string().describe("Text prompt for FLUX image generation."),
   outputPath: z
@@ -87,7 +87,7 @@ export const fluxImageEditInputSchema = z.object({
     .url()
     .transform((value, ctx) => parseCasfaBranchUrl(value, ctx))
     .describe(
-      "Casfa branch root URL (accessUrlPrefix from branch_create). Single URL for branch-scoped requests; no token needed."
+      "Casfa branch root URL injected by gateway runtime for branch-scoped requests."
     ),
   inputImagePath: z
     .string()
@@ -117,7 +117,7 @@ function contentTypeForFormat(format: "jpeg" | "png"): string {
 
 export async function handleFluxImage(
   args: FluxImageArgs
-): Promise<{ key: string; completed: string; path: string }> {
+): Promise<{ key: string }> {
   const bfl = createBflClient();
   const casfa = createCasfaBranchClient({ branchRootUrl: args.casfaBranchUrl });
 
@@ -137,18 +137,14 @@ export async function handleFluxImage(
     contentTypeForFormat(format)
   );
 
-  const completeResult = await casfa.completeBranch();
-
   return {
     key: uploadResult.key,
-    path: uploadResult.path,
-    completed: completeResult.completed,
   };
 }
 
 export async function handleFluxImageEdit(
   args: FluxImageEditArgs
-): Promise<{ key: string; completed: string; path: string }> {
+): Promise<{ key: string }> {
   const bfl = createBflClient();
   const casfa = createCasfaBranchClient({ branchRootUrl: args.casfaBranchUrl });
 
@@ -173,12 +169,8 @@ export async function handleFluxImageEdit(
     imageBytes,
     contentTypeForFormat(format)
   );
-  const completeResult = await casfa.completeBranch();
-
   return {
     key: uploadResult.key,
-    path: uploadResult.path,
-    completed: completeResult.completed,
   };
 }
 
@@ -233,7 +225,7 @@ export function createArtistMcpRoute(options: {
     "flux_image",
     {
       description:
-        "Generate an image from a text prompt using BFL FLUX and write it to outputPath in the target Casfa branch, then complete the branch. Input: casfaBranchUrl, outputPath, prompt; optional width, height, seed, safety_tolerance, output_format. Output: success, completed, key, path.",
+        "Generate an image from a text prompt using BFL FLUX and write it to outputPath in the target Casfa branch. Input: casfaBranchUrl, outputPath, prompt; optional width, height, seed, safety_tolerance, output_format. Output: success, key.",
       inputSchema: fluxImageInputSchema,
     },
     async (args: FluxImageArgs) => {
@@ -246,9 +238,7 @@ export function createArtistMcpRoute(options: {
               text: JSON.stringify(
                 {
                   success: true,
-                  completed: result.completed,
                   key: result.key,
-                  path: result.path,
                 },
                 null,
                 2
@@ -272,7 +262,7 @@ export function createArtistMcpRoute(options: {
     "flux_image_edit",
     {
       description:
-        "Edit an existing image from Casfa branch using BFL FLUX Kontext and write output to outputPath, then complete branch. Input: casfaBranchUrl, inputImagePath, outputPath, prompt, optional seed/safety_tolerance/output_format. Output: success, completed, key, path.",
+        "Edit an existing image from Casfa branch using BFL FLUX Kontext and write output to outputPath. Input: casfaBranchUrl, inputImagePath, outputPath, prompt, optional seed/safety_tolerance/output_format. Output: success, key.",
       inputSchema: fluxImageEditInputSchema,
     },
     async (args: FluxImageEditArgs) => {
@@ -285,9 +275,7 @@ export function createArtistMcpRoute(options: {
               text: JSON.stringify(
                 {
                   success: true,
-                  completed: result.completed,
                   key: result.key,
-                  path: result.path,
                 },
                 null,
                 2

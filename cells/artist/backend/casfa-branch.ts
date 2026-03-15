@@ -133,32 +133,6 @@ export function createCasfaBranchClient(options?: Partial<CasfaBranchOptions>) {
       return candidate;
     },
 
-    /**
-     * Complete the branch (merge back to parent). No token; branch root URL carries auth.
-     */
-    async completeBranch(): Promise<{ completed: string }> {
-      if (!branchRootUrl) throw new Error("branchRootUrl is required (options or CASFA_BRANCH_URL)");
-      const url = apiUrl("/api/realm/me/branches/me/complete");
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        let message = res.statusText;
-        try {
-          const json = JSON.parse(text) as { message?: string };
-          if (typeof json.message === "string") message = json.message;
-        } catch {
-          message = text || message;
-        }
-        throw new Error(`Casfa complete branch failed ${res.status}: ${message}`);
-      }
-      const json = (await res.json()) as { completed: string };
-      return json;
-    },
   };
 }
 

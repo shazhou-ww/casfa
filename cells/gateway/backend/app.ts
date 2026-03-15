@@ -22,6 +22,7 @@ import {
   resolveOAuthClientId,
   type PendingServerOAuth,
 } from "./services/server-oauth-flow.ts";
+import { toMcpEndpoint } from "./services/mcp-endpoint.ts";
 import { getToolsForServers } from "./services/tool-discovery.ts";
 
 export type AppDeps = {
@@ -195,7 +196,7 @@ export function createApp(deps: AppDeps) {
           oauthState?.accessToken &&
             (oauthState.expiresAt === undefined || oauthState.expiresAt > Date.now())
         );
-        const requiresOAuth = await isOAuthProtectedResource(`${server.url.replace(/\/$/, "")}/mcp`);
+        const requiresOAuth = await isOAuthProtectedResource(toMcpEndpoint(server.url));
         return {
           serverId: server.id,
           requiresOAuth,
@@ -215,7 +216,7 @@ export function createApp(deps: AppDeps) {
     }
 
     const gatewayBase = deps.config.baseUrl.replace(/\/$/, "");
-    const resourceUrl = `${server.url.replace(/\/$/, "")}/mcp`;
+    const resourceUrl = toMcpEndpoint(server.url);
     const returnUrl = normalizeReturnUrl(c.req.query("return_url"), gatewayBase);
     const usePopup = c.req.query("popup") === "1";
     const redirectUri = `${gatewayBase}/oauth/server/callback`;

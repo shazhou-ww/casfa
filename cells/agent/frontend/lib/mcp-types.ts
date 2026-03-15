@@ -13,6 +13,8 @@ export type MCPServerConfig = {
   transport: MCPServerTransport;
   /** HTTP endpoint URL when transport is "http" */
   url?: string;
+  /** Send browser cookies with MCP HTTP requests (for same-origin gateway session auth). */
+  sendCookies?: boolean;
   auth: MCPServerAuth;
   /** Pre-registered client_id when auth is oauth2 */
   oauthClientId?: string;

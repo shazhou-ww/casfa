@@ -26,7 +26,8 @@ async function mcpRequest<T>(
   method: string,
   params: Record<string, unknown> | undefined,
   accessToken: string | null,
-  serverId: string
+  serverId: string,
+  sendCookies: boolean
 ): Promise<T> {
   const endpoint = serverUrl.replace(/\/$/, "");
   const body = {
@@ -45,7 +46,7 @@ async function mcpRequest<T>(
     method: "POST",
     headers,
     body: JSON.stringify(body),
-    credentials: "omit",
+    credentials: sendCookies ? "include" : "omit",
   });
 
   if (res.status === 401) {
@@ -79,7 +80,7 @@ export async function mcpCall<T>(
     token = entry?.access_token ?? null;
     if (token) console.log("[MCP OAuth] mcpCall: serverId=%s method=%s token=yes", config.id, method);
   }
-  return await mcpRequest<T>(url, method, params, token, config.id);
+  return await mcpRequest<T>(url, method, params, token, config.id, config.sendCookies === true);
 }
 
 export type ToolsListResult = { tools: MCPTool[]; nextCursor?: string };

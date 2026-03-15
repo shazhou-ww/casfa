@@ -5,6 +5,10 @@ export type ToolResult = {
   isError?: boolean;
 };
 
+export type ToolHandlerContext = {
+  auth?: unknown;
+};
+
 export type CellMcpServerOptions = {
   name: string;
   version: string;

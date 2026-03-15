@@ -15,15 +15,14 @@ Generate high-quality images from text prompts using the BFL FLUX model.
 
 Provide a text prompt describing the desired image. The tool will:
 1. Generate the image via BFL FLUX API
-2. Set the image as the branch root (override the branch root with the image)
-3. Complete the branch (merge back to parent)
+2. Write the generated image to the requested output path in the branch.
 
-The branch must be created with a non-existent mountPath so it starts with a null root; then the image becomes the entire root content.
+Branch lifecycle (create/transfer/close) is managed by gateway runtime, not this tool.
 
 ## Parameters
 
 **Input**
-- **casfaBranchUrl** (required): Casfa branch root URL (use `accessUrlPrefix` from `branch_create`). Single URL for branch access; no token needed.
+- **casfaBranchUrl** (required): Casfa branch root URL injected by gateway runtime.
 - **prompt** (required): Text description of the desired image.
 - **width** / **height** (optional): Output dimensions in pixels (64–2048, default 1024).
 - **seed** (optional): Seed for reproducible results.
@@ -32,7 +31,6 @@ The branch must be created with a non-existent mountPath so it starts with a nul
 
 **Output (success)**
 - **success**: `true`
-- **completed**: Branch ID that was merged (image appears at that branch’s mountPath in the parent).
 - **key**: CAS node key of the generated image.
 
 **Output (error)**

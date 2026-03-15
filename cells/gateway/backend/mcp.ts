@@ -4,7 +4,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { ServerRegistry } from "./services/server-registry.ts";
 import type { ServerOAuthStateStore } from "./services/server-oauth-state.ts";
-import { getToolsForServers } from "./services/tool-discovery.ts";
+import { getBindingForServer } from "./services/tool-binding-registry.ts";
+import { callToolForServer, getToolsForServers } from "./services/tool-discovery.ts";
 import type { Env } from "./types.ts";
 
 function authCheck(c: Context<Env>): boolean {
@@ -34,6 +35,22 @@ export function createGatewayMcpRoutes(deps: {
     authCheck,
     onUnauthorized,
   });
+
+  async function getParentBranchIdFromBranchUrl(branchUrl: string): Promise<string> {
+    const base = branchUrl.replace(/\/$/, "");
+    const res = await fetch(`${base}/api/realm/me/branches`);
+    if (!res.ok) {
+      throw new Error(`failed to query branch parent: ${res.status}`);
+    }
+    const payload = (await res.json()) as {
+      branches?: Array<{ branchId?: string; parentId?: string | null }>;
+    };
+    const branch = payload.branches?.[0];
+    if (!branch || typeof branch.parentId !== "string" || !branch.parentId.trim()) {
+      throw new Error("failed to resolve parent branch id from runtime branch url");
+    }
+    return branch.parentId.trim();
+  }
 
   mcp.registerTool(
     "list_servers",
@@ -161,6 +178,161 @@ export function createGatewayMcpRoutes(deps: {
       }
       return {
         content: [{ type: "text", text: JSON.stringify({ results }, null, 2) }],
+      };
+    }
+  );
+
+  mcp.registerTool(
+    "call_tool",
+    {
+      description: "Call a tool on a registered MCP server.",
+      inputSchema: z.object({
+        serverId: z.string(),
+        toolName: z.string(),
+        args: z.record(z.string(), z.unknown()).optional(),
+      }),
+    },
+    async (args, ctx) => {
+      const auth = ctx.auth;
+      if (!auth) throw new Error("Unauthorized");
+      const userId = auth.type === "user" ? auth.userId : auth.realmId;
+      const serverId = args.serverId.trim();
+      const toolName = args.toolName.trim();
+      const server = await deps.serverRegistry.get(userId, serverId);
+      if (!server) throw new Error(`server not found: ${serverId}`);
+      const originalArgs = (args.args as Record<string, unknown> | undefined) ?? {};
+      const binding = getBindingForServer(server, toolName);
+      if (!binding) {
+        const result = await callToolForServer(
+          userId,
+          serverId,
+          toolName,
+          originalArgs,
+          [server],
+          deps.oauthStateStore
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      }
+
+      const allServers = await deps.serverRegistry.list(userId);
+      const driveServer = allServers.find((item) => {
+        const id = item.id.toLowerCase();
+        const name = item.name.toLowerCase();
+        const url = item.url.toLowerCase();
+        return id.includes("drive") || name.includes("drive") || url.includes("/drive/") || url.includes("drive.");
+      });
+      if (!driveServer) {
+        throw new Error("drive server not found for gateway runtime binding");
+      }
+
+      function dirname(path: string): string {
+        const normalized = path.trim().replace(/^\/+|\/+$/g, "");
+        if (!normalized) return "";
+        const idx = normalized.lastIndexOf("/");
+        return idx <= 0 ? "" : normalized.slice(0, idx);
+      }
+
+      function basename(path: string): string {
+        const normalized = path.trim().replace(/^\/+|\/+$/g, "");
+        if (!normalized) return "";
+        const idx = normalized.lastIndexOf("/");
+        return idx < 0 ? normalized : normalized.slice(idx + 1);
+      }
+
+      const outputArgName = binding.outputs[0] ?? "";
+      const requestedOutputPath =
+        outputArgName && typeof originalArgs[outputArgName] === "string"
+          ? String(originalArgs[outputArgName]).trim().replace(/^\/+|\/+$/g, "")
+          : "";
+      const inputArgName = binding.inputs[0] ?? "";
+      const inputPath =
+        inputArgName && typeof originalArgs[inputArgName] === "string"
+          ? String(originalArgs[inputArgName]).trim().replace(/^\/+|\/+$/g, "")
+          : "";
+
+      const mountPath =
+        dirname(inputPath) || dirname(requestedOutputPath) || `gateway_runtime/${crypto.randomUUID().slice(0, 8)}`;
+
+      const createBranchResult = await callToolForServer(
+        userId,
+        driveServer.id,
+        "create_branch",
+        { mountPath },
+        [driveServer],
+        deps.oauthStateStore,
+        { allowHiddenTools: true }
+      );
+      const createText = createBranchResult.content?.find((item) => item.type === "text")?.text ?? "{}";
+      const createParsed = JSON.parse(createText) as { branchId?: string; accessUrlPrefix?: string };
+      const branchUrl = typeof createParsed.accessUrlPrefix === "string" ? createParsed.accessUrlPrefix : "";
+      const branchId = typeof createParsed.branchId === "string" ? createParsed.branchId : "";
+      if (!branchUrl) throw new Error("runtime create_branch returned no accessUrlPrefix");
+      const parentBranchId = await getParentBranchIdFromBranchUrl(branchUrl);
+
+      const runtimeArgs: Record<string, unknown> = { ...originalArgs, [binding.branchUrl]: branchUrl };
+
+      if (inputArgName && inputPath) {
+        if (inputPath.startsWith(`${mountPath}/`)) {
+          runtimeArgs[inputArgName] = inputPath.slice(mountPath.length + 1);
+        } else {
+          runtimeArgs[inputArgName] = basename(inputPath);
+        }
+      }
+
+      let runtimeOutputPath = requestedOutputPath;
+      if (outputArgName && requestedOutputPath) {
+        if (requestedOutputPath.startsWith(`${mountPath}/`)) {
+          runtimeOutputPath = requestedOutputPath.slice(mountPath.length + 1);
+        } else {
+          runtimeOutputPath = basename(requestedOutputPath) || requestedOutputPath;
+        }
+        runtimeArgs[outputArgName] = runtimeOutputPath;
+      }
+
+      const rawResult = await callToolForServer(
+        userId,
+        serverId,
+        toolName,
+        runtimeArgs,
+        [server],
+        deps.oauthStateStore
+      );
+
+      if (requestedOutputPath && runtimeOutputPath && branchId && parentBranchId) {
+        await callToolForServer(
+          userId,
+          driveServer.id,
+          "transfer_paths",
+          {
+            source: branchId,
+            target: parentBranchId,
+            mapping: {
+              [runtimeOutputPath]: requestedOutputPath,
+            },
+            mode: "replace",
+          },
+          [driveServer],
+          deps.oauthStateStore,
+          { allowHiddenTools: true }
+        );
+      }
+
+      if (branchId) {
+        await callToolForServer(
+          userId,
+          driveServer.id,
+          "close_branch",
+          { branchId },
+          [driveServer],
+          deps.oauthStateStore,
+          { allowHiddenTools: true }
+        ).catch(() => undefined);
+      }
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(rawResult, null, 2) }],
       };
     }
   );

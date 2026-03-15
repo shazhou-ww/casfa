@@ -29,5 +29,44 @@ describe("mcpCall", () => {
     expect(seenAccept).toContain("application/json");
     expect(seenAccept).toContain("text/event-stream");
   });
+
+  test("includes cookies when config.sendCookies is true", async () => {
+    let seenCredentials: RequestCredentials | undefined;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seenCredentials = init?.credentials;
+      return Response.json({ jsonrpc: "2.0", result: { ok: true }, id: 1 });
+    }) as typeof fetch;
+
+    const config: MCPServerConfig = {
+      id: "gateway",
+      name: "Gateway",
+      transport: "stdio",
+      auth: "none",
+      url: "http://localhost:7100/gateway/mcp",
+      sendCookies: true,
+    };
+    const result = await mcpCall<{ ok: boolean }>(config, "tools/list");
+    expect(result.ok).toBe(true);
+    expect(seenCredentials).toBe("include");
+  });
+
+  test("omits cookies by default", async () => {
+    let seenCredentials: RequestCredentials | undefined;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seenCredentials = init?.credentials;
+      return Response.json({ jsonrpc: "2.0", result: { ok: true }, id: 1 });
+    }) as typeof fetch;
+
+    const config: MCPServerConfig = {
+      id: "s2",
+      name: "server",
+      transport: "http",
+      auth: "none",
+      url: "http://localhost:7100/drive/mcp",
+    };
+    const result = await mcpCall<{ ok: boolean }>(config, "tools/list");
+    expect(result.ok).toBe(true);
+    expect(seenCredentials).toBe("omit");
+  });
 });
 

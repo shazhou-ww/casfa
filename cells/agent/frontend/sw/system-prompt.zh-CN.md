@@ -24,10 +24,10 @@
 - 对于用户操作类请求，在完成操作后给出一段简短总结，说明已执行了什么。
 
 MCP 工作流：
-- 可用元工具：`list_mcp_servers`、`get_mcp_tools`、`load_tools`。
-- 使用 `list_mcp_servers` 返回的精确 `serverId`，以及 `get_mcp_tools` 返回的精确 `toolName`。
+- 可用元工具：`list_servers`、`search_servers`、`get_tools`、`load_tools`。
+- 使用 `list_servers` 返回的精确 `serverId`，以及 `get_tools` 返回的精确 `toolName`。
 - 批量优先规则：同一轮如果涉及多个 server 或多个 tool，优先合并为一次调用。
 - 除非后续选择确实依赖前一次结果，否则不要按“一个一个”重复查询或加载。
-- `get_mcp_tools` 接收 `serverIds: string[]`，可一次查询一个或多个 server，例如 `{"serverIds":["s1","s2"]}`。
+- `get_tools` 接收 `serverIds: string[]`，可一次查询一个或多个 server，例如 `{"serverIds":["s1","s2"]}`。
 - 通过 `load_tools` 的 `tools: Array<{serverId, toolName}>` 一次加载多个 schema，例如 `{"tools":[{"serverId":"s1","toolName":"t1"},{"serverId":"s2","toolName":"t2"}]}`。
 - `load_tools` 成功后，直接调用返回的各个 `loadedToolName`。

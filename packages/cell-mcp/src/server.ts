@@ -3,13 +3,13 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { Hono } from "hono";
 import type { z } from "zod";
 import { formatToolValidationError } from "./validation.js";
-import type { CellMcpServerOptions, ToolResult } from "./types.js";
+import type { CellMcpServerOptions, ToolHandlerContext, ToolResult } from "./types.js";
 
 type ToolReg = {
   name: string;
   description: string;
   inputSchema: z.ZodType<unknown>;
-  handler: (args: unknown) => ToolResult | Promise<ToolResult>;
+  handler: (args: unknown, ctx: ToolHandlerContext) => ToolResult | Promise<ToolResult>;
 };
 
 // Passthrough: store args for server.registerResource / server.registerPrompt.
@@ -23,7 +23,7 @@ export function createCellMcpServer(options: CellMcpServerOptions) {
   const resources: ResourceReg[] = [];
   const prompts: PromptReg[] = [];
 
-  function buildMcpServer(): McpServer {
+  function buildMcpServer(toolContext: ToolHandlerContext): McpServer {
     const server = new McpServer({ name, version }, {});
 
     for (const t of tools) {
@@ -38,7 +38,7 @@ export function createCellMcpServer(options: CellMcpServerOptions) {
           };
         }
         try {
-          return await t.handler(parsed.data);
+          return await t.handler(parsed.data, toolContext);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           return {
@@ -65,13 +65,13 @@ export function createCellMcpServer(options: CellMcpServerOptions) {
   function registerTool<T>(
     toolName: string,
     spec: { description: string; inputSchema: z.ZodType<T> },
-    handler: (args: T) => ToolResult | Promise<ToolResult>
+    handler: (args: T, ctx: ToolHandlerContext) => ToolResult | Promise<ToolResult>
   ): void {
     tools.push({
       name: toolName,
       description: spec.description,
       inputSchema: spec.inputSchema as z.ZodType<unknown>,
-      handler: handler as (args: unknown) => ToolResult | Promise<ToolResult>,
+      handler: handler as (args: unknown, ctx: ToolHandlerContext) => ToolResult | Promise<ToolResult>,
     });
   }
 
@@ -104,7 +104,7 @@ export function createCellMcpServer(options: CellMcpServerOptions) {
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
       });
-      const server = buildMcpServer();
+      const server = buildMcpServer({ auth: c.get("auth") });
       await server.connect(transport);
       const res = await transport.handleRequest(c.req.raw);
       await server.close();

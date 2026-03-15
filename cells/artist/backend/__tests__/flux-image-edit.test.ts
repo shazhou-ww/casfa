@@ -46,10 +46,6 @@ describe("handleFluxImageEdit", () => {
       if (url.endsWith("/api/realm/me/files/outputs%2Fedited.png") && method === "PUT") {
         return Response.json({ path: "outputs/edited.png", key: "cas:key:new" }, { status: 201 });
       }
-      if (url.endsWith("/api/realm/me/branches/me/complete") && method === "POST") {
-        return Response.json({ completed: "branch-1" }, { status: 200 });
-      }
-
       return new Response("unexpected", { status: 500 });
     }) as typeof fetch;
 
@@ -63,8 +59,6 @@ describe("handleFluxImageEdit", () => {
 
     expect(result).toEqual({
       key: "cas:key:new",
-      completed: "branch-1",
-      path: "outputs/edited.png",
     });
 
     const kontextCall = calls.find(

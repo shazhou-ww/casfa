@@ -115,8 +115,9 @@ export type DerivedContext = {
 };
 
 const META_TOOL_NAME_SET = new Set<string>([
-  "list_mcp_servers",
-  "get_mcp_tools",
+  "list_servers",
+  "search_servers",
+  "get_tools",
   "load_tools",
 ]);
 

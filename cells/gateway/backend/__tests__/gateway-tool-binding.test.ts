@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { getBinding } from "../services/tool-binding-registry.ts";
+import { getBinding, getBindingForServer } from "../services/tool-binding-registry.ts";
 
 describe("gateway tool binding", () => {
   it("returns minimal binding for artist flux tools", () => {
@@ -20,5 +20,21 @@ describe("gateway tool binding", () => {
 
   it("returns null when no binding is registered", () => {
     expect(getBinding("artist", "unknown")).toBeNull();
+  });
+
+  it("resolves binding via server alias when id is dynamic", () => {
+    const binding = getBindingForServer(
+      {
+        id: "srv_c4536b303263",
+        name: "Artist",
+        url: "https://beta.casfa.shazhou.me/artist/mcp",
+      },
+      "flux_image"
+    );
+    expect(binding).toEqual({
+      branchUrl: "casfaBranchUrl",
+      inputs: [],
+      outputs: ["outputPath"],
+    });
   });
 });

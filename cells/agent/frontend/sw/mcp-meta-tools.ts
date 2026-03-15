@@ -1,10 +1,9 @@
 /**
- * MCP meta-tools for the Service Worker: list_mcp_servers, get_mcp_tools, load_tools.
- * Progressive discovery (Level 0: servers, Level 1: tools per server, Level 2: load tool schemas).
+ * MCP meta-tools for the Service Worker.
+ * Gateway is the only MCP entry for server/tool management.
  */
 
-import { listPrompts, listTools, mcpCall } from "../lib/mcp-client.ts";
-import { MCP_SERVERS_SETTINGS_KEY, parseMcpServers } from "../lib/mcp-types.ts";
+import { mcpCall } from "../lib/mcp-client.ts";
 import type { MCPServerConfig } from "../lib/mcp-types.ts";
 import type { ModelState } from "../lib/model-types.ts";
 import { parseSystemPromptLanguage, SYSTEM_PROMPT_LANGUAGE_KEY } from "../lib/prompt-settings.ts";
@@ -12,49 +11,10 @@ import systemPromptTextRaw from "./system-prompt.md?raw";
 import systemPromptZhRaw from "./system-prompt.zh-CN.md?raw";
 
 const MCP_DEBUG_PREFIX = "[agent-mcp-debug]";
+const BUILTIN_GATEWAY_SERVER_ID = "gateway";
+const GATEWAY_META_TOOL_NAMES = ["list_servers", "search_servers", "get_tools", "load_tools"] as const;
 
-function summarizeConfigs(configs: MCPServerConfig[]): Array<{ id: string; name: string; hasUrl: boolean }> {
-  return configs.map((c) => ({ id: c.id, name: c.name, hasUrl: Boolean(c.url) }));
-}
-
-// ----- Types -----
-
-export type ListMcpServersResult = {
-  servers: Array<{
-    serverId: string;
-    name?: string;
-    description?: string;
-    unavailable?: boolean;
-    error?: string;
-  }>;
-};
-
-export type GetMcpToolsServerResult = {
-  serverId: string;
-  tools: Array<{ name: string; description?: string }>;
-  prompts?: Array<{ name: string; description?: string }>;
-  error?: string;
-};
-
-export type GetMcpToolsResult = {
-  servers: GetMcpToolsServerResult[];
-};
-
-export type LoadToolsItem = {
-  serverId: string;
-  toolName: string;
-};
-
-export type LoadToolsItemResult = {
-  result: "success";
-  serverId: string;
-  toolName: string;
-  loadedToolName: string;
-};
-
-export type LoadToolsResult = {
-  results: Array<LoadToolsItemResult | { result: "error"; serverId: string; toolName: string; error: string }>;
-};
+type GatewayMetaToolName = (typeof GATEWAY_META_TOOL_NAMES)[number];
 
 /** OpenAI-format tool for request body (type + function with name, description, parameters). */
 export type OpenAIFormatTool = {
@@ -73,31 +33,6 @@ type LoadedToolEntry = {
 
 const MAX_LOADED_TOOLS_PER_THREAD = 20;
 const loadedToolsByThread = new Map<string, Map<string, LoadedToolEntry>>();
-
-function toFunctionSafeName(value: string): string {
-  return value
-    .trim()
-    .replace(/[^a-zA-Z0-9_]+/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .toLowerCase();
-}
-
-function stableShortHash(value: string): string {
-  let h = 2166136261;
-  for (let i = 0; i < value.length; i++) {
-    h ^= value.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(36).slice(0, 6);
-}
-
-function buildLoadedToolName(serverId: string, toolName: string): string {
-  const safeServer = toFunctionSafeName(serverId) || "server";
-  const safeTool = toFunctionSafeName(toolName) || "tool";
-  const suffix = stableShortHash(`${serverId}::${toolName}`);
-  return `mcp__${safeServer}__${safeTool}__${suffix}`;
-}
 
 function normalizeSchemaParameters(inputSchema: unknown): unknown {
   if (typeof inputSchema === "object" && inputSchema !== null && !Array.isArray(inputSchema)) {
@@ -121,7 +56,9 @@ function pruneThreadLoadedTools(threadId: string): void {
   const entries = [...map.values()].sort((a, b) => a.lastUsedAt - b.lastUsedAt);
   const toRemove = map.size - MAX_LOADED_TOOLS_PER_THREAD;
   for (let i = 0; i < toRemove; i++) {
-    map.delete(entries[i].loadedToolName);
+    const entry = entries[i];
+    if (!entry) continue;
+    map.delete(entry.loadedToolName);
   }
 }
 
@@ -140,294 +77,151 @@ function markLoadedToolUsed(threadId: string, loadedToolName: string): void {
   map.set(loadedToolName, entry);
 }
 
-function lookupLoadedToolByFunctionName(
-  threadId: string,
-  loadedToolName: string
-): LoadedToolEntry | null {
+function lookupLoadedToolByFunctionName(threadId: string, loadedToolName: string): LoadedToolEntry | null {
   return loadedToolsByThread.get(threadId)?.get(loadedToolName) ?? null;
 }
 
-// ----- Level 0: list_mcp_servers -----
-
-export async function listMcpServers(state: ModelState): Promise<ListMcpServersResult> {
-  const configs = parseMcpServers(state.settings[MCP_SERVERS_SETTINGS_KEY]);
-  console.info(`${MCP_DEBUG_PREFIX} list_mcp_servers`, {
-    totalConfigs: configs.length,
-    configs: summarizeConfigs(configs),
-  });
-  const servers: ListMcpServersResult["servers"] = [];
-
-  for (const config of configs) {
-    if (!config.url) continue;
-    servers.push({
-      serverId: config.id,
-      name: config.name ?? config.id,
-      description: undefined,
-    });
+function getGatewayUrlFromScope(): string {
+  const sw = (globalThis as { self?: { registration?: { scope?: string } } }).self;
+  const scope = sw?.registration?.scope ?? "";
+  if (!scope) return "";
+  const u = new URL(scope);
+  const parts = u.pathname.split("/").filter(Boolean);
+  if (parts.length === 0) {
+    return `${u.origin}/gateway/mcp`;
   }
-
-  return { servers };
+  parts[parts.length - 1] = "gateway";
+  return `${u.origin}/${parts.join("/")}/mcp`;
 }
 
-// ----- Level 1: get_mcp_tools -----
-
-async function getMcpToolsForServer(state: ModelState, serverId: string): Promise<GetMcpToolsServerResult> {
-  const configs = parseMcpServers(state.settings[MCP_SERVERS_SETTINGS_KEY]);
-  const config = configs.find((c) => c.id === serverId);
-  if (!config) {
-    console.warn(`${MCP_DEBUG_PREFIX} get_mcp_tools server not found`, {
-      serverId,
-      configs: summarizeConfigs(configs),
-    });
-    return {
-      serverId,
-      tools: [],
-      prompts: [],
-      error: "server not found: use exact serverId from list_mcp_servers",
-    };
-  }
-  if (!config.url) {
-    return {
-      serverId,
-      tools: [],
-      prompts: [],
-      error: "server has no url (http transport required)",
-    };
-  }
-
-  try {
-    console.info(`${MCP_DEBUG_PREFIX} get_mcp_tools request`, {
-      serverId,
-      serverName: config.name,
-      url: config.url,
-    });
-    const [toolsResult, promptsResult] = await Promise.all([listTools(config), listPrompts(config).catch(() => ({ prompts: [] }))]);
-    const tools = (toolsResult.tools ?? []).map((t) => ({
-      name: t.name,
-      description: t.description,
-    }));
-    const prompts = (promptsResult.prompts ?? []).map((p) => ({
-      name: p.name,
-      description: p.description,
-    }));
-    console.info(`${MCP_DEBUG_PREFIX} get_mcp_tools response`, {
-      serverId,
-      toolCount: tools.length,
-      promptCount: prompts.length,
-      toolNames: tools.map((t) => t.name),
-    });
-    return { serverId, tools, prompts, error: undefined };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`${MCP_DEBUG_PREFIX} get_mcp_tools error`, { serverId, message });
-    return {
-      serverId,
-      tools: [],
-      prompts: [],
-      error: message,
-    };
-  }
+function getGatewayConfig(): MCPServerConfig | null {
+  const url = getGatewayUrlFromScope();
+  if (!url) return null;
+  return {
+    id: BUILTIN_GATEWAY_SERVER_ID,
+    name: "Gateway",
+    // stdio avoids token-store reads; auth is handled by gateway cookie session.
+    transport: "stdio",
+    sendCookies: true,
+    auth: "none",
+    url,
+  };
 }
 
-export async function getMcpTools(state: ModelState, serverIds: string[]): Promise<GetMcpToolsResult | { error: string }> {
-  const dedupedServerIds = [...new Set(serverIds.map((id) => id.trim()).filter(Boolean))];
-  if (dedupedServerIds.length === 0) return { error: "serverIds is required and must be a non-empty string array" };
-  const servers = await Promise.all(dedupedServerIds.map((serverId) => getMcpToolsForServer(state, serverId)));
-  return { servers };
-}
+type ToolCallResultPayload = {
+  content?: Array<{ type: string; text?: string }>;
+  isError?: boolean;
+};
 
-// ----- Level 2: load_tools -----
-
-async function loadSingleTool(
-  state: ModelState,
-  threadId: string,
-  serverId: string,
-  toolName: string
-): Promise<LoadToolsItemResult | { result: "error"; serverId: string; toolName: string; error: string }> {
-  const configs = parseMcpServers(state.settings[MCP_SERVERS_SETTINGS_KEY]);
-  const config = configs.find((c) => c.id === serverId);
-  if (!config) {
-    console.warn(`${MCP_DEBUG_PREFIX} load_tools server not found`, {
-      serverId,
-      toolName,
-      threadId,
-      configs: summarizeConfigs(configs),
-    });
-    return { result: "error", serverId, toolName, error: "server not found: use exact serverId from list_mcp_servers" };
-  }
-  if (!config.url) return { result: "error", serverId, toolName, error: "server has no url (http transport required)" };
-
-  try {
-    console.info(`${MCP_DEBUG_PREFIX} load_tools request`, {
-      serverId,
-      serverName: config.name,
-      toolName,
-      threadId,
-      url: config.url,
-    });
-    const toolsResult = await listTools(config);
-    const tool = (toolsResult.tools ?? []).find((t) => t.name === toolName);
-    if (!tool) return { result: "error", serverId, toolName, error: "tool not found" };
-
-    const loadedToolName = buildLoadedToolName(serverId, toolName);
-    const schema: OpenAIFormatTool = {
-      type: "function",
-      function: {
-        name: loadedToolName,
-        description: tool.description ?? `Run MCP tool ${toolName} on server ${serverId}.`,
-        parameters: normalizeSchemaParameters(tool.inputSchema),
-      },
-    };
-    const threadMap = getThreadLoadedMap(threadId);
-    const now = Date.now();
-    threadMap.set(loadedToolName, {
-      serverId,
-      toolName,
-      loadedToolName,
-      schema,
-      loadedAt: now,
-      lastUsedAt: now,
-    });
-    pruneThreadLoadedTools(threadId);
-
-    const loaded: LoadToolsItemResult = {
-      result: "success",
-      serverId,
-      toolName,
-      loadedToolName,
-    };
-    console.info(`${MCP_DEBUG_PREFIX} load_tools response`, {
-      serverId,
-      toolName,
-      threadId,
-      loadedToolName,
-    });
-    return loaded;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`${MCP_DEBUG_PREFIX} load_tools error`, {
-      serverId,
-      toolName,
-      threadId,
-      message,
-    });
-    return { result: "error", serverId, toolName, error: message };
-  }
-}
-
-export async function loadTools(
-  state: ModelState,
-  threadId: string,
-  tools: LoadToolsItem[]
-): Promise<LoadToolsResult | { error: string }> {
-  const dedupedTools = [
-    ...new Map(
-      tools
-        .map((item) => ({ serverId: item.serverId.trim(), toolName: item.toolName.trim() }))
-        .filter((item) => item.serverId && item.toolName)
-        .map((item) => [`${item.serverId}::${item.toolName}`, item] as const)
-    ).values(),
-  ];
-  if (dedupedTools.length === 0) return { error: "tools is required and must include at least one valid {serverId, toolName}" };
-  const results = await Promise.all(dedupedTools.map((item) => loadSingleTool(state, threadId, item.serverId, item.toolName)));
-  return { results };
-}
-
-// ----- run_mcp_tool -----
-
-export async function runMcpTool(
-  state: ModelState,
-  serverId: string,
-  toolName: string,
-  args: Record<string, unknown> | undefined
+async function callGatewayMetaTool(
+  name: GatewayMetaToolName,
+  args: Record<string, unknown>
 ): Promise<string> {
-  const configs = parseMcpServers(state.settings[MCP_SERVERS_SETTINGS_KEY]);
-  const config = configs.find((c) => c.id === serverId);
-  if (!config) {
-    console.warn(`${MCP_DEBUG_PREFIX} run_mcp_tool server not found`, {
-      serverId,
-      toolName,
-      args: args ?? {},
-      configs: summarizeConfigs(configs),
-    });
-    return JSON.stringify({
-      error: "server not found: use exact serverId from list_mcp_servers",
-      requestedServerId: serverId,
-      availableServers: summarizeConfigs(configs).map((c) => ({ serverId: c.id, name: c.name })),
-    });
-  }
-  if (!config.url) return JSON.stringify({ error: "server has no url (http transport required)" });
-
+  const gateway = getGatewayConfig();
+  if (!gateway) return JSON.stringify({ error: "gateway MCP URL not available in service worker scope" });
   try {
-    const toolsResult = await listTools(config);
-    const availableToolNames = (toolsResult.tools ?? []).map((t) => t.name);
-    const exactToolName = availableToolNames.find((n) => n === toolName);
-    if (!exactToolName) {
-      console.warn(`${MCP_DEBUG_PREFIX} run_mcp_tool tool not found`, {
-        serverId,
-        requestedToolName: toolName,
-        availableToolNames,
-      });
-      return JSON.stringify({
-        error: "tool not found",
-        requestedToolName: toolName,
-        availableToolNames,
-      });
-    }
-
-    console.info(`${MCP_DEBUG_PREFIX} run_mcp_tool request`, {
-      serverId: config.id,
-      serverName: config.name,
-      requestedToolName: toolName,
-      toolName: exactToolName,
-      args: args ?? {},
-      url: config.url,
-    });
-    const result = await mcpCall<{ content?: Array<{ type: string; text?: string }>; isError?: boolean }>(config, "tools/call", {
-      name: exactToolName,
-      arguments: args ?? {},
-    });
-    console.info(`${MCP_DEBUG_PREFIX} run_mcp_tool response`, {
-      serverId: config.id,
-      toolName: exactToolName,
-      isError: Boolean(result.isError),
-      contentTypes: (result.content ?? []).map((c) => c.type),
+    const result = await mcpCall<ToolCallResultPayload>(gateway, "tools/call", {
+      name,
+      arguments: args,
     });
     const text = result.content?.map((c) => (c.type === "text" && c.text ? c.text : "")).join("") ?? "";
-    if (text) return text;
-    return JSON.stringify(result);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`${MCP_DEBUG_PREFIX} run_mcp_tool error`, { serverId, toolName, message });
+    return text || JSON.stringify(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     return JSON.stringify({ error: message });
   }
 }
 
-// ----- Meta tool schemas (OpenAI format) -----
+type GatewayGetToolsPayload = {
+  results?: Array<{
+    serverId: string;
+    tools: Array<{ name: string; description?: string; inputSchema?: unknown }>;
+    error?: string;
+  }>;
+};
 
-const LIST_MCP_SERVERS_SCHEMA: OpenAIFormatTool = {
+async function hydrateLoadedToolSchemas(
+  threadId: string,
+  loadedItems: Array<{ serverId: string; toolName: string; loadedToolName: string }>
+): Promise<void> {
+  const serverIds = [...new Set(loadedItems.map((item) => item.serverId).filter(Boolean))];
+  if (serverIds.length === 0) return;
+  const raw = await callGatewayMetaTool("get_tools", { serverIds });
+  let parsed: GatewayGetToolsPayload = {};
+  try {
+    parsed = JSON.parse(raw) as GatewayGetToolsPayload;
+  } catch {
+    parsed = {};
+  }
+  const toolSchemaByKey = new Map<string, { description?: string; inputSchema?: unknown }>();
+  for (const serverResult of parsed.results ?? []) {
+    for (const tool of serverResult.tools ?? []) {
+      toolSchemaByKey.set(`${serverResult.serverId}::${tool.name}`, {
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      });
+    }
+  }
+
+  const threadMap = getThreadLoadedMap(threadId);
+  const now = Date.now();
+  for (const item of loadedItems) {
+    const key = `${item.serverId}::${item.toolName}`;
+    const tool = toolSchemaByKey.get(key);
+    const schema: OpenAIFormatTool = {
+      type: "function",
+      function: {
+        name: item.loadedToolName,
+        description: tool?.description ?? `Run MCP tool ${item.toolName} on server ${item.serverId}.`,
+        parameters: normalizeSchemaParameters(tool?.inputSchema),
+      },
+    };
+    threadMap.set(item.loadedToolName, {
+      serverId: item.serverId,
+      toolName: item.toolName,
+      loadedToolName: item.loadedToolName,
+      schema,
+      loadedAt: now,
+      lastUsedAt: now,
+    });
+  }
+  pruneThreadLoadedTools(threadId);
+}
+
+const LIST_SERVERS_SCHEMA: OpenAIFormatTool = {
   type: "function",
   function: {
-    name: "list_mcp_servers",
-    description:
-      "List all configured MCP servers that have a URL (Level 0 discovery). Use get_mcp_tools(serverIds) to list tools for one or more servers.",
+    name: "list_servers",
+    description: "List MCP servers registered in gateway for current user.",
     parameters: { type: "object" as const, properties: {} as Record<string, never>, required: [] as string[] },
   },
 };
 
-const GET_MCP_TOOLS_SCHEMA: OpenAIFormatTool = {
+const SEARCH_SERVERS_SCHEMA: OpenAIFormatTool = {
   type: "function",
   function: {
-    name: "get_mcp_tools",
-    description:
-      "Batch list tools (name/description only) and optional prompts for MCP servers (Level 1 discovery). Prefer exact serverIds from list_mcp_servers. If multiple servers are relevant in this turn, pass them together in one call instead of multiple single-server calls.",
+    name: "search_servers",
+    description: "Search gateway MCP servers by id, name, or url.",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        query: { type: "string" as const },
+      },
+      required: [] as string[],
+    },
+  },
+};
+
+const GET_TOOLS_SCHEMA: OpenAIFormatTool = {
+  type: "function",
+  function: {
+    name: "get_tools",
+    description: "List tools for one or more gateway-managed MCP servers.",
     parameters: {
       type: "object" as const,
       properties: {
         serverIds: {
           type: "array" as const,
-          description:
-            "One or more MCP server ids from list_mcp_servers. Include all candidate servers for this turn in a single request whenever possible.",
           items: { type: "string" as const },
         },
       },
@@ -440,20 +234,17 @@ const LOAD_TOOLS_SCHEMA: OpenAIFormatTool = {
   type: "function",
   function: {
     name: "load_tools",
-    description:
-      "Batch load MCP tool schemas into the active context. If you need multiple tools, load them in one call instead of repeated single-tool calls. After success, call each returned loadedToolName directly.",
+    description: "Load tool schemas into current thread from gateway-managed servers.",
     parameters: {
       type: "object" as const,
       properties: {
         tools: {
           type: "array" as const,
-          description:
-            "Tools to load into current thread context. Include all tools needed for this turn in one request whenever possible.",
           items: {
             type: "object" as const,
             properties: {
-              serverId: { type: "string" as const, description: "MCP server id" },
-              toolName: { type: "string" as const, description: "Tool name from get_mcp_tools result" },
+              serverId: { type: "string" as const },
+              toolName: { type: "string" as const },
             },
             required: ["serverId", "toolName"] as string[],
           },
@@ -465,60 +256,117 @@ const LOAD_TOOLS_SCHEMA: OpenAIFormatTool = {
 };
 
 export const metaToolSchemas: OpenAIFormatTool[] = [
-  LIST_MCP_SERVERS_SCHEMA,
-  GET_MCP_TOOLS_SCHEMA,
+  LIST_SERVERS_SCHEMA,
+  SEARCH_SERVERS_SCHEMA,
+  GET_TOOLS_SCHEMA,
   LOAD_TOOLS_SCHEMA,
 ];
 
-// ----- Execute meta tool -----
+const META_TOOL_NAMES = [...GATEWAY_META_TOOL_NAMES] as const;
 
-const META_TOOL_NAMES = ["list_mcp_servers", "get_mcp_tools", "load_tools", "load_tool"] as const;
-
-export async function executeMetaTool(
+async function executeMetaTool(
   name: string,
   args: Record<string, unknown>,
-  state: ModelState,
   threadId: string
 ): Promise<string> {
-  switch (name) {
-    case "list_mcp_servers": {
-      const result = await listMcpServers(state);
-      return JSON.stringify(result);
-    }
-    case "get_mcp_tools": {
-      const serverIds = Array.isArray(args.serverIds) ? args.serverIds.filter((id): id is string => typeof id === "string") : [];
-      const result = await getMcpTools(state, serverIds);
-      return JSON.stringify(result);
-    }
-    case "load_tools": {
-      const tools = Array.isArray(args.tools)
-        ? args.tools
-            .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
-            .map((item) => ({
-              serverId: typeof item.serverId === "string" ? item.serverId : "",
-              toolName: typeof item.toolName === "string" ? item.toolName : "",
-            }))
-        : [];
-      const result = await loadTools(state, threadId, tools);
-      return JSON.stringify(result);
-    }
-    case "load_tool": {
-      const serverId = typeof args.serverId === "string" ? args.serverId : "";
-      const toolName = typeof args.toolName === "string" ? args.toolName : "";
-      const result = await loadTools(state, threadId, [{ serverId, toolName }]);
-      return JSON.stringify(result);
-    }
-    default:
-      return JSON.stringify({ error: `unknown meta-tool: ${name}` });
+  if (name === "list_servers") return callGatewayMetaTool("list_servers", {});
+  if (name === "search_servers") {
+    const query = typeof args.query === "string" ? args.query : "";
+    return callGatewayMetaTool("search_servers", query ? { query } : {});
   }
+  if (name === "get_tools") {
+    const serverIds = Array.isArray(args.serverIds) ? args.serverIds.filter((id): id is string => typeof id === "string") : [];
+    return callGatewayMetaTool("get_tools", { serverIds });
+  }
+  if (name === "load_tools") {
+    const tools = Array.isArray(args.tools)
+      ? args.tools
+          .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+          .map((item) => ({
+            serverId: typeof item.serverId === "string" ? item.serverId.trim() : "",
+            toolName: typeof item.toolName === "string" ? item.toolName.trim() : "",
+          }))
+          .filter((item) => item.serverId && item.toolName)
+      : [];
+    const raw = await callGatewayMetaTool("load_tools", { tools });
+    try {
+      const parsed = JSON.parse(raw) as {
+        results?: Array<{ serverId?: string; toolName?: string; loadedToolName?: string; result?: string }>;
+      };
+      const loaded = (parsed.results ?? [])
+        .filter((item) => item.result !== "error")
+        .filter(
+          (item): item is { serverId: string; toolName: string; loadedToolName: string } =>
+            typeof item.serverId === "string" &&
+            typeof item.toolName === "string" &&
+            typeof item.loadedToolName === "string" &&
+            item.serverId.trim() !== "" &&
+            item.toolName.trim() !== "" &&
+            item.loadedToolName.trim() !== ""
+        )
+        .map((item) => ({
+          serverId: item.serverId.trim(),
+          toolName: item.toolName.trim(),
+          loadedToolName: item.loadedToolName.trim(),
+        }));
+      if (loaded.length > 0) {
+        await hydrateLoadedToolSchemas(threadId, loaded);
+        const threadMap = getThreadLoadedMap(threadId);
+        for (const item of loaded) {
+          const entry = threadMap.get(item.loadedToolName);
+          const params = entry?.schema.function.parameters as
+            | { properties?: Record<string, unknown>; required?: unknown[] }
+            | undefined;
+          const propertyKeys = Object.keys(params?.properties ?? {});
+          const required = Array.isArray(params?.required) ? params.required : [];
+          console.info(`${MCP_DEBUG_PREFIX} load_tools schema`, {
+            threadId,
+            serverId: item.serverId,
+            toolName: item.toolName,
+            loadedToolName: item.loadedToolName,
+            properties: propertyKeys,
+            required,
+          });
+        }
+      }
+    } catch (error) {
+      console.warn(`${MCP_DEBUG_PREFIX} load_tools parse failed`, {
+        threadId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return raw;
+  }
+  return JSON.stringify({ error: `unknown meta-tool: ${name}` });
 }
 
-// ----- Execute any tool (only meta tools now) -----
+async function runLoadedToolViaGateway(
+  loaded: LoadedToolEntry,
+  args: Record<string, unknown>
+): Promise<string> {
+  const gateway = getGatewayConfig();
+  if (!gateway) return JSON.stringify({ error: "gateway MCP URL not available in service worker scope" });
+  try {
+    const result = await mcpCall<ToolCallResultPayload>(gateway, "tools/call", {
+      name: "call_tool",
+      arguments: {
+        serverId: loaded.serverId,
+        toolName: loaded.toolName,
+        args,
+      },
+    });
+    const text = result.content?.map((c) => (c.type === "text" && c.text ? c.text : "")).join("") ?? "";
+    return text || JSON.stringify(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return JSON.stringify({ error: message });
+  }
+}
 
 export async function executeTool(
   name: string,
   argsJson: string,
-  state: ModelState,
+  _state: ModelState,
   threadId: string
 ): Promise<string> {
   if (!META_TOOL_NAMES.includes(name as (typeof META_TOOL_NAMES)[number])) {
@@ -534,28 +382,17 @@ export async function executeTool(
       return JSON.stringify({ error: "invalid arguments JSON" });
     }
     markLoadedToolUsed(threadId, name);
-    return runMcpTool(state, loaded.serverId, loaded.toolName, loadedArgs);
+    return runLoadedToolViaGateway(loaded, loadedArgs);
   }
+
   let args: Record<string, unknown> = {};
   try {
     args = argsJson ? (JSON.parse(argsJson) as Record<string, unknown>) : {};
   } catch {
-    console.warn(`${MCP_DEBUG_PREFIX} execute_tool invalid arguments JSON`, {
-      name,
-      threadId,
-      argsJson,
-    });
     return JSON.stringify({ error: "invalid arguments JSON" });
   }
-  console.info(`${MCP_DEBUG_PREFIX} execute_tool`, {
-    name,
-    threadId,
-    args,
-  });
-  return executeMetaTool(name, args, state, threadId);
+  return executeMetaTool(name, args, threadId);
 }
-
-// ----- Build tools for thread -----
 
 export type BuildToolsAndPromptResult = {
   systemPromptText?: string;
@@ -568,7 +405,6 @@ export async function buildToolsAndPromptForThread(
 ): Promise<BuildToolsAndPromptResult> {
   const promptLanguage = parseSystemPromptLanguage(state.settings[SYSTEM_PROMPT_LANGUAGE_KEY]);
   const systemPromptText = (promptLanguage === "zh-CN" ? systemPromptZhRaw : systemPromptTextRaw).trim();
-
   return {
     systemPromptText,
     tools: [...metaToolSchemas, ...getLoadedToolSchemas(threadId)],
