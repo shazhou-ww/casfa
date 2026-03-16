@@ -8,6 +8,7 @@ import { resolveCellDir } from "../config/resolve-cell-dir.js";
 import { assertDeclaredParamsProvided, mergeParams, resolveParams } from "../config/resolve-params.js";
 import { loadEnvForCell } from "../utils/env.js";
 import { generateTemplate } from "../deploy/template.js";
+import { ensureAcmCertificateWithCloudflare, createCloudFrontDnsRecord } from "../deploy/cloudflare-dns.js";
 
 const OTAVIA_BUILD = ".otavia/build";
 const OTAVIA_DIST = ".otavia/dist";
@@ -311,10 +312,40 @@ export async function deployCommand(
     }
   }
 
+  // Cloudflare DNS: request ACM certificate before template generation
+  let certificateArn: string | undefined;
+  const dnsProvider = otavia.domain?.dns?.provider;
+  const isCloudflare = dnsProvider === "cloudflare";
+  if (isCloudflare && otavia.domain?.host && otavia.domain?.dns?.zoneId) {
+    console.log("\n=== Cloudflare DNS: Ensuring ACM certificate ===");
+    const cfToken =
+      awsEnv.CLOUDFLARE_API_TOKEN?.trim() ||
+      awsEnv.CF_API_TOKEN?.trim() ||
+      process.env.CLOUDFLARE_API_TOKEN?.trim() ||
+      process.env.CF_API_TOKEN?.trim();
+    if (!cfToken) {
+      console.error("Cloudflare API token required. Set CLOUDFLARE_API_TOKEN in .env or environment.");
+      process.exit(1);
+    }
+    try {
+      certificateArn = await ensureAcmCertificateWithCloudflare({
+        domainHost: otavia.domain.host,
+        zoneId: otavia.domain.dns.zoneId,
+        cloudflareToken: cfToken,
+        awsEnv,
+        awsCli,
+        region: awsEnv.AWS_REGION ?? "us-east-1",
+      });
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  }
+
   console.log("\n=== Generating CloudFormation template ===");
   let template: string;
   try {
-    template = generateTemplate(rootDir);
+    template = generateTemplate(rootDir, { certificateArn });
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
@@ -442,8 +473,36 @@ export async function deployCommand(
     console.log("  Invalidation created");
   }
 
+  // Cloudflare DNS: create CNAME pointing domain to CloudFront
+  if (isCloudflare && otavia.domain?.host && otavia.domain?.dns?.zoneId && outputs.FrontendUrl) {
+    console.log("\n=== Cloudflare DNS: Creating domain record ===");
+    const cfToken =
+      awsEnv.CLOUDFLARE_API_TOKEN?.trim() ||
+      awsEnv.CF_API_TOKEN?.trim() ||
+      process.env.CLOUDFLARE_API_TOKEN?.trim() ||
+      process.env.CF_API_TOKEN?.trim();
+    if (cfToken) {
+      try {
+        // Extract CloudFront domain from the URL output
+        const cfDomain = outputs.FrontendUrl.replace("https://", "").replace(/\/$/, "");
+        await createCloudFrontDnsRecord({
+          domainHost: otavia.domain.host,
+          cloudFrontDomain: cfDomain,
+          zoneId: otavia.domain.dns.zoneId,
+          cloudflareToken: cfToken,
+        });
+      } catch (err) {
+        console.warn(`  Warning: DNS record creation failed: ${err instanceof Error ? err.message : err}`);
+        console.warn(`  You may need to manually create a CNAME: ${otavia.domain.host} → CloudFront domain`);
+      }
+    }
+  }
+
   console.log("\n=== Deploy complete! ===");
   if (outputs.FrontendUrl) {
     console.log(`  CloudFront URL: ${outputs.FrontendUrl}`);
+  }
+  if (otavia.domain?.host) {
+    console.log(`  Domain: https://${otavia.domain.host}`);
   }
 }

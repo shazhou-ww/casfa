@@ -111,7 +111,7 @@ function toApiPathPattern(mount: string, route: string): string {
  * Resources: each cell's tables -> DynamoDB, buckets -> S3, backend entries -> Lambda + API Gateway HTTP API,
  * frontend -> single S3 bucket + CloudFront path behaviors for single domain.
  */
-export function generateTemplate(rootDir: string): string {
+export function generateTemplate(rootDir: string, opts?: { certificateArn?: string }): string {
   const otavia = loadOtaviaYaml(rootDir);
   const stackName = otavia.stackName;
   const domainHost = otavia.domain?.host ?? "";
@@ -243,8 +243,8 @@ export function generateTemplate(rootDir: string): string {
     defaultCellMount,
     frontendBucketRef: "FrontendBucket",
     pathBehaviors: pathBehaviors.sort((a, b) => b.pathPattern.length - a.pathPattern.length),
-    hostedZoneId: otavia.domain?.dns?.zoneId,
-    certificateArn: undefined,
+    hostedZoneId: otavia.domain?.dns?.provider === "cloudflare" ? undefined : otavia.domain?.dns?.zoneId,
+    certificateArn: opts?.certificateArn,
   });
   Object.assign(resources, cloudFrontFrag.Resources);
   if (cloudFrontFrag.Outputs) Object.assign(outputs, cloudFrontFrag.Outputs);
