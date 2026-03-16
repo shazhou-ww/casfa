@@ -20,12 +20,10 @@ import {
   type LocalTableEntry,
 } from "../local/dynamodb-local.js";
 import { ensureLocalBuckets } from "../local/minio-local.js";
+import { resolvePortsFromEnv } from "../config/ports.js";
 
 const DEFAULT_UNIT_PATTERN = "**/__tests__/*.test.ts";
 const CELL_YAML = "cell.yaml";
-const E2E_GATEWAY_PORT = 8910;
-const E2E_DYNAMODB_PORT = 8012;
-const E2E_MINIO_PORT = 9014;
 const E2E_DYNAMODB_CONTAINER = "otavia-dynamodb-e2e";
 const E2E_MINIO_CONTAINER = "otavia-minio-e2e";
 
@@ -138,6 +136,9 @@ export async function testUnitCommand(rootDir: string): Promise<void> {
 export async function testE2eCommand(rootDir: string): Promise<void> {
   const root = path.resolve(rootDir);
   const otavia = loadOtaviaYaml(root);
+  const stageEnv = loadEnvForCell(root, root, { stage: "test" });
+  const ports = resolvePortsFromEnv("test", { ...stageEnv, ...process.env });
+  const firstMount = otavia.cellsList[0]?.mount ?? "sso";
 
   type CellE2E = {
     mount: string;
@@ -182,13 +183,13 @@ export async function testE2eCommand(rootDir: string): Promise<void> {
 
     if (hasTables) {
       await startDynamoDB({
-        port: E2E_DYNAMODB_PORT,
+        port: ports.dynamodb,
         persistent: false,
         containerName: E2E_DYNAMODB_CONTAINER,
       });
-      const ready = await waitForPort(E2E_DYNAMODB_PORT);
+      const ready = await waitForPort(ports.dynamodb);
       if (!ready) throw new Error("DynamoDB Local did not become ready in time");
-      const dynamoEndpoint = `http://localhost:${E2E_DYNAMODB_PORT}`;
+      const dynamoEndpoint = `http://localhost:${ports.dynamodb}`;
       if (!(await isDynamoDBReady(dynamoEndpoint))) {
         throw new Error("DynamoDB endpoint not accepting requests");
       }
@@ -215,13 +216,13 @@ export async function testE2eCommand(rootDir: string): Promise<void> {
 
     if (hasBuckets) {
       await startMinIO({
-        port: E2E_MINIO_PORT,
+        port: ports.minio,
         containerName: E2E_MINIO_CONTAINER,
         rm: true,
       });
-      const ready = await waitForPort(E2E_MINIO_PORT);
+      const ready = await waitForPort(ports.minio);
       if (!ready) throw new Error("MinIO did not become ready in time");
-      const s3Endpoint = `http://localhost:${E2E_MINIO_PORT}`;
+      const s3Endpoint = `http://localhost:${ports.minio}`;
       const bucketNames: string[] = [];
       for (const entry of otavia.cellsList) {
         const cellDir = resolveCellDir(root, entry.package);
@@ -243,10 +244,10 @@ export async function testE2eCommand(rootDir: string): Promise<void> {
     const gatewayEnv: Record<string, string> = {
       ...process.env,
       OTAVIA_DEV_GATEWAY_ONLY: "1",
-      PORT: String(E2E_GATEWAY_PORT),
+      PORT: String(ports.backend),
     };
-    if (hasTables) gatewayEnv.DYNAMODB_ENDPOINT = `http://localhost:${E2E_DYNAMODB_PORT}`;
-    if (hasBuckets) gatewayEnv.S3_ENDPOINT = `http://localhost:${E2E_MINIO_PORT}`;
+    if (hasTables) gatewayEnv.DYNAMODB_ENDPOINT = `http://localhost:${ports.dynamodb}`;
+    if (hasBuckets) gatewayEnv.S3_ENDPOINT = `http://localhost:${ports.minio}`;
 
     const cliPath = fs.existsSync(path.join(root, "apps", "otavia", "src", "cli.ts"))
       ? path.join(root, "apps", "otavia", "src", "cli.ts")
@@ -257,7 +258,7 @@ export async function testE2eCommand(rootDir: string): Promise<void> {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    const gatewayReady = await waitForPort(E2E_GATEWAY_PORT);
+    const gatewayReady = await waitForPort(ports.backend);
     if (!gatewayReady) {
       throw new Error("Gateway did not become ready in time");
     }
@@ -281,18 +282,21 @@ export async function testE2eCommand(rootDir: string): Promise<void> {
       const merged = mergeParams(otavia.params, params);
       assertDeclaredParamsProvided(config.params, merged, mount);
       const envMap = loadEnvForCell(root, cellDir, { stage: "test" });
+      if (!envMap.SSO_BASE_URL?.trim()) {
+        envMap.SSO_BASE_URL = `http://localhost:${ports.backend}/${firstMount}`;
+      }
       const resolved = resolveParams(merged as Record<string, unknown>, envMap, {
         onMissingParam: "placeholder",
       });
       const resolvedEnv = resolvedParamsToEnv(resolved as Record<string, string | unknown>);
       const cellEnv: Record<string, string> = {
         ...resolvedEnv,
-        CELL_BASE_URL: `http://localhost:${E2E_GATEWAY_PORT}/${mount}`,
-        PORT: String(E2E_GATEWAY_PORT),
+        CELL_BASE_URL: `http://localhost:${ports.backend}/${mount}`,
+        PORT: String(ports.backend),
         CELL_STAGE: "test",
       };
-      if (hasTables) cellEnv.DYNAMODB_ENDPOINT = `http://localhost:${E2E_DYNAMODB_PORT}`;
-      if (hasBuckets) cellEnv.S3_ENDPOINT = `http://localhost:${E2E_MINIO_PORT}`;
+      if (hasTables) cellEnv.DYNAMODB_ENDPOINT = `http://localhost:${ports.dynamodb}`;
+      if (hasBuckets) cellEnv.S3_ENDPOINT = `http://localhost:${ports.minio}`;
 
       const proc = Bun.spawn(["bun", "test", e2ePattern], {
         cwd: cellDir,

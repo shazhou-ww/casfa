@@ -39,6 +39,21 @@ export async function stopContainer(name: string): Promise<void> {
   await exec(["docker", "rm", "-f", name]);
 }
 
+export async function getContainerHostPort(
+  name: string,
+  containerPort: number
+): Promise<number | undefined> {
+  const { exitCode, stdout } = await exec(["docker", "port", name, `${containerPort}/tcp`]);
+  if (exitCode !== 0 || !stdout) return undefined;
+  const firstLine = stdout.split(/\r?\n/)[0]?.trim();
+  if (!firstLine) return undefined;
+  const match = firstLine.match(/:(\d+)$/);
+  if (!match) return undefined;
+  const port = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(port)) return undefined;
+  return port;
+}
+
 export interface DynamoDBOpts {
   port: number;
   persistent: boolean;
@@ -67,10 +82,16 @@ export function buildDynamoDBArgs(opts: DynamoDBOpts): string[] {
 }
 
 export async function startDynamoDB(opts: DynamoDBOpts): Promise<void> {
-  if (await isContainerRunning(opts.containerName)) return;
+  if (await isContainerRunning(opts.containerName)) {
+    const mappedPort = await getContainerHostPort(opts.containerName, 8000);
+    if (mappedPort === opts.port) return;
+    await stopContainer(opts.containerName);
+  }
   if (await containerExists(opts.containerName)) {
     await exec(["docker", "start", opts.containerName]);
-    return;
+    const mappedPort = await getContainerHostPort(opts.containerName, 8000);
+    if (mappedPort === opts.port) return;
+    await stopContainer(opts.containerName);
   }
   const args = buildDynamoDBArgs(opts);
   const { exitCode, stderr } = await exec(args);
@@ -110,10 +131,16 @@ export function buildMinIOArgs(opts: MinIOOpts): string[] {
 }
 
 export async function startMinIO(opts: MinIOOpts): Promise<void> {
-  if (await isContainerRunning(opts.containerName)) return;
+  if (await isContainerRunning(opts.containerName)) {
+    const mappedPort = await getContainerHostPort(opts.containerName, 9000);
+    if (mappedPort === opts.port) return;
+    await stopContainer(opts.containerName);
+  }
   if (await containerExists(opts.containerName)) {
     await exec(["docker", "start", opts.containerName]);
-    return;
+    const mappedPort = await getContainerHostPort(opts.containerName, 9000);
+    if (mappedPort === opts.port) return;
+    await stopContainer(opts.containerName);
   }
   const args = buildMinIOArgs(opts);
   const { exitCode, stderr } = await exec(args);

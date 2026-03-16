@@ -8,6 +8,7 @@ import { resolveCellDir } from "../config/resolve-cell-dir.js";
 import { assertDeclaredParamsProvided, mergeParams, resolveParams } from "../config/resolve-params.js";
 import { isEnvRef, isSecretRef } from "../config/cell-yaml-schema.js";
 import { loadEnvForCell } from "../utils/env.js";
+import { resolvePortsFromEnv } from "../config/ports.js";
 
 type CommandResult = { exitCode: number; stdout: string; stderr: string };
 type CommandOptions = { inheritStdio?: boolean; env?: Record<string, string | undefined> };
@@ -142,6 +143,8 @@ export async function setupCommand(
 
   const tunnelEnabled = await resolveTunnelSetupEnabled(options);
   if (tunnelEnabled) {
+    const stageEnv = loadEnvForCell(rootDir, rootDir, { stage: "dev" });
+    const ports = resolvePortsFromEnv("dev", { ...stageEnv, ...process.env });
     const configDir =
       process.env.OTAVIA_CONFIG_DIR ?? path.join(homedir(), ".config", "otavia");
     mkdirSync(configDir, { recursive: true });
@@ -161,7 +164,7 @@ export async function setupCommand(
       tunnelName: tunnel.tunnelName,
       credentialsPath: tunnel.credentialsPath,
       hostname: tunnel.hostname,
-      localPort: 7100,
+      localPort: ports.frontend,
     });
     writeFileSync(tunnelConfigPath, tunnelYaml, "utf-8");
     writeFileSync(tunnelLegacyPath, tunnelYaml, "utf-8");
@@ -515,6 +518,10 @@ async function ensureOAuthCognitoCallback(input: {
   const merged = mergeParams(input.otavia.params as Record<string, unknown> | undefined, cellEntry.params);
   assertDeclaredParamsProvided(cellConfig.params, merged, cellEntry.mount);
   const envMap = loadEnvForCell(input.rootDir, cellDir, { stage: "dev" });
+  if (!envMap.SSO_BASE_URL?.trim()) {
+    const ports = resolvePortsFromEnv("dev", { ...envMap, ...process.env });
+    envMap.SSO_BASE_URL = `http://localhost:${ports.backend}/${callback.cell}`;
+  }
   const resolved = resolveParams(merged, envMap, { onMissingParam: "throw" });
 
   const region = asString(resolved.COGNITO_REGION);

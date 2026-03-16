@@ -3,9 +3,8 @@ import { checkAwsCredentials } from "./aws-auth.js";
 import { runGatewayDev } from "./dev/gateway.js";
 import { startViteDev } from "./dev/vite-dev.js";
 import { startTunnel } from "./dev/tunnel.js";
-
-const DEFAULT_BACKEND_PORT = 8900;
-const DEFAULT_VITE_PORT = 7100;
+import { loadEnvForCell } from "../utils/env.js";
+import { resolvePortsFromEnv } from "../config/ports.js";
 
 export function resolveDevPublicBaseUrl(options: {
   tunnelEnabled?: boolean;
@@ -37,8 +36,10 @@ export async function devCommand(
     console.error("Run: bun run otavia aws login");
     process.exit(1);
   }
-  const backendPort = parseInt(process.env.PORT ?? String(DEFAULT_BACKEND_PORT), 10);
-  const vitePort = parseInt(process.env.VITE_PORT ?? String(DEFAULT_VITE_PORT), 10);
+  const stageEnv = loadEnvForCell(root, root, { stage: "dev" });
+  const ports = resolvePortsFromEnv("dev", { ...stageEnv, ...process.env });
+  const backendPort = ports.backend;
+  const vitePort = ports.frontend;
   const gatewayOnly = process.env.OTAVIA_DEV_GATEWAY_ONLY === "1";
   const overrides: { dynamoEndpoint?: string; s3Endpoint?: string } | undefined = gatewayOnly
     ? (process.env.DYNAMODB_ENDPOINT || process.env.S3_ENDPOINT
@@ -67,7 +68,11 @@ export async function devCommand(
     gatewayOnly,
     vitePort,
   });
-  const server = await runGatewayDev(root, backendPort, overrides, { publicBaseUrl: effectivePublicBaseUrl });
+  const server = await runGatewayDev(root, backendPort, overrides, {
+    publicBaseUrl: effectivePublicBaseUrl,
+    dynamodbPort: ports.dynamodb,
+    minioPort: ports.minio,
+  });
 
   if (gatewayOnly) {
     process.on("SIGINT", () => {

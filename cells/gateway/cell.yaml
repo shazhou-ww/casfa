@@ -17,6 +17,7 @@ backend:
         - /oauth/client-info
         - /oauth/token
         - /oauth/mcp-client-metadata
+        - /oauth/server/callback
         - /.well-known/*
         - /mcp
 

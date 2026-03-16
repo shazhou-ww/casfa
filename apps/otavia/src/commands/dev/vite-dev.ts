@@ -67,10 +67,17 @@ void bootMainFrontend(rootRedirectMount, mounts, mountLoaders);
 
 const MAIN_FRONTEND_VITE_CONFIG_TS = `import { createMainFrontendViteConfig } from "@casfa/otavia/dev/main-frontend-runtime/vite-config";
 
-const backendPort = process.env.GATEWAY_BACKEND_PORT ?? "8900";
-const vitePort = parseInt(process.env.VITE_PORT ?? "7100", 10);
+const backendPort = process.env.GATEWAY_BACKEND_PORT;
+const vitePort = Number.parseInt(process.env.VITE_PORT ?? "", 10);
 const generatedConfigPath = new URL("./src/generated/main-dev-config.json", import.meta.url);
 const packageRoot = process.env.OTAVIA_MAIN_ROOT ?? process.cwd();
+
+if (!backendPort) {
+  throw new Error("Missing GATEWAY_BACKEND_PORT");
+}
+if (!Number.isFinite(vitePort)) {
+  throw new Error("Missing VITE_PORT");
+}
 
 export default createMainFrontendViteConfig({
   generatedConfigPath,

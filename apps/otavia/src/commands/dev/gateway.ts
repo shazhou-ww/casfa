@@ -29,8 +29,6 @@ import {
 } from "./well-known.js";
 import { resolveRootRedirectMount } from "./mount-selection.js";
 
-const DYNAMODB_PORT = 9001;
-const MINIO_PORT = 9000;
 const DYNAMODB_CONTAINER = "otavia-dynamodb-dev";
 const MINIO_CONTAINER = "otavia-minio-dev";
 
@@ -138,6 +136,9 @@ async function discoverCells(
     const merged = mergeParams(otavia.params, entry.params);
     assertDeclaredParamsProvided(config.params, merged, entry.mount);
     const envMap = loadEnvForCell(rootDir, cellDir, { stage: "dev" });
+    if (!envMap.SSO_BASE_URL?.trim()) {
+      envMap.SSO_BASE_URL = resolveGatewaySsoBaseUrl(undefined, backendPort, firstMount, publicBaseUrl);
+    }
     const resolved = resolveParams(merged as Record<string, unknown>, envMap, {
       onMissingParam: "placeholder",
     });
@@ -158,7 +159,8 @@ async function discoverCells(
 async function ensureDockerResources(
   rootDir: string,
   otavia: OtaviaYaml,
-  cells: GatewayCellInfo[]
+  cells: GatewayCellInfo[],
+  options: { dynamodbPort: number; minioPort: number }
 ): Promise<{ dynamoEndpoint?: string; s3Endpoint?: string }> {
   const hasTables = cells.some((c) => c.config.tables && Object.keys(c.config.tables).length > 0);
   const hasBuckets = cells.some((c) => c.config.buckets && Object.keys(c.config.buckets).length > 0);
@@ -174,14 +176,14 @@ async function ensureDockerResources(
 
   if (hasTables) {
     await startDynamoDB({
-      port: DYNAMODB_PORT,
+      port: options.dynamodbPort,
       persistent: false,
       containerName: DYNAMODB_CONTAINER,
     });
-    if (!(await waitForPort(DYNAMODB_PORT))) {
+    if (!(await waitForPort(options.dynamodbPort))) {
       throw new Error("DynamoDB Local did not become ready in time");
     }
-    dynamoEndpoint = `http://localhost:${DYNAMODB_PORT}`;
+    dynamoEndpoint = `http://localhost:${options.dynamodbPort}`;
     // DynamoDB Local may accept TCP before the API is ready; retry isDynamoDBReady
     for (let i = 0; i < 30; i++) {
       if (await isDynamoDBReady(dynamoEndpoint)) break;
@@ -205,14 +207,14 @@ async function ensureDockerResources(
 
   if (hasBuckets) {
     await startMinIO({
-      port: MINIO_PORT,
+      port: options.minioPort,
       containerName: MINIO_CONTAINER,
       // no dataDir for dev => ephemeral
     });
-    if (!(await waitForPort(MINIO_PORT))) {
+    if (!(await waitForPort(options.minioPort))) {
       throw new Error("MinIO did not become ready in time");
     }
-    s3Endpoint = `http://localhost:${MINIO_PORT}`;
+    s3Endpoint = `http://localhost:${options.minioPort}`;
     // MinIO may accept TCP before the S3 API is ready; retry isMinIOReady
     for (let i = 0; i < 30; i++) {
       if (await isMinIOReady(s3Endpoint)) break;
@@ -298,7 +300,7 @@ export async function runGatewayDev(
   rootDir: string,
   backendPort: number,
   overrides?: { dynamoEndpoint?: string; s3Endpoint?: string },
-  options?: { publicBaseUrl?: string }
+  options?: { publicBaseUrl?: string; dynamodbPort: number; minioPort: number }
 ): Promise<GatewayServer> {
   const otavia = loadOtaviaYaml(rootDir);
   const cells = await discoverCells(rootDir, otavia, backendPort, options?.publicBaseUrl);
@@ -313,7 +315,13 @@ export async function runGatewayDev(
     dynamoEndpoint = overrides.dynamoEndpoint;
     s3Endpoint = overrides.s3Endpoint;
   } else {
-    const resources = await ensureDockerResources(rootDir, otavia, cells);
+    if (!options) {
+      throw new Error("Missing docker port options for local resources.");
+    }
+    const resources = await ensureDockerResources(rootDir, otavia, cells, {
+      dynamodbPort: options.dynamodbPort,
+      minioPort: options.minioPort,
+    });
     dynamoEndpoint = resources.dynamoEndpoint;
     s3Endpoint = resources.s3Endpoint;
   }
