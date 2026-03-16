@@ -13,7 +13,6 @@ describe("branch url auth middleware mount path", () => {
       branchId,
       realmId: "realm-1",
       parentId: "parent-1",
-      mountPath: "m",
       expiresAt: Date.now() + 60_000,
       accessVerification: { value: verification, expiresAt: Date.now() + 60_000 },
     });

@@ -104,7 +104,8 @@ export function createCellMcpServer(options: CellMcpServerOptions) {
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
       });
-      const server = buildMcpServer({ auth: c.get("auth") });
+      const auth = (c as { get: (key: string) => unknown }).get("auth");
+      const server = buildMcpServer({ auth });
       await server.connect(transport);
       const res = await transport.handleRequest(c.req.raw);
       await server.close();

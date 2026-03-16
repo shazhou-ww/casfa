@@ -247,7 +247,6 @@ export function createApp(deps: AppDeps) {
   app.get("/api/realm/:realmId/branches", (c) => branches.list(c));
   app.post("/api/realm/:realmId/branches/:branchId/revoke", (c) => branches.revoke(c));
   app.post("/api/realm/:realmId/branches/:branchId/close", (c) => branches.close(c));
-  app.post("/api/realm/:realmId/branches/:branchId/complete", (c) => branches.complete(c));
   app.post("/api/realm/:realmId/branches/:branchId/transfer-paths", (c) => branches.transferPaths(c));
 
   app.get("/api/realm/:realmId", (c) => realm.info(c));

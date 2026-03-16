@@ -22,6 +22,7 @@ export function createAppForGateway(env: Record<string, string>): Hono {
     region: config.cognito.region,
     userPoolId: config.cognito.userPoolId,
     clientId: config.cognito.clientId,
+    clientSecret: config.cognito.clientSecret,
     hostedUiUrl: config.cognito.hostedUiUrl,
   };
 

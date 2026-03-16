@@ -97,12 +97,14 @@ const app = createApp({
 
 const honoHandler = handle(app);
 
-/** Strip leading /{stage}/ from rawPath so /dev/api/... becomes /api/... (API Gateway may prepend stage in Lambda event). */
+/** Strip leading /{mount}/ or /{stage}/ from rawPath so /drive/api/... becomes /api/... */
 function normalizeEventPath(event: { rawPath?: string }): void {
   const raw = event.rawPath;
   if (!raw || !raw.startsWith("/")) return;
   const segments = raw.split("/").filter(Boolean);
-  if (segments.length >= 2 && segments[0] !== "api" && segments[1] === "api") {
+  // Strip first segment if it's a cell mount prefix (e.g. "drive") and not a known route root
+  const routeRoots = ["api", "branch", "branch-restricted", "oauth", "mcp", ".well-known"];
+  if (segments.length >= 2 && !routeRoots.includes(segments[0]) && routeRoots.includes(segments[1])) {
     (event as { rawPath: string }).rawPath = `/${segments.slice(1).join("/")}`;
   }
 }

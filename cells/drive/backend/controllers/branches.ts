@@ -4,7 +4,6 @@
  */
 import type { Context } from "hono";
 import type { ServerConfig } from "../config.ts";
-import { completeBranch } from "../services/branch-complete.ts";
 import type { RootResolverDeps } from "../services/root-resolver.ts";
 import { ensureEmptyRoot, resolvePath } from "../services/root-resolver.ts";
 import type { Branch } from "../types/branch.ts";
@@ -131,7 +130,6 @@ export function createBranchesController(deps: BranchesControllerDeps) {
               branchId,
               realmId,
               parentId: rootRecord.branchId,
-              mountPath,
               expiresAt,
               accessVerification: { value: verification, expiresAt },
             });
@@ -148,7 +146,6 @@ export function createBranchesController(deps: BranchesControllerDeps) {
             branchId,
             realmId,
             parentId: rootRecord.branchId,
-            mountPath,
             expiresAt,
             accessVerification: { value: verification, expiresAt },
           });
@@ -180,7 +177,6 @@ export function createBranchesController(deps: BranchesControllerDeps) {
             branchId: childId,
             realmId: parentBranch.realmId,
             parentId: parentBranchId,
-            mountPath,
             expiresAt,
             accessVerification: { value: verification, expiresAt },
           });
@@ -197,7 +193,6 @@ export function createBranchesController(deps: BranchesControllerDeps) {
           branchId: childId,
           realmId: parentBranch.realmId,
           parentId: parentBranchId,
-          mountPath,
           expiresAt,
           accessVerification: { value: verification, expiresAt },
         });
@@ -226,7 +221,6 @@ export function createBranchesController(deps: BranchesControllerDeps) {
             branches: [
               {
                 branchId: branch.branchId,
-                mountPath: branch.mountPath,
                 parentId: branch.parentId,
                 expiresAt: branch.expiresAt,
               },
@@ -241,7 +235,6 @@ export function createBranchesController(deps: BranchesControllerDeps) {
         {
           branches: branches.map((b: Branch) => ({
             branchId: b.branchId,
-            mountPath: b.mountPath,
             parentId: b.parentId,
             expiresAt: b.expiresAt,
           })),
@@ -297,39 +290,6 @@ export function createBranchesController(deps: BranchesControllerDeps) {
       }
       await deps.branchStore.removeBranch(branchId);
       return c.json({ closed: branchId }, 200);
-    },
-
-    async complete(c: Context<Env>) {
-      const auth = c.get("auth");
-      if (!auth || auth.type !== "worker") {
-        return c.json({ error: "FORBIDDEN", message: "Worker (branch token) required" }, 403);
-      }
-      const paramId = c.req.param("branchId");
-      const branchId = paramId === "me" ? auth.branchId : paramId;
-      if (branchId !== auth.branchId) {
-        return c.json({ error: "FORBIDDEN", message: "Can only complete own branch" }, 403);
-      }
-      const branch = await deps.branchStore.getBranch(branchId);
-      if (!branch) {
-        return c.json({ error: "NOT_FOUND", message: "Branch not found" }, 404);
-      }
-      try {
-        const result = await completeBranch(branchId, deps);
-        return c.json(result, 200);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (
-          message.includes("Branch not found") ||
-          message.includes("has no root") ||
-          message.includes("Parent has no root")
-        ) {
-          return c.json({ error: "NOT_FOUND", message }, 404);
-        }
-        if (message.includes("Cannot complete root") || message.includes("Invalid mount path")) {
-          return c.json({ error: "BAD_REQUEST", message }, 400);
-        }
-        throw err;
-      }
     },
 
     async transferPaths(c: Context<Env>) {

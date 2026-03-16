@@ -19,6 +19,7 @@ export async function exchangeCodeForTokens(
     code,
     redirect_uri: redirectUri,
   });
+  if (config.clientSecret) body.set("client_secret", config.clientSecret);
 
   const res = await fetch(`${config.hostedUiUrl}/oauth2/token`, {
     method: "POST",
@@ -52,6 +53,7 @@ export async function refreshCognitoTokens(
     client_id: config.clientId,
     refresh_token: refreshToken,
   });
+  if (config.clientSecret) body.set("client_secret", config.clientSecret);
 
   const res = await fetch(`${config.hostedUiUrl}/oauth2/token`, {
     method: "POST",

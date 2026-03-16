@@ -140,7 +140,6 @@ describe("getCurrentRoot", () => {
       branchId,
       realmId: "r1",
       parentId: record!.branchId,
-      mountPath: "sub",
       expiresAt: Date.now() + 3600_000,
     });
     await branchStore.setBranchRoot(branchId, emptyKey);

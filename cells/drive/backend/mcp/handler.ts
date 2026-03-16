@@ -16,7 +16,7 @@ import {
   getNodeDecoded,
   resolvePath,
 } from "../services/root-resolver.ts";
-import { addOrReplaceAtPath, removeEntryAtPath } from "../services/tree-mutations.ts";
+import { ensurePathThenAddOrReplace, removeEntryAtPath } from "../services/tree-mutations.ts";
 import { validateTransferSpec } from "../services/transfer-paths.ts";
 import { executeTransfer } from "../services/transfer-paths.ts";
 import type { Env } from "../types.ts";
@@ -384,7 +384,6 @@ export async function executeTool(
           branchId,
           realmId,
           parentId: rootRecord.branchId,
-          mountPath,
           expiresAt,
           accessVerification: { value: verification, expiresAt },
         });
@@ -430,7 +429,6 @@ export async function executeTool(
         branchId: childId,
         realmId: parentBranch.realmId,
         parentId: parentBranchId,
-        mountPath,
         expiresAt,
         accessVerification: { value: verification, expiresAt },
       });
@@ -530,7 +528,7 @@ export async function executeTool(
         const emptyDictKey = hashToKey(emptyDict.hash);
         await deps.cas.putNode(emptyDictKey, streamFromBytes(emptyDict.bytes));
         deps.recordNewKey?.(realmId, emptyDictKey);
-        const newRootKey = await addOrReplaceAtPath(
+        const newRootKey = await ensurePathThenAddOrReplace(
           deps.cas,
           deps.key,
           rootKey,
@@ -628,7 +626,7 @@ export async function executeTool(
           ? (k: string) => deps.recordNewKey!(realmId, k)
           : undefined;
         let newRootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, fromStr, onNodePut);
-        newRootKey = await addOrReplaceAtPath(
+        newRootKey = await ensurePathThenAddOrReplace(
           deps.cas,
           deps.key,
           newRootKey,
@@ -685,7 +683,7 @@ export async function executeTool(
         const onNodePut = deps.recordNewKey
           ? (k: string) => deps.recordNewKey!(realmId, k)
           : undefined;
-        const newRootKey = await addOrReplaceAtPath(
+        const newRootKey = await ensurePathThenAddOrReplace(
           deps.cas,
           deps.key,
           rootKey,
@@ -750,7 +748,7 @@ export async function executeTool(
         const onNodePut = deps.recordNewKey
           ? (k: string) => deps.recordNewKey!(realmId, k)
           : undefined;
-        const newRootKey = await addOrReplaceAtPath(
+        const newRootKey = await ensurePathThenAddOrReplace(
           deps.cas,
           deps.key,
           rootKey,
