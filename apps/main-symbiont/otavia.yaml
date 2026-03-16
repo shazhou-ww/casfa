@@ -1,4 +1,4 @@
-stackName: otavia-beta
+stackName: otavia-symbiont
 defaultCell: drive
 params:
   COGNITO_REGION: "us-east-1"
@@ -37,10 +37,10 @@ cells:
       AUTH: !Param AUTH
       BFL_API_KEY: !Param BFL_API_KEY
 domain:
-  host: casfa.test.symbiontlab.me
+  host: casfa.symbiontlabs.me
   dns:
     provider: cloudflare
-    zone: symbiontlab.me
+    zone: symbiontlabs.me
     zoneId: 977caaf5ca4e44095ddc837213633597
 oauth:
   callback:
