@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveDevPublicBaseUrl } from "../dev";
+import { resolveDevPublicBaseUrl, resolveDevTunnelEnabled } from "../dev";
 
 describe("resolveDevPublicBaseUrl", () => {
   test("uses tunnel public base URL when tunnel is enabled", () => {
@@ -31,5 +31,19 @@ describe("resolveDevPublicBaseUrl", () => {
         vitePort: 7100,
       })
     ).toBeUndefined();
+  });
+});
+
+describe("resolveDevTunnelEnabled", () => {
+  test("defaults to true when option is missing", () => {
+    expect(resolveDevTunnelEnabled()).toBe(true);
+  });
+
+  test("uses explicit tunnel=true", () => {
+    expect(resolveDevTunnelEnabled({ tunnel: true })).toBe(true);
+  });
+
+  test("uses explicit tunnel=false", () => {
+    expect(resolveDevTunnelEnabled({ tunnel: false })).toBe(false);
   });
 });

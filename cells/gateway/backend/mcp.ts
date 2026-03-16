@@ -6,6 +6,7 @@ import type { ServerRegistry } from "./services/server-registry.ts";
 import type { ServerOAuthStateStore } from "./services/server-oauth-state.ts";
 import { getBindingForServer } from "./services/tool-binding-registry.ts";
 import { callToolForServer, getToolsForServers } from "./services/tool-discovery.ts";
+import { executeToolRuntime } from "./services/tool-runtime-executor.ts";
 import type { Env } from "./types.ts";
 
 function authCheck(c: Context<Env>): boolean {
@@ -234,13 +235,6 @@ export function createGatewayMcpRoutes(deps: {
         return idx <= 0 ? "" : normalized.slice(0, idx);
       }
 
-      function basename(path: string): string {
-        const normalized = path.trim().replace(/^\/+|\/+$/g, "");
-        if (!normalized) return "";
-        const idx = normalized.lastIndexOf("/");
-        return idx < 0 ? normalized : normalized.slice(idx + 1);
-      }
-
       const outputArgName = binding.outputs[0] ?? "";
       const requestedOutputPath =
         outputArgName && typeof originalArgs[outputArgName] === "string"
@@ -255,84 +249,81 @@ export function createGatewayMcpRoutes(deps: {
       const mountPath =
         dirname(inputPath) || dirname(requestedOutputPath) || `gateway_runtime/${crypto.randomUUID().slice(0, 8)}`;
 
-      const createBranchResult = await callToolForServer(
-        userId,
-        driveServer.id,
-        "create_branch",
-        { mountPath },
-        [driveServer],
-        deps.oauthStateStore,
-        { allowHiddenTools: true }
-      );
-      const createText = createBranchResult.content?.find((item) => item.type === "text")?.text ?? "{}";
-      const createParsed = JSON.parse(createText) as { branchId?: string; accessUrlPrefix?: string };
-      const branchUrl = typeof createParsed.accessUrlPrefix === "string" ? createParsed.accessUrlPrefix : "";
-      const branchId = typeof createParsed.branchId === "string" ? createParsed.branchId : "";
-      if (!branchUrl) throw new Error("runtime create_branch returned no accessUrlPrefix");
-      const parentBranchId = await getParentBranchIdFromBranchUrl(branchUrl);
-
-      const runtimeArgs: Record<string, unknown> = { ...originalArgs, [binding.branchUrl]: branchUrl };
-
-      if (inputArgName && inputPath) {
-        if (inputPath.startsWith(`${mountPath}/`)) {
-          runtimeArgs[inputArgName] = inputPath.slice(mountPath.length + 1);
-        } else {
-          runtimeArgs[inputArgName] = basename(inputPath);
-        }
-      }
-
-      let runtimeOutputPath = requestedOutputPath;
-      if (outputArgName && requestedOutputPath) {
-        if (requestedOutputPath.startsWith(`${mountPath}/`)) {
-          runtimeOutputPath = requestedOutputPath.slice(mountPath.length + 1);
-        } else {
-          runtimeOutputPath = basename(requestedOutputPath) || requestedOutputPath;
-        }
-        runtimeArgs[outputArgName] = runtimeOutputPath;
-      }
-
-      const rawResult = await callToolForServer(
-        userId,
-        serverId,
-        toolName,
-        runtimeArgs,
-        [server],
-        deps.oauthStateStore
-      );
-
-      if (requestedOutputPath && runtimeOutputPath && branchId && parentBranchId) {
-        await callToolForServer(
-          userId,
-          driveServer.id,
-          "transfer_paths",
-          {
-            source: branchId,
-            target: parentBranchId,
-            mapping: {
-              [runtimeOutputPath]: requestedOutputPath,
-            },
-            mode: "replace",
+      let rawResult: { content?: Array<{ type: string; text?: string }>; isError?: boolean } | undefined;
+      let runtimeParentBranchId: string | undefined;
+      await executeToolRuntime(
+        {
+          serverId,
+          toolName,
+          binding,
+          args: originalArgs,
+        },
+        {
+          async createBranch() {
+            const createBranchResult = await callToolForServer(
+              userId,
+              driveServer.id,
+              "create_branch",
+              { mountPath },
+              [driveServer],
+              deps.oauthStateStore,
+              { allowHiddenTools: true }
+            );
+            const createText = createBranchResult.content?.find((item) => item.type === "text")?.text ?? "{}";
+            const createParsed = JSON.parse(createText) as { branchId?: string; accessUrlPrefix?: string };
+            const branchId = typeof createParsed.branchId === "string" ? createParsed.branchId.trim() : "";
+            const branchUrl =
+              typeof createParsed.accessUrlPrefix === "string" ? createParsed.accessUrlPrefix.trim() : "";
+            if (!branchId || !branchUrl) {
+              throw new Error("runtime create_branch returned invalid branchId/accessUrlPrefix");
+            }
+            runtimeParentBranchId = await getParentBranchIdFromBranchUrl(branchUrl);
+            return { branchId, branchUrl };
           },
-          [driveServer],
-          deps.oauthStateStore,
-          { allowHiddenTools: true }
-        );
-      }
-
-      if (branchId) {
-        await callToolForServer(
-          userId,
-          driveServer.id,
-          "close_branch",
-          { branchId },
-          [driveServer],
-          deps.oauthStateStore,
-          { allowHiddenTools: true }
-        ).catch(() => undefined);
-      }
+          async transferPaths(spec) {
+            return callToolForServer(
+              userId,
+              driveServer.id,
+              "transfer_paths",
+              spec,
+              [driveServer],
+              deps.oauthStateStore,
+              { allowHiddenTools: true }
+            );
+          },
+          async callRawTool(params) {
+            rawResult = await callToolForServer(
+              userId,
+              params.serverId,
+              params.toolName,
+              params.args,
+              [server],
+              deps.oauthStateStore
+            );
+            return rawResult;
+          },
+          async closeBranch(branchId) {
+            await callToolForServer(
+              userId,
+              driveServer.id,
+              "close_branch",
+              { branchId },
+              [driveServer],
+              deps.oauthStateStore,
+              { allowHiddenTools: true }
+            ).catch(() => undefined);
+          },
+          async resolvePathBranchId(_path) {
+            if (!runtimeParentBranchId) {
+              throw new Error("runtime parent branch id is not resolved");
+            }
+            return runtimeParentBranchId;
+          },
+        }
+      );
 
       return {
-        content: [{ type: "text", text: JSON.stringify(rawResult, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(rawResult ?? {}, null, 2) }],
       };
     }
   );

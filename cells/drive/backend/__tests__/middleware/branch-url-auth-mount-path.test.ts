@@ -34,4 +34,33 @@ describe("branch url auth middleware mount path", () => {
     const data = (await res.json()) as { ok?: boolean };
     expect(data.ok).toBe(true);
   });
+
+  it("rewrites shorthand /files path to realm files route", async () => {
+    const branchStore = createMemoryBranchStore();
+    const branchId = "branch-mount-2";
+    const verification = "VERIFICATION12345678901235";
+    await branchStore.insertBranch({
+      branchId,
+      realmId: "realm-1",
+      parentId: "parent-1",
+      expiresAt: Date.now() + 60_000,
+      accessVerification: { value: verification, expiresAt: Date.now() + 60_000 },
+    });
+
+    const app = new Hono<Env>();
+    app.use("*", createBranchUrlAuthMiddleware({ branchStore, app }));
+    app.get("/api/realm/:realmId/files/:path{.+}", (c) => {
+      return c.json({ path: c.req.param("path"), ok: true }, 200);
+    });
+
+    const res = await app.request(
+      `http://localhost/drive/branch/${branchId}/${verification}/files/inputs/cat.png`,
+      { method: "GET" }
+    );
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { ok?: boolean; path?: string };
+    expect(data.ok).toBe(true);
+    expect(data.path).toBe("inputs/cat.png");
+  });
 });

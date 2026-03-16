@@ -1,6 +1,6 @@
 /**
  * Casfa branch client: upload file and complete branch using a single branch root URL.
- * Uses drive path-based access: {branchRootUrl}/api/realm/me/... (no Bearer token).
+ * Uses drive branch-scoped path access rooted at {branchRootUrl}.
  */
 export type CasfaBranchOptions = {
   /** Branch root URL (accessUrlPrefix from branch_create), e.g. https://drive.example.com/branch/{branchId}/{verification}. */
@@ -105,7 +105,7 @@ export function createCasfaBranchClient(options?: Partial<CasfaBranchOptions>) {
      */
     getFileReadUrl(path: string): string {
       if (!branchRootUrl) throw new Error("branchRootUrl is required (options or CASFA_BRANCH_URL)");
-      return apiUrl(`/api/realm/me/files/${encodePathSegments(path)}`);
+      return apiUrl(`/files/${encodePathSegments(path)}`);
     },
 
     /**
@@ -114,7 +114,7 @@ export function createCasfaBranchClient(options?: Partial<CasfaBranchOptions>) {
      */
     async getRestrictedFileUrl(path: string): Promise<string> {
       if (!branchRootUrl) throw new Error("branchRootUrl is required (options or CASFA_BRANCH_URL)");
-      const res = await fetch(apiUrl("/api/realm/me/branches/me/restricted-file-access"), {
+      const res = await fetch(apiUrl("/branches/me/restricted-file-access"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path }),

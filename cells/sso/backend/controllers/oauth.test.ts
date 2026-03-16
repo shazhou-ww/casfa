@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { OAuthServer } from "@casfa/cell-cognito-server";
-import { createSsoOAuthRoutes } from "./oauth.ts";
+import { createRefreshHandle, createSsoOAuthRoutes, selectAuthCookieToken } from "./oauth.ts";
 import type { SsoConfig } from "../config.ts";
+import { createMemoryRefreshSessionStore } from "../refresh-session-store.ts";
 
 function createStubOAuthServer(): OAuthServer {
   return {
@@ -14,6 +15,21 @@ function createStubOAuthServer(): OAuthServer {
 }
 
 describe("createSsoOAuthRoutes", () => {
+  test("createRefreshHandle returns url-safe random token", () => {
+    const handle = createRefreshHandle();
+    expect(handle.length).toBeGreaterThan(20);
+    expect(/^[A-Za-z0-9_-]+$/.test(handle)).toBe(true);
+  });
+
+  test("selectAuthCookieToken always uses access token", () => {
+    expect(
+      selectAuthCookieToken({
+        accessToken: "access-short",
+        idToken: "id-long",
+      })
+    ).toBe("access-short");
+  });
+
   test("oauth/authorize uses configured CELL_BASE_URL for redirect_uri", async () => {
     const config: SsoConfig = {
       baseUrl: "http://localhost:8900/sso",
@@ -28,15 +44,18 @@ describe("createSsoOAuthRoutes", () => {
         authCookiePath: "/",
         refreshCookieName: "auth_refresh",
         refreshCookiePath: "/oauth/refresh",
+        sameSite: "Lax",
         secure: false,
       },
       dynamodbTableGrants: "sso-dev-grants",
+      dynamodbTableRefreshSessions: "sso-dev-grants",
     };
 
     const routes = createSsoOAuthRoutes({
       config,
       cognitoConfig: config.cognito,
       oauthServer: createStubOAuthServer(),
+      refreshSessionStore: createMemoryRefreshSessionStore(),
     });
 
     const res = await routes.fetch(

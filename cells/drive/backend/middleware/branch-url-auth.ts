@@ -19,6 +19,22 @@ export type BranchUrlAuthDeps = {
   app: Hono<Env>;
 };
 
+function normalizeBranchScopedPath(path: string): string {
+  if (path.startsWith("/api/realm/")) {
+    return path;
+  }
+  if (path === "/files" || path.startsWith("/files/")) {
+    return `/api/realm/me${path}`;
+  }
+  if (path === "/root") {
+    return "/api/realm/me/root";
+  }
+  if (path === "/branches" || path.startsWith("/branches/")) {
+    return `/api/realm/me${path}`;
+  }
+  return path;
+}
+
 export function createBranchUrlAuthMiddleware(deps: BranchUrlAuthDeps) {
   return async function branchUrlAuth(c: Context<Env>, next: Next) {
     const path = c.req.path;
@@ -36,6 +52,7 @@ export function createBranchUrlAuthMiddleware(deps: BranchUrlAuthDeps) {
     const branchId = parts[branchIndex + 1]!;
     const verification = parts[branchIndex + 2]!;
     const restPath = "/" + parts.slice(branchIndex + 3).join("/");
+    const normalizedPath = normalizeBranchScopedPath(restPath);
 
     const branch = await deps.branchStore.getBranch(branchId);
     if (
@@ -50,7 +67,7 @@ export function createBranchUrlAuthMiddleware(deps: BranchUrlAuthDeps) {
     }
 
     const url = new URL(c.req.url);
-    url.pathname = restPath;
+    url.pathname = normalizedPath;
     const newHeaders = new Headers(c.req.raw.headers);
     newHeaders.set("X-Branch-Auth", base64urlEncode(branchId));
 

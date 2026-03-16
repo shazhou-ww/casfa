@@ -51,14 +51,23 @@ export type BuildAuthCookieOptions = {
   cookiePath?: string;
   cookieMaxAgeSeconds?: number;
   secure?: boolean;
-  sameSite?: "Strict" | "Lax";
+  sameSite?: "Strict" | "Lax" | "None";
 };
+
+function normalizeCookieDomain(domain: string | undefined): string | undefined {
+  if (!domain) return undefined;
+  const trimmed = domain.trim();
+  if (!trimmed) return undefined;
+  const normalized = trimmed.replace(/^\.+/, "");
+  return normalized || undefined;
+}
 
 export function buildAuthCookieHeader(token: string, options: BuildAuthCookieOptions): string {
   const path = options.cookiePath ?? "/";
   const sameSite = options.sameSite ?? "Strict";
   const parts = [`${options.cookieName}=${token}`, `Path=${path}`, "HttpOnly", `SameSite=${sameSite}`];
-  if (options.cookieDomain) parts.push(`Domain=${options.cookieDomain}`);
+  const cookieDomain = normalizeCookieDomain(options.cookieDomain);
+  if (cookieDomain) parts.push(`Domain=${cookieDomain}`);
   if (options.cookieMaxAgeSeconds != null) parts.push(`Max-Age=${options.cookieMaxAgeSeconds}`);
   if (options.secure === true) parts.push("Secure");
   return parts.join("; ");
@@ -68,14 +77,15 @@ export type BuildClearAuthCookieOptions = {
   cookieName: string;
   cookiePath?: string;
   cookieDomain?: string;
-  sameSite?: "Strict" | "Lax";
+  sameSite?: "Strict" | "Lax" | "None";
 };
 
 export function buildClearAuthCookieHeader(options: BuildClearAuthCookieOptions): string {
   const path = options.cookiePath ?? "/";
   const sameSite = options.sameSite ?? "Strict";
   const parts = [`${options.cookieName}=`, `Path=${path}`, "Max-Age=0", "HttpOnly", `SameSite=${sameSite}`];
-  if (options.cookieDomain) parts.push(`Domain=${options.cookieDomain}`);
+  const cookieDomain = normalizeCookieDomain(options.cookieDomain);
+  if (cookieDomain) parts.push(`Domain=${cookieDomain}`);
   return parts.join("; ");
 }
 
@@ -85,14 +95,15 @@ export type BuildRefreshCookieOptions = {
   cookiePath?: string;
   cookieMaxAgeSeconds?: number;
   secure?: boolean;
-  sameSite?: "Strict" | "Lax";
+  sameSite?: "Strict" | "Lax" | "None";
 };
 
 export function buildRefreshCookieHeader(token: string, options: BuildRefreshCookieOptions): string {
   const path = options.cookiePath ?? "/oauth/refresh";
   const sameSite = options.sameSite ?? "Strict";
   const parts = [`${options.cookieName}=${token}`, `Path=${path}`, "HttpOnly", `SameSite=${sameSite}`];
-  if (options.cookieDomain) parts.push(`Domain=${options.cookieDomain}`);
+  const cookieDomain = normalizeCookieDomain(options.cookieDomain);
+  if (cookieDomain) parts.push(`Domain=${cookieDomain}`);
   if (options.cookieMaxAgeSeconds != null) parts.push(`Max-Age=${options.cookieMaxAgeSeconds}`);
   if (options.secure === true) parts.push("Secure");
   return parts.join("; ");
@@ -102,7 +113,7 @@ export type BuildClearRefreshCookieOptions = {
   cookieName: string;
   cookiePath?: string;
   cookieDomain?: string;
-  sameSite?: "Strict" | "Lax";
+  sameSite?: "Strict" | "Lax" | "None";
 };
 
 export function buildClearRefreshCookieHeader(
@@ -111,6 +122,7 @@ export function buildClearRefreshCookieHeader(
   const path = options.cookiePath ?? "/oauth/refresh";
   const sameSite = options.sameSite ?? "Strict";
   const parts = [`${options.cookieName}=`, `Path=${path}`, "Max-Age=0", "HttpOnly", `SameSite=${sameSite}`];
-  if (options.cookieDomain) parts.push(`Domain=${options.cookieDomain}`);
+  const cookieDomain = normalizeCookieDomain(options.cookieDomain);
+  if (cookieDomain) parts.push(`Domain=${cookieDomain}`);
   return parts.join("; ");
 }

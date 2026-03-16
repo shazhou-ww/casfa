@@ -6,8 +6,13 @@ import type { SsoConfig } from "./config.ts";
 import { createSsoOAuthRoutes } from "./controllers/oauth.ts";
 import type { OAuthServer } from "@casfa/cell-cognito-server";
 import { getRequestBaseUrl } from "./request-url.ts";
+import type { RefreshSessionStore } from "./refresh-session-store.ts";
 
-export function createApp(deps: { config: SsoConfig; oauthServer: OAuthServer }) {
+export function createApp(deps: {
+  config: SsoConfig;
+  oauthServer: OAuthServer;
+  refreshSessionStore: RefreshSessionStore;
+}) {
   const app = new Hono();
   const { config, oauthServer } = deps;
 
@@ -35,6 +40,7 @@ export function createApp(deps: { config: SsoConfig; oauthServer: OAuthServer })
     config,
     cognitoConfig: config.cognito,
     oauthServer,
+    refreshSessionStore: deps.refreshSessionStore,
   });
   app.route("/", oauthRoutes);
 

@@ -114,12 +114,12 @@ describe("buildAuthCookieHeader", () => {
     expect(h).toContain("Path=/");
   });
 
-  it("includes Domain when provided", () => {
+  it("includes normalized Domain when provided", () => {
     const h = buildAuthCookieHeader("t1", {
       cookieName: "auth",
       cookieDomain: ".example.com",
     });
-    expect(h).toContain("Domain=.example.com");
+    expect(h).toContain("Domain=example.com");
   });
 
   it("includes Secure when true", () => {

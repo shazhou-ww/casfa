@@ -14,6 +14,7 @@ import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import type { Hono } from "hono";
 import { createApp } from "./app.ts";
 import { loadConfigFromEnv } from "./config.ts";
+import { createDynamoRefreshSessionStore } from "./refresh-session-store.ts";
 
 export function createAppForGateway(env: Record<string, string>): Hono {
   const config = loadConfigFromEnv(env);
@@ -36,6 +37,10 @@ export function createAppForGateway(env: Record<string, string>): Hono {
     tableName: config.dynamodbTableGrants,
     client: docClient,
   });
+  const refreshSessionStore = createDynamoRefreshSessionStore({
+    tableName: config.dynamodbTableRefreshSessions,
+    client: docClient,
+  });
 
   const useMockAuth =
     env.CELL_STAGE === "test" && typeof env.MOCK_JWT_SECRET === "string";
@@ -51,5 +56,5 @@ export function createAppForGateway(env: Record<string, string>): Hono {
     permissions: ["use_mcp", "manage_delegates"],
   });
 
-  return createApp({ config, oauthServer });
+  return createApp({ config, oauthServer, refreshSessionStore });
 }

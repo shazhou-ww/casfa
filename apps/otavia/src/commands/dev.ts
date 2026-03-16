@@ -17,6 +17,10 @@ export function resolveDevPublicBaseUrl(options: {
   return `http://localhost:${options.vitePort}`;
 }
 
+export function resolveDevTunnelEnabled(options?: { tunnel?: boolean }): boolean {
+  return options?.tunnel ?? true;
+}
+
 /**
  * Dev command: validate otavia.yaml, start backend gateway, then Vite dev server.
  * When OTAVIA_DEV_GATEWAY_ONLY=1 (e.g. for e2e), only run gateway with PORT and optional
@@ -52,18 +56,19 @@ export async function devCommand(
 
   let tunnelHandle: { publicBaseUrl: string; stop: () => void } | undefined;
   let publicBaseUrl: string | undefined;
-  if (options?.tunnel) {
+  const tunnelEnabled = resolveDevTunnelEnabled(options);
+  if (tunnelEnabled) {
     tunnelHandle = await startTunnel(root, {
-      tunnelConfigPath: options.tunnelConfig,
-      tunnelHost: options.tunnelHost,
-      tunnelProtocol: options.tunnelProtocol,
+      tunnelConfigPath: options?.tunnelConfig,
+      tunnelHost: options?.tunnelHost,
+      tunnelProtocol: options?.tunnelProtocol,
     });
     publicBaseUrl = tunnelHandle.publicBaseUrl;
     console.log(`[tunnel] Started. Public base URL: ${publicBaseUrl}`);
   }
 
   const effectivePublicBaseUrl = resolveDevPublicBaseUrl({
-    tunnelEnabled: options?.tunnel,
+    tunnelEnabled,
     tunnelPublicBaseUrl: publicBaseUrl,
     gatewayOnly,
     vitePort,

@@ -63,6 +63,8 @@ export function createBflClient(options?: Partial<BflFluxOptions>) {
     body: Record<string, unknown>,
     apiKeyValue: string
   ): Promise<Uint8Array> {
+    const bodyText = JSON.stringify(body);
+    console.log(`[artist:bfl] submit url=${submitUrl} body=${bodyText}`);
     const submitRes = await fetch(submitUrl, {
       method: "POST",
       headers: {
@@ -70,7 +72,7 @@ export function createBflClient(options?: Partial<BflFluxOptions>) {
         "Content-Type": "application/json",
         "x-key": apiKeyValue,
       },
-      body: JSON.stringify(body),
+      body: bodyText,
     });
     if (!submitRes.ok) {
       const text = await submitRes.text();

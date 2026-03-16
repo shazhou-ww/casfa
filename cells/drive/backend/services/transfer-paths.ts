@@ -2,7 +2,7 @@ import type { CasFacade } from "@casfa/cas";
 import type { KeyProvider } from "@casfa/core";
 import type { BranchStore } from "../db/branch-store.ts";
 import { ensureEmptyRoot, resolvePath } from "./root-resolver.ts";
-import { addOrReplaceAtPath } from "./tree-mutations.ts";
+import { ensurePathThenAddOrReplace } from "./tree-mutations.ts";
 import type { TransferMode, TransferSpec } from "../types/transfer.ts";
 
 function normalizePath(pathValue: string): string {
@@ -133,7 +133,7 @@ export async function executeTransfer(
     ? (nodeKey: string) => deps.recordNewKey!(targetBranch.realmId, nodeKey)
     : undefined;
   for (const entry of resolvedEntries) {
-    newTargetRoot = await addOrReplaceAtPath(
+    newTargetRoot = await ensurePathThenAddOrReplace(
       deps.cas,
       deps.key,
       newTargetRoot,

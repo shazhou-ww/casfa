@@ -48,7 +48,7 @@ program.command("setup")
   );
 program.command("dev")
   .description("Start development")
-  .option("--tunnel", "Auto-start cloudflared tunnel and use tunnel host URLs")
+  .option("--tunnel", "Auto-start cloudflared tunnel and use tunnel host URLs (default enabled)")
   .option("--tunnel-host <host>", "Tunnel hostname or full URL used as public base URL")
   .option("--tunnel-config <path>", "Path to cloudflared config.yml")
   .option("--tunnel-protocol <protocol>", "Tunnel transport protocol: quic, http2, or auto")
@@ -119,4 +119,7 @@ const aws = program.command("aws").description("AWS-related commands");
 aws.command("login").description("AWS login").action(async () => { await awsLoginCommand(process.cwd()); });
 aws.command("logout").description("AWS logout").action(async () => { await awsLogoutCommand(process.cwd()); });
 
-program.parse();
+program.parseAsync(process.argv).catch((err: unknown) => {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});

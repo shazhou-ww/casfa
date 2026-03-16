@@ -14,7 +14,7 @@ export type ExecuteToolRuntimeDeps = {
     target: string;
     mapping: Record<string, string>;
     mode?: "replace" | "fail_if_exists" | "merge_dir";
-  }) => Promise<void>;
+  }) => Promise<unknown>;
   callRawTool: (params: {
     serverId: string;
     toolName: string;
@@ -23,6 +23,31 @@ export type ExecuteToolRuntimeDeps = {
   closeBranch: (branchId: string) => Promise<void>;
   resolvePathBranchId: (path: string) => Promise<string>;
 };
+
+function basename(path: string): string {
+  const normalized = path.trim().replace(/^\/+|\/+$/g, "");
+  if (!normalized) return "";
+  const idx = normalized.lastIndexOf("/");
+  return idx < 0 ? normalized : normalized.slice(idx + 1);
+}
+
+function extractToolError(result: unknown): string | null {
+  if (typeof result !== "object" || result === null) return null;
+  const payload = result as {
+    isError?: boolean;
+    content?: Array<{ type?: string; text?: string }>;
+  };
+  if (!payload.isError) return null;
+  const text = payload.content?.find((item) => item?.type === "text")?.text;
+  if (!text) return "tool call returned isError=true";
+  try {
+    const parsed = JSON.parse(text) as { error?: string };
+    if (typeof parsed.error === "string" && parsed.error.trim()) return parsed.error;
+  } catch {
+    // Keep raw text as fallback when response is not JSON.
+  }
+  return text;
+}
 
 export async function executeToolRuntime(
   input: ExecuteToolRuntimeInput,
@@ -37,16 +62,21 @@ export async function executeToolRuntime(
         const sourcePath = typeof input.args[argName] === "string" ? (input.args[argName] as string) : "";
         if (!sourcePath) throw new Error(`missing input path arg: ${argName}`);
         const sourceBranchId = await deps.resolvePathBranchId(sourcePath);
-        const branchRelativeInput = `inputs/${argName}`;
+        const sourceName = basename(sourcePath) || argName;
+        const branchRelativeInput = `inputs/${sourceName}`;
         const mapping: Record<string, string> = {};
         mapping[sourcePath] = branchRelativeInput;
         rawArgs[argName] = branchRelativeInput;
-        await deps.transferPaths({
+        const transferInputResult = await deps.transferPaths({
           source: sourceBranchId,
           target: exec.branchId,
           mapping,
           mode: "replace",
         });
+        const transferInputError = extractToolError(transferInputResult);
+        if (transferInputError) {
+          throw new Error(transferInputError);
+        }
       }
     }
 
@@ -56,17 +86,21 @@ export async function executeToolRuntime(
       rawArgs[argName] = `outputs/${argName}`;
     }
 
-    await deps.callRawTool({
+    const toolResult = await deps.callRawTool({
       serverId: input.serverId,
       toolName: input.toolName,
       args: rawArgs,
     });
+    const toolError = extractToolError(toolResult);
+    if (toolError) {
+      throw new Error(toolError);
+    }
 
     for (const argName of input.binding.outputs) {
       const outputPath = typeof input.args[argName] === "string" ? (input.args[argName] as string) : "";
       if (!outputPath) continue;
       const outputTargetBranchId = await deps.resolvePathBranchId(outputPath);
-      await deps.transferPaths({
+      const transferOutputResult = await deps.transferPaths({
         source: exec.branchId,
         target: outputTargetBranchId,
         mapping: {
@@ -74,6 +108,10 @@ export async function executeToolRuntime(
         },
         mode: "replace",
       });
+      const transferOutputError = extractToolError(transferOutputResult);
+      if (transferOutputError) {
+        throw new Error(transferOutputError);
+      }
     }
 
     await deps.closeBranch(exec.branchId);

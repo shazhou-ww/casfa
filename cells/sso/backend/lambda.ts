@@ -13,6 +13,7 @@ import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { handle } from "hono/aws-lambda";
 import { createApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
+import { createDynamoRefreshSessionStore } from "./refresh-session-store.ts";
 
 const config = loadConfig();
 
@@ -32,6 +33,10 @@ const grantStore = createDynamoGrantStore({
   tableName: config.dynamodbTableGrants,
   client: docClient,
 });
+const refreshSessionStore = createDynamoRefreshSessionStore({
+  tableName: config.dynamodbTableRefreshSessions,
+  client: docClient,
+});
 
 const useMockAuth =
   process.env.CELL_STAGE === "test" && typeof process.env.MOCK_JWT_SECRET === "string";
@@ -47,7 +52,7 @@ const oauthServer = createOAuthServer({
   permissions: ["use_mcp", "manage_delegates"],
 });
 
-const app = createApp({ config, oauthServer });
+const app = createApp({ config, oauthServer, refreshSessionStore });
 
 const honoHandler = handle(app);
 

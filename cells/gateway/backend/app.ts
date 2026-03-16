@@ -58,6 +58,20 @@ export function createApp(deps: AppDeps) {
   );
 
   app.use("*", async (c, next) => {
+    const path = c.req.path;
+    if (path.startsWith("/api/") || path.startsWith("/mcp") || path.startsWith("/oauth/")) {
+      const cookieHeader = c.req.header("cookie") ?? "";
+      const cookieNames = cookieHeader
+        .split(";")
+        .map((item) => item.trim().split("=")[0]?.trim())
+        .filter((name): name is string => Boolean(name));
+      const expectedCookieName = deps.config.auth.cookieName ?? "auth";
+      const expectedCookieRegex = new RegExp(`(?:^|;\\s*)${expectedCookieName}=`);
+      console.log(
+        `[gateway:auth] in method=${c.req.method} path=${path} origin=${c.req.header("origin") ?? ""} host=${c.req.header("host") ?? ""} secFetchSite=${c.req.header("sec-fetch-site") ?? ""} hasExpectedCookieByName=${cookieNames.includes(expectedCookieName)} hasExpectedCookieInHeader=${expectedCookieRegex.test(cookieHeader)} cookieHeaderLength=${cookieHeader.length} cookieNames=${cookieNames.join(",")}`
+      );
+    }
+
     const token = getTokenFromRequest(c.req.raw, {
       cookieName: deps.config.auth.cookieName ?? "auth",
       cookieOnly: false,

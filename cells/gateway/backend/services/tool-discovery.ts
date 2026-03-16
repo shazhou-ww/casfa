@@ -46,6 +46,15 @@ function sanitizeSchemaForBinding(inputSchema: unknown, binding: MinimalBinding 
   return next;
 }
 
+function sanitizeDescriptionForBinding(
+  description: string | undefined,
+  binding: MinimalBinding | null
+): string | undefined {
+  if (!description || !binding) return description;
+  if (!description.includes(binding.branchUrl)) return description;
+  return `${description} Note: ${binding.branchUrl} is auto-injected by gateway runtime; do not provide it.`;
+}
+
 type JsonRpcResponse = {
   result?: {
     tools?: Array<{ name?: string; description?: string; inputSchema?: unknown }>;
@@ -115,7 +124,7 @@ export async function getToolsForServers(
             const binding = getBindingForServer(server, tool.name);
             return {
             name: tool.name,
-            description: tool.description,
+            description: sanitizeDescriptionForBinding(tool.description, binding),
               inputSchema: sanitizeSchemaForBinding(tool.inputSchema, binding),
             ...(binding && { xBinding: binding }),
             };
@@ -142,6 +151,12 @@ type JsonRpcToolCallResponse = {
   };
 };
 
+function getErrorTextSnippet(content?: Array<{ type: string; text?: string }>): string | null {
+  const text = content?.find((item) => item.type === "text")?.text;
+  if (!text) return null;
+  return text.length > 300 ? `${text.slice(0, 300)}...` : text;
+}
+
 export async function callToolForServer(
   userId: string,
   serverId: string,
@@ -167,6 +182,16 @@ export async function callToolForServer(
     headers.Authorization = `Bearer ${oauth.accessToken}`;
   }
   const endpoint = toMcpEndpoint(server.url);
+  const argsJson = (() => {
+    try {
+      return JSON.stringify(args);
+    } catch {
+      return "[unserializable args]";
+    }
+  })();
+  console.log(
+    `[gateway:mcp] -> ${serverId} ${toolName} endpoint=${endpoint} args=${argsJson}`
+  );
   const res = await fetch(endpoint, {
     method: "POST",
     headers,
@@ -181,6 +206,9 @@ export async function callToolForServer(
     }),
   });
   if (!res.ok) {
+    console.error(
+      `[gateway:mcp] <- ${serverId} ${toolName} status=${res.status} (http error)`
+    );
     throw new Error(`tools/call failed: ${res.status}`);
   }
   const text = await res.text();
@@ -191,7 +219,16 @@ export async function callToolForServer(
     throw new Error(`Failed to parse JSON from ${endpoint}`);
   }
   if (payload.error) {
+    console.error(
+      `[gateway:mcp] <- ${serverId} ${toolName} rpc_error=${payload.error.message ?? "unknown"}`
+    );
     throw new Error(payload.error.message ?? "tools/call failed");
   }
+  const isError = payload.result?.isError === true;
+  const contentCount = payload.result?.content?.length ?? 0;
+  const errorTextSnippet = isError ? getErrorTextSnippet(payload.result?.content) : null;
+  console.log(
+    `[gateway:mcp] <- ${serverId} ${toolName} status=200 isError=${isError} contentItems=${contentCount}${errorTextSnippet ? ` error=${errorTextSnippet}` : ""}`
+  );
   return payload.result ?? {};
 }

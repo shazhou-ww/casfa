@@ -115,6 +115,26 @@ function contentTypeForFormat(format: "jpeg" | "png"): string {
   return format === "png" ? "image/png" : "image/jpeg";
 }
 
+async function preflightInputImageUrl(url: string): Promise<void> {
+  const res = await fetch(url, { method: "GET" });
+  const contentType = res.headers.get("content-type") ?? "";
+  const contentLength = res.headers.get("content-length") ?? "unknown";
+  console.log(
+    `[artist:bfl] input preflight url=${url} status=${res.status} contentType=${contentType} contentLength=${contentLength}`
+  );
+  if (!res.ok) {
+    const errorText = (await res.text()).slice(0, 300);
+    throw new Error(
+      `inputImageUrl preflight failed ${res.status}: ${errorText || res.statusText || "unknown error"}`
+    );
+  }
+  if (!contentType.toLowerCase().startsWith("image/")) {
+    throw new Error(
+      `inputImageUrl preflight expected image/* but got ${contentType || "empty content-type"}`
+    );
+  }
+}
+
 export async function handleFluxImage(
   args: FluxImageArgs
 ): Promise<{ key: string }> {
@@ -154,6 +174,7 @@ export async function handleFluxImageEdit(
   } catch {
     inputImageUrl = casfa.getFileReadUrl(args.inputImagePath);
   }
+  await preflightInputImageUrl(inputImageUrl);
 
   const imageBytes = await bfl.generateImageEdit({
     prompt: args.prompt,

@@ -16,12 +16,35 @@ import type { CognitoConfig } from "@casfa/cell-cognito-server";
 import { Hono } from "hono";
 import type { SsoConfig } from "../config.ts";
 import { getRequestBaseUrl } from "../request-url.ts";
+import type { RefreshSessionStore } from "../refresh-session-store.ts";
 
 type Deps = {
   config: SsoConfig;
   cognitoConfig: CognitoConfig;
   oauthServer: OAuthServer;
+  refreshSessionStore: RefreshSessionStore;
 };
+
+const COOKIE_SIZE_WARN_THRESHOLD = 3500;
+
+export function selectAuthCookieToken(tokens: {
+  accessToken: string;
+  idToken?: string | null;
+}): string {
+  // Keep auth cookie small and stable: always use accessToken.
+  return tokens.accessToken;
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  const raw = Buffer.from(bytes).toString("base64");
+  return raw.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+export function createRefreshHandle(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return toBase64Url(bytes);
+}
 
 function buildCognitoAuthorizeUrl(
   config: CognitoConfig,
@@ -40,14 +63,41 @@ function buildCognitoAuthorizeUrl(
 
 export function createSsoOAuthRoutes(deps: Deps) {
   const routes = new Hono();
-  const { config, cognitoConfig, oauthServer } = deps;
+  const { config, cognitoConfig, oauthServer, refreshSessionStore } = deps;
   const cookie = config.cookie;
   const publicBaseUrl = config.baseUrl.replace(/\/$/, "");
   const callbackUri = `${publicBaseUrl}/oauth/callback`;
   const publicHost = new URL(publicBaseUrl).hostname;
   const cookieDomain = cookie.authCookieDomain ?? publicHost;
   const secure = publicHost !== "localhost" && publicHost !== "127.0.0.1";
-  const sameSite = publicHost === "localhost" || publicHost === "127.0.0.1" ? "Lax" : "Strict";
+  const sameSite = cookie.sameSite;
+
+  function logCookieIssue(event: string, extra?: Record<string, unknown>) {
+    const payload = {
+      event,
+      host: publicHost,
+      cookieDomain,
+      authCookiePath: cookie.authCookiePath,
+      refreshCookiePath: cookie.refreshCookiePath,
+      sameSite,
+      secure,
+      ...extra,
+    };
+    console.log(`[sso:cookie] ${JSON.stringify(payload)}`);
+  }
+
+  function logCookieSize(kind: "auth" | "refresh", token: string) {
+    if (token.length > COOKIE_SIZE_WARN_THRESHOLD) {
+      console.warn(
+        `[sso:cookie] ${JSON.stringify({
+          event: "cookie_value_too_large",
+          kind,
+          tokenLength: token.length,
+          warnThreshold: COOKIE_SIZE_WARN_THRESHOLD,
+        })}`
+      );
+    }
+  }
 
   routes.get("/oauth/authorize", (c) => {
     const returnUrl = c.req.query("return_url") ?? c.req.query("state") ?? publicBaseUrl;
@@ -75,8 +125,20 @@ export function createSsoOAuthRoutes(deps: Deps) {
     }
     try {
       const tokens = await exchangeCodeForTokens(cognitoConfig, code, callbackUri);
-      const accessToken = tokens.idToken ?? tokens.accessToken;
-      const authHeader = buildAuthCookieHeader(accessToken, {
+      const refreshHandle = createRefreshHandle();
+      const refreshHandleExpiresAt =
+        typeof cookie.refreshCookieMaxAgeSeconds === "number"
+          ? Math.floor(Date.now() / 1000) + cookie.refreshCookieMaxAgeSeconds
+          : undefined;
+      await refreshSessionStore.putByHandle(refreshHandle, {
+        refreshToken: tokens.refreshToken,
+        expiresAt: refreshHandleExpiresAt,
+      });
+      const authToken = selectAuthCookieToken({
+        accessToken: tokens.accessToken,
+        idToken: tokens.idToken,
+      });
+      const authHeader = buildAuthCookieHeader(authToken, {
         cookieName: cookie.authCookieName,
         cookieDomain,
         cookiePath: cookie.authCookiePath,
@@ -84,13 +146,20 @@ export function createSsoOAuthRoutes(deps: Deps) {
         secure,
         sameSite,
       });
-      const refreshHeader = buildRefreshCookieHeader(tokens.refreshToken, {
+      const refreshHeader = buildRefreshCookieHeader(refreshHandle, {
         cookieName: cookie.refreshCookieName,
         cookieDomain,
         cookiePath: cookie.refreshCookiePath,
         cookieMaxAgeSeconds: cookie.refreshCookieMaxAgeSeconds,
         secure,
         sameSite,
+      });
+      logCookieSize("auth", authToken);
+      logCookieSize("refresh", refreshHandle);
+      logCookieIssue("oauth_callback_set_cookie", {
+        hasReturnUrl: Boolean(returnUrl),
+        authTokenLength: authToken.length,
+        refreshHandleLength: refreshHandle.length,
       });
       c.header("Set-Cookie", authHeader);
       c.res.headers.append("Set-Cookie", refreshHeader);
@@ -122,17 +191,29 @@ export function createSsoOAuthRoutes(deps: Deps) {
         secure,
         sameSite,
       });
-      const refreshHeader =
-        result.refresh_token
-          ? buildRefreshCookieHeader(result.refresh_token, {
-              cookieName: cookie.refreshCookieName,
-              cookieDomain,
-              cookiePath: cookie.refreshCookiePath,
-              cookieMaxAgeSeconds: cookie.refreshCookieMaxAgeSeconds,
-              secure,
-              sameSite,
-            })
-          : null;
+      let refreshHeader: string | null = null;
+      if (result.refresh_token) {
+        const refreshHandle = createRefreshHandle();
+        const refreshHandleExpiresAt =
+          typeof cookie.refreshCookieMaxAgeSeconds === "number"
+            ? Math.floor(Date.now() / 1000) + cookie.refreshCookieMaxAgeSeconds
+            : undefined;
+        await refreshSessionStore.putByHandle(refreshHandle, {
+          refreshToken: result.refresh_token,
+          expiresAt: refreshHandleExpiresAt,
+        });
+        refreshHeader = buildRefreshCookieHeader(refreshHandle, {
+          cookieName: cookie.refreshCookieName,
+          cookieDomain,
+          cookiePath: cookie.refreshCookiePath,
+          cookieMaxAgeSeconds: cookie.refreshCookieMaxAgeSeconds,
+          secure,
+          sameSite,
+        });
+      }
+      logCookieIssue("oauth_token_set_cookie", {
+        hasRefreshCookie: Boolean(refreshHeader),
+      });
       c.header("Set-Cookie", authHeader);
       if (refreshHeader) c.res.headers.append("Set-Cookie", refreshHeader);
       return c.json(result);
@@ -145,11 +226,25 @@ export function createSsoOAuthRoutes(deps: Deps) {
   });
 
   routes.post("/oauth/refresh", async (c) => {
-    const refreshToken = getCookieFromRequest(c.req.raw, cookie.refreshCookieName);
-    if (!refreshToken) return c.json({ error: "invalid_request", error_description: "Missing refresh cookie" }, 401);
+    const refreshHandle = getCookieFromRequest(c.req.raw, cookie.refreshCookieName);
+    if (!refreshHandle) return c.json({ error: "invalid_request", error_description: "Missing refresh cookie" }, 401);
+    const refreshSession = await refreshSessionStore.getByHandle(refreshHandle);
+    if (!refreshSession) {
+      return c.json({ error: "invalid_grant", error_description: "Refresh session not found" }, 401);
+    }
     try {
-      const tokens = await refreshCognitoTokens(cognitoConfig, refreshToken);
-      const authHeader = buildAuthCookieHeader(tokens.idToken ?? tokens.accessToken, {
+      const tokens = await refreshCognitoTokens(cognitoConfig, refreshSession.refreshToken);
+      const nextRefreshHandle = createRefreshHandle();
+      await refreshSessionStore.putByHandle(nextRefreshHandle, {
+        refreshToken: refreshSession.refreshToken,
+        expiresAt: refreshSession.expiresAt,
+      });
+      await refreshSessionStore.removeByHandle(refreshHandle);
+      const authToken = selectAuthCookieToken({
+        accessToken: tokens.accessToken,
+        idToken: tokens.idToken,
+      });
+      const authHeader = buildAuthCookieHeader(authToken, {
         cookieName: cookie.authCookieName,
         cookieDomain,
         cookiePath: cookie.authCookiePath,
@@ -157,7 +252,21 @@ export function createSsoOAuthRoutes(deps: Deps) {
         secure,
         sameSite,
       });
+      const refreshHeader = buildRefreshCookieHeader(nextRefreshHandle, {
+        cookieName: cookie.refreshCookieName,
+        cookieDomain,
+        cookiePath: cookie.refreshCookiePath,
+        cookieMaxAgeSeconds: cookie.refreshCookieMaxAgeSeconds,
+        secure,
+        sameSite,
+      });
+      logCookieSize("auth", authToken);
+      logCookieIssue("oauth_refresh_set_cookie", {
+        authTokenLength: authToken.length,
+        refreshHandleLength: nextRefreshHandle.length,
+      });
       c.header("Set-Cookie", authHeader);
+      c.res.headers.append("Set-Cookie", refreshHeader);
       return c.json({
         access_token: tokens.accessToken,
         id_token: tokens.idToken,
@@ -170,7 +279,11 @@ export function createSsoOAuthRoutes(deps: Deps) {
     }
   });
 
-  routes.post("/oauth/logout", (c) => {
+  routes.post("/oauth/logout", async (c) => {
+    const refreshHandle = getCookieFromRequest(c.req.raw, cookie.refreshCookieName);
+    if (refreshHandle) {
+      await refreshSessionStore.removeByHandle(refreshHandle);
+    }
     const clearAuth = buildClearAuthCookieHeader({
       cookieName: cookie.authCookieName,
       cookiePath: cookie.authCookiePath,
@@ -183,6 +296,7 @@ export function createSsoOAuthRoutes(deps: Deps) {
       cookieDomain,
       sameSite,
     });
+    logCookieIssue("oauth_logout_clear_cookie");
     c.header("Set-Cookie", clearAuth);
     c.res.headers.append("Set-Cookie", clearRefresh);
     return c.json({ ok: true }, 200);

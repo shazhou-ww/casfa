@@ -19,11 +19,13 @@ export type SsoConfig = {
     refreshCookieName: string;
     refreshCookiePath: string;
     refreshCookieMaxAgeSeconds?: number;
+    sameSite: "Strict" | "Lax" | "None";
     /** When true, add Secure to Set-Cookie. false on localhost. */
     secure: boolean;
   };
   dynamodbEndpoint?: string;
   dynamodbTableGrants: string;
+  dynamodbTableRefreshSessions: string;
 };
 
 /** True when baseUrl is http://localhost or http://127.0.0.1 (no Secure on cookies). */
@@ -55,6 +57,31 @@ function getBasePath(baseUrl: string): string {
   }
 }
 
+function normalizeCookieDomain(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  const normalized = trimmed.replace(/^\.+/, "");
+  return normalized || undefined;
+}
+
+function parseCookieSameSite(raw: string | undefined): "Strict" | "Lax" | "None" | undefined {
+  if (!raw) return undefined;
+  const normalized = raw.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized === "strict") return "Strict";
+  if (normalized === "lax") return "Lax";
+  if (normalized === "none") return "None";
+  throw new Error(`Invalid AUTH_COOKIE_SAMESITE: ${raw}. Expected Strict, Lax, or None.`);
+}
+
+function preferNonEmpty(...values: Array<string | undefined>): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) return value.trim();
+  }
+  return undefined;
+}
+
 export function loadConfig(): SsoConfig {
   return loadConfigFromEnv(process.env as Record<string, string>);
 }
@@ -63,10 +90,11 @@ export function loadConfig(): SsoConfig {
 export function loadConfigFromEnv(env: Record<string, string>): SsoConfig {
   const get = (key: string, def: string = "") => (env[key] ?? def).trim();
   const baseUrl = (get("CELL_BASE_URL") ?? "").replace(/\/$/, "");
+  const stage = get("SLS_STAGE", get("STAGE", "dev")).toLowerCase();
   const secure = !isLocalhost(baseUrl);
   const authCookieName = get("AUTH_COOKIE_NAME", "auth");
   const refreshCookieName = get("AUTH_REFRESH_COOKIE_NAME", "auth_refresh");
-  const explicitDomain = get("AUTH_COOKIE_DOMAIN") || undefined;
+  const explicitDomain = normalizeCookieDomain(get("AUTH_COOKIE_DOMAIN") || undefined);
   const authCookieDomain =
     explicitDomain ??
     (isLocalhost(baseUrl)
@@ -82,6 +110,17 @@ export function loadConfigFromEnv(env: Record<string, string>): SsoConfig {
   const refreshPath = get("AUTH_REFRESH_COOKIE_PATH", "/oauth/refresh");
   const usePathBasedCookie = isPathBasedBaseUrl(baseUrl);
   const basePath = getBasePath(baseUrl);
+  const explicitSameSite = parseCookieSameSite(get("AUTH_COOKIE_SAMESITE") || undefined);
+  const defaultSameSite: "Strict" | "Lax" | "None" =
+    isLocalhost(baseUrl) || stage === "dev" || stage === "test" ? "Lax" : "Strict";
+  const sameSite = explicitSameSite ?? defaultSameSite;
+  const defaultTableName = `sso-${get("SLS_STAGE", get("STAGE", "dev"))}-grants`;
+  const dynamodbTableGrants = preferNonEmpty(get("DYNAMODB_TABLE_GRANTS"), defaultTableName)!;
+  const dynamodbTableRefreshSessions = preferNonEmpty(
+    get("DYNAMODB_TABLE_REFRESH_SESSIONS"),
+    get("DYNAMODB_TABLE_GRANTS"),
+    defaultTableName
+  )!;
   return {
     baseUrl,
     cognito: {
@@ -104,11 +143,11 @@ export function loadConfigFromEnv(env: Record<string, string>): SsoConfig {
       refreshCookieMaxAgeSeconds: get("AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS")
         ? Number(get("AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS"))
         : undefined,
+      sameSite,
       secure,
     },
     dynamodbEndpoint: get("DYNAMODB_ENDPOINT") || undefined,
-    dynamodbTableGrants:
-      get("DYNAMODB_TABLE_GRANTS") ??
-      `sso-${get("SLS_STAGE", get("STAGE", "dev"))}-grants`,
+    dynamodbTableGrants,
+    dynamodbTableRefreshSessions,
   };
 }
