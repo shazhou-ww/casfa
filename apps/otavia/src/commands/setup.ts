@@ -130,7 +130,8 @@ export async function setupCommand(
       if (refKeys.length === 0) continue;
 
       const env = loadEnvForCell(rootDir, cellDir);
-      const missing = refKeys.filter((k) => env[k] === undefined || env[k] === "");
+      // Empty string is a valid value for optional refs (e.g. COGNITO_CLIENT_SECRET in SSO).
+      const missing = refKeys.filter((k) => env[k] === undefined);
       if (missing.length > 0) {
         console.warn(`Warning: missing env for ${entry.mount}: ${missing.join(", ")}`);
       }
