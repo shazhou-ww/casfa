@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Message, MessageContentPart } from "../../lib/api.ts";
+import { formatLoadedToolDisplayName } from "../../lib/tool-name-display.ts";
 import { useAgentStore } from "../../stores/agent-store.ts";
 
 type ToolCallBlock = {
@@ -91,19 +92,6 @@ function toFunctionSafeName(value: string): string {
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "")
     .toLowerCase();
-}
-
-function formatToolDisplayName(
-  rawName: string,
-  serverNameBySafeId: Map<string, string>
-): string {
-  if (!rawName.startsWith("mcp__")) return rawName;
-  const parts = rawName.split("__");
-  if (parts.length < 4) return rawName;
-  const safeServerId = parts[1] ?? "";
-  const serverName = serverNameBySafeId.get(safeServerId) ?? safeServerId.replace(/_/g, "-");
-  const toolName = parts[2]?.replace(/_/g, "-") ?? rawName;
-  return `${serverName}/${toolName}`;
 }
 
 function isArrayIndexKey(keyName?: string): boolean {
@@ -448,7 +436,7 @@ function ToolCallCard({
   serverNameBySafeId: Map<string, string>;
 }) {
   const [open, setOpen] = useState(false);
-  const displayName = formatToolDisplayName(block.name, serverNameBySafeId);
+  const displayName = formatLoadedToolDisplayName(block.name, serverNameBySafeId);
   const toolCopyText = toolBlockToCopyText(block, displayName);
   return (
     <Box

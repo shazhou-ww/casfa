@@ -38,9 +38,9 @@ export function useRealmId(): string | null {
   return getCookieUser()?.userId ?? null;
 }
 
-export function useCurrentUser(): { userId: string; email?: string } | null {
+export function useCurrentUser(): { userId: string; email?: string; name?: string } | null {
   const cookie = getCookieUser();
-  return cookie ? { userId: cookie.userId, email: cookie.email } : null;
+  return cookie ? { userId: cookie.userId, email: cookie.email, name: cookie.name } : null;
 }
 
 export async function initAuth(): Promise<void> {

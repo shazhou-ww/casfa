@@ -21,11 +21,20 @@ describe("createSsoOAuthRoutes", () => {
     expect(/^[A-Za-z0-9_-]+$/.test(handle)).toBe(true);
   });
 
-  test("selectAuthCookieToken always uses access token", () => {
+  test("selectAuthCookieToken prefers id token for richer user claims", () => {
     expect(
       selectAuthCookieToken({
         accessToken: "access-short",
         idToken: "id-long",
+      })
+    ).toBe("id-long");
+  });
+
+  test("selectAuthCookieToken falls back to access token when id token missing", () => {
+    expect(
+      selectAuthCookieToken({
+        accessToken: "access-short",
+        idToken: null,
       })
     ).toBe("access-short");
   });

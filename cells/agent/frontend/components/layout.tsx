@@ -47,7 +47,7 @@ export function Layout() {
     window.location.href = withMountPath("/oauth/logout");
   }, [handleCloseMenu]);
 
-  const displayName = user ? user.email || user.userId : "";
+  const displayName = user ? user.name || user.email || user.userId : "";
 
   return (
     <Box sx={{ display: "flex", height: "100vh", overflow: "hidden" }}>

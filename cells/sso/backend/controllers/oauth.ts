@@ -31,7 +31,10 @@ export function selectAuthCookieToken(tokens: {
   accessToken: string;
   idToken?: string | null;
 }): string {
-  // Keep auth cookie small and stable: always use accessToken.
+  // Prefer ID token so user profile claims (name/email) are available to app sessions.
+  if (typeof tokens.idToken === "string" && tokens.idToken.length > 0) {
+    return tokens.idToken;
+  }
   return tokens.accessToken;
 }
 

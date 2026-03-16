@@ -58,10 +58,10 @@ export function useRealmId(): string | null {
   return getCookieUser()?.userId ?? null;
 }
 
-/** Hook: current user for display (userId, email). */
-export function useCurrentUser(): { userId: string; email?: string } | null {
+/** Hook: current user for display (userId, email, name). */
+export function useCurrentUser(): { userId: string; email?: string; name?: string } | null {
   const cookie = getCookieUser();
-  return cookie ? { userId: cookie.userId, email: cookie.email } : null;
+  return cookie ? { userId: cookie.userId, email: cookie.email, name: cookie.name } : null;
 }
 
 /**
