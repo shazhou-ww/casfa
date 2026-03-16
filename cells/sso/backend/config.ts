@@ -99,8 +99,13 @@ export function loadConfigFromEnv(env: Record<string, string>): SsoConfig {
         ? Number(get("AUTH_COOKIE_MAX_AGE_SECONDS"))
         : undefined,
       refreshCookieName,
-      // In mounted dev (/sso), refresh endpoint is /sso/oauth/refresh externally.
-      refreshCookiePath: usePathBasedCookie ? `${basePath}/oauth/refresh` : refreshPath,
+      // On localhost, use "/" so the cookie is sent through any proxy path.
+      // In production (path-based mount), use the external refresh path.
+      refreshCookiePath: isLocalhost(baseUrl)
+        ? "/"
+        : usePathBasedCookie
+          ? `${basePath}/oauth/refresh`
+          : refreshPath,
       refreshCookieMaxAgeSeconds: get("AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS")
         ? Number(get("AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS"))
         : undefined,
