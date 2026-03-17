@@ -5,6 +5,7 @@ import { MessageList } from "../components/chat/message-list.tsx";
 import { Compose } from "../components/chat/compose.tsx";
 import { ThreadLoadedScenarios } from "../components/chat/thread-loaded-scenarios.tsx";
 import type { Message } from "../lib/api.ts";
+import { mergeConsecutiveAssistantMessages } from "../lib/chat-bubbles.ts";
 
 function normalizeMessageContent(content: Message["content"]): Message["content"] {
   const normalized: Message["content"] = [];
@@ -116,7 +117,8 @@ export function ChatPage() {
         createdAt: s.startedAt,
       });
     }
-    return list.sort((a, b) => a.createdAt - b.createdAt);
+    const sorted = list.sort((a, b) => a.createdAt - b.createdAt);
+    return mergeConsecutiveAssistantMessages(sorted);
   }, [messages, streams]);
 
   const providers = getLlmProviders();
