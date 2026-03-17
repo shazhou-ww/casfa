@@ -1,6 +1,6 @@
 ---
 name: api-polish
-description: Drive API polish workflow for route inventory, design review, input-output/auth review, and compatibility migration planning. Use when the user asks to梳理 API 设计, review routes, align API style, or prepare API evolution plan before refactoring.
+description: Reviews and polishes API design through route inventory, route consistency review, route contract review (input/output/auth), and compatibility rollout planning with TDD-first execution. Use when the user asks to梳理 API 设计, review routes, API consistency cleanup, contract alignment, or API refactor/migration planning.
 ---
 
 # API Polish Workflow
@@ -91,6 +91,7 @@ Must cover:
 - Affected callers (frontend, MCP clients, other cells/services)
 - Compatibility method (alias, dual-write/read, versioning, deprecation window)
 - Rollout order and verification plan
+- Batch plan: each batch must include verify checklist and rollback trigger.
 
 Write agreed strategy to section `#4`.
 
@@ -106,10 +107,13 @@ Execution order (TDD required):
 4. Re-run unit and e2e tests until all pass (green).
 5. Refactor safely without changing behavior, then re-run tests.
 6. Update docs/changelog to reflect final contract.
+7. Refresh section `#1 current API design (routes only)` to match final routes.
 
 TDD rules:
 
 - Do not start implementation changes before tests are updated for the target behavior.
-- For each API behavior change, include at least one unit test and one e2e assertion when applicable.
+- For API behavior changes: unit tests are required; e2e assertions are required when user flow or cross-route contract is affected.
 - If e2e setup is flaky, fix test infrastructure first, then continue TDD flow.
+- Run tests using project scripts (`bun run test:unit`, `bun run test:e2e`, or `bun run test`) instead of ad-hoc commands.
+- Prefer local module changes first; if shared packages must change, keep backward-compatible defaults.
 

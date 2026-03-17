@@ -366,3 +366,19 @@ Source: `middleware/branch-url-auth.ts`
 4. 文档更新（README + API 文档 + 计划文档）。
 5. 全量验证（drive 单测 + e2e + 关键跨 cell 联调检查）。
 
+### 4.5 Round 2 execution log (2026-03-17)
+
+本轮按 TDD 执行（先补测试再改实现）：
+
+- 新增/调整测试（Red）：
+  - `backend/controllers/login-redirect.test.ts`：`/api/oauth/client-info` 错误体断言（要求 `{ error, message }`）。
+  - `backend/controllers/csrf.test.ts`：`/api/csrf`（SSO 未配置）错误体断言。
+  - `tests/oauth-routes.test.ts`：e2e 校验 `/api/oauth/client-info` 缺参错误体。
+- 实现修复（Green）：
+  - `controllers/csrf.ts`：未配置 SSO 时返回 `{ error: "SSO_NOT_CONFIGURED", message }`。
+  - `controllers/login-redirect.ts`：`/api/oauth/client-info` GET/DELETE 缺参与未找到场景统一 ErrorBody。
+  - `frontend/App.tsx`：`DelegateOAuthConsentPage` 的 `clientInfoUrl` 改为 `withMountPath("/api")`，修复错误拼接为 `/api/oauth/oauth/client-info` 的问题。
+- 验证结果：
+  - `bun run test:unit` 通过。
+  - `bun run test:e2e` 通过（82 pass, 0 fail）。
+

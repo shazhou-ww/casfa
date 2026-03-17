@@ -137,15 +137,18 @@ export function createLoginRedirectRoutes(
 
   routes.get("/api/oauth/client-info", async (c) => {
     const clientId = c.req.query("client_id")?.trim();
-    if (!clientId) return c.json({ error: "missing client_id" }, 400);
+    if (!clientId)
+      return c.json({ error: "BAD_REQUEST", message: "missing client_id" }, 400);
     const clientName = await pendingClientInfoStore.get(clientId);
-    if (!clientName) return c.json({ error: "client not found" }, 404);
+    if (!clientName)
+      return c.json({ error: "NOT_FOUND", message: "client not found" }, 404);
     return c.json({ client_name: clientName });
   });
 
   routes.delete("/api/oauth/client-info", async (c) => {
     const clientId = c.req.query("client_id")?.trim();
-    if (!clientId) return c.json({ error: "missing client_id" }, 400);
+    if (!clientId)
+      return c.json({ error: "BAD_REQUEST", message: "missing client_id" }, 400);
     await pendingClientInfoStore.delete(clientId);
     return c.json({ ok: true }, 200);
   });

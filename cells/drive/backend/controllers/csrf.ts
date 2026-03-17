@@ -13,7 +13,9 @@ export function createCsrfController(config: ServerConfig) {
   const secure = config.baseUrl.startsWith("https://");
 
   if (!ssoBaseUrl) {
-    app.get("/api/csrf", (c) => c.json({ error: "SSO not configured" }, 404));
+    app.get("/api/csrf", (c) =>
+      c.json({ error: "SSO_NOT_CONFIGURED", message: "SSO not configured" }, 404)
+    );
     return app;
   }
 
