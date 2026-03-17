@@ -6,6 +6,7 @@ import { Compose } from "../components/chat/compose.tsx";
 import { ThreadLoadedScenarios } from "../components/chat/thread-loaded-scenarios.tsx";
 import type { Message } from "../lib/api.ts";
 import { mergeConsecutiveAssistantMessages } from "../lib/chat-bubbles.ts";
+import { resolveStreamMessageCreatedAt } from "../lib/chat-display-order.ts";
 
 function normalizeMessageContent(content: Message["content"]): Message["content"] {
   const normalized: Message["content"] = [];
@@ -69,7 +70,8 @@ export function ChatPage() {
       ...m,
       content: normalizeMessageContent(m.content as Message["content"]),
     }));
-    for (const s of streams) {
+    const orderedStreams = [...streams].sort((a, b) => a.startedAt - b.startedAt);
+    for (const [idx, s] of orderedStreams.entries()) {
       const content: Message["content"] = [];
       let textBuffer = "";
       for (const c of s.chunks) {
@@ -114,7 +116,7 @@ export function ChatPage() {
         threadId: s.threadId,
         role: "assistant",
         content,
-        createdAt: s.startedAt,
+        createdAt: resolveStreamMessageCreatedAt(list, s.startedAt, idx),
       });
     }
     const sorted = list.sort((a, b) => a.createdAt - b.createdAt);

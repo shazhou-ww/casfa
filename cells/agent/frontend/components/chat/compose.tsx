@@ -3,6 +3,12 @@ import PauseCircleOutlineIcon from "@mui/icons-material/PauseCircleOutline";
 import { Box, CircularProgress, IconButton, MenuItem, TextField, Typography } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import type { MessageContent } from "../../lib/model-types.ts";
+import {
+  readDefaultModelId,
+  readPromptLanguagePreference,
+  writeDefaultModelId,
+  writePromptLanguagePreference,
+} from "../../lib/chat-preferences.ts";
 import { parseSystemPromptLanguage, SYSTEM_PROMPT_LANGUAGE_KEY } from "../../lib/prompt-settings.ts";
 import { useAgentStore } from "../../stores/agent-store.ts";
 
@@ -25,8 +31,10 @@ export function Compose({
   activeStreamMessageId,
 }: Props) {
   const [input, setInput] = useState("");
-  const [selectedModelId, setSelectedModelId] = useState<string>(modelId ?? "");
-  const [selectedPromptLanguage, setSelectedPromptLanguage] = useState<"en" | "zh-CN">("en");
+  const [selectedModelId, setSelectedModelId] = useState<string>(modelId ?? readDefaultModelId() ?? "");
+  const [selectedPromptLanguage, setSelectedPromptLanguage] = useState<"en" | "zh-CN">(
+    readPromptLanguagePreference() ?? "en"
+  );
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sendMessage = useAgentStore((s) => s.sendMessage);
@@ -35,17 +43,27 @@ export function Compose({
   const settings = useAgentStore((s) => s.settings);
   const isReActLoopRunning = activeStreamMessageId != null;
   const promptLanguageFromSettings = parseSystemPromptLanguage(settings[SYSTEM_PROMPT_LANGUAGE_KEY]);
+  const hasPromptLanguageInSettings = Object.prototype.hasOwnProperty.call(settings, SYSTEM_PROMPT_LANGUAGE_KEY);
 
   useEffect(() => {
+    const localModelId = readDefaultModelId();
     setSelectedModelId((prev) => {
       if (prev && modelOptions.some((m) => m.id === prev)) return prev;
+      if (localModelId && modelOptions.some((m) => m.id === localModelId)) return localModelId;
       return modelId ?? "";
     });
   }, [modelId, modelOptions]);
 
   useEffect(() => {
-    setSelectedPromptLanguage(promptLanguageFromSettings);
-  }, [promptLanguageFromSettings]);
+    const localPromptLanguage = readPromptLanguagePreference();
+    if (hasPromptLanguageInSettings) {
+      setSelectedPromptLanguage(promptLanguageFromSettings);
+      return;
+    }
+    if (localPromptLanguage) {
+      setSelectedPromptLanguage(localPromptLanguage);
+    }
+  }, [hasPromptLanguageInSettings, promptLanguageFromSettings]);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -79,6 +97,7 @@ export function Compose({
     async (next: string) => {
       if (next !== "en" && next !== "zh-CN") return;
       setSelectedPromptLanguage(next);
+      writePromptLanguagePreference(next);
       try {
         await setSetting(SYSTEM_PROMPT_LANGUAGE_KEY, next);
       } catch (e) {
@@ -110,7 +129,11 @@ export function Compose({
               "& .Mui-focused .MuiOutlinedInput-notchedOutline": { border: "none" },
             }}
             value={selectedModelId}
-            onChange={(e) => setSelectedModelId(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setSelectedModelId(next);
+              writeDefaultModelId(next);
+            }}
             disabled={sending || isReActLoopRunning || modelOptions.length === 0}
           >
             {modelOptions.map((option) => (
