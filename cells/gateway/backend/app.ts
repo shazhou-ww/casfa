@@ -23,7 +23,7 @@ import {
   type PendingServerOAuth,
 } from "./services/server-oauth-flow.ts";
 import { toMcpEndpoint } from "./services/mcp-endpoint.ts";
-import { getToolsForServers } from "./services/tool-discovery.ts";
+import { getLoadableToolsForServers, getToolsForServers } from "./services/tool-discovery.ts";
 
 export type AppDeps = {
   config: ServerConfig;
@@ -409,27 +409,64 @@ export function createApp(deps: AppDeps) {
     const body = (await c.req.json().catch(() => ({}))) as {
       tools?: Array<{ serverId?: string; toolName?: string }>;
     };
-    const tools = Array.isArray(body.tools)
+    const requestedTools = Array.isArray(body.tools)
       ? body.tools
           .filter((item) => typeof item?.serverId === "string" && typeof item?.toolName === "string")
           .map((item) => ({
             serverId: item.serverId!.trim(),
             toolName: item.toolName!.trim(),
-            loadedToolName: `mcp__${item.serverId!.trim()}__${item.toolName!.trim()}`,
           }))
       : [];
-    if (tools.length === 0) {
+    if (requestedTools.length === 0) {
       return c.json({ error: "BAD_REQUEST", message: "tools is required" }, 400);
     }
-    await Promise.all(
-      tools.map(async (tool) => {
-        const server = await deps.serverRegistry.get(auth.userId, tool.serverId);
-        if (!server) {
-          throw new Error(`server not found: ${tool.serverId}`);
-        }
-      })
-    );
-    return c.json({ results: tools }, 200);
+    const uniqueServerIds = [...new Set(requestedTools.map((tool) => tool.serverId))];
+    const servers = (
+      await Promise.all(uniqueServerIds.map((id) => deps.serverRegistry.get(auth.userId, id)))
+    ).filter((server): server is NonNullable<typeof server> => server !== null);
+    if (servers.length !== uniqueServerIds.length) {
+      const existingIds = new Set(servers.map((server) => server.id));
+      const missing = uniqueServerIds.find((id) => !existingIds.has(id));
+      throw new Error(`server not found: ${missing ?? "unknown"}`);
+    }
+    const loadableResults = await getLoadableToolsForServers(auth.userId, servers, deps.oauthStateStore);
+    const loadableByKey = new Map<
+      string,
+      {
+        description?: string;
+        inputSchema?: unknown;
+      }
+    >();
+    for (const serverResult of loadableResults) {
+      for (const tool of serverResult.tools) {
+        loadableByKey.set(`${serverResult.serverId}::${tool.name}`, {
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+        });
+      }
+    }
+    const results = requestedTools.map((tool) => {
+      const loadedToolName = `mcp__${tool.serverId}__${tool.toolName}`;
+      const detail = loadableByKey.get(`${tool.serverId}::${tool.toolName}`);
+      if (!detail) {
+        return {
+          serverId: tool.serverId,
+          toolName: tool.toolName,
+          loadedToolName,
+          result: "error" as const,
+          error: "tool not found or unavailable",
+        };
+      }
+      return {
+        serverId: tool.serverId,
+        toolName: tool.toolName,
+        loadedToolName,
+        result: "success" as const,
+        description: detail.description,
+        inputSchema: detail.inputSchema,
+      };
+    });
+    return c.json({ results }, 200);
   });
 
   app.onError((err, c) => {

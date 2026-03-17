@@ -121,6 +121,83 @@ const META_TOOL_NAME_SET = new Set<string>([
   "load_tools",
 ]);
 
+function normalizeSchemaParameters(inputSchema: unknown): unknown {
+  if (typeof inputSchema === "object" && inputSchema !== null && !Array.isArray(inputSchema)) {
+    return inputSchema;
+  }
+  return { type: "object", properties: {}, required: [] };
+}
+
+function extractLoadedToolsFromResult(raw: string): {
+  loadedToolNames: Set<string>;
+  loadedSchemas: OpenAIFormatTool[];
+  sanitizedRaw: string | null;
+} {
+  const loadedToolNames = new Set<string>();
+  const loadedSchemas: OpenAIFormatTool[] = [];
+  let parsed: {
+    result?: string;
+    loadedToolName?: string;
+    results?: Array<{
+      result?: string;
+      loadedToolName?: string;
+      description?: string;
+      inputSchema?: unknown;
+    }>;
+  };
+  try {
+    parsed = JSON.parse(raw) as {
+      result?: string;
+      loadedToolName?: string;
+      results?: Array<{
+        result?: string;
+        loadedToolName?: string;
+        description?: string;
+        inputSchema?: unknown;
+      }>;
+    };
+  } catch {
+    return { loadedToolNames, loadedSchemas, sanitizedRaw: null };
+  }
+
+  if (parsed.result === "success" && typeof parsed.loadedToolName === "string" && parsed.loadedToolName.trim()) {
+    loadedToolNames.add(parsed.loadedToolName.trim());
+  }
+
+  const results = Array.isArray(parsed.results) ? parsed.results : [];
+  const sanitizedResults = results.map((item) => {
+    const loadedToolName = typeof item.loadedToolName === "string" ? item.loadedToolName.trim() : "";
+    if (item.result === "success" && loadedToolName) {
+      loadedToolNames.add(loadedToolName);
+      loadedSchemas.push({
+        type: "function",
+        function: {
+          name: loadedToolName,
+          description:
+            typeof item.description === "string" && item.description.trim()
+              ? item.description
+              : `Run loaded MCP tool ${loadedToolName}.`,
+          parameters: normalizeSchemaParameters(item.inputSchema),
+        },
+      });
+    }
+    if ("inputSchema" in item) {
+      const { inputSchema: _inputSchema, ...rest } = item;
+      return rest;
+    }
+    return item;
+  });
+
+  if (!Array.isArray(parsed.results)) {
+    return { loadedToolNames, loadedSchemas, sanitizedRaw: null };
+  }
+  return {
+    loadedToolNames,
+    loadedSchemas,
+    sanitizedRaw: JSON.stringify({ ...parsed, results: sanitizedResults }),
+  };
+}
+
 /**
  * Pure function: derive runtime LLM context from messages + static/dynamic config + current time.
  * Deduplicates tools by function name and always prepends system prompt when provided.
@@ -147,27 +224,21 @@ export function deriveContext(messages: LlmMessage[], config: ContextConfigurati
     }
   }
   const loadedToolNames = new Set<string>();
+  const sanitizedToolResultByCallId = new Map<string, string>();
   for (const callId of loadToolsCallIds) {
     const raw = toolResultByCallId.get(callId);
     if (!raw) continue;
-    try {
-      const parsed = JSON.parse(raw) as {
-        result?: string;
-        loadedToolName?: string;
-        results?: Array<{ result?: string; loadedToolName?: string }>;
-      };
-      // Backward compatibility for old single-load shape.
-      if (parsed.result === "success" && typeof parsed.loadedToolName === "string" && parsed.loadedToolName.trim()) {
-        loadedToolNames.add(parsed.loadedToolName);
+    const extracted = extractLoadedToolsFromResult(raw);
+    for (const loadedToolName of extracted.loadedToolNames) {
+      loadedToolNames.add(loadedToolName);
+    }
+    for (const schema of extracted.loadedSchemas) {
+      if (!dedupedToolByName.has(schema.function.name)) {
+        dedupedToolByName.set(schema.function.name, schema);
       }
-      // New batch-load shape.
-      for (const item of parsed.results ?? []) {
-        if (item.result === "success" && typeof item.loadedToolName === "string" && item.loadedToolName.trim()) {
-          loadedToolNames.add(item.loadedToolName);
-        }
-      }
-    } catch {
-      /* ignore malformed tool result */
+    }
+    if (extracted.sanitizedRaw != null) {
+      sanitizedToolResultByCallId.set(callId, extracted.sanitizedRaw);
     }
   }
 
@@ -176,7 +247,12 @@ export function deriveContext(messages: LlmMessage[], config: ContextConfigurati
     return META_TOOL_NAME_SET.has(name) || loadedToolNames.has(name);
   });
 
-  const baseMessages = [...messages];
+  const baseMessages: LlmMessage[] = messages.map((message) => {
+    if (message.role !== "tool") return message;
+    const sanitized = sanitizedToolResultByCallId.get(message.tool_call_id);
+    if (!sanitized) return message;
+    return { ...message, content: sanitized };
+  });
   const hasInjectedSystemAtHead =
     config.systemPromptText != null &&
     baseMessages[0]?.role === "system" &&
@@ -517,6 +593,10 @@ export async function runMessagesSend(
 
       messagesForApi = [...messagesForApi, assistantTurn, ...toolTurns];
       await persistAssistantRound(roundAssistantContent);
+      await applyAndBroadcast({
+        kind: "stream.reset",
+        payload: { messageId: tempMessageId, threadId, status: "waiting_agent" },
+      });
     }
   } catch (err) {
     unregisterAbort(tempMessageId);

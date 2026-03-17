@@ -6,7 +6,7 @@ describe("tool discovery visibility", () => {
   it("hides branch lifecycle primitives from get_tools", async () => {
     const originalFetch = globalThis.fetch;
     try {
-      globalThis.fetch = (async () =>
+      globalThis.fetch = ((async () =>
         new Response(
           JSON.stringify({
             result: {
@@ -19,7 +19,7 @@ describe("tool discovery visibility", () => {
             },
           }),
           { status: 200, headers: { "content-type": "application/json" } }
-        )) as typeof fetch;
+        )) as unknown as typeof fetch);
 
       const results = await getToolsForServers(
         "user-1",

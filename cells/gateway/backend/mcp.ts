@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { ServerRegistry } from "./services/server-registry.ts";
 import type { ServerOAuthStateStore } from "./services/server-oauth-state.ts";
 import { getBindingForServer } from "./services/tool-binding-registry.ts";
-import { callToolForServer, getToolsForServers } from "./services/tool-discovery.ts";
+import { callToolForServer, getLoadableToolsForServers, getToolsForServers } from "./services/tool-discovery.ts";
 import { executeToolRuntime } from "./services/tool-runtime-executor.ts";
 import type { Env } from "./types.ts";
 
@@ -165,18 +165,58 @@ export function createGatewayMcpRoutes(deps: {
       const auth = ctx.auth;
       if (!auth) throw new Error("Unauthorized");
       const userId = auth.type === "user" ? auth.userId : auth.realmId;
-      const results = [];
-      for (const item of args.tools) {
-        const serverId = item.serverId.trim();
-        const toolName = item.toolName.trim();
-        const server = await deps.serverRegistry.get(userId, serverId);
-        if (!server) throw new Error(`server not found: ${serverId}`);
-        results.push({
-          serverId,
-          toolName,
-          loadedToolName: `mcp__${serverId}__${toolName}`,
-        });
+      const requestedTools = args.tools
+        .map((item) => ({
+          serverId: item.serverId.trim(),
+          toolName: item.toolName.trim(),
+        }))
+        .filter((item) => item.serverId && item.toolName);
+      const uniqueServerIds = [...new Set(requestedTools.map((item) => item.serverId))];
+      const servers = (
+        await Promise.all(uniqueServerIds.map((id) => deps.serverRegistry.get(userId, id)))
+      ).filter((s): s is NonNullable<typeof s> => s !== null);
+      if (servers.length !== uniqueServerIds.length) {
+        const existingIds = new Set(servers.map((server) => server.id));
+        const missing = uniqueServerIds.find((id) => !existingIds.has(id));
+        throw new Error(`server not found: ${missing ?? "unknown"}`);
       }
+      const loadableResults = await getLoadableToolsForServers(userId, servers, deps.oauthStateStore);
+      const loadableByKey = new Map<
+        string,
+        {
+          description?: string;
+          inputSchema?: unknown;
+        }
+      >();
+      for (const serverResult of loadableResults) {
+        for (const tool of serverResult.tools) {
+          loadableByKey.set(`${serverResult.serverId}::${tool.name}`, {
+            description: tool.description,
+            inputSchema: tool.inputSchema,
+          });
+        }
+      }
+      const results = requestedTools.map((item) => {
+        const loadedToolName = `mcp__${item.serverId}__${item.toolName}`;
+        const detail = loadableByKey.get(`${item.serverId}::${item.toolName}`);
+        if (!detail) {
+          return {
+            serverId: item.serverId,
+            toolName: item.toolName,
+            loadedToolName,
+            result: "error" as const,
+            error: "tool not found or unavailable",
+          };
+        }
+        return {
+          serverId: item.serverId,
+          toolName: item.toolName,
+          loadedToolName,
+          result: "success" as const,
+          description: detail.description,
+          inputSchema: detail.inputSchema,
+        };
+      });
       return {
         content: [{ type: "text", text: JSON.stringify({ results }, null, 2) }],
       };

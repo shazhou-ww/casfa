@@ -132,48 +132,25 @@ async function callGatewayMetaTool(
   }
 }
 
-type GatewayGetToolsPayload = {
-  results?: Array<{
-    serverId: string;
-    tools: Array<{ name: string; description?: string; inputSchema?: unknown }>;
-    error?: string;
-  }>;
-};
-
-async function hydrateLoadedToolSchemas(
+function hydrateLoadedToolSchemasFromLoadResult(
   threadId: string,
-  loadedItems: Array<{ serverId: string; toolName: string; loadedToolName: string }>
-): Promise<void> {
-  const serverIds = [...new Set(loadedItems.map((item) => item.serverId).filter(Boolean))];
-  if (serverIds.length === 0) return;
-  const raw = await callGatewayMetaTool("get_tools", { serverIds });
-  let parsed: GatewayGetToolsPayload = {};
-  try {
-    parsed = JSON.parse(raw) as GatewayGetToolsPayload;
-  } catch {
-    parsed = {};
-  }
-  const toolSchemaByKey = new Map<string, { description?: string; inputSchema?: unknown }>();
-  for (const serverResult of parsed.results ?? []) {
-    for (const tool of serverResult.tools ?? []) {
-      toolSchemaByKey.set(`${serverResult.serverId}::${tool.name}`, {
-        description: tool.description,
-        inputSchema: tool.inputSchema,
-      });
-    }
-  }
-
+  loadedItems: Array<{
+    serverId: string;
+    toolName: string;
+    loadedToolName: string;
+    description?: string;
+    inputSchema?: unknown;
+  }>
+): void {
   const threadMap = getThreadLoadedMap(threadId);
   const now = Date.now();
   for (const item of loadedItems) {
-    const key = `${item.serverId}::${item.toolName}`;
-    const tool = toolSchemaByKey.get(key);
     const schema: OpenAIFormatTool = {
       type: "function",
       function: {
         name: item.loadedToolName,
-        description: tool?.description ?? `Run MCP tool ${item.toolName} on server ${item.serverId}.`,
-        parameters: normalizeSchemaParameters(tool?.inputSchema),
+        description: item.description ?? `Run MCP tool ${item.toolName} on server ${item.serverId}.`,
+        parameters: normalizeSchemaParameters(item.inputSchema),
       },
     };
     threadMap.set(item.loadedToolName, {
@@ -291,12 +268,27 @@ async function executeMetaTool(
     const raw = await callGatewayMetaTool("load_tools", { tools });
     try {
       const parsed = JSON.parse(raw) as {
-        results?: Array<{ serverId?: string; toolName?: string; loadedToolName?: string; result?: string }>;
+        results?: Array<{
+          serverId?: string;
+          toolName?: string;
+          loadedToolName?: string;
+          result?: string;
+          description?: string;
+          inputSchema?: unknown;
+        }>;
       };
       const loaded = (parsed.results ?? [])
         .filter((item) => item.result !== "error")
         .filter(
-          (item): item is { serverId: string; toolName: string; loadedToolName: string } =>
+          (
+            item
+          ): item is {
+            serverId: string;
+            toolName: string;
+            loadedToolName: string;
+            description?: string;
+            inputSchema?: unknown;
+          } =>
             typeof item.serverId === "string" &&
             typeof item.toolName === "string" &&
             typeof item.loadedToolName === "string" &&
@@ -308,9 +300,11 @@ async function executeMetaTool(
           serverId: item.serverId.trim(),
           toolName: item.toolName.trim(),
           loadedToolName: item.loadedToolName.trim(),
+          description: typeof item.description === "string" ? item.description : undefined,
+          inputSchema: item.inputSchema,
         }));
       if (loaded.length > 0) {
-        await hydrateLoadedToolSchemas(threadId, loaded);
+        hydrateLoadedToolSchemasFromLoadResult(threadId, loaded);
         const threadMap = getThreadLoadedMap(threadId);
         for (const item of loaded) {
           const entry = threadMap.get(item.loadedToolName);

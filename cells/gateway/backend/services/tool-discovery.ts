@@ -8,13 +8,21 @@ const HIDDEN_TOOL_NAMES = new Set(["create_branch", "transfer_paths", "close_bra
 export type ToolSummary = {
   name: string;
   description?: string;
-  inputSchema?: unknown;
-  xBinding?: MinimalBinding;
 };
 
 export type GetToolsResult = {
   serverId: string;
   tools: ToolSummary[];
+  error?: string;
+};
+
+export type LoadableToolSummary = ToolSummary & {
+  inputSchema?: unknown;
+};
+
+export type GetLoadableToolsResult = {
+  serverId: string;
+  tools: LoadableToolSummary[];
   error?: string;
 };
 
@@ -102,12 +110,13 @@ async function callToolsList(server: RegisteredServer, accessToken?: string): Pr
   }
 }
 
-export async function getToolsForServers(
+async function listToolsForServers(
   userId: string,
   servers: RegisteredServer[],
-  oauthStore: ServerOAuthStateStore
-): Promise<GetToolsResult[]> {
-  const results: GetToolsResult[] = [];
+  oauthStore: ServerOAuthStateStore,
+  options: { includeInputSchema: boolean }
+): Promise<GetLoadableToolsResult[]> {
+  const results: GetLoadableToolsResult[] = [];
   for (const server of servers) {
     const oauth = await oauthStore.get(userId, server.id);
     try {
@@ -123,10 +132,11 @@ export async function getToolsForServers(
           .map((tool) => {
             const binding = getBindingForServer(server, tool.name);
             return {
-            name: tool.name,
-            description: sanitizeDescriptionForBinding(tool.description, binding),
-              inputSchema: sanitizeSchemaForBinding(tool.inputSchema, binding),
-            ...(binding && { xBinding: binding }),
+              name: tool.name,
+              description: sanitizeDescriptionForBinding(tool.description, binding),
+              ...(options.includeInputSchema
+                ? { inputSchema: sanitizeSchemaForBinding(tool.inputSchema, binding) }
+                : {}),
             };
           }) ?? [];
       results.push({ serverId: server.id, tools });
@@ -139,6 +149,30 @@ export async function getToolsForServers(
     }
   }
   return results;
+}
+
+export async function getToolsForServers(
+  userId: string,
+  servers: RegisteredServer[],
+  oauthStore: ServerOAuthStateStore
+): Promise<GetToolsResult[]> {
+  const detailedResults = await listToolsForServers(userId, servers, oauthStore, { includeInputSchema: false });
+  return detailedResults.map((serverResult) => ({
+    serverId: serverResult.serverId,
+    error: serverResult.error,
+    tools: serverResult.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+    })),
+  }));
+}
+
+export async function getLoadableToolsForServers(
+  userId: string,
+  servers: RegisteredServer[],
+  oauthStore: ServerOAuthStateStore
+): Promise<GetLoadableToolsResult[]> {
+  return listToolsForServers(userId, servers, oauthStore, { includeInputSchema: true });
 }
 
 type JsonRpcToolCallResponse = {

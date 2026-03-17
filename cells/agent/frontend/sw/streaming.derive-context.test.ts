@@ -36,4 +36,69 @@ describe("deriveContext", () => {
       "load_tools",
     ]);
   });
+
+  test("extracts loaded tool schema from history and strips schema from tool result message", () => {
+    const loadResultRaw = JSON.stringify({
+      results: [
+        {
+          serverId: "srv_artist",
+          toolName: "flux_image",
+          loadedToolName: "mcp__srv_artist__flux_image",
+          result: "success",
+          description: "generate image",
+          inputSchema: {
+            type: "object",
+            properties: {
+              prompt: { type: "string" },
+            },
+            required: ["prompt"],
+          },
+        },
+      ],
+    });
+
+    const ctx = deriveContext(
+      [
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            {
+              id: "call-1",
+              type: "function",
+              function: { name: "load_tools", arguments: '{"tools":[{"serverId":"srv_artist","toolName":"flux_image"}]}' },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "call-1",
+          content: loadResultRaw,
+        },
+      ],
+      {
+        tools: [mkTool("list_servers"), mkTool("search_servers"), mkTool("get_tools"), mkTool("load_tools")],
+      },
+      Date.now()
+    );
+
+    const loaded = ctx.tools.find((t) => t.function.name === "mcp__srv_artist__flux_image");
+    expect(loaded?.function.description).toBe("generate image");
+    expect(loaded?.function.parameters).toEqual({
+      type: "object",
+      properties: {
+        prompt: { type: "string" },
+      },
+      required: ["prompt"],
+    });
+
+    const toolMsg = ctx.messages.find((m) => m.role === "tool");
+    expect(toolMsg?.role).toBe("tool");
+    if (toolMsg?.role === "tool") {
+      const sanitized = JSON.parse(toolMsg.content) as {
+        results?: Array<{ inputSchema?: unknown }>;
+      };
+      expect(sanitized.results?.[0]?.inputSchema).toBeUndefined();
+    }
+  });
 });
