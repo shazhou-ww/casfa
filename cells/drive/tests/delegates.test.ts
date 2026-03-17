@@ -1,5 +1,5 @@
 /**
- * E2E: Delegate create (POST /api/delegates), list (GET /api/delegates), revoke; delegate token access.
+ * E2E: Delegate create/list/revoke under /api/realm/:realmId/delegates.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createE2EContext } from "./setup.ts";
@@ -44,7 +44,7 @@ describe("Delegates", () => {
   it("list delegates returns array", async () => {
     const token = await ctx.helpers.createUserToken(realmId);
     await ctx.helpers.assignDelegate(token, realmId);
-    const res = await ctx.helpers.authRequest(token, "GET", "/api/delegates");
+    const res = await ctx.helpers.authRequest(token, "GET", `/api/realm/${realmId}/delegates`);
     expect(res.status).toBe(200);
     const data = (await res.json()) as
       | { delegateId?: string }[]
@@ -62,12 +62,12 @@ describe("Delegates", () => {
     const revokeRes = await ctx.helpers.authRequest(
       token,
       "POST",
-      `/api/delegates/${delegateId}/revoke`
+      `/api/realm/${realmId}/delegates/${delegateId}/revoke`
     );
     expect(revokeRes.status).toBe(200);
     const revokeData = (await revokeRes.json()) as { ok?: boolean; revoked?: string };
     expect(revokeData.ok === true || revokeData.revoked === delegateId).toBe(true);
-    const listRes = await ctx.helpers.authRequest(token, "GET", "/api/delegates");
+    const listRes = await ctx.helpers.authRequest(token, "GET", `/api/realm/${realmId}/delegates`);
     expect(listRes.status).toBe(200);
     const listData = (await listRes.json()) as
       | { delegateId?: string }[]

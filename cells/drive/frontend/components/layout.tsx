@@ -38,7 +38,7 @@ export function Layout() {
   const handleLogout = useCallback(() => {
     handleCloseMenu();
     void authClient.logout().catch(() => {
-      window.location.href = withMountPath("/oauth/logout");
+      window.location.href = withMountPath("/api/oauth/logout");
     });
   }, [handleCloseMenu]);
 

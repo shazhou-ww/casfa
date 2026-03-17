@@ -1,5 +1,5 @@
 /**
- * Delegate OAuth routes: POST /api/oauth/delegate/authorize and POST /oauth/token
+ * Delegate OAuth routes: POST /api/oauth/delegate/authorize and configurable token path (default /oauth/token).
  * (authorization_code + refresh_token). No client_id in authorize; token response
  * includes client_id (delegateId) for refresh.
  */
@@ -25,6 +25,8 @@ export type DelegateOAuthRoutesDeps<E extends DelegateOAuthRoutesEnv = DelegateO
   getUserId: (auth: E["Variables"]["auth"]) => string;
   baseUrl: string;
   allowedScopes?: string[];
+  /** Token endpoint path. Defaults to "/oauth/token". */
+  tokenPath?: string;
   /** Called after delegate is created and auth code is issued (e.g. to delete stub client info). */
   onAuthorizeSuccess?: () => void | Promise<void>;
 };
@@ -39,6 +41,7 @@ export function createDelegateOAuthRoutes<E extends DelegateOAuthRoutesEnv>(
   const app = new Hono<E>();
   const allowedScopes = deps.allowedScopes ?? ["use_mcp"];
   const authCodeStore = getAuthCodeStore(deps);
+  const tokenPath = deps.tokenPath ?? "/oauth/token";
 
   app.post("/api/oauth/delegate/authorize", async (c) => {
     const auth = c.get("auth");
@@ -111,7 +114,7 @@ export function createDelegateOAuthRoutes<E extends DelegateOAuthRoutesEnv>(
     return c.json({ redirect_url });
   });
 
-  app.post("/oauth/token", async (c) => {
+  app.post(tokenPath, async (c) => {
     const contentType = c.req.header("content-type") ?? "";
     if (!contentType.includes("application/x-www-form-urlencoded")) {
       return c.json({ error: "invalid_request", error_description: "Content-Type must be application/x-www-form-urlencoded" }, 400);

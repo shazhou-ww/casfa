@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { redirectToLoginOnce } from "../lib/auth";
 
-/** SSO only: redirect to backend /oauth/login (which redirects to SSO). */
+/** SSO only: redirect to backend /api/oauth/login (which redirects to SSO). */
 export function LoginPage() {
   const [searchParams] = useSearchParams();
   const returnUrl = searchParams.get("returnUrl") ?? searchParams.get("return_url") ?? "/";

@@ -10,7 +10,7 @@ export function createRealmMiddleware() {
   return async function realmMiddleware(c: Context<Env>, next: Next) {
     const auth = c.get("auth");
     if (!auth) {
-      return c.json({ error: "FORBIDDEN", message: "No auth context" }, 403);
+      return c.json({ error: "UNAUTHORIZED", message: "Missing or invalid Authorization" }, 401);
     }
     let realmIdParam = c.req.param("realmId");
     if (realmIdParam === "me") {

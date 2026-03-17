@@ -29,7 +29,11 @@ function getRealmId(auth: NonNullable<Env["Variables"]["auth"]>): string {
 export type FsControllerDeps = RootResolverDeps;
 
 async function parseBodyJson<T>(c: Context<Env>): Promise<T> {
-  return c.req.json<T>().catch(() => ({}) as T);
+  try {
+    return await c.req.json<T>();
+  } catch {
+    throw new Error("Invalid JSON body");
+  }
 }
 
 /** Resolve root for write; for worker with NUL root, create empty root first. */
@@ -99,6 +103,9 @@ export function createFsController(deps: FsControllerDeps) {
         return c.json({ path: pathStr }, 201);
       } catch (err) {
         const message = err instanceof Error ? err.message : "mkdir failed";
+        if (message === "Invalid JSON body") {
+          return c.json({ error: "BAD_REQUEST", message }, 400);
+        }
         if (
           message.includes("must not contain") ||
           message.includes("Parent path not found") ||
@@ -132,7 +139,9 @@ export function createFsController(deps: FsControllerDeps) {
           : undefined;
         for (const p of paths) {
           const pathStr = p.trim().replace(/^\/+|\/+$/g, "");
-          if (!pathStr) continue;
+          if (!pathStr) {
+            return c.json({ error: "BAD_REQUEST", message: "path must not be empty" }, 400);
+          }
           rootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, pathStr, onNodePut);
         }
         const delegateId = await getEffectiveDelegateId(auth, deps);
@@ -140,6 +149,9 @@ export function createFsController(deps: FsControllerDeps) {
         return c.json({ removed: paths.length }, 200);
       } catch (err) {
         const message = err instanceof Error ? err.message : "rm failed";
+        if (message === "Invalid JSON body") {
+          return c.json({ error: "BAD_REQUEST", message }, 400);
+        }
         if (
           message.includes("must not contain") ||
           message.includes("not found") ||
@@ -184,6 +196,9 @@ export function createFsController(deps: FsControllerDeps) {
         return c.json({ from: fromStr, to: toStr }, 200);
       } catch (err) {
         const message = err instanceof Error ? err.message : "mv failed";
+        if (message === "Invalid JSON body") {
+          return c.json({ error: "BAD_REQUEST", message }, 400);
+        }
         if (
           message.includes("must not contain") ||
           message.includes("not found") ||
@@ -231,9 +246,12 @@ export function createFsController(deps: FsControllerDeps) {
         );
         const delegateId = await getEffectiveDelegateId(auth, deps);
         await deps.branchStore.setBranchRoot(delegateId, newRootKey);
-        return c.json({ from: fromStr, to: toStr }, 201);
+        return c.json({ from: fromStr, to: toStr }, 200);
       } catch (err) {
         const message = err instanceof Error ? err.message : "cp failed";
+        if (message === "Invalid JSON body") {
+          return c.json({ error: "BAD_REQUEST", message }, 400);
+        }
         if (
           message.includes("must not contain") ||
           message.includes("Parent path not found") ||

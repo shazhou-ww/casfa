@@ -5,7 +5,7 @@ import { authClient, withMountPath } from "../lib/auth";
 import { getAndClearCodeVerifier } from "../lib/pkce";
 
 /**
- * OAuth callback: exchange code for tokens via POST /oauth/token, store in authClient, then redirect.
+ * OAuth callback: exchange code for tokens via POST /api/oauth/token, store in authClient, then redirect.
  * Served at both /oauth/callback and /oauth/callback-complete (Cognito Hosted UI uses callback-complete).
  */
 export function OAuthCallbackPage(): JSX.Element {
@@ -32,7 +32,7 @@ export function OAuthCallbackPage(): JSX.Element {
     });
     if (codeVerifier) body.set("code_verifier", codeVerifier);
 
-    fetch(withMountPath("/oauth/token"), {
+    fetch(withMountPath("/api/oauth/token"), {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: body.toString(),

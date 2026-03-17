@@ -1,5 +1,7 @@
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, relative, resolve } from "node:path";
 import { Glob } from "bun";
+import type { BackendEntry } from "../config/cell-yaml-schema.js";
 import { loadCellConfig } from "../config/load-cell-yaml.js";
 import { resolveConfig } from "../config/resolve-config.js";
 import {
@@ -12,6 +14,46 @@ import {
 import { ensureLocalTables, isDynamoDBReady } from "../local/dynamodb-local.js";
 import { ensureLocalBuckets } from "../local/minio-local.js";
 import { loadEnvFiles } from "../utils/env.js";
+
+function resolveAppPath(backendDir: string, entry: BackendEntry): string {
+  if (entry.app) {
+    return resolve(backendDir, entry.app);
+  }
+  const handlerDir = dirname(resolve(backendDir, entry.handler));
+  const candidate = resolve(handlerDir, "app.ts");
+  if (existsSync(candidate)) {
+    return candidate;
+  }
+  throw new Error(
+    `Cannot find Hono app module. Either set "app" in cell.yaml backend entry, or create app.ts next to ${entry.handler}`
+  );
+}
+
+function generateTestServer(
+  cellDir: string,
+  entryName: string,
+  appPath: string,
+  port: number
+): string {
+  const cellBuildDir = resolve(cellDir, ".cell");
+  mkdirSync(cellBuildDir, { recursive: true });
+  const testServerPath = resolve(cellBuildDir, `test-${entryName}.ts`);
+  const relPath = relative(dirname(testServerPath), appPath)
+    .replace(/\.ts$/, "")
+    .replace(/\\/g, "/");
+  const importPath = relPath.startsWith(".") ? relPath : `./${relPath}`;
+  writeFileSync(
+    testServerPath,
+    [
+      `import { app } from "${importPath}";`,
+      `const port = parseInt(process.env.PORT || "${port}");`,
+      `console.log(\`Listening on http://localhost:\${port}\`);`,
+      `Bun.serve({ port, hostname: "0.0.0.0", fetch: app.fetch });`,
+      "",
+    ].join("\n")
+  );
+  return testServerPath;
+}
 
 async function hasMatchingFiles(cwd: string, pattern: string): Promise<boolean> {
   const isDirPattern = !pattern.includes("*");
@@ -34,7 +76,16 @@ async function runBunTest(
     console.log("  No test files found, skipping");
     return 0;
   }
-  const proc = Bun.spawn(["bun", "test", pattern], {
+  let normalizedPattern = pattern;
+  if (pattern.includes("*")) {
+    const wildcardIdx = pattern.indexOf("*");
+    const prefix = pattern.slice(0, wildcardIdx);
+    const dir = prefix.includes("/") ? prefix.slice(0, prefix.lastIndexOf("/")) : ".";
+    normalizedPattern = dir || ".";
+  } else if (pattern.includes("/") && !pattern.startsWith("./") && !pattern.startsWith("../")) {
+    normalizedPattern = `./${pattern}`;
+  }
+  const proc = Bun.spawn(["bun", "test", normalizedPattern], {
     cwd,
     env: env ? { ...process.env, ...env } : undefined,
     stdout: "inherit",
@@ -84,8 +135,7 @@ export async function testE2eCommand(options?: { cellDir?: string; instance?: st
     // Start DynamoDB if tables configured
     if (resolved.tables.length > 0) {
       if (!(await isDockerRunning())) {
-        console.error("Docker is not running. Please start Docker and try again.");
-        process.exit(1);
+        throw new Error("Docker is not running. Please start Docker and try again.");
       }
       console.log(`Starting test DynamoDB on port ${dynamodbPort}...`);
       await startDynamoDB({
@@ -105,8 +155,7 @@ export async function testE2eCommand(options?: { cellDir?: string; instance?: st
         await Bun.sleep(500);
       }
       if (!ready) {
-        console.error("DynamoDB failed to become ready");
-        process.exit(1);
+        throw new Error("DynamoDB failed to become ready");
       }
       console.log("DynamoDB ready");
 
@@ -118,8 +167,7 @@ export async function testE2eCommand(options?: { cellDir?: string; instance?: st
     // Start MinIO if buckets configured
     if (resolved.buckets.length > 0) {
       if (!(await isDockerRunning())) {
-        console.error("Docker is not running. Please start Docker and try again.");
-        process.exit(1);
+        throw new Error("Docker is not running. Please start Docker and try again.");
       }
       console.log(`Starting test MinIO on port ${s3Port}...`);
       await startMinIO({
@@ -129,8 +177,7 @@ export async function testE2eCommand(options?: { cellDir?: string; instance?: st
       containersToCleanup.push(minioContainerName);
 
       if (!(await waitForPort(s3Port))) {
-        console.error("MinIO failed to start");
-        process.exit(1);
+        throw new Error("MinIO failed to start");
       }
       console.log("MinIO ready");
 
@@ -148,7 +195,8 @@ export async function testE2eCommand(options?: { cellDir?: string; instance?: st
     if (resolved.backend) {
       const backendDir = resolve(cellDir, config.backend?.dir ?? ".");
       for (const [name, entry] of Object.entries(resolved.backend.entries)) {
-        const handlerPath = resolve(backendDir, entry.handler);
+        const appPath = resolveAppPath(backendDir, config.backend!.entries[name]!);
+        const serverPath = generateTestServer(cellDir, name, appPath, httpPort);
         const env = {
           ...process.env,
           ...resolved.envVars,
@@ -157,7 +205,7 @@ export async function testE2eCommand(options?: { cellDir?: string; instance?: st
           CELL_STAGE: "test",
         };
         console.log(`Starting backend [${name}] on port ${httpPort}...`);
-        const proc = Bun.spawn(["bun", "run", handlerPath], {
+        const proc = Bun.spawn(["bun", "run", serverPath], {
           cwd: cellDir,
           env,
           stdout: "inherit",
@@ -167,8 +215,7 @@ export async function testE2eCommand(options?: { cellDir?: string; instance?: st
       }
 
       if (!(await waitForPort(httpPort))) {
-        console.error("Backend failed to start");
-        process.exit(1);
+        throw new Error("Backend failed to start");
       }
       console.log("Backend ready");
     }
@@ -179,10 +226,11 @@ export async function testE2eCommand(options?: { cellDir?: string; instance?: st
     const testExitCode = await runBunTest(cellDir, pattern, {
       ...resolved.envVars,
       PORT: String(httpPort),
-      CELL_BASE_URL: `http://localhost:${httpPort}`,
       CELL_STAGE: "test",
     });
-    process.exit(testExitCode);
+    if (testExitCode !== 0) {
+      throw new Error(`E2E tests failed with exit code ${testExitCode}`);
+    }
   } finally {
     for (const child of children) {
       child.kill();

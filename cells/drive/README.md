@@ -19,7 +19,7 @@
 
 ## Branch 访问 URL（path-based）
 
-创建 branch 时若配置了 `CELL_BASE_URL`，响应会包含 **accessUrlPrefix**（如 `https://drive.example.com/branch/{branchId}/{verification}`）。服务端调用（如 image-workshop、MCP）可直接用该 URL 作为 base，请求 `GET {accessUrlPrefix}/api/realm/me/files` 等，**无需再带 Authorization: Bearer**。verification 为 128 位 Crockford Base32（26 字符），与 branch 绑定且有过期时间；branch 最大 TTL 为 10 分钟（`MAX_BRANCH_TTL_MS` 默认 600_000）。**安全**：不要将完整 URL 写入日志；revoke/complete 后该链接立即失效。详见 [Branch 访问 URL 设计](../../docs/plans/2026-03-11-branch-presigned-url-design.md)。
+创建 branch 时若配置了 `CELL_BASE_URL`，响应会包含 **accessUrlPrefix**（如 `https://drive.example.com/branch/{branchId}/{verification}`）。服务端调用（如 image-workshop、MCP）可直接用该 URL 作为 base，请求 `GET {accessUrlPrefix}/api/realm/me/files` 等，**无需再带 Authorization: Bearer**。verification 为 128 位 Crockford Base32（26 字符），与 branch 绑定且有过期时间；branch 最大 TTL 为 10 分钟（`MAX_BRANCH_TTL_MS` 默认 600_000）。**安全**：不要将完整 URL 写入日志；revoke/close 后该链接立即失效。详见 [Branch 访问 URL 设计](../../docs/plans/2026-03-11-branch-presigned-url-design.md)。
 
 ## 运行
 

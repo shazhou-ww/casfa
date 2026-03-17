@@ -87,7 +87,9 @@ export function createServerNextMcpRoute(deps: McpHandlerDeps) {
 
   return async (c: Context<Env>) => {
     const auth = c.get("auth");
-    if (!auth) return c.json({ error: "Unauthorized" }, 401);
+    if (!auth) {
+      return c.json({ error: "UNAUTHORIZED", message: "Missing or invalid Authorization" }, 401);
+    }
     // Normalize path to /mcp so cell-mcp's POST /mcp matches (cursor may POST to /mcp/sse etc.)
     const url = new URL(c.req.url);
     url.pathname = "/mcp";

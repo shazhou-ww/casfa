@@ -2,7 +2,7 @@
  * E2E test setup.
  * When BASE_URL is set: hit remote server (e.g. cell dev); mock auth uses decode-only verifier.
  * When BASE_URL is not set: in-process server with memory stores, cell-cognito-server / cell-delegates-server with memory grant store.
- * Paths: /mcp, /api/delegates, /oauth/* (OAuth flow).
+ * Paths: /mcp, /api/realm/:realmId/delegates, /api/oauth/* (OAuth flow).
  */
 process.env.NODE_ENV = "test";
 process.env.DYNAMODB_ENDPOINT ??= "http://localhost:7102";
@@ -94,14 +94,19 @@ function createHelpers(url: string): TestHelpers {
 
   const assignDelegate = async (
     userToken: string,
-    _realmId: string,
+    realmId: string,
     options?: { client_id?: string; clientName?: string; ttl?: number }
   ): Promise<{ accessToken: string; delegateId: string; expiresAt?: number }> => {
     const body: { clientName?: string; permissions?: string[] } = {
       clientName: options?.clientName ?? options?.client_id ?? "e2e",
       permissions: ["use_mcp", "file_read", "file_write", "branch_manage", "manage_delegates"],
     };
-    const res = await authRequest(userToken, "POST", "/api/delegates", body);
+    const res = await authRequest(
+      userToken,
+      "POST",
+      `/api/realm/${encodeURIComponent(realmId)}/delegates`,
+      body
+    );
     const data = (await res.json()) as {
       accessToken?: string;
       delegateId?: string;

@@ -142,7 +142,7 @@ describe("Files (User)", () => {
       from: "source.txt",
       to: "copy.txt",
     });
-    expect(cpRes.status).toBe(201);
+    expect(cpRes.status).toBe(200);
     const getCopy = await fetch(`${ctx.baseUrl}/api/realm/${realmId}/files/copy.txt`, {
       headers: { Authorization: `Bearer ${token}` },
     });

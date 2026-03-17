@@ -22,7 +22,8 @@ function DelegateOAuthAuthorizeRoute() {
   return (
     <DelegateOAuthConsentPage
       authorizeUrl={withMountPath("/api/oauth/delegate/authorize")}
-      loginUrl={withMountPath("/oauth/login")}
+      loginUrl={withMountPath("/api/oauth/login")}
+      clientInfoUrl={withMountPath("/api/oauth")}
       loading={loading}
       isLoggedIn={isLoggedIn}
       fetch={apiFetch}

@@ -2,8 +2,8 @@ export { createAppForGateway as createAppForBackend } from "./gateway-app";
 export { createAppForGateway } from "./gateway-app";
 import type { CasFacade } from "@casfa/cas";
 import { getTokenFromRequest } from "@casfa/cell-auth-server";
-import type { DelegatesEnv, DelegateGrantStore, PendingClientInfoStore } from "@casfa/cell-delegates-server";
-import { createDelegatesRoutes, createDelegateOAuthRoutes, createMemoryAuthCodeStore } from "@casfa/cell-delegates-server";
+import type { DelegateGrantStore, PendingClientInfoStore } from "@casfa/cell-delegates-server";
+import { createDelegateOAuthRoutes, createMemoryAuthCodeStore } from "@casfa/cell-delegates-server";
 import type { OAuthServer } from "@casfa/cell-cognito-server";
 import type { KeyProvider } from "@casfa/core";
 import { Hono } from "hono";
@@ -12,7 +12,7 @@ import type { ServerConfig } from "./config.ts";
 import { isMockAuthEnabled } from "./config.ts";
 import { createBranchesController } from "./controllers/branches.ts";
 import { createCsrfController } from "./controllers/csrf.ts";
-import { createDevMockTokenController } from "./controllers/dev-mock-token.ts";
+import { createDelegatesController } from "./controllers/delegates.ts";
 import { createFilesController } from "./controllers/files.ts";
 import { createFsController } from "./controllers/fs.ts";
 import { createLoginRedirectRoutes } from "./controllers/login-redirect.ts";
@@ -153,6 +153,7 @@ export function createApp(deps: AppDeps) {
       },
       baseUrl: deps.config.baseUrl,
       allowedScopes: delegateAllowedScopes,
+      tokenPath: "/api/oauth/token",
       onAuthorizeSuccess: () => deps.pendingClientInfoStore.delete("mcp"),
     })
   );
@@ -180,17 +181,6 @@ export function createApp(deps: AppDeps) {
     )
   );
 
-  if (isMockAuthEnabled(deps.config)) {
-    const devMockToken = createDevMockTokenController({
-      config: deps.config,
-      branchStore: deps.branchStore,
-      cas: deps.cas,
-      key: deps.key,
-    });
-    app.get("/api/dev/mock-token", (c) => devMockToken.get(c));
-    app.post("/api/dev/mock-token", (c) => devMockToken.get(c));
-  }
-
   const authMiddleware = createAuthMiddleware();
   const realmMiddleware = createRealmMiddleware();
   app.use("/api/realm/:realmId/*", authMiddleware, realmMiddleware);
@@ -213,16 +203,9 @@ export function createApp(deps: AppDeps) {
   const files = createFilesController(rootResolverDeps);
   const fs = createFsController(rootResolverDeps);
   const branches = createBranchesController({ ...rootResolverDeps, config: deps.config });
+  const delegates = createDelegatesController({ grantStore: deps.grantStore });
   const realm = createRealmController({ realmInfoService });
   const me = createMeController({ userSettingsStore: deps.userSettingsStore });
-
-  app.route("/", createDelegatesRoutes({
-    grantStore: deps.grantStore,
-    getUserId: ((auth: Env["Variables"]["auth"]) =>
-      !auth ? "" : auth.type === "user" ? auth.userId : auth.type === "delegate" ? auth.realmId : "") as (
-      auth: DelegatesEnv["Variables"]["auth"]
-    ) => string,
-  }));
 
   app.use("/api/me", authMiddleware);
   app.get("/api/me", (c) => me.get(c));
@@ -248,6 +231,9 @@ export function createApp(deps: AppDeps) {
   app.post("/api/realm/:realmId/branches/:branchId/revoke", (c) => branches.revoke(c));
   app.post("/api/realm/:realmId/branches/:branchId/close", (c) => branches.close(c));
   app.post("/api/realm/:realmId/branches/:branchId/transfer-paths", (c) => branches.transferPaths(c));
+  app.get("/api/realm/:realmId/delegates", (c) => delegates.list(c));
+  app.post("/api/realm/:realmId/delegates", (c) => delegates.create(c));
+  app.post("/api/realm/:realmId/delegates/:delegateId/revoke", (c) => delegates.revoke(c));
 
   app.get("/api/realm/:realmId", (c) => realm.info(c));
   app.get("/api/realm/:realmId/usage", (c) => realm.usage(c));

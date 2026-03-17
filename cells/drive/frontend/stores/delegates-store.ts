@@ -15,8 +15,8 @@ type DelegatesStore = {
 };
 
 function requireAuth(): void {
-  const userId = getRealmId();
-  if (!userId) throw new Error("Not authenticated: user not loaded");
+  const realmId = getRealmId();
+  if (!realmId) throw new Error("Not authenticated: user not loaded");
 }
 
 /** Map backend list item to DelegateListItem. Backend returns clientName; revoked are omitted. */
@@ -45,7 +45,8 @@ export const useDelegatesStore = create<DelegatesStore>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       requireAuth();
-      const res = await apiFetch("/api/delegates");
+      const realmId = getRealmId()!;
+      const res = await apiFetch(`/api/realm/${encodeURIComponent(realmId)}/delegates`);
       if (!res.ok) {
         const data = (await res.json()) as { message?: string; error?: string };
         throw new Error(data.message ?? data.error ?? "Failed to fetch delegates");
@@ -68,10 +69,11 @@ export const useDelegatesStore = create<DelegatesStore>((set, get) => ({
 
   createDelegate: async (params) => {
     requireAuth();
+    const realmId = getRealmId()!;
     const body: { clientName: string; permissions?: string[] } = {
       clientName: params.name?.trim() || "Delegate",
     };
-    const res = await apiFetch("/api/delegates", {
+    const res = await apiFetch(`/api/realm/${encodeURIComponent(realmId)}/delegates`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -107,9 +109,13 @@ export const useDelegatesStore = create<DelegatesStore>((set, get) => ({
 
   revokeDelegate: async (delegateId: string) => {
     requireAuth();
-    const res = await apiFetch(`/api/delegates/${encodeURIComponent(delegateId)}/revoke`, {
+    const realmId = getRealmId()!;
+    const res = await apiFetch(
+      `/api/realm/${encodeURIComponent(realmId)}/delegates/${encodeURIComponent(delegateId)}/revoke`,
+      {
       method: "POST",
-    });
+      }
+    );
     if (!res.ok) {
       const data = (await res.json()) as { message?: string; error?: string };
       throw new Error(data.message ?? data.error ?? "Failed to revoke delegate");

@@ -13,11 +13,12 @@ backend:
         - /api/*
         - /branch/*
         - /branch-restricted/*
-        - /oauth/login
-        - /oauth/logout
-        - /oauth/register
-        - /oauth/client-info
-        - /oauth/token
+        - /api/oauth/login
+        - /api/oauth/logout
+        - /api/oauth/authorize
+        - /api/oauth/register
+        - /api/oauth/client-info
+        - /api/oauth/token
         - /.well-known/*
         - /mcp
 

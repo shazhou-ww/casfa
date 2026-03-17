@@ -27,7 +27,7 @@ export function withMountPath(path: string): string {
 }
 
 export function buildLoginRedirectUrl(returnUrl: string): string {
-  return `${withMountPath("/oauth/login")}?return_url=${encodeURIComponent(returnUrl)}`;
+  return `${withMountPath("/api/oauth/login")}?return_url=${encodeURIComponent(returnUrl)}`;
 }
 
 /**

@@ -175,7 +175,7 @@ describe("Branches / Worker", () => {
     expect(data.branches?.some((b) => b.branchId === branchId)).toBe(false);
   });
 
-  it("complete after revoke returns 401 (revoked branch token invalid)", async () => {
+  it("close after revoke returns 401 (revoked branch token invalid)", async () => {
     const token = await ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(token, "POST", `/api/realm/${realmId}/fs/mkdir`, {
       path: "toRevoke",
@@ -188,17 +188,17 @@ describe("Branches / Worker", () => {
       "POST",
       `/api/realm/${realmId}/branches/${branchId}/revoke`
     );
-    const completeRes = await ctx.helpers.authRequest(
+    const closeRes = await ctx.helpers.authRequest(
       workerToken,
       "POST",
-      "/api/realm/me/branches/me/complete"
+      "/api/realm/me/branches/me/close"
     );
-    expect(completeRes.status).toBe(401);
-    const data = (await completeRes.json()) as { error?: string; message?: string };
+    expect(closeRes.status).toBe(401);
+    const data = (await closeRes.json()) as { error?: string; message?: string };
     expect(data.error).toBe("UNAUTHORIZED");
   });
 
-  it("complete merges sub-branch into parent", async () => {
+  it("close removes child branch without merge semantics", async () => {
     const token = await ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(token, "POST", `/api/realm/${realmId}/fs/mkdir`, {
       path: "parentDir",
@@ -219,21 +219,21 @@ describe("Branches / Worker", () => {
         parentBranchId: parentId,
       }
     );
-    const completeRes = await ctx.helpers.authRequest(
+    const closeRes = await ctx.helpers.authRequest(
       childToken,
       "POST",
-      "/api/realm/me/branches/me/complete"
+      "/api/realm/me/branches/me/close"
     );
-    expect(completeRes.status).toBe(200);
-    const completeData = (await completeRes.json()) as { completed?: string };
-    expect(completeData.completed).toBe(childId);
-    const listRes = await ctx.helpers.authRequest(token, "GET", `/api/realm/${realmId}/files`);
+    expect(closeRes.status).toBe(200);
+    const closeData = (await closeRes.json()) as { closed?: string };
+    expect(closeData.closed).toBe(childId);
+    const listRes = await ctx.helpers.authRequest(token, "GET", `/api/realm/${realmId}/branches`);
     expect(listRes.status).toBe(200);
-    const listData = (await listRes.json()) as { entries?: { name: string }[] };
-    expect(listData.entries?.some((e) => e.name === "parentDir")).toBe(true);
+    const listData = (await listRes.json()) as { branches?: { branchId: string }[] };
+    expect(listData.branches?.some((b) => b.branchId === childId)).toBe(false);
   });
 
-  it("branch with null root: PUT /api/realm/me/root sets root to file, complete merges file at mountPath", async () => {
+  it("branch with null root: PUT /api/realm/me/root then close does not merge file", async () => {
     const token = await ctx.helpers.createUserToken(realmId);
     await ctx.helpers.authRequest(token, "POST", `/api/realm/${realmId}/fs/mkdir`, {
       path: "img",
@@ -255,20 +255,17 @@ describe("Branches / Worker", () => {
       body: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     });
     expect(putRootRes.status).toBe(201);
-    const completeRes = await ctx.helpers.authRequest(
+    const closeRes = await ctx.helpers.authRequest(
       workerToken,
       "POST",
-      "/api/realm/me/branches/me/complete"
+      "/api/realm/me/branches/me/close"
     );
-    expect(completeRes.status).toBe(200);
+    expect(closeRes.status).toBe(200);
     const getRes = await ctx.helpers.authRequest(
       token,
       "GET",
       `/api/realm/${realmId}/files/img/generated?meta=1`
     );
-    expect(getRes.status).toBe(200);
-    const meta = (await getRes.json()) as { kind?: string; contentType?: string };
-    expect(meta.kind).toBe("file");
-    expect(meta.contentType).toBe("image/png");
+    expect(getRes.status).toBe(404);
   });
 });

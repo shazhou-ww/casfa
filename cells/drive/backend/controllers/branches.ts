@@ -1,5 +1,5 @@
 /**
- * Branch API: create (root child or sub-branch), list, revoke, complete.
+ * Branch API: create (root child or sub-branch), list, revoke, close.
  * Branch token = base64url(branchId); auth middleware accepts it.
  */
 import type { Context } from "hono";
@@ -203,7 +203,13 @@ export function createBranchesController(deps: BranchesControllerDeps) {
         );
       } catch (err) {
         const message = err instanceof Error ? err.message : "Create branch failed";
-        if (message.includes("path does not resolve") || message.includes("InvalidPath")) {
+        if (
+          message.includes("path does not resolve") ||
+          message.includes("InvalidPath") ||
+          message.includes("required") ||
+          message.includes("must not") ||
+          message.includes("ancestor/descendant")
+        ) {
           return c.json({ error: "BAD_REQUEST", message }, 400);
         }
         throw err;
@@ -255,7 +261,7 @@ export function createBranchesController(deps: BranchesControllerDeps) {
       const realmId = auth.type === "user" ? auth.userId : auth.realmId;
       const branch = await deps.branchStore.getBranch(branchId);
       if (!branch || branch.realmId !== realmId) {
-        return c.json({ error: "NOT_FOUND", message: "Branch not found" }, 404);
+        return c.json({ revoked: branchId }, 200);
       }
       await deps.branchStore.removeBranch(branchId);
       return c.json({ revoked: branchId }, 200);
