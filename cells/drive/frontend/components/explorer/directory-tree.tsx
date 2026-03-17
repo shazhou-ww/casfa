@@ -4,6 +4,7 @@ import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import FolderIcon from "@mui/icons-material/Folder";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import {
   Alert,
   Box,
@@ -199,6 +200,10 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
     const parent = `/${pathParts.slice(0, -1).join("/")}`;
     onPathChange(parent);
   }, [pathParts, onPathChange]);
+
+  const handleRefresh = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+  }, []);
 
   const handleOpenCreateDialog = useCallback(() => {
     setCreateDialogOpen(true);
@@ -557,28 +562,50 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
         >
           <ArrowUpwardIcon fontSize="small" />
         </IconButton>
-        {pathParts.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">
-            /
-          </Typography>
-        ) : (
-          pathParts.map((part, i) => (
-            <Typography
-              key={pathParts.slice(0, i + 1).join("/")}
-              component="span"
-              variant="body2"
-              sx={{
-                cursor: "pointer",
-                "&:hover": { textDecoration: "underline" },
-                color: i === pathParts.length - 1 ? "text.primary" : "text.secondary",
-              }}
-              onClick={() => handleBreadcrumb(i)}
-            >
-              {i > 0 ? " / " : ""}
-              {part}
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {pathParts.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              /
             </Typography>
-          ))
-        )}
+          ) : (
+            pathParts.map((part, i) => (
+              <Typography
+                key={pathParts.slice(0, i + 1).join("/")}
+                component="span"
+                variant="body2"
+                sx={{
+                  cursor: "pointer",
+                  "&:hover": { textDecoration: "underline" },
+                  color: i === pathParts.length - 1 ? "text.primary" : "text.secondary",
+                  textOverflow: "ellipsis",
+                  overflow: "hidden",
+                }}
+                onClick={() => handleBreadcrumb(i)}
+              >
+                {i > 0 ? " / " : ""}
+                {part}
+              </Typography>
+            ))
+          )}
+        </Box>
+        <Button
+          size="small"
+          startIcon={<RefreshIcon />}
+          onClick={handleRefresh}
+          disabled={loading}
+          aria-label="刷新当前文件夹"
+        >
+          刷新
+        </Button>
         <Button
           size="small"
           startIcon={<CloudUploadIcon />}
@@ -640,7 +667,6 @@ export function DirectoryTree({ currentPath, onPathChange }: DirectoryTreeProps)
           size="small"
           startIcon={<CreateNewFolderIcon />}
           onClick={handleOpenCreateDialog}
-          sx={{ ml: "auto" }}
           aria-label="新建文件夹"
         >
           新建文件夹
