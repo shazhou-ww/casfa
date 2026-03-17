@@ -94,6 +94,11 @@ describe("runMessagesSend persistence timing", () => {
 
     const appendedMessages = applyChanges.filter((c) => c.kind === "messages.append");
     expect(appendedMessages).toHaveLength(3);
+    const streamResets = applyChanges.filter((c) => c.kind === "stream.reset");
+    expect(streamResets).toHaveLength(1);
+    if (streamResets[0]?.kind === "stream.reset") {
+      expect(streamResets[0].payload.threadId).toBe(threadId);
+    }
 
     const streamDone = applyChanges.find((c) => c.kind === "stream.done");
     expect(streamDone?.kind).toBe("stream.done");

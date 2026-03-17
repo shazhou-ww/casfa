@@ -5,17 +5,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Message, MessageContentPart } from "../../lib/api.ts";
 import { formatLoadedToolDisplayName } from "../../lib/tool-name-display.ts";
+import { groupContentParts, messageToCopyText, type ToolCallBlock } from "./message-content-utils.ts";
 import { useAgentStore } from "../../stores/agent-store.ts";
-
-type ToolCallBlock = {
-  type: "tool";
-  callId: string;
-  name: string;
-  request: string;
-  response: string | null;
-};
-
-type RenderBlock = { type: "text"; text: string } | ToolCallBlock;
 
 function parseJsonSafely(raw: string): unknown | null {
   const trimmed = raw.trim();
@@ -318,54 +309,6 @@ function YamlTreeView({ raw, rootLabel }: { raw: string; rootLabel: string }) {
   );
 }
 
-function groupContentParts(parts: MessageContentPart[]): RenderBlock[] {
-  const blocks: RenderBlock[] = [];
-  const toolIndexByCallId = new Map<string, number>();
-
-  for (const part of parts) {
-    if (part.type === "text") {
-      blocks.push({ type: "text", text: part.text });
-      continue;
-    }
-
-    if (part.type === "tool-call") {
-      const callId = part.callId || `tool-${blocks.length}`;
-      const existingIdx = toolIndexByCallId.get(callId);
-      if (existingIdx !== undefined && blocks[existingIdx]?.type === "tool") {
-        const existing = blocks[existingIdx] as ToolCallBlock;
-        if (part.name) existing.name = part.name;
-        existing.request = part.arguments || existing.request;
-      } else {
-        const block: ToolCallBlock = {
-          type: "tool",
-          callId,
-          name: part.name || "tool",
-          request: part.arguments || "",
-          response: null,
-        };
-        toolIndexByCallId.set(callId, blocks.length);
-        blocks.push(block);
-      }
-      continue;
-    }
-
-    const existingIdx = part.callId ? toolIndexByCallId.get(part.callId) : undefined;
-    if (existingIdx !== undefined && blocks[existingIdx]?.type === "tool") {
-      const existing = blocks[existingIdx] as ToolCallBlock;
-      existing.response = existing.response ? `${existing.response}\n\n${part.result}` : part.result;
-    } else {
-      blocks.push({
-        type: "tool",
-        callId: part.callId || `result-${blocks.length}`,
-        name: "tool",
-        request: "",
-        response: part.result,
-      });
-    }
-  }
-
-  return blocks;
-}
 
 function MessageMarkdown({ text }: { text: string }) {
   if (!text.trim()) return null;
@@ -586,24 +529,6 @@ function ToolIoBubble({ label, raw }: { label: "request" | "response"; raw: stri
       <YamlTreeView raw={raw} rootLabel={label} />
     </Box>
   );
-}
-
-function messageToCopyText(message: Message): string {
-  const sections: string[] = [];
-  for (const part of message.content) {
-    if (part.type === "text") {
-      if (part.text.trim()) sections.push(part.text.trim());
-      continue;
-    }
-    if (part.type === "tool-call") {
-      sections.push(`tool request: ${part.name}`, formatJsonIfPossible(part.arguments));
-      continue;
-    }
-    if (part.type === "tool-result") {
-      sections.push(`tool response: ${part.callId || "result"}`, formatJsonIfPossible(part.result));
-    }
-  }
-  return sections.join("\n\n");
 }
 
 export function MessageList({ messages }: { messages: Message[] }) {

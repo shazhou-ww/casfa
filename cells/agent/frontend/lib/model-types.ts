@@ -136,6 +136,10 @@ export type Change =
       payload: { messageId: string; threadId: string; chunk: StreamChunk };
     }
   | {
+      kind: "stream.reset";
+      payload: { messageId: string; threadId: string; status?: StreamStatus };
+    }
+  | {
       kind: "stream.done";
       payload: { messageId: string; threadId: string; message: Message };
     }

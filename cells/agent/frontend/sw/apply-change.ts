@@ -100,6 +100,16 @@ export async function applyChange(
       return next;
     }
 
+    case "stream.reset": {
+      const { messageId, threadId, status } = change.payload;
+      const prev = state.streamByMessageId[messageId];
+      if (!prev) return state;
+      const stream: StreamState = { ...prev, threadId, status: status ?? prev.status, chunks: [] };
+      const next = { ...state, streamByMessageId: { ...state.streamByMessageId, [messageId]: stream } };
+      await deps.putStreamState(messageId, stream);
+      return next;
+    }
+
     case "stream.done": {
       const { messageId, threadId, message } = change.payload;
       const list = state.messagesByThread[threadId] ?? [];

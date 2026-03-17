@@ -226,6 +226,19 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => ({
           return { streamByMessageId: { ...s.streamByMessageId, [messageId]: stream } };
         });
         break;
+      case "stream.reset":
+        set((s) => {
+          const { messageId, threadId, status } = change.payload;
+          const prev = s.streamByMessageId[messageId];
+          if (!prev) return s;
+          return {
+            streamByMessageId: {
+              ...s.streamByMessageId,
+              [messageId]: { ...prev, threadId, status: status ?? prev.status, chunks: [] },
+            },
+          };
+        });
+        break;
       case "stream.done": {
         const { messageId, threadId, message } = change.payload;
         set((s) => {
