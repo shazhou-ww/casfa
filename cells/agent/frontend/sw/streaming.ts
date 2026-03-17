@@ -346,6 +346,12 @@ export type ApplyAndBroadcast = (change: Change) => Promise<void>;
 
 export type RegisterAbort = (messageId: string, controller: AbortController) => void;
 export type UnregisterAbort = (messageId: string) => void;
+export type RunMessagesSendDeps = {
+  createMessage: typeof api.createMessage;
+  callLlmStream: typeof callLlmStream;
+  buildToolsAndPromptForThread: typeof buildToolsAndPromptForThread;
+  executeTool: typeof executeTool;
+};
 
 /**
  * Called once the stream has been accepted and streaming has started (before LLM bytes arrive).
@@ -354,8 +360,8 @@ export type UnregisterAbort = (messageId: string) => void;
 export type OnStreamStarted = () => void;
 
 /**
- * Run messages.send: save user message, call LLM (streaming), handle tool_calls loop, save assistant message, emit Changes.
- * Uses tempMessageId for the stream; stream.done carries the final message from the backend.
+ * Run messages.send: save user message, call LLM (streaming), handle tool_calls loop, and persist each assistant round.
+ * Uses tempMessageId for the stream; stream.done carries the final persisted assistant message.
  * Calls onStreamStarted (if provided) after emitting stream.status "streaming", so the client can ack the request without waiting for the full reply.
  * Tool loop has no fixed round cap; it stops when model emits no tool call, or when user sends stream.cancel.
  */
@@ -367,12 +373,17 @@ export async function runMessagesSend(
   applyAndBroadcast: ApplyAndBroadcast,
   registerAbort: RegisterAbort,
   unregisterAbort: UnregisterAbort,
-  onStreamStarted?: OnStreamStarted
+  onStreamStarted?: OnStreamStarted,
+  deps?: Partial<RunMessagesSendDeps>
 ): Promise<void> {
+  const createMessageFn = deps?.createMessage ?? api.createMessage;
+  const callLlmStreamFn = deps?.callLlmStream ?? callLlmStream;
+  const buildToolsAndPromptForThreadFn = deps?.buildToolsAndPromptForThread ?? buildToolsAndPromptForThread;
+  const executeToolFn = deps?.executeTool ?? executeTool;
   const pm = getProviderAndModel(state, threadId, modelId);
   if (!pm) throw new Error("No LLM provider/model configured");
 
-  const userMessage = await api.createMessage(threadId, { role: "user", content });
+  const userMessage = await createMessageFn(threadId, { role: "user", content });
   const userMsg: Message = {
     messageId: userMessage.messageId,
     threadId: userMessage.threadId,
@@ -400,13 +411,36 @@ export async function runMessagesSend(
 
   onStreamStarted?.();
 
-  const assistantContent: MessageContent[] = [];
+  let lastAssistantMsg: Message | null = null;
+  let persistedAssistantRounds = 0;
+
+  const persistAssistantRound = async (roundContent: MessageContent[]): Promise<void> => {
+    const persisted = await createMessageFn(threadId, {
+      role: "assistant",
+      content: roundContent,
+      modelId: pm.modelId,
+    });
+    const assistantMsg: Message = {
+      messageId: persisted.messageId,
+      threadId: persisted.threadId,
+      role: "assistant",
+      content: persisted.content as MessageContent[],
+      createdAt: persisted.createdAt,
+      modelId: persisted.modelId,
+    };
+    await applyAndBroadcast({
+      kind: "messages.append",
+      payload: { threadId, message: assistantMsg },
+    });
+    lastAssistantMsg = assistantMsg;
+    persistedAssistantRounds++;
+  };
 
   try {
     while (true) {
-      const toolsAndPrompt = await buildToolsAndPromptForThread(state, threadId);
+      const toolsAndPrompt = await buildToolsAndPromptForThreadFn(state, threadId);
       const ctx = deriveContext(messagesForApi, toolsAndPrompt, Date.now());
-      const result = await callLlmStream(pm.provider, pm.modelId, ctx.messages, {
+      const result = await callLlmStreamFn(pm.provider, pm.modelId, ctx.messages, {
         signal: controller.signal,
         onChunk(text) {
           const chunk: StreamChunk = { type: "text", text };
@@ -424,21 +458,28 @@ export async function runMessagesSend(
         tools: ctx.tools,
       });
 
-      if (result.content) {
-        assistantContent.push({ type: "text", text: result.content });
-      }
+      const roundAssistantContent: MessageContent[] = [];
+      if (result.content) roundAssistantContent.push({ type: "text", text: result.content });
 
-      if (result.toolCalls.length === 0) break;
+      if (result.toolCalls.length === 0) {
+        if (roundAssistantContent.length > 0 || persistedAssistantRounds === 0) {
+          if (roundAssistantContent.length === 0) {
+            roundAssistantContent.push({ type: "text", text: "" });
+          }
+          await persistAssistantRound(roundAssistantContent);
+        }
+        break;
+      }
 
       const toolResults: string[] = [];
       for (const tc of result.toolCalls) {
-        assistantContent.push({
+        roundAssistantContent.push({
           type: "tool-call",
           callId: tc.id,
           name: tc.name,
           arguments: tc.arguments,
         });
-        const toolResult = await executeTool(tc.name, tc.arguments, state, threadId);
+        const toolResult = await executeToolFn(tc.name, tc.arguments, state, threadId);
         toolResults.push(toolResult);
         await applyAndBroadcast({
           kind: "stream.chunk",
@@ -452,7 +493,7 @@ export async function runMessagesSend(
             },
           },
         });
-        assistantContent.push({
+        roundAssistantContent.push({
           type: "tool-result",
           callId: tc.id,
           result: toolResult,
@@ -475,6 +516,7 @@ export async function runMessagesSend(
       }));
 
       messagesForApi = [...messagesForApi, assistantTurn, ...toolTurns];
+      await persistAssistantRound(roundAssistantContent);
     }
   } catch (err) {
     unregisterAbort(tempMessageId);
@@ -487,27 +529,12 @@ export async function runMessagesSend(
   }
 
   unregisterAbort(tempMessageId);
-
-  if (assistantContent.length === 0) {
-    assistantContent.push({ type: "text", text: "" });
+  if (!lastAssistantMsg) {
+    throw new Error("No assistant message persisted");
   }
-
-  const assistantMessage = await api.createMessage(threadId, {
-    role: "assistant",
-    content: assistantContent,
-    modelId: pm.modelId,
-  });
-  const assistantMsg: Message = {
-    messageId: assistantMessage.messageId,
-    threadId: assistantMessage.threadId,
-    role: "assistant",
-    content: assistantMessage.content as MessageContent[],
-    createdAt: assistantMessage.createdAt,
-    modelId: assistantMessage.modelId,
-  };
   await applyAndBroadcast({
     kind: "stream.done",
-    payload: { messageId: tempMessageId, threadId, message: assistantMsg },
+    payload: { messageId: tempMessageId, threadId, message: lastAssistantMsg },
   });
 }
 
