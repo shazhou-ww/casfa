@@ -96,6 +96,15 @@ export async function startTunnel(
   const tunnelConfigPath = options?.tunnelConfigPath ?? defaultTunnelConfigPath(rootDir);
   if (!existsSync(tunnelConfigPath)) {
     console.log("[tunnel] No tunnel config found. Running auto-setup...");
+    // Set OTAVIA_TUNNEL_DEV_ROOT from otavia.yaml dns.zone if not already set
+    const { loadOtaviaYaml } = await import("../../config/load-otavia-yaml.js");
+    if (!process.env.OTAVIA_TUNNEL_DEV_ROOT) {
+      const otavia = loadOtaviaYaml(rootDir);
+      const zone = otavia.domain?.dns?.zone;
+      if (zone) {
+        process.env.OTAVIA_TUNNEL_DEV_ROOT = zone;
+      }
+    }
     const { setupCommand } = await import("../setup.js");
     await setupCommand(rootDir, { tunnel: true });
     if (!existsSync(tunnelConfigPath)) {
