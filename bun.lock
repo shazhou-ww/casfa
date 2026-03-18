@@ -67,6 +67,7 @@
         "@casfa/agent": "workspace:*",
         "@casfa/artist": "workspace:*",
         "@casfa/drive": "workspace:*",
+        "@casfa/gateway": "workspace:*",
         "@casfa/otavia": "workspace:*",
         "@casfa/sso": "workspace:*",
         "react": "18.2.0",

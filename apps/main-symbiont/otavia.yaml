@@ -36,6 +36,10 @@ cells:
     params:
       AUTH: !Param AUTH
       BFL_API_KEY: !Param BFL_API_KEY
+  gateway:
+    package: "@casfa/gateway"
+    params:
+      AUTH: !Param AUTH
 domain:
   host: casfa.symbiontlabs.me
   dns:

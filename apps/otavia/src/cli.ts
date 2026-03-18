@@ -48,7 +48,7 @@ program.command("setup")
   );
 program.command("dev")
   .description("Start development")
-  .option("--tunnel", "Auto-start cloudflared tunnel and use tunnel host URLs (default enabled)")
+  .option("--tunnel", "Enable cloudflared tunnel and use tunnel host URLs")
   .option("--tunnel-host <host>", "Tunnel hostname or full URL used as public base URL")
   .option("--tunnel-config <path>", "Path to cloudflared config.yml")
   .option("--tunnel-protocol <protocol>", "Tunnel transport protocol: quic, http2, or auto")

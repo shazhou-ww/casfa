@@ -23,6 +23,7 @@
     "@casfa/artist": "workspace:*",
     "@casfa/otavia": "workspace:*",
     "@casfa/drive": "workspace:*",
+    "@casfa/gateway": "workspace:*",
     "@casfa/sso": "workspace:*",
     "react": "18.2.0",
     "react-dom": "18.2.0"

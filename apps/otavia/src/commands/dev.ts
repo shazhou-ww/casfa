@@ -18,7 +18,7 @@ export function resolveDevPublicBaseUrl(options: {
 }
 
 export function resolveDevTunnelEnabled(options?: { tunnel?: boolean }): boolean {
-  return options?.tunnel ?? true;
+  return options?.tunnel ?? false;
 }
 
 /**
