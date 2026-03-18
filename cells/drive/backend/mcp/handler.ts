@@ -19,6 +19,12 @@ import {
 import { ensurePathThenAddOrReplace, removeEntryAtPath } from "../services/tree-mutations.ts";
 import { validateTransferSpec } from "../services/transfer-paths.ts";
 import { executeTransfer } from "../services/transfer-paths.ts";
+import {
+  applyPathTemplate,
+  resolvePathPatternMatches,
+  type PatternMode,
+  type PathPatternMatch,
+} from "../services/fs-patterns.ts";
 import type { Env } from "../types.ts";
 import type { TransferSpec } from "../types/transfer.ts";
 import { encodeCrockfordBase32 } from "../utils/crockford-base32.ts";
@@ -106,6 +112,173 @@ async function getRootForMcpWrite(
   return { rootKey };
 }
 
+function normalizeRelativePath(rawPath: string): string {
+  const normalized = rawPath.trim().replace(/^\/+|\/+$/g, "");
+  if (!normalized) throw new Error("E_PATH_INVALID: path must not be empty");
+  return normalized;
+}
+
+function parsePatternMode(rawMode: unknown): PatternMode {
+  if (rawMode === undefined || rawMode === null || rawMode === "") return "glob";
+  if (rawMode === "glob" || rawMode === "regex") return rawMode;
+  throw new Error("E_INVALID_PATTERN: mode must be glob or regex");
+}
+
+function parseStringList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item) => item.length > 0);
+}
+
+type FsBatchSummary = {
+  moved: number;
+  copied: number;
+  deleted: number;
+  created: number;
+  overwritten: number;
+  noMatch: number;
+};
+
+function createEmptyFsBatchSummary(): FsBatchSummary {
+  return {
+    moved: 0,
+    copied: 0,
+    deleted: 0,
+    created: 0,
+    overwritten: 0,
+    noMatch: 0,
+  };
+}
+
+type Tombstone = { path: string; key: string };
+
+async function collectPatternMatches(
+  deps: McpHandlerDeps,
+  rootKey: string,
+  patterns: string[],
+  mode: PatternMode
+): Promise<{ matches: PathPatternMatch[]; noMatch: number }> {
+  const all: PathPatternMatch[] = [];
+  let noMatch = 0;
+  for (const pattern of patterns) {
+    const normalizedPattern = normalizeRelativePath(pattern);
+    const resolved = await resolvePathPatternMatches(deps.cas, rootKey, normalizedPattern, mode);
+    if (resolved.length === 0) {
+      noMatch += 1;
+      continue;
+    }
+    all.push(...resolved);
+  }
+  const deduped = new Map<string, PathPatternMatch>();
+  for (const item of all) {
+    deduped.set(item.path, item);
+  }
+  return { matches: [...deduped.values()], noMatch };
+}
+
+async function applyMkdirPaths(
+  auth: NonNullable<Env["Variables"]["auth"]>,
+  deps: McpHandlerDeps,
+  rootKey: string,
+  paths: string[]
+): Promise<{ rootKey: string; created: number }> {
+  const realmId = getRealmId(auth);
+  const onNodePut = deps.recordNewKey ? (k: string) => deps.recordNewKey!(realmId, k) : undefined;
+  const emptyDict = await encodeDictNode({ children: [], childNames: [] }, deps.key);
+  const emptyDictKey = hashToKey(emptyDict.hash);
+  await deps.cas.putNode(emptyDictKey, streamFromBytes(emptyDict.bytes));
+  deps.recordNewKey?.(realmId, emptyDictKey);
+  let nextRoot = rootKey;
+  let created = 0;
+  for (const rawPath of paths) {
+    const path = normalizeRelativePath(rawPath);
+    nextRoot = await ensurePathThenAddOrReplace(deps.cas, deps.key, nextRoot, path, emptyDictKey, onNodePut);
+    created += 1;
+  }
+  return { rootKey: nextRoot, created };
+}
+
+async function applyRmPatterns(
+  deps: McpHandlerDeps,
+  rootKey: string,
+  patterns: string[],
+  mode: PatternMode,
+  onNodePut?: (key: string) => void
+): Promise<{ rootKey: string; deleted: number; noMatch: number; tombstones: Tombstone[] }> {
+  const { matches, noMatch } = await collectPatternMatches(deps, rootKey, patterns, mode);
+  const sorted = [...matches].sort((a, b) => b.path.localeCompare(a.path, "en", { sensitivity: "base" }));
+  let nextRoot = rootKey;
+  const tombstones: Tombstone[] = [];
+  let deleted = 0;
+  for (const entry of sorted) {
+    const existing = await resolvePath(deps.cas, nextRoot, entry.path);
+    if (!existing) continue;
+    nextRoot = await removeEntryAtPath(deps.cas, deps.key, nextRoot, entry.path, onNodePut);
+    tombstones.push({ path: entry.path, key: existing });
+    deleted += 1;
+  }
+  return { rootKey: nextRoot, deleted, noMatch, tombstones };
+}
+
+async function applyMoveOrCopyPatterns(
+  deps: McpHandlerDeps,
+  rootKey: string,
+  params: { from: string; to: string; mode: PatternMode; copyOnly: boolean },
+  onNodePut?: (key: string) => void
+): Promise<{
+  rootKey: string;
+  affected: number;
+  noMatch: number;
+  overwritten: number;
+  tombstones: Tombstone[];
+}> {
+  const { matches, noMatch } = await collectPatternMatches(deps, rootKey, [params.from], params.mode);
+  let nextRoot = rootKey;
+  const tombstones: Tombstone[] = [];
+  let affected = 0;
+  let overwritten = 0;
+
+  for (const entry of matches) {
+    const toPath = applyPathTemplate(params.to, {
+      path: entry.path,
+      parentPath: entry.parentPath,
+      name: entry.name,
+      captures: entry.captures,
+    });
+    const targetExisting = await resolvePath(deps.cas, nextRoot, toPath);
+    if (targetExisting) {
+      tombstones.push({ path: toPath, key: targetExisting });
+      overwritten += 1;
+    }
+    if (!params.copyOnly) {
+      const currentSource = await resolvePath(deps.cas, nextRoot, entry.path);
+      if (!currentSource) continue;
+      nextRoot = await removeEntryAtPath(deps.cas, deps.key, nextRoot, entry.path, onNodePut);
+      nextRoot = await ensurePathThenAddOrReplace(
+        deps.cas,
+        deps.key,
+        nextRoot,
+        toPath,
+        currentSource,
+        onNodePut
+      );
+      affected += 1;
+      continue;
+    }
+    nextRoot = await ensurePathThenAddOrReplace(
+      deps.cas,
+      deps.key,
+      nextRoot,
+      toPath,
+      entry.nodeKey,
+      onNodePut
+    );
+    affected += 1;
+  }
+  return { rootKey: nextRoot, affected, noMatch, overwritten, tombstones };
+}
+
 // ---------------------------------------------------------------------------
 // Tool definitions
 // ---------------------------------------------------------------------------
@@ -168,27 +341,27 @@ const MCP_TOOLS = [
   {
     name: "fs_mkdir",
     description:
-      "Create a directory at the given path. Parent path must exist. Required for creating a path before create_branch (e.g. create 'images' then create branch with mountPath 'images').",
+      "Create directories. Arguments: paths: string[], recursive?: boolean. Existing paths are treated as overwrite/no-op behavior.",
     inputSchema: {
       type: "object" as const,
       properties: {
-        path: {
-          type: "string" as const,
-          description: "Directory path to create (e.g. 'images' or 'output/generated')",
-        },
+        paths: { type: "array" as const, description: "Directory paths to create", items: { type: "string" as const } },
+        recursive: { type: "boolean" as const, description: "Reserved; defaults to true" },
       },
-      required: ["path"] as string[],
+      required: ["paths"] as string[],
     },
   },
   {
     name: "fs_ls",
-    description: "List direct children of a directory at the given path.",
+    description:
+      "List files/directories matched by { paths, mode? }. mode defaults to glob. Single-level only: glob forbids **; regex matches basename only. No match is not an error and is counted in noMatch.",
     inputSchema: {
       type: "object" as const,
       properties: {
-        path: { type: "string" as const, description: "Directory path (empty for root)" },
+        paths: { type: "array" as const, items: { type: "string" as const }, description: "Path patterns" },
+        mode: { type: "string" as const, description: "glob | regex (default glob)" },
       },
-      required: [] as string[],
+      required: ["paths"] as string[],
     },
   },
   {
@@ -215,37 +388,63 @@ const MCP_TOOLS = [
   },
   {
     name: "fs_rm",
-    description: "Remove a file or directory at the given path. Requires file_write.",
+    description:
+      "Remove files/directories matched by { paths, mode? }. mode defaults to glob. Single-level only: glob forbids **; regex matches basename only. No match is not an error. Requires file_write.",
     inputSchema: {
       type: "object" as const,
       properties: {
-        path: { type: "string" as const, description: "Path to remove" },
+        paths: { type: "array" as const, items: { type: "string" as const }, description: "Path patterns to remove" },
+        mode: { type: "string" as const, description: "glob | regex (default glob)" },
       },
-      required: ["path"] as string[],
+      required: ["paths"] as string[],
     },
   },
   {
     name: "fs_mv",
-    description: "Move or rename a file or directory. Requires file_write.",
+    description:
+      "Move files/directories matched by { from, to, mode? }. mode defaults to glob. to supports {basename} {dirname} {ext}, and {capture:n} in regex mode. Single-level matching only (glob forbids **; regex matches basename only). No match is not an error. Requires file_write.",
     inputSchema: {
       type: "object" as const,
       properties: {
-        from: { type: "string" as const, description: "Source path" },
-        to: { type: "string" as const, description: "Destination path" },
+        from: { type: "string" as const, description: "Source pattern" },
+        to: { type: "string" as const, description: "Destination template path" },
+        mode: { type: "string" as const, description: "glob | regex (default glob)" },
       },
       required: ["from", "to"] as string[],
     },
   },
   {
     name: "fs_cp",
-    description: "Copy a file or directory to a new path. Requires file_write.",
+    description:
+      "Copy files/directories matched by { from, to, mode? }. mode defaults to glob. Directory copy is recursive by default. to supports {basename} {dirname} {ext}, and {capture:n} in regex mode. Single-level matching only (glob forbids **; regex matches basename only). No match is not an error. Requires file_write.",
     inputSchema: {
       type: "object" as const,
       properties: {
-        from: { type: "string" as const, description: "Source path" },
-        to: { type: "string" as const, description: "Destination path" },
+        from: { type: "string" as const, description: "Source pattern" },
+        to: { type: "string" as const, description: "Destination template path" },
+        mode: { type: "string" as const, description: "glob | regex (default glob)" },
       },
       required: ["from", "to"] as string[],
+    },
+  },
+  {
+    name: "fs_batch",
+    description:
+      "Atomic batch with command objects { name, arguments }. Supported names: mv|cp|rm|mkdir. Fixed semantics: stop-on-error, overwrite, no-dry-run. Success response includes compact summary and tombstones; failed response includes error only.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        commands: {
+          type: "array" as const,
+          description: "Batch commands in MCP tool-call style",
+          items: { type: "object" as const },
+        },
+        clientRequestId: {
+          type: "string" as const,
+          description: "Optional idempotency key",
+        },
+      },
+      required: ["commands"] as string[],
     },
   },
   {
@@ -505,46 +704,28 @@ export async function executeTool(
       if (!hasFileWrite(auth)) {
         return err("file_write required");
       }
-      const pathStr =
-        typeof args.path === "string"
-          ? String(args.path)
-              .trim()
-              .replace(/^\/+|\/+$/g, "")
-          : "";
-      if (!pathStr) {
-        return err("path required");
+      const paths = parseStringList(args.paths);
+      if (paths.length === 0) {
+        return err("paths required");
       }
       const rootResult = await getRootForMcpWrite(auth, deps);
       if ("error" in rootResult) {
         return err(rootResult.error);
       }
-      const rootKey = rootResult.rootKey;
+      let rootKey = rootResult.rootKey;
       try {
-        const realmId = getRealmId(auth);
-        const onNodePut = deps.recordNewKey
-          ? (k: string) => deps.recordNewKey!(realmId, k)
-          : undefined;
-        const emptyDict = await encodeDictNode({ children: [], childNames: [] }, deps.key);
-        const emptyDictKey = hashToKey(emptyDict.hash);
-        await deps.cas.putNode(emptyDictKey, streamFromBytes(emptyDict.bytes));
-        deps.recordNewKey?.(realmId, emptyDictKey);
-        const newRootKey = await ensurePathThenAddOrReplace(
-          deps.cas,
-          deps.key,
-          rootKey,
-          pathStr,
-          emptyDictKey,
-          onNodePut
-        );
+        const { rootKey: newRootKey, created } = await applyMkdirPaths(auth, deps, rootKey, paths);
+        rootKey = newRootKey;
         const delegateId = await getEffectiveDelegateId(auth, deps);
-        await deps.branchStore.setBranchRoot(delegateId, newRootKey);
-        return ok([{ type: "text" as const, text: JSON.stringify({ path: pathStr }) }]);
+        await deps.branchStore.setBranchRoot(delegateId, rootKey);
+        return ok([{ type: "text" as const, text: JSON.stringify({ created }) }]);
       } catch (e) {
         const message = e instanceof Error ? e.message : "mkdir failed";
         if (
           message.includes("must not contain") ||
           message.includes("Parent path not found") ||
-          message.includes("Not a dict")
+          message.includes("Not a dict") ||
+          message.includes("E_PATH_INVALID")
         ) {
           return err(message);
         }
@@ -556,35 +737,49 @@ export async function executeTool(
       if (!hasFileWrite(auth)) {
         return err("file_write required");
       }
-      const pathStr =
-        typeof args.path === "string"
-          ? String(args.path)
-              .trim()
-              .replace(/^\/+|\/+$/g, "")
-          : "";
-      if (!pathStr) {
-        return err("path required");
+      const paths = parseStringList(args.paths);
+      if (paths.length === 0) {
+        return err("paths required");
       }
+      const mode = parsePatternMode(args.mode);
       const rootResult = await getRootForMcpWrite(auth, deps);
       if ("error" in rootResult) {
         return err(rootResult.error);
       }
-      const rootKey = rootResult.rootKey;
+      let rootKey = rootResult.rootKey;
       try {
         const realmId = getRealmId(auth);
         const onNodePut = deps.recordNewKey
           ? (k: string) => deps.recordNewKey!(realmId, k)
           : undefined;
-        const newRootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, pathStr, onNodePut);
+        const { rootKey: nextRoot, deleted, noMatch, tombstones } = await applyRmPatterns(
+          deps,
+          rootKey,
+          paths,
+          mode,
+          onNodePut
+        );
+        rootKey = nextRoot;
         const delegateId = await getEffectiveDelegateId(auth, deps);
-        await deps.branchStore.setBranchRoot(delegateId, newRootKey);
-        return ok([{ type: "text" as const, text: JSON.stringify({ path: pathStr }) }]);
+        await deps.branchStore.setBranchRoot(delegateId, rootKey);
+        return ok([
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              deleted,
+              noMatch,
+              tombstones,
+            }),
+          },
+        ]);
       } catch (e) {
         const message = e instanceof Error ? e.message : "fs_rm failed";
         if (
           message.includes("must not contain") ||
-          message.includes("not found") ||
-          message.includes("Parent path")
+          message.includes("Parent path") ||
+          message.includes("E_PATTERN_NOT_ALLOWED") ||
+          message.includes("E_INVALID_PATTERN") ||
+          message.includes("E_PATH_INVALID")
         ) {
           return err(message);
         }
@@ -600,7 +795,7 @@ export async function executeTool(
       if ("error" in rootResult) {
         return err(rootResult.error);
       }
-      const rootKey = rootResult.rootKey;
+      let rootKey = rootResult.rootKey;
       const fromStr =
         typeof args.from === "string"
           ? String(args.from)
@@ -616,33 +811,42 @@ export async function executeTool(
       if (!fromStr || !toStr) {
         return err("from and to required");
       }
+      const mode = parsePatternMode(args.mode);
       try {
-        const nodeKey = await resolvePath(deps.cas, rootKey, fromStr);
-        if (nodeKey === null) {
-          return err("from path not found");
-        }
         const realmId = getRealmId(auth);
         const onNodePut = deps.recordNewKey
           ? (k: string) => deps.recordNewKey!(realmId, k)
           : undefined;
-        let newRootKey = await removeEntryAtPath(deps.cas, deps.key, rootKey, fromStr, onNodePut);
-        newRootKey = await ensurePathThenAddOrReplace(
-          deps.cas,
-          deps.key,
-          newRootKey,
-          toStr,
-          nodeKey,
-          onNodePut
-        );
+        const result = await applyMoveOrCopyPatterns(deps, rootKey, {
+          from: fromStr,
+          to: toStr,
+          mode,
+          copyOnly: false,
+        }, onNodePut);
+        rootKey = result.rootKey;
         const delegateId = await getEffectiveDelegateId(auth, deps);
-        await deps.branchStore.setBranchRoot(delegateId, newRootKey);
-        return ok([{ type: "text" as const, text: JSON.stringify({ from: fromStr, to: toStr }) }]);
+        await deps.branchStore.setBranchRoot(delegateId, rootKey);
+        return ok([
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              moved: result.affected,
+              noMatch: result.noMatch,
+              overwritten: result.overwritten,
+              tombstones: result.tombstones,
+            }),
+          },
+        ]);
       } catch (e) {
         const message = e instanceof Error ? e.message : "fs_mv failed";
         if (
           message.includes("must not contain") ||
           message.includes("Parent path not found") ||
-          message.includes("Not a dict")
+          message.includes("Not a dict") ||
+          message.includes("E_PATTERN_NOT_ALLOWED") ||
+          message.includes("E_INVALID_PATTERN") ||
+          message.includes("E_TEMPLATE_EVAL_FAILED") ||
+          message.includes("E_PATH_INVALID")
         ) {
           return err(message);
         }
@@ -658,7 +862,7 @@ export async function executeTool(
       if ("error" in rootResult) {
         return err(rootResult.error);
       }
-      const rootKey = rootResult.rootKey;
+      let rootKey = rootResult.rootKey;
       const fromStr =
         typeof args.from === "string"
           ? String(args.from)
@@ -674,36 +878,159 @@ export async function executeTool(
       if (!fromStr || !toStr) {
         return err("from and to required");
       }
+      const mode = parsePatternMode(args.mode);
       try {
-        const nodeKey = await resolvePath(deps.cas, rootKey, fromStr);
-        if (nodeKey === null) {
-          return err("from path not found");
-        }
         const realmId = getRealmId(auth);
         const onNodePut = deps.recordNewKey
           ? (k: string) => deps.recordNewKey!(realmId, k)
           : undefined;
-        const newRootKey = await ensurePathThenAddOrReplace(
-          deps.cas,
-          deps.key,
-          rootKey,
-          toStr,
-          nodeKey,
-          onNodePut
-        );
+        const result = await applyMoveOrCopyPatterns(deps, rootKey, {
+          from: fromStr,
+          to: toStr,
+          mode,
+          copyOnly: true,
+        }, onNodePut);
+        rootKey = result.rootKey;
         const delegateId = await getEffectiveDelegateId(auth, deps);
-        await deps.branchStore.setBranchRoot(delegateId, newRootKey);
-        return ok([{ type: "text" as const, text: JSON.stringify({ from: fromStr, to: toStr }) }]);
+        await deps.branchStore.setBranchRoot(delegateId, rootKey);
+        return ok([
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              copied: result.affected,
+              noMatch: result.noMatch,
+              overwritten: result.overwritten,
+              tombstones: result.tombstones,
+            }),
+          },
+        ]);
       } catch (e) {
         const message = e instanceof Error ? e.message : "fs_cp failed";
         if (
           message.includes("must not contain") ||
           message.includes("Parent path not found") ||
-          message.includes("Not a dict")
+          message.includes("Not a dict") ||
+          message.includes("E_PATTERN_NOT_ALLOWED") ||
+          message.includes("E_INVALID_PATTERN") ||
+          message.includes("E_TEMPLATE_EVAL_FAILED") ||
+          message.includes("E_PATH_INVALID")
         ) {
           return err(message);
         }
         throw e;
+      }
+    }
+
+    if (name === "fs_batch") {
+      if (!hasFileWrite(auth)) {
+        return err("file_write required");
+      }
+      const commands = Array.isArray(args.commands) ? args.commands : [];
+      if (commands.length === 0) {
+        return err("commands required");
+      }
+      const rootResult = await getRootForMcpWrite(auth, deps);
+      if ("error" in rootResult) {
+        return err(rootResult.error);
+      }
+      let rootKey = rootResult.rootKey;
+      const summary = createEmptyFsBatchSummary();
+      const tombstones: Tombstone[] = [];
+      const txnId = `txn_${crypto.randomUUID().replace(/-/g, "")}`;
+      const branchId = await getEffectiveDelegateId(auth, deps);
+      try {
+        const realmId = getRealmId(auth);
+        const onNodePut = deps.recordNewKey
+          ? (k: string) => deps.recordNewKey!(realmId, k)
+          : undefined;
+        for (const command of commands) {
+          if (!command || typeof command !== "object") {
+            throw new Error("E_INVALID_COMMAND: command must be object");
+          }
+          const nameRaw = (command as { name?: unknown }).name;
+          const commandArgs = (command as { arguments?: Record<string, unknown> }).arguments ?? {};
+          if (typeof nameRaw !== "string") {
+            throw new Error("E_INVALID_COMMAND: command name required");
+          }
+          if (nameRaw === "mkdir") {
+            const paths = parseStringList(commandArgs.paths);
+            if (paths.length === 0) throw new Error("E_INVALID_COMMAND: mkdir paths required");
+            const mkdirResult = await applyMkdirPaths(auth, deps, rootKey, paths);
+            rootKey = mkdirResult.rootKey;
+            summary.created += mkdirResult.created;
+            continue;
+          }
+          if (nameRaw === "rm") {
+            const paths = parseStringList(commandArgs.paths);
+            const mode = parsePatternMode(commandArgs.mode);
+            if (paths.length === 0) throw new Error("E_INVALID_COMMAND: rm paths required");
+            const rmResult = await applyRmPatterns(deps, rootKey, paths, mode, onNodePut);
+            rootKey = rmResult.rootKey;
+            summary.deleted += rmResult.deleted;
+            summary.noMatch += rmResult.noMatch;
+            tombstones.push(...rmResult.tombstones);
+            continue;
+          }
+          if (nameRaw === "mv" || nameRaw === "cp") {
+            const from =
+              typeof commandArgs.from === "string"
+                ? commandArgs.from.trim().replace(/^\/+|\/+$/g, "")
+                : "";
+            const to =
+              typeof commandArgs.to === "string"
+                ? commandArgs.to.trim().replace(/^\/+|\/+$/g, "")
+                : "";
+            const mode = parsePatternMode(commandArgs.mode);
+            if (!from || !to) throw new Error(`E_INVALID_COMMAND: ${nameRaw} from and to required`);
+            const mvOrCpResult = await applyMoveOrCopyPatterns(deps, rootKey, {
+              from,
+              to,
+              mode,
+              copyOnly: nameRaw === "cp",
+            }, onNodePut);
+            rootKey = mvOrCpResult.rootKey;
+            summary.noMatch += mvOrCpResult.noMatch;
+            summary.overwritten += mvOrCpResult.overwritten;
+            tombstones.push(...mvOrCpResult.tombstones);
+            if (nameRaw === "mv") {
+              summary.moved += mvOrCpResult.affected;
+            } else {
+              summary.copied += mvOrCpResult.affected;
+            }
+            continue;
+          }
+          throw new Error(`E_INVALID_COMMAND: unsupported command ${nameRaw}`);
+        }
+        await deps.branchStore.setBranchRoot(branchId, rootKey);
+        return ok([
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              status: "committed",
+              txnId,
+              branchId,
+              summary,
+              tombstones,
+            }),
+          },
+        ]);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "batch failed";
+        const code = message.includes(":") ? message.slice(0, message.indexOf(":")) : "E_INTERNAL";
+        return ok([
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              status: "failed",
+              txnId,
+              branchId,
+              error: {
+                code: /^E_[A-Z0-9_]+$/.test(code) ? code : "E_INTERNAL",
+                message,
+              },
+            }),
+          },
+        ]);
       }
     }
 
@@ -782,18 +1109,11 @@ export async function executeTool(
       const emptyKey = await ensureEmptyRoot(deps.cas, deps.key);
       await deps.branchStore.ensureRealmRoot(realmId, emptyKey);
     }
-    const pathStr =
-      typeof args.path === "string"
-        ? String(args.path)
-            .trim()
-            .replace(/^\/+|\/+$/g, "")
-        : "";
     const rootKey = await getCurrentRoot(auth, deps);
     if (rootKey === null) {
       if (auth.type === "worker") {
-        if (pathStr !== "") return err("Path not found");
         if (name === "fs_ls") {
-          return ok([{ type: "text" as const, text: JSON.stringify({ entries: [] }) }]);
+          return ok([{ type: "text" as const, text: JSON.stringify({ entries: [], noMatch: 0 }) }]);
         }
         if (name === "fs_stat") {
           return ok([{ type: "text" as const, text: JSON.stringify({ kind: "directory" }) }]);
@@ -802,6 +1122,40 @@ export async function executeTool(
       }
       return err("Realm or branch root not found");
     }
+
+    if (name === "fs_ls") {
+      const paths = parseStringList(args.paths);
+      if (paths.length === 0) {
+        return err("paths required");
+      }
+      const mode = parsePatternMode(args.mode);
+      const { matches, noMatch } = await collectPatternMatches(deps, rootKey, paths, mode);
+      const entries: Array<{ path: string; kind: "file" | "directory"; size?: number }> = [];
+      for (const match of matches) {
+        const node = await getNodeDecoded(deps.cas, match.nodeKey);
+        if (!node) continue;
+        if (node.kind === "file") {
+          entries.push({
+            path: match.path,
+            kind: "file",
+            size: node.fileInfo?.fileSize ?? 0,
+          });
+        } else {
+          entries.push({
+            path: match.path,
+            kind: "directory",
+          });
+        }
+      }
+      return ok([{ type: "text" as const, text: JSON.stringify({ entries, noMatch }) }]);
+    }
+
+    const pathStr =
+      typeof args.path === "string"
+        ? String(args.path)
+            .trim()
+            .replace(/^\/+|\/+$/g, "")
+        : "";
     const nodeKey = await resolvePath(deps.cas, rootKey, pathStr);
     if (nodeKey === null) {
       return err("Path not found");
@@ -809,24 +1163,6 @@ export async function executeTool(
     const node = await getNodeDecoded(deps.cas, nodeKey);
     if (!node) {
       return err("Node not found");
-    }
-
-    if (name === "fs_ls") {
-      if (node.kind !== "dict") {
-        return err("Not a directory");
-      }
-      const names = node.childNames ?? [];
-      const children = node.children ?? [];
-      const entries: { name: string; kind: "file" | "directory"; size?: number }[] = [];
-      for (let i = 0; i < names.length; i++) {
-        const childName = names[i]!;
-        const childKey = hashToKey(children[i]!);
-        const childNode = await getNodeDecoded(deps.cas, childKey);
-        const kind = childNode?.kind === "file" ? "file" : "directory";
-        const size = childNode?.kind === "file" ? childNode.fileInfo?.fileSize : undefined;
-        entries.push({ name: childName, kind, ...(size !== undefined && { size }) });
-      }
-      return ok([{ type: "text" as const, text: JSON.stringify({ entries }) }]);
     }
 
     if (name === "fs_stat") {

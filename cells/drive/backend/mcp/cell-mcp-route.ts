@@ -41,13 +41,24 @@ export function createServerNextMcpRoute(deps: McpHandlerDeps) {
     mapping: z.record(z.string(), z.string()),
     mode: z.enum(["replace", "fail_if_exists", "merge_dir"]).optional(),
   });
-  const fsMkdir = z.object({ path: z.string() });
-  const fsLs = z.object({ path: z.string().optional() });
+  const fsMkdir = z.object({ paths: z.array(z.string()).min(1), recursive: z.boolean().optional() });
+  const fsLs = z.object({ paths: z.array(z.string()).min(1), mode: z.enum(["glob", "regex"]).optional() });
   const fsStat = z.object({ path: z.string() });
   const fsRead = z.object({ path: z.string() });
-  const fsRm = z.object({ path: z.string() });
-  const fsMv = z.object({ from: z.string(), to: z.string() });
-  const fsCp = z.object({ from: z.string(), to: z.string() });
+  const fsRm = z.object({ paths: z.array(z.string()).min(1), mode: z.enum(["glob", "regex"]).optional() });
+  const fsMv = z.object({ from: z.string(), to: z.string(), mode: z.enum(["glob", "regex"]).optional() });
+  const fsCp = z.object({ from: z.string(), to: z.string(), mode: z.enum(["glob", "regex"]).optional() });
+  const fsBatch = z.object({
+    commands: z
+      .array(
+        z.object({
+          name: z.enum(["mv", "cp", "rm", "mkdir"]),
+          arguments: z.record(z.string(), z.unknown()),
+        })
+      )
+      .min(1),
+    clientRequestId: z.string().optional(),
+  });
   const fsWrite = z.object({
     path: z.string(),
     content: z.string(),
@@ -58,13 +69,14 @@ export function createServerNextMcpRoute(deps: McpHandlerDeps) {
     { name: "create_branch", description: "Create a branch. Without parentBranchId creates under realm root (requires branch_manage). With parentBranchId creates sub-branch (Worker only, parent must be own branch). If mountPath does not exist, the new branch starts with a null root (no root node); use this for artist flux_image so the image becomes the branch root. Returns branchId, accessToken, expiresAt, and accessUrlPrefix (single URL for branch-scoped requests; use as casfaBranchUrl in flux_image, no token needed).", schema: branchCreate },
     { name: "close_branch", description: "Close current branch (Worker) or specified branch (user/delegate with branch_manage).", schema: branchClose },
     { name: "transfer_paths", description: "Transfer mapped paths from one branch to another branch atomically.", schema: branchTransferPaths },
-    { name: "fs_mkdir", description: "Create a directory at the given path. Parent path must exist. Required for creating a path before create_branch (e.g. create 'images' then create branch with mountPath 'images').", schema: fsMkdir },
-    { name: "fs_ls", description: "List direct children of a directory at the given path.", schema: fsLs },
+    { name: "fs_mkdir", description: "Create directories. arguments: { paths: string[], recursive?: boolean }.", schema: fsMkdir },
+    { name: "fs_ls", description: "List files/directories matched by { paths, mode? }. mode defaults to glob. Single-level only: glob forbids **; regex matches basename only. No-match is not an error.", schema: fsLs },
     { name: "fs_stat", description: "Get metadata (kind, size, contentType) for a file or directory.", schema: fsStat },
     { name: "fs_read", description: "Read text content of a file (single-block, ≤4MB).", schema: fsRead },
-    { name: "fs_rm", description: "Remove a file or directory at the given path. Requires file_write.", schema: fsRm },
-    { name: "fs_mv", description: "Move or rename a file or directory. Requires file_write.", schema: fsMv },
-    { name: "fs_cp", description: "Copy a file or directory to a new path. Requires file_write.", schema: fsCp },
+    { name: "fs_rm", description: "Remove files/directories matched by { paths, mode? }. mode defaults to glob. Single-level only. No-match is not an error. Requires file_write.", schema: fsRm },
+    { name: "fs_mv", description: "Move files/directories matched by { from, to, mode? }. Supports {basename} {dirname} {ext} and {capture:n} for regex mode. Single-level only. No-match is not an error.", schema: fsMv },
+    { name: "fs_cp", description: "Copy files/directories matched by { from, to, mode? }. Directory copy is recursive by default. Supports {basename} {dirname} {ext} and {capture:n} for regex mode. Single-level only. No-match is not an error.", schema: fsCp },
+    { name: "fs_batch", description: "Atomic batch. commands: [{ name, arguments }], supported names: mv|cp|rm|mkdir. Success returns summary+tombstones; failed returns error only.", schema: fsBatch },
     { name: "fs_write", description: "Write a text file at the given path (UTF-8). Creates or overwrites. Single file ≤4MB. Text content only.", schema: fsWrite },
   ];
 
