@@ -95,9 +95,14 @@ export async function startTunnel(
 ): Promise<TunnelHandle> {
   const tunnelConfigPath = options?.tunnelConfigPath ?? defaultTunnelConfigPath(rootDir);
   if (!existsSync(tunnelConfigPath)) {
-    throw new Error(
-      `Tunnel config not found: ${tunnelConfigPath}. Run setup first or pass --tunnel-config.`
-    );
+    console.log("[tunnel] No tunnel config found. Running auto-setup...");
+    const { setupCommand } = await import("../setup.js");
+    await setupCommand(rootDir, { tunnel: true });
+    if (!existsSync(tunnelConfigPath)) {
+      throw new Error(
+        `Tunnel config not found after auto-setup: ${tunnelConfigPath}. Run setup manually or pass --tunnel-config.`
+      );
+    }
   }
   const cloudflaredExit = await Bun.spawn(["cloudflared", "--version"], {
     stdout: "pipe",
