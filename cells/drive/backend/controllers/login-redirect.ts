@@ -89,19 +89,13 @@ export function createLoginRedirectRoutes(
     return c.redirect(`${base}/api/oauth/login`);
   });
 
-  routes.get("/api/oauth/authorize", (c) => {
-    const base = getRequestBaseUrl(c).replace(/\/$/, "");
-    const qs = new URL(c.req.url).search;
-    return c.redirect(`${base}/oauth/authorize${qs}`);
-  });
-
   routes.get("/.well-known/oauth-authorization-server", (c) => {
     const base = getRequestBaseUrl(c).replace(/\/$/, "");
     return c.json({
       issuer: base,
-      authorization_endpoint: `${base}/api/oauth/authorize`,
-      token_endpoint: `${base}/api/oauth/token`,
-      registration_endpoint: `${base}/api/oauth/register`,
+      authorization_endpoint: `${base}/oauth/authorize`,
+      token_endpoint: `${base}/oauth/token`,
+      registration_endpoint: `${base}/oauth/register`,
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code", "refresh_token"],
       code_challenge_methods_supported: ["S256"],
@@ -120,7 +114,7 @@ export function createLoginRedirectRoutes(
   });
 
   // Stub for MCP clients that require dynamic client registration; real client_id (delegateId) is issued at first authorize.
-  routes.post("/api/oauth/register", async (c) => {
+  routes.post("/oauth/register", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { client_name?: string; redirect_uris?: string[] };
     const clientId = "mcp";
     const clientName = body.client_name?.trim() || "MCP Client";

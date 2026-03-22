@@ -353,7 +353,8 @@ export function App() {
 
   const onAuthorizeServer = useCallback((serverId: string) => {
     const returnUrl = encodeURIComponent(window.location.href);
-    const startUrl = `/api/servers/${encodeURIComponent(serverId)}/oauth/start?return_url=${returnUrl}&popup=1`;
+    const openerOrigin = encodeURIComponent(window.location.origin);
+    const startUrl = `/api/servers/${encodeURIComponent(serverId)}/oauth/start?return_url=${returnUrl}&popup=1&opener_origin=${openerOrigin}`;
     const popup = window.open(startUrl, "gateway-oauth", "width=520,height=680,scrollbars=yes,resizable=yes");
     if (!popup) {
       setStatus({ kind: "error", message: "浏览器阻止了弹窗，请允许后重试" });

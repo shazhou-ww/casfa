@@ -153,7 +153,6 @@ export function createApp(deps: AppDeps) {
       },
       baseUrl: deps.config.baseUrl,
       allowedScopes: delegateAllowedScopes,
-      tokenPath: "/api/oauth/token",
       onAuthorizeSuccess: () => deps.pendingClientInfoStore.delete("mcp"),
     })
   );

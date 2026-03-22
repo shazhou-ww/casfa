@@ -233,9 +233,17 @@ export function createApp(deps: AppDeps) {
     const resourceUrl = toMcpEndpoint(server.url);
     const returnUrl = normalizeReturnUrl(c.req.query("return_url"), gatewayBase);
     const usePopup = c.req.query("popup") === "1";
+    const openerOrigin = c.req.query("opener_origin") ?? null;
     const redirectUri = `${gatewayBase}/oauth/server/callback`;
 
     const discovery = await discoverServerOAuth(resourceUrl);
+    console.log("[oauth/start] discovery result →", {
+      serverId,
+      resourceUrl,
+      tokenEndpoint: discovery.authorizationServer.token_endpoint,
+      authorizationEndpoint: discovery.authorizationServer.authorization_endpoint,
+      registrationEndpoint: discovery.authorizationServer.registration_endpoint,
+    });
     const state = crypto.randomUUID();
     const { verifier, challenge, method } = await generatePkce();
     const fallbackClientId = `${gatewayBase}/oauth/mcp-client-metadata`;
@@ -261,6 +269,7 @@ export function createApp(deps: AppDeps) {
       codeVerifier: verifier,
       returnUrl,
       usePopup,
+      openerOrigin,
       expiresAt: Date.now() + 10 * 60_000,
     });
 
@@ -304,10 +313,11 @@ export function createApp(deps: AppDeps) {
           error: `${error}${errorDescription ? `: ${errorDescription}` : ""}`,
           serverId: pendingForError?.serverId ?? "",
         });
+        const targetOrigin = JSON.stringify(pendingForError?.openerOrigin ?? "*");
         return c.html(`<!doctype html><html><body><script>
           try {
             if (window.opener) {
-              window.opener.postMessage(${payload}, window.location.origin);
+              window.opener.postMessage(${payload}, ${targetOrigin});
             }
           } finally {
             window.close();
@@ -339,6 +349,12 @@ export function createApp(deps: AppDeps) {
       code_verifier: pending.codeVerifier,
       resource: pending.resource,
     });
+    console.log("[oauth/callback] token exchange →", {
+      tokenEndpoint: pending.tokenEndpoint,
+      clientId: pending.clientId,
+      redirectUri: pending.redirectUri,
+      resource: pending.resource,
+    });
     const tokenRes = await fetch(pending.tokenEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -346,6 +362,11 @@ export function createApp(deps: AppDeps) {
     });
     if (!tokenRes.ok) {
       const text = await tokenRes.text();
+      console.error("[oauth/callback] token exchange FAILED", {
+        status: tokenRes.status,
+        body: text,
+        tokenEndpoint: pending.tokenEndpoint,
+      });
       return c.text(`Token exchange failed: ${tokenRes.status} ${text}`, 400);
     }
     const tokenPayload = (await tokenRes.json()) as {
@@ -372,10 +393,11 @@ export function createApp(deps: AppDeps) {
         type: "gateway-oauth-done",
         serverId: pending.serverId,
       });
+      const targetOrigin = JSON.stringify(pending.openerOrigin ?? "*");
       return c.html(`<!doctype html><html><body><script>
         try {
           if (window.opener) {
-            window.opener.postMessage(${payload}, window.location.origin);
+            window.opener.postMessage(${payload}, ${targetOrigin});
           }
         } finally {
           window.close();
