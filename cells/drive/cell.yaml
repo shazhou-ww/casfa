@@ -15,10 +15,9 @@ backend:
         - /branch-restricted/*
         - /api/oauth/login
         - /api/oauth/logout
-        - /api/oauth/authorize
-        - /api/oauth/register
         - /api/oauth/client-info
-        - /api/oauth/token
+        - /oauth/register
+        - /oauth/token
         - /.well-known/*
         - /mcp
 

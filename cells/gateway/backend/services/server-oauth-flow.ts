@@ -22,6 +22,7 @@ export type PendingServerOAuth = {
   codeVerifier: string;
   returnUrl: string;
   usePopup: boolean;
+  openerOrigin: string | null;
   expiresAt: number;
 };
 
