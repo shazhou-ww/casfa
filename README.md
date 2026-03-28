@@ -1,6 +1,6 @@
 # CASFA
 
-CASFA (Content-Addressable Storage for Agents) — 一个基于内容寻址存储的 monorepo，提供从底层存储、二进制编码、授权委托到上层客户端和应用的完整方案。
+CASFA (Content-Addressable Storage for Agents) — 面向 AI Agent 和多应用协作场景的内容寻址平台。把文件存储、权限授权、Agent 调用、MCP 工具接入统一在一个协议和平台里。
 
 ## Quick Start
 
@@ -15,125 +15,115 @@ bun run build
 aws configure sso
 
 # 4. 启动开发服务器
-cd apps/server && bun run dev
+bun run dev
 
 # 5. 首次登录后，设置自己为管理员（user ID 可在页面右上角用户菜单中查看并复制）
-cd apps/server && bun run set-admin:aws <user-id>
+cd apps/main && bun run set-admin <user-id>
 ```
 
 ## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Applications                             │
-│   ┌──────────────────────┐    ┌──────────────────────────────┐  │
-│   │     @casfa/cli       │    │       @casfa/server          │  │
-│   │  (命令行工具)         │    │  (Hono 后端 + React 前端)     │  │
-│   └────────┬─────────────┘    └──────────┬───────────────────┘  │
-├────────────┼─────────────────────────────┼──────────────────────┤
-│            │          Client Layer       │                      │
-│            │  ┌──────────────────────────┤                      │
-│            │  │      @casfa/client       │ 统一授权策略的客户端   │
-│            │  ├──────────────────────────┤                      │
-│            │  │  @casfa/client-bridge    │ 浏览器主线程客户端     │
-│            │  │  @casfa/client-sw        │ Service Worker 端     │
-│            │  │  @casfa/port-rpc         │ MessagePort RPC      │
-│            │  └──────────────────────────┘                      │
-├────────────┼────────────────────────────────────────────────────┤
-│            │        Data & FS Layer                             │
-│   ┌────────┴───┐  ┌────────────┐  ┌───────────────────┐        │
-│   │ @casfa/core│  │ @casfa/fs  │  │ @casfa/explorer   │        │
-│   │ (B-Tree    │  │ (文件系统   │  │ (React 文件浏览器  │        │
-│   │  编解码)   │  │  操作)      │  │  组件)            │        │
-│   └────────────┘  └────────────┘  └───────────────────┘        │
-├─────────────────────────────────────────────────────────────────┤
-│                     Auth & Delegation                           │
-│   ┌──────────────┐ ┌─────────────────┐ ┌─────────────────────┐ │
-│   │@casfa/delegate│ │@casfa/delegate  │ │@casfa/client-auth   │ │
-│   │ (委托类型 &  │ │  -token (二进制 │ │  -crypto (PKCE/     │ │
-│   │  校验函数)   │ │  编解码)        │ │  加密/展示码)       │ │
-│   └──────────────┘ └─────────────────┘ └─────────────────────┘ │
-│   ┌──────────────┐ ┌─────────────────┐                         │
-│   │ @casfa/proof │ │ @casfa/cas-uri  │                         │
-│   │ (X-CAS-Proof │ │ (CAS URI 解析   │                         │
-│   │  头解析/验证)│ │  与格式化)      │                         │
-│   └──────────────┘ └─────────────────┘                         │
-├─────────────────────────────────────────────────────────────────┤
-│                     Storage Layer                               │
-│   ┌──────────────────────────────────────────────────────────┐  │
-│   │              @casfa/storage-core (接口定义)               │  │
-│   └──────────────────────┬───────────────────────────────────┘  │
-│          ┌───────────────┼───────────────┐                      │
-│   ┌──────┴──────┐ ┌──────┴──────┐ ┌──────┴──────┐              │
-│   │ storage-fs  │ │storage-memory│ │ storage-s3  │              │
-│   │ (文件系统)  │ │ (内存/测试)  │ │ (AWS S3)    │              │
-│   └─────────────┘ └─────────────┘ └─────────────┘              │
-│   ┌─────────────┐ ┌──────────────┐ ┌─────────────┐             │
-│   │storage-http │ │storage-      │ │storage-     │             │
-│   │ (HTTP 远程) │ │ indexeddb    │ │ cached      │             │
-│   │             │ │ (浏览器缓存) │ │ (缓存包装)  │             │
-│   └─────────────┘ └──────────────┘ └─────────────┘             │
-├─────────────────────────────────────────────────────────────────┤
-│                     Foundation                                  │
-│   ┌──────────────────────────────────────────────────────────┐  │
-│   │            @casfa/protocol (Zod schemas & types)         │  │
-│   └──────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+│                       Cells (Applications)                      │
+│  ┌───────┐ ┌────────┐ ┌────────┐ ┌─────────┐ ┌──────────────┐ │
+│  │  sso  │ │ drive  │ │ agent  │ │ artist  │ │   gateway    │ │
+│  │(认证) │ │(文件)  │ │(对话)  │ │(图像)   │ │(MCP 聚合)    │ │
+│  └───┬───┘ └───┬────┘ └───┬────┘ └────┬────┘ └──────┬───────┘ │
+├──────┼─────────┼──────────┼───────────┼─────────────┼──────────┤
+│      │      Shared Cell Packages      │             │          │
+│  ┌───┴──────────┴──────────┴───────────┴─────────────┘          │
+│  │ cell-auth-server · cell-auth-webui · cell-auth-client       │
+│  │ cell-cognito-server · cell-cognito-webui                    │
+│  │ cell-delegates-server · cell-delegates-webui                │
+│  │ cell-mcp                                                    │
+│  └──────────────────────────────────────────────────────────┐  │
+├─────────────────────────────────────────────────────────────┤  │
+│                     CAS Core Layer                          │  │
+│  ┌──────────────┐  ┌─────────┐  ┌──────────┐               │  │
+│  │ @casfa/core  │  │@casfa/  │  │@casfa/   │               │  │
+│  │ (B-Tree      │  │ cas     │  │ encoding │               │  │
+│  │  编解码)     │  │ (CAS    │  │ (Base32/ │               │  │
+│  │              │  │  facade)│  │  Base64) │               │  │
+│  └──────┬───────┘  └────┬───┘  └──────────┘               │  │
+├─────────┼───────────────┼──────────────────────────────────┤  │
+│         │      Storage Layer                               │  │
+│  ┌──────┴──────────────────────────────────────────────┐   │  │
+│  │              @casfa/storage-core (接口定义)          │   │  │
+│  └──────────────────────┬──────────────────────────────┘   │  │
+│         ┌───────────────┼───────────────┐                  │  │
+│  ┌──────┴──────┐ ┌──────┴──────┐ ┌──────┴──────┐          │  │
+│  │ storage-fs  │ │storage-     │ │ storage-s3  │          │  │
+│  │ (文件系统)  │ │  memory     │ │ (AWS S3)    │          │  │
+│  │             │ │ (测试用)    │ │             │          │  │
+│  └─────────────┘ └─────────────┘ └─────────────┘          │  │
+├────────────────────────────────────────────────────────────┤  │
+│                     Tooling                                │  │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐       │  │
+│  │ apps/otavia  │ │apps/cell-cli │ │ apps/main    │       │  │
+│  │ (Cell 编排   │ │(Cell 开发    │ │ (部署配置)   │       │  │
+│  │  CLI 框架)   │ │  CLI)        │ │              │       │  │
+│  └──────────────┘ └──────────────┘ └──────────────┘       │  │
+└────────────────────────────────────────────────────────────┘  │
 ```
+
+## Cells
+
+Cell 是 CASFA 的微服务单元，每个 Cell 有独立的 backend（Hono/Lambda）、frontend（React/Vite）、DynamoDB 表和 OAuth scope。
+
+| Cell | Description |
+|------|-------------|
+| `sso` | SSO 认证中心。基于 AWS Cognito，提供 OAuth authorize/callback/token/refresh 流程 |
+| `drive` | 核心文件存储。CAS 内容寻址 + Realm 命名空间 + Branch 任务分支 + Delegate 委托授权 + MCP 工具 |
+| `agent` | Agent 对话。Thread/Message 管理、MCP Server 配置、LLM Provider 设置 |
+| `artist` | 图像生成 MCP 服务。通过 BFL API 生成图像，以 MCP tool 形式暴露 |
+| `gateway` | MCP 服务器网关。聚合多个 MCP server 的工具发现、OAuth 代理、统一执行入口 |
 
 ## Packages
 
-### Foundation — 协议与基础类型
+### CAS Core — 内容寻址核心
 
 | Package | Description |
 |---------|-------------|
-| `@casfa/protocol` | 协议定义层。使用 Zod 定义 API contract 的所有 schema 和 TypeScript 类型，是大多数包的共同依赖 |
-| `@casfa/cas-uri` | CAS URI 的解析与格式化（`cas://` 协议），零依赖 |
-| `@casfa/proof` | `X-CAS-Proof` HTTP 头的解析、验证与格式化，零依赖 |
+| `@casfa/core` | CAS 二进制格式的编解码，实现自相似 B-Tree 节点结构 |
+| `@casfa/cas` | Level 0 CAS：内容寻址存储，含 GC 和 key 索引 |
+| `@casfa/encoding` | 编码工具：Crockford Base32、Base64URL、hex |
 
-### Storage Layer — 存储抽象与实现
+### Storage — 存储抽象与实现
 
 | Package | Description |
 |---------|-------------|
-| `@casfa/storage-core` | 存储接口定义（`StorageProvider`），所有存储后端的共同抽象，零依赖 |
-| `@casfa/storage-fs` | 基于本地文件系统的存储实现，适用于 CLI 和本地开发 |
-| `@casfa/storage-memory` | 内存存储实现，主要用于测试 |
+| `@casfa/storage-core` | 存储接口定义（`StorageProvider`），所有存储后端的共同抽象 |
+| `@casfa/storage-fs` | 基于本地文件系统的存储实现，用于 CLI 和本地开发 |
+| `@casfa/storage-memory` | 内存存储实现，用于测试 |
 | `@casfa/storage-s3` | AWS S3 存储实现，用于生产环境 |
-| `@casfa/storage-http` | HTTP 远程存储实现，将 CASFA 节点 API 封装为 `StorageProvider` |
-| `@casfa/storage-indexeddb` | 基于 IndexedDB 的浏览器端存储，用于离线缓存 |
-| `@casfa/storage-cached` | 缓存装饰器，在远程后端之上叠加本地缓存层 |
 
-### Data & FS Layer — 数据结构与文件操作
+### Cell Auth — 认证授权
 
 | Package | Description |
 |---------|-------------|
-| `@casfa/core` | CAS 二进制格式的编解码，实现自相似 B-Tree 节点结构。依赖 `storage-core` |
-| `@casfa/fs` | 基于 `StorageProvider` 的文件系统操作（创建/读取/遍历目录树等）。依赖 `core` + `protocol` |
-| `@casfa/explorer` | React 文件浏览器 UI 组件（MUI），使用 Zustand 管理状态。作为 peer 依赖消费 `client`、`core`、`fs`、`protocol` |
+| `@casfa/cell-auth-server` | Cell 后端认证：Cookie/Bearer token 读取、JWT 验证、CSRF |
+| `@casfa/cell-auth-webui` | Cell 前端认证：cookie-only apiFetch、SSO logout/refresh |
+| `@casfa/cell-auth-client` | CLI/非浏览器认证：Bearer token 模式 |
+| `@casfa/cell-cognito-server` | SSO 后端：Cognito JWT 验证、code-for-token 交换、refresh |
+| `@casfa/cell-cognito-webui` | SSO 前端：Cognito 登录页、consent 页 |
+| `@casfa/cell-delegates-server` | Delegate 管理：list/create/revoke + OAuth 授权码流程 |
+| `@casfa/cell-delegates-webui` | Delegate OAuth consent 页面 UI |
 
-### Auth & Delegation — 授权与委托
-
-| Package | Description |
-|---------|-------------|
-| `@casfa/delegate` | 委托实体的类型定义和纯验证函数，零依赖 |
-| `@casfa/delegate-token` | 委托令牌的二进制编解码，依赖 `protocol` |
-| `@casfa/client-auth-crypto` | 客户端认证密码学工具（PKCE 码生成、加密/解密、展示码），依赖 `protocol` |
-
-### Client Layer — 客户端
+### MCP
 
 | Package | Description |
 |---------|-------------|
-| `@casfa/client` | 核心客户端库，统一管理多种授权策略（delegate token、PKCE 等）。依赖 `cas-uri`、`client-auth-crypto`、`delegate-token`、`protocol` |
-| `@casfa/port-rpc` | 基于 MessagePort 的类型安全 RPC 框架，支持超时、Transferable 自动提取和命名空间代理，零依赖 |
-| `@casfa/client-bridge` | 浏览器主线程的统一 AppClient，整合 CasfaClient + sync + auth，支持 Service Worker 和直连两种模式 |
-| `@casfa/client-sw` | Service Worker 端的消息处理器，做 RPC 分发和 IDB token 存储 |
+| `@casfa/cell-mcp` | Builder 风格的 MCP server：HTTP transport、可选 auth、Zod 工具验证 |
 
-### Applications
+### Tooling — 开发工具
 
 | App | Description |
 |-----|-------------|
-| `@casfa/server` | CASFA 服务器，后端使用 Hono 框架（可部署至 AWS Lambda），前端使用 React + Vite |
-| `@casfa/cli` | 命令行工具，支持内容上传/下载/目录管理等操作 |
+| `apps/otavia` | Otavia CLI — Cell 编排框架，管理 dev/build/test/deploy 全流程 |
+| `apps/cell-cli` | Cell 开发 CLI — 单个 Cell 的本地开发工具 |
+| `apps/main` | 主部署配置 — otavia.yaml 定义 Cell 组合和部署参数 |
+| `apps/main-symbiont` | 辅助部署配置（symbiont 实例） |
 
 ## Getting Started
 
@@ -142,12 +132,13 @@ cd apps/server && bun run set-admin:aws <user-id>
 - **Bun** ≥ 1.x（包管理器 + 运行时 + 测试框架）
 - **Node.js** ≥ 20（部分工具链需要）
 - **TypeScript** ≥ 5.x
+- **Docker Desktop**（本地开发依赖 DynamoDB Local + MinIO）
 
 ### 安装与构建
 
 ```bash
 # 克隆仓库
-git clone <repo-url> && cd casfa
+git clone https://github.com/shazhou-ww/casfa.git && cd casfa
 
 # 安装依赖
 bun install
@@ -169,151 +160,116 @@ bun run check
 ### 运行测试
 
 ```bash
-# 全部测试（单元 + e2e）
+# 全部单元测试
 bun run test
 
-# 仅单元测试
-bun run test:unit
-
-# 仅 e2e 测试
-bun run test:e2e
-
 # 单个包的测试
-cd packages/core && bun test
-cd apps/server && bun test
+cd packages/core && bun run test:unit
+cd cells/drive && bun run test:unit
 ```
 
 ### 启动开发服务器
 
-运行前需要确保：
-
-1. **Docker Desktop** 已启动（本地开发依赖 Docker 容器）
-2. **AWS SSO** 已登录：
-   ```bash
-   aws configure sso
-   ```
-
-启动开发服务器：
-
 ```bash
-cd apps/server && bun run dev
+# 启动（需 Docker Desktop 运行 + AWS SSO 已登录）
+bun run dev
+
+# 带 Cloudflare Tunnel（远程访问）
+bun run otavia dev --tunnel
 ```
 
-#### 首次运行
+### 首次运行
 
-首次启动后，需要将自己的账号设置为管理员权限。
-
-登录页面后，点击右上角用户名旁的下拉箭头，可以查看并复制自己的 User ID（`usr_` 格式）。
+登录后，点击右上角用户菜单查看 User ID（`usr_` 格式），然后设置管理员：
 
 ```bash
-cd apps/server
+cd apps/main
 
-# 设置管理员（本地 DynamoDB）
+# 本地 DynamoDB
 bun run set-admin <user-id>
 
-# 设置管理员（AWS DynamoDB）
+# AWS DynamoDB
 bun run set-admin:aws <user-id>
-
-# 查看当前管理员列表
-bun run set-admin -- --list
-
-# 撤销管理员权限
-bun run set-admin -- --revoke <user-id>
 ```
 
-User ID 也支持 UUID 格式（如 `340804d8-50d1-7022-08cc-c93a7198cc99`），会自动转换为 `usr_` 格式。
+## Deployment
 
-### 常见开发场景
+### CI/CD
 
-#### 修改某个 package
+Push 到 `main` 自动部署（GitHub Actions）：
+- SAM build + deploy（Lambda + API Gateway）
+- Vite build → S3（静态前端）
+- CloudFront 缓存失效
 
-1. 修改代码（如 `packages/core/src/`）
-2. 运行该包的测试：`cd packages/core && bun test`
-3. 重新构建：`bun run build`（或仅构建该包 `cd packages/core && bun run build`）
-4. 如有下游依赖，确认下游包也通过测试
-
-#### 新增一个 storage 后端
-
-1. 在 `packages/` 下创建新目录，参考 `storage-memory` 的结构
-2. 实现 `@casfa/storage-core` 中定义的 `StorageProvider` 接口
-3. 在根 `package.json` 的 `build:packages` 脚本中添加构建步骤
-4. 编写测试并添加到 `test:unit` 脚本
-
-#### 修改协议定义
-
-`@casfa/protocol` 是大多数包的共同依赖，修改后需要重新构建并跑全量测试：
+### 手动部署
 
 ```bash
-cd packages/protocol && bun run build
-bun run test
+cd apps/main
+bun run deploy           # 全量部署
+bun run deploy:frontend  # 仅前端
 ```
 
-### 提交前检查
+### 基础设施
 
-目前没有设置提交 gate，请在提交代码前手动运行以下检查：
+| Component | Service |
+|-----------|---------|
+| 计算 | AWS Lambda (Node.js 20) |
+| API | API Gateway + CloudFront |
+| 存储 | S3 (CAS blob) + DynamoDB (metadata) |
+| 认证 | AWS Cognito |
+| DNS | Route53 |
+| 域名 | `beta.casfa.shazhou.me` |
 
-```bash
-# 类型检查 + lint（必须通过）
-bun run check
-
-# 运行测试（必须通过）
-bun run test
-```
-
-如果 lint 有报错，可以尝试自动修复：
-
-```bash
-bun run lint:fix
-
-# 或者一步到位（包含 unsafe 修复）
-bun run check --fix --unsafe
-```
-
-### 项目约定
-
-- **代码风格**：使用 [Biome](https://biomejs.dev/) 进行 lint 和格式化（2 空格缩进，双引号，尾逗号）
-- **模块系统**：ESM only，`verbatimModuleSyntax` 开启
-- **版本管理**：使用 [Changesets](https://github.com/changesets/changesets) 管理版本和发布
-- **构建**：共享构建脚本 `scripts/build-pkg.ts`，各包通过 `bun run build` 调用
-
-## Documentation
-
-- [CAS Binary Format Specification](./docs/CAS_BINARY_FORMAT.md) — CAS 二进制格式规范
-- [CASFA API Documentation](./docs/casfa-api/) — API 文档
-- [Module Dependency Graph](./docs/module-dependency-graph.md) — 模块依赖关系图
-- [Delegate Token Design](./docs/delegate-token-refactor/) — 委托令牌设计文档
-
-## Structure
+## Project Structure
 
 ```
 casfa/
+├── cells/                   # Cell 微服务
+│   ├── sso/                 # SSO 认证中心
+│   ├── drive/               # 核心文件存储
+│   ├── agent/               # Agent 对话与 MCP 编排
+│   ├── artist/              # 图像生成 MCP
+│   └── gateway/             # MCP 服务器网关
+├── packages/                # 共享包
+│   ├── core/                # CAS B-Tree 编解码
+│   ├── cas/                 # CAS facade + GC
+│   ├── encoding/            # Base32/Base64URL 编码
+│   ├── storage-core/        # 存储接口定义
+│   ├── storage-fs/          # 文件系统存储
+│   ├── storage-memory/      # 内存存储（测试）
+│   ├── storage-s3/          # S3 存储
+│   ├── cell-auth-server/    # Cell 后端认证
+│   ├── cell-auth-webui/     # Cell 前端认证
+│   ├── cell-auth-client/    # CLI 认证
+│   ├── cell-cognito-server/ # Cognito 后端
+│   ├── cell-cognito-webui/  # Cognito 前端
+│   ├── cell-delegates-server/ # Delegate 管理
+│   ├── cell-delegates-webui/  # Delegate consent UI
+│   └── cell-mcp/           # MCP server builder
+├── apps/                    # 工具与配置
+│   ├── otavia/              # Otavia CLI 框架
+│   ├── cell-cli/            # Cell 开发 CLI
+│   ├── main/                # 主部署配置
+│   └── main-symbiont/       # 辅助部署配置
 ├── docs/                    # 文档
-├── packages/
-│   ├── protocol/            # @casfa/protocol — 协议 schema & 类型
-│   ├── cas-uri/             # @casfa/cas-uri — CAS URI 解析
-│   ├── proof/               # @casfa/proof — X-CAS-Proof 头处理
-│   ├── storage-core/        # @casfa/storage-core — 存储接口
-│   ├── storage-fs/          # @casfa/storage-fs — 文件系统存储
-│   ├── storage-memory/      # @casfa/storage-memory — 内存存储
-│   ├── storage-s3/          # @casfa/storage-s3 — S3 存储
-│   ├── storage-http/        # @casfa/storage-http — HTTP 远程存储
-│   ├── storage-indexeddb/   # @casfa/storage-indexeddb — IndexedDB 存储
-│   ├── storage-cached/      # @casfa/storage-cached — 缓存装饰器
-│   ├── core/                # @casfa/core — B-Tree 编解码
-│   ├── fs/                  # @casfa/fs — 文件系统操作
-│   ├── explorer/            # @casfa/explorer — 文件浏览器组件
-│   ├── delegate/            # @casfa/delegate — 委托类型 & 校验
-│   ├── delegate-token/      # @casfa/delegate-token — 委托令牌编解码
-│   ├── client-auth-crypto/  # @casfa/client-auth-crypto — 认证密码学
-│   ├── client/              # @casfa/client — 核心客户端库
-│   ├── port-rpc/            # @casfa/port-rpc — MessagePort RPC
-│   ├── client-bridge/       # @casfa/client-bridge — 浏览器主线程客户端
-│   └── client-sw/           # @casfa/client-sw — Service Worker 处理器
-├── apps/
-│   ├── server/              # @casfa/server — 服务器 (Hono + React)
-│   └── cli/                 # @casfa/cli — 命令行工具
 ├── scripts/                 # 共享构建脚本
 ├── biome.json               # Biome 配置
 ├── tsconfig.json            # 共享 TypeScript 配置
+├── stack.yaml               # Stack 定义
 └── package.json             # Workspace 配置
 ```
+
+## Conventions
+
+- **代码风格**：[Biome](https://biomejs.dev/)（2 空格缩进，双引号，尾逗号）
+- **模块系统**：ESM only，`verbatimModuleSyntax` 开启
+- **编码风格**：纯函数式，用 `type` 不用 `interface`，用 create 函数不用 `class`
+- **版本管理**：[Changesets](https://github.com/changesets/changesets)
+- **运行时**：Bun（不用 npm/pnpm/node 直接运行）
+
+## Documentation
+
+- [Cell 配置规则](./docs/cell-config-rules.md)
+- [编码规范](./docs/CODING-CONVENTIONS.md)
+- [Cloudflare Tunnel 开发](./docs/cloudflare-tunnel-dev.md)
+- [设计文档](./docs/plans/)

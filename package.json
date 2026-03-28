@@ -5,9 +5,7 @@
   "workspaces": [
     "packages/*",
     "apps/*",
-    "cells/*",
-    "legacy/packages/*",
-    "legacy/apps/*"
+    "cells/*"
   ],
   "scripts": {
     "otavia": "bun run --cwd apps/main otavia --",
@@ -32,8 +30,7 @@
     "check": "bun run typecheck && bun run lint",
     "test": "bun run test:unit",
     "test:unit": "cd packages/core && bun run test:unit && cd ../cas && bun run test:unit && cd ../../cells/drive && bun run test:unit",
-    "test:e2e": "echo 'Run e2e in legacy: use bun run test:e2e:legacy'",
-    "test:e2e:legacy": "cd legacy/packages/storage-http && bun run test:e2e && cd ../../apps/cli && bun run test:e2e && cd ../server && bun run test:e2e",
+    "test:e2e": "echo 'No e2e tests configured yet'",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "bun run build:packages && changeset publish"
