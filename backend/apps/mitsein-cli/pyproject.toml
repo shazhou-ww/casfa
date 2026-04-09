@@ -1,0 +1,26 @@
+[project]
+name = "mitsein-cli"
+version = "0.1.0"
+description = "Mitsein CLI — internal dev tool for agent verification and workflow automation"
+requires-python = ">=3.12"
+dependencies = [
+    "typer>=0.15",
+    "httpx>=0.28",
+    "rich>=14",
+]
+
+[project.scripts]
+mitsein = "mitsein_cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8",
+    "pytest-httpx>=0.35",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,1 @@
+"""Mitsein CLI package."""
